@@ -1,0 +1,355 @@
+/* ============================================================================
+   GRIDGO design system — CSS layer (web)
+
+   Ported from gridgo-client/global.css and constants/theme.ts.
+   Identical canvas/surface/text/outline values, light and dark pairs,
+   type scale, 4px spacing base, and radii. No new hex values.
+   ============================================================================ */
+
+@import "tailwindcss";
+
+/* Satoshi — UI type. Fallback to system-ui until licensed CDN is settled. */
+@font-face {
+  font-family: "Satoshi-Regular";
+  src: url("/fonts/Satoshi-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Satoshi-Medium";
+  src: url("/fonts/Satoshi-Medium.otf") format("opentype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Satoshi-Bold";
+  src: url("/fonts/Satoshi-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Satoshi-Black";
+  src: url("/fonts/Satoshi-Black.otf") format("opentype");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@theme {
+  --color-*: initial;
+
+  --color-transparent: transparent;
+  --color-white: #ffffff;
+  --color-black: #000000;
+
+  /* Surfaces — Light */
+  --color-canvas: #f8f8f8;
+  --color-surface: #ffffff;
+  --color-surface-variant: #f0f0f0;
+  --color-surface-high: #ffffff;
+
+  /* Text */
+  --color-text-primary: #1a1a1a;
+  --color-text-secondary: #4a4a4a;
+  --color-text-muted: #7a7a7a;
+
+  /* Lines */
+  --color-outline: #dcdcdc;
+  --color-outline-subtle: #eeeeee;
+
+  /* Monochrome structural control */
+  --color-accent: #1a1a1a;
+  --color-accent-on: #ffffff;
+
+  /* Brand — small links and badges only, never a fill */
+  --color-brand: #d4a017;
+  --color-brand-logo: #ffde58;
+
+  /* Action yellow — finite budget */
+  --color-action-yellow: #ffde58;
+  --color-action-yellow-on: #1a1a1a;
+
+  /* Semantic state — always icon + label */
+  --color-success: #2e7d32;
+  --color-error: #c62828;
+  --color-warning: #f57f17;
+  --color-info: #1565c0;
+
+  --color-overlay-hover: rgb(0 0 0 / 0.04);
+  --color-overlay-pressed: rgb(0 0 0 / 0.08);
+  --color-scrim: rgb(0 0 0 / 0.4);
+
+  --font-weight-*: initial;
+
+  --font-sans: "Satoshi-Regular", system-ui, Arial, sans-serif;
+  --font-normal: "Satoshi-Regular", system-ui, Arial, sans-serif;
+  --font-medium: "Satoshi-Medium", system-ui, Arial, sans-serif;
+  --font-bold: "Satoshi-Bold", system-ui, Arial, sans-serif;
+  --font-black: "Satoshi-Black", system-ui, Arial, sans-serif;
+  --font-brand: "Satoshi-Black", system-ui, Arial, sans-serif;
+
+  --text-*: initial;
+
+  /* 4px base. p-4 = 16px page padding; gap-2/3/4/6/8 = 8/12/16/24/32 */
+  --spacing: 4px;
+
+  --radius-*: initial;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-field: 12px;
+  --radius-card: 16px;
+  --radius-pill: 9999px;
+
+  --shadow-*: initial;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-sheet: 0 8px 24px rgb(0 0 0 / 0.12);
+
+  --default-transition-duration: 200ms;
+  --default-transition-timing-function: ease-out;
+
+  /* Breakpoints matching design requirements */
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1440px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-canvas: #000000;
+    --color-surface: #141414;
+    --color-surface-variant: #1e1e1e;
+    --color-surface-high: #2a2a2a;
+
+    --color-text-primary: #f0f0f0;
+    --color-text-secondary: #cccccc;
+    --color-text-muted: #808080;
+
+    --color-outline: #2e2e2e;
+    --color-outline-subtle: #1e1e1e;
+
+    --color-accent: #f0f0f0;
+    --color-accent-on: #000000;
+
+    --color-brand: #ffde58;
+
+    --color-success: #66bb6a;
+    --color-error: #ef5350;
+    --color-warning: #ffca28;
+    --color-info: #42a5f5;
+
+    --color-overlay-hover: rgb(255 255 255 / 0.04);
+    --color-overlay-pressed: rgb(255 255 255 / 0.08);
+    --color-scrim: rgb(0 0 0 / 0.6);
+  }
+}
+
+/* Type scale utilities */
+@utility text-display {
+  font-family: var(--font-bold);
+  font-size: 32px;
+  line-height: 38px;
+}
+
+@utility text-h1 {
+  font-family: var(--font-bold);
+  font-size: 28px;
+  line-height: 34px;
+}
+
+@utility text-h2 {
+  font-family: var(--font-bold);
+  font-size: 24px;
+  line-height: 30px;
+}
+
+@utility text-h3 {
+  font-family: var(--font-bold);
+  font-size: 20px;
+  line-height: 26px;
+}
+
+@utility text-body-lg {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 24px;
+}
+
+@utility text-body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+@utility text-caption {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+@utility text-nav {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  line-height: 16px;
+}
+
+@utility text-button {
+  font-family: var(--font-bold);
+  font-size: 14px;
+  line-height: 20px;
+}
+
+@utility text-overline {
+  font-family: var(--font-medium);
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 1.5px;
+}
+
+@utility gg-card {
+  border-radius: var(--radius-card);
+  border: 1px solid var(--color-outline);
+  background-color: var(--color-surface);
+  padding: 16px;
+}
+
+@utility gg-card-flush {
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--color-outline);
+  background-color: var(--color-surface);
+}
+
+@utility gg-panel {
+  border-radius: var(--radius-card);
+  background-color: var(--color-surface-variant);
+  padding: 16px;
+}
+
+@utility gg-chip {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--color-outline);
+  padding: 4px 12px;
+}
+
+@utility gg-btn {
+  display: inline-flex;
+  min-height: 44px;
+  min-width: 44px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: var(--radius-field);
+  padding-inline: 16px;
+  font-family: var(--font-bold);
+  font-size: 14px;
+  line-height: 20px;
+  transition: background-color 200ms ease-out, border-color 200ms ease-out, opacity 200ms ease-out;
+}
+
+@utility gg-btn-primary {
+  background-color: var(--color-action-yellow);
+  color: var(--color-action-yellow-on);
+}
+
+@utility gg-btn-secondary {
+  border: 1px solid var(--color-outline);
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+@utility gg-field {
+  height: 48px;
+  width: 100%;
+  border-radius: var(--radius-field);
+  border: 1px solid var(--color-outline);
+  background-color: var(--color-surface);
+  padding-inline: 12px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--color-text-primary);
+}
+
+/* Base */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background-color: var(--color-canvas);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Visible focus — never suppress */
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Skip link */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  padding: 8px 16px;
+  background: var(--color-action-yellow);
+  color: var(--color-action-yellow-on);
+  font-family: var(--font-bold);
+}
+
+.skip-link:focus {
+  left: 16px;
+  top: 16px;
+}
