@@ -30,14 +30,17 @@ Demo logins, password `demo`:
 
 | Path | Owns |
 |---|---|
-| `src/lib/api/` | Typed HTTP client — **only** place that calls `fetch` for the API |
+| `src/lib/api/client.ts` | Typed HTTP client — **only** place that calls `fetch` for the API |
+| `src/lib/api/types.ts` | Response/request types (no `any`) |
+| `src/lib/api/constraints.ts` | Server rules the UI can explain *before* rejection (COD cap, holds, issue window) |
+| `src/lib/nav.ts` | **Single** role→nav structure (`ROLE_NAV`); AppShell reads this only |
 | `src/lib/auth/` | Session cookies, AuthProvider, sign-in/out |
 | `src/middleware.ts` | Role-path gate (supplier / ops / admin prefixes) |
 | `src/lib/order-state.ts` | Plain-language state labels (no snake_case on screen) |
 | `src/lib/supplier-actions.ts` | Valid supplier transitions for current state |
 | `src/lib/ops-actions.ts` | Valid ops transitions + queue membership |
 | `src/components/ui/` | shadcn/ui primitives + GRIDGO-specific components |
-| `src/components/shell/` | App shell, nav rail, RoleGate |
+| `src/components/shell/` | App shell, nav rail, RoleGate, `ComingNext` placeholders |
 | `src/app/supplier/` | Supplier partner surfaces |
 | `src/app/ops/` | Operations surfaces |
 | `src/app/admin/` | Super Admin surfaces |
@@ -148,21 +151,97 @@ Root layout already wraps `TooltipProvider` and `Toaster`.
 
 Suppliers are external partners. Never serve `/ops/*` or `/admin/*` to them — not even as soft-hidden UI.
 
-## API honesty
+## API client contract
+
+**Rule:** pages never call `fetch`. Import from `@/lib/api` (or `@/lib/api/client`).
+
+Authoritative API docs live in the separate `gridgo-api` repo (`AGENTS.md`, `README.md`, `PRD.md`). When docs and the running server disagree, **the server wins** — update types here to match observed JSON.
+
+### Modules
+
+| Module | Use for |
+|---|---|
+| `src/lib/api/client.ts` | One typed function per endpoint |
+| `src/lib/api/types.ts` | Shared shapes (Order, User, Claim, …) |
+| `src/lib/api/constraints.ts` | COD max (`COD_MAX_MINOR` = 150_000), payout-hold helpers, issue-window check, plain-language guidance |
+| `src/lib/format.ts` | `formatPhp` / dates — money stays in **PHP minor units** through the client; format only at the edge |
+
+### Client coverage (spine)
+
+Auth: `login`, `logout`, `me`.  
+Orders/jobs: `listOrders`, `listJobs`, `getOrder`, `createOrder`, `transitionOrder`.  
+Credits: `creditBalance`, `authorizeCredits`, `grantCredits` (super).  
+Users: `listUsers`, `getUser`, `updateUserRole` (super), `setUserVerification` (ops/super).  
+Zones: `listZones`, `createZone`, `updateZone`.  
+Taxonomy: `getTaxonomy`, create/update category · material · finish.  
+Supplier services: `listSupplierServices`, `getSupplierService`, `createSupplierService`, `updateSupplierService`, `submitSupplierService`, `verifySupplierService`, `suspendSupplierService`, `withdrawSupplierService`.  
+Matching: `getEligibleSuppliers`.  
+Claims: `listClaims`, `getClaim`, `createClaim`, `holdClaim`, `releaseClaim`.  
+Issues: `listIssues`, `getIssue`, `reportOrderIssue`, `resolveIssue`.  
+Audit: `listAudit`.  
+Dispatch: `listDispatchOffers`, `getDispatchLocation`, plus rider helpers for completeness.  
+Also: `listNotifications`, `listCatalog`, `health`.
+
+### Errors
+
+API returns `{ error: "snake_case" }` with meaningful HTTP status. The client throws `ApiError`:
+
+| Field | Meaning |
+|---|---|
+| `status` | HTTP status |
+| `code` | `error` string (e.g. `forbidden`, `payout_held`, `cod_limit`) |
+| `kind` | `unauthorized` · `forbidden` · `not_found` · `conflict` · `validation` · `server` · `unknown` |
+| `details` / `detail(key)` | Extra body fields (`maxMinor`, `from`, …) |
+
+Use `isApiError(err)` and branch on `kind` / `code` — **never** string-match human messages. Map codes to plain recovery copy in the page (design addendum).
+
+### Constraints before rejection
+
+Explain these *before* the user hits submit when the screen can know:
+
+- COD total (product + delivery) ≤ ₱1,500 → `isWithinCodLimit` / `COD_MAX_MINOR`
+- One active COD order → server `409 cod_one_active`
+- Active claim hold blocks `payout_released` → `order.payoutHold`, `claimBlocksPayout`, `409 payout_held`
+- Client issues only in `issue_window_open` → `canReportIssue`
+
+Copy helpers: `PLATFORM_CONSTRAINT_COPY` in `constraints.ts`.
+
+### API honesty
 
 Do **not** mock data behind a real-looking screen. Do **not** edit `gridgo-api`.
 
-Missing endpoints (as of foundation): verification, roles admin, zones/fees, Pilot Credit grant, supplier service catalogue, user directories. If a screen needs one, omit it or show it as unavailable with an honest reason, and note `needs-decision: missing endpoint …` when blocked.
+If a screen still needs a capability the demo API does not expose, show an honest unavailable state and note `needs-decision: missing endpoint …` — do not invent a second client.
+
+## Navigation contract
+
+**Single source:** `src/lib/nav.ts` → `ROLE_NAV` keyed by portal role.
+
+| Role | Surface (hrefs) |
+|---|---|
+| supplier | `/supplier/jobs`, `catalogue`, `schedule`, `capacity`, `payouts` |
+| ops_admin | `/ops/overview`, `qa`, `matching`, `recovery`, `dispatch`, `claims`, `schedule`, `audit` |
+| super_admin | `/admin/overview`, `verification`, `roles`, `catalogue`, `zones`, `credits`, `finance`, `audit`, `planning` |
+
+- AppShell renders `navForRole(role)` only. Do **not** maintain separate nav arrays in components.
+- Middleware + `RoleGate` still refuse another role’s URL; nav is not a security boundary.
+- Yellow is **only** the selected rail indicator (and at most one `Button variant="primary"` on a page). The rail must never become a yellow column.
+- `ready: false` → route uses `ComingNext` placeholder (“Coming next” + body from the nav item). Prefer that over a 404.
+- When shipping a real page: replace the placeholder `page.tsx`, set `ready: true` on that nav item, keep the same `href`.
+
+Header title: `contextTitleForPath(pathname, role)` (nested job/QA workspaces have special titles).
 
 ## Adding a screen
 
-1. Confirm the API endpoint exists and is authorized for the role
-2. Add calls only in `src/lib/api/client.ts`
-3. Map states through `presentOrderState` / action tables — never raw enums in UI
-4. Put the route under the correct role tree; nav items live in `AppShell`
-5. Mobile cards below 768; keep essential row actions free of horizontal scroll — prefer `DataTable`
-6. One yellow primary max on the page-level action surface (`Button variant="primary"`)
-7. Compose from `src/components/ui/` — do not hand-roll a second button/input language
+1. Confirm the API endpoint exists and is authorized for the role (probe with the running API if unsure).
+2. Prefer an existing function in `src/lib/api/client.ts`. Add a new function only if the endpoint is missing from the client; keep types in `types.ts`.
+3. Map states through `presentOrderState` / action tables — never raw snake_case enums on screen.
+4. Put the route under the correct role tree (`src/app/supplier|ops|admin/…`).
+5. If the nav entry already exists, reuse its `href` and flip `ready` to `true` in `ROLE_NAV`. If you need a new entry, add it to `ROLE_NAV` only (not a second list in AppShell).
+6. Loading → `LoadingBlock`; empty → `EmptyState` (invite the next action); failure → `ErrorState` with recovery from `ApiError.kind` / `code`.
+7. Mobile cards below 768; dense queues → `DataTable`; essential row actions free of horizontal scroll.
+8. At most **one** yellow primary CTA on the page-level action surface (`Button variant="primary"`). Dense queues use outline/secondary.
+9. Compose from `src/components/ui/` — do not hand-roll a second button/input language.
+10. Money: minor units in state and client; `formatPhp` only when rendering.
 
 ## Accessibility floor
 

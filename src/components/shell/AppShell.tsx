@@ -4,13 +4,26 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  AlertTriangle,
+  Banknote,
   Bell,
+  BookOpen,
+  CalendarDays,
+  ClipboardCheck,
   ClipboardList,
+  Coins,
   LayoutDashboard,
   LogOut,
+  MapPinned,
   Menu,
   Package,
+  Scale,
+  Search,
+  ShieldCheck,
+  Truck,
   UserRound,
+  Users,
+  Wallet,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -19,36 +32,33 @@ import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/ui/Logo";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import type { Role } from "@/lib/api/types";
+import {
+  contextTitleForPath,
+  navForRole,
+  type NavIconKey,
+} from "@/lib/nav";
 import { roleLabel } from "@/lib/routes";
 
-type NavItem = {
-  href: string;
-  label: string;
-  icon: LucideIcon;
+const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
+  jobs: Package,
+  catalogue: BookOpen,
+  schedule: CalendarDays,
+  capacity: ClipboardCheck,
+  payouts: Wallet,
+  overview: LayoutDashboard,
+  qa: ClipboardList,
+  matching: Search,
+  recovery: AlertTriangle,
+  dispatch: Truck,
+  claims: Scale,
+  audit: ClipboardList,
+  verification: ShieldCheck,
+  roles: Users,
+  zones: MapPinned,
+  credits: Coins,
+  finance: Banknote,
+  planning: CalendarDays,
 };
-
-const NAV: Record<"supplier" | "ops_admin" | "super_admin", NavItem[]> = {
-  supplier: [{ href: "/supplier/jobs", label: "Job inbox", icon: Package }],
-  ops_admin: [{ href: "/ops/qa", label: "QA queue", icon: ClipboardList }],
-  super_admin: [
-    { href: "/admin/overview", label: "Overview", icon: LayoutDashboard },
-  ],
-};
-
-const CONTEXT_TITLE: Record<string, string> = {
-  "/supplier/jobs": "Assigned jobs",
-  "/ops/qa": "QA queue",
-  "/admin/overview": "Platform overview",
-};
-
-function contextTitle(pathname: string): string {
-  if (pathname.startsWith("/supplier/jobs/")) return "Order workspace";
-  if (pathname.startsWith("/ops/qa/")) return "QA workspace";
-  for (const [prefix, title] of Object.entries(CONTEXT_TITLE)) {
-    if (pathname === prefix || pathname.startsWith(`${prefix}/`)) return title;
-  }
-  return "GRIDGO";
-}
 
 function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -64,15 +74,12 @@ export function AppShell({ role, children }: Props) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
-  const items = NAV[role as keyof typeof NAV] ?? [];
-  const title = contextTitle(pathname);
+  const items = navForRole(role);
+  const title = contextTitleForPath(pathname, role);
 
   const rail = (
-    <nav
-      className="flex h-full flex-col gap-1 p-3"
-      aria-label="Primary"
-    >
-      <div className="mb-4 flex items-center justify-between px-2 pt-1">
+    <nav className="flex h-full min-h-0 flex-col p-3" aria-label="Primary">
+      <div className="mb-3 flex shrink-0 items-center justify-between px-2 pt-1">
         <Logo />
         <Button
           type="button"
@@ -86,16 +93,17 @@ export function AppShell({ role, children }: Props) {
         </Button>
       </div>
 
-      <p className="text-overline text-text-muted mb-2 px-3 uppercase">
+      <p className="text-overline text-text-muted mb-2 shrink-0 px-3 uppercase">
         {roleLabel(role)}
       </p>
 
-      <ul className="flex list-none flex-col gap-1 p-0 m-0">
+      {/* Scroll long role lists so the rail does not eat the workspace at 768. */}
+      <ul className="m-0 flex min-h-0 list-none flex-1 flex-col gap-0.5 overflow-y-auto p-0">
         {items.map((item) => {
           const active = isActive(pathname, item.href);
-          const Icon = item.icon;
+          const Icon = NAV_ICONS[item.icon];
           return (
-            <li key={item.href}>
+            <li key={item.id}>
               <Link
                 href={item.href}
                 onClick={() => setMobileOpen(false)}
@@ -116,25 +124,31 @@ export function AppShell({ role, children }: Props) {
                 <Icon
                   size={18}
                   strokeWidth={active ? 2.25 : 1.75}
+                  className="shrink-0"
                   aria-hidden
                 />
                 <span
-                  className={active ? "font-[family-name:var(--font-bold)]" : undefined}
+                  className="min-w-0 truncate"
                   style={active ? { fontFamily: "var(--font-bold)" } : undefined}
                 >
                   {item.label}
                 </span>
+                {!item.ready ? (
+                  <span className="text-caption text-text-muted ml-auto shrink-0">
+                    Soon
+                  </span>
+                ) : null}
               </Link>
             </li>
           );
         })}
       </ul>
 
-      <div className="mt-auto border-t border-outline-subtle pt-3">
-        <p className="text-caption text-text-muted px-3 truncate">
+      <div className="mt-3 shrink-0 border-t border-outline-subtle pt-3">
+        <p className="text-caption text-text-muted truncate px-3">
           {user?.name}
         </p>
-        <p className="text-caption text-text-muted px-3 truncate mb-2">
+        <p className="text-caption text-text-muted mb-2 truncate px-3">
           {user?.email}
         </p>
         <Button
@@ -153,14 +167,19 @@ export function AppShell({ role, children }: Props) {
 
   return (
     <div className="flex min-h-dvh bg-canvas">
-      {/* Desktop / tablet rail */}
-      <aside className="hidden md:flex w-60 shrink-0 flex-col border-r border-outline bg-surface">
+      {/* Desktop / tablet rail — fixed width so nine entries stay usable at 768 */}
+      <aside className="hidden w-56 shrink-0 flex-col border-r border-outline bg-surface md:flex lg:w-60">
         {rail}
       </aside>
 
       {/* Mobile drawer */}
       {mobileOpen ? (
-        <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
+        <div
+          className="fixed inset-0 z-40 md:hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navigation"
+        >
           <button
             type="button"
             className="absolute inset-0 border-0 p-0"
@@ -188,7 +207,7 @@ export function AppShell({ role, children }: Props) {
           </Button>
 
           <div className="min-w-0 flex-1">
-            <p className="text-overline text-text-muted m-0 uppercase hidden sm:block">
+            <p className="text-overline text-text-muted m-0 hidden uppercase sm:block">
               {roleLabel(role)}
             </p>
             <h1 className="text-h3 text-text-primary m-0 truncate">{title}</h1>
@@ -214,7 +233,7 @@ export function AppShell({ role, children }: Props) {
               onClick={() => setAccountOpen((v) => !v)}
             >
               <UserRound data-icon="inline-start" aria-hidden />
-              <span className="hidden sm:inline max-w-[10rem] truncate">
+              <span className="hidden max-w-[10rem] truncate sm:inline">
                 {user?.name ?? "Account"}
               </span>
             </Button>
@@ -223,11 +242,11 @@ export function AppShell({ role, children }: Props) {
                 role="menu"
                 className="absolute right-0 mt-1 w-56 rounded-card border border-outline bg-surface p-2 shadow-sheet"
               >
-                <p className="text-caption text-text-muted px-2 py-1 truncate">
+                <p className="text-caption text-text-muted truncate px-2 py-1">
                   {user?.email}
                 </p>
                 {user?.supplierName ? (
-                  <p className="text-caption text-text-secondary px-2 pb-2 truncate">
+                  <p className="text-caption text-text-secondary truncate px-2 pb-2">
                     {user.supplierName}
                   </p>
                 ) : null}

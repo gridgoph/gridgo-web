@@ -3,14 +3,37 @@
  *
  * All network calls go through this module — pages never call `fetch` directly.
  * Base URL comes from NEXT_PUBLIC_API_URL (default http://127.0.0.1:8787).
+ *
+ * Types are derived from observed responses on the running API. When docs and
+ * server disagree, the server wins.
  */
 
 import type {
+  AuditEntry,
   CatalogItem,
+  Claim,
+  CreateSupplierServiceInput,
+  CreateZoneInput,
   CreditBalance,
+  CreditGrantResult,
+  DispatchProof,
+  EligibleSuppliersResult,
+  HealthResult,
+  Issue,
+  LocationPing,
+  LoginResult,
   Notification,
   Order,
+  SupplierService,
+  Taxonomy,
+  TaxonomyCategory,
+  TaxonomyFinish,
+  TaxonomyMaterial,
+  UpdateSupplierServiceInput,
+  UpdateZoneInput,
   User,
+  VerificationStatus,
+  Zone,
 } from "@/lib/api/types";
 
 const DEFAULT_API_BASE = "http://127.0.0.1:8787";
@@ -23,27 +46,71 @@ export function getApiBase(): string {
   return fromEnv || DEFAULT_API_BASE;
 }
 
+/**
+ * High-level error category for recovery UI.
+ * Prefer `kind` / `code` over string-matching `message`.
+ */
+export type ApiErrorKind =
+  | "unauthorized"
+  | "forbidden"
+  | "not_found"
+  | "conflict"
+  | "validation"
+  | "server"
+  | "unknown";
+
+function kindFromStatus(status: number): ApiErrorKind {
+  if (status === 401) return "unauthorized";
+  if (status === 403) return "forbidden";
+  if (status === 404) return "not_found";
+  if (status === 409) return "conflict";
+  if (status === 400 || status === 422) return "validation";
+  if (status >= 500) return "server";
+  return "unknown";
+}
+
+function parseErrorCode(body: unknown, status: number): string {
+  if (typeof body === "object" && body && "error" in body) {
+    return String((body as { error: string }).error);
+  }
+  return `http_${status}`;
+}
+
 export class ApiError extends Error {
   status: number;
   body: unknown;
+  /** Snake_case code from `{ error: "…" }` when present. */
+  code: string;
+  kind: ApiErrorKind;
 
   constructor(status: number, body: unknown) {
-    super(
-      typeof body === "object" && body && "error" in body
-        ? String((body as { error: string }).error)
-        : `HTTP ${status}`,
-    );
+    const code = parseErrorCode(body, status);
+    super(code);
     this.name = "ApiError";
     this.status = status;
     this.body = body;
+    this.code = code;
+    this.kind = kindFromStatus(status);
   }
 
-  get code(): string {
-    if (typeof this.body === "object" && this.body && "error" in this.body) {
-      return String((this.body as { error: string }).error);
-    }
-    return `http_${this.status}`;
+  /** Extra fields from the error body (e.g. `maxMinor`, `from`, `to`). */
+  get details(): Record<string, unknown> {
+    if (typeof this.body !== "object" || !this.body) return {};
+    const out: Record<string, unknown> = {
+      ...(this.body as Record<string, unknown>),
+    };
+    delete out.error;
+    return out;
   }
+
+  /** Typed read of a detail field. */
+  detail<T = unknown>(key: string): T | undefined {
+    return this.details[key] as T | undefined;
+  }
+}
+
+export function isApiError(err: unknown): err is ApiError {
+  return err instanceof ApiError;
 }
 
 type TokenProvider = () => string | null;
@@ -53,6 +120,18 @@ let tokenProvider: TokenProvider = () => null;
 /** Wire the client to the session store (called once from AuthProvider). */
 export function setTokenProvider(provider: TokenProvider): void {
   tokenProvider = provider;
+}
+
+function buildQuery(
+  params: Record<string, string | number | boolean | undefined | null>,
+): string {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === "") continue;
+    qs.set(k, String(v));
+  }
+  const s = qs.toString();
+  return s ? `?${s}` : "";
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -80,10 +159,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T;
 }
 
+// ---------------------------------------------------------------------------
+// Auth & session
+// ---------------------------------------------------------------------------
+
 export async function login(
   email: string,
   password: string,
-): Promise<{ token: string; user: User }> {
+): Promise<LoginResult> {
   return request("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
@@ -103,6 +186,10 @@ export async function me(): Promise<User> {
   return result.user;
 }
 
+// ---------------------------------------------------------------------------
+// Orders / jobs
+// ---------------------------------------------------------------------------
+
 export async function listOrders(): Promise<Order[]> {
   const result = await request<{ orders: Order[] }>("/orders");
   return result.orders;
@@ -119,26 +206,64 @@ export async function getOrder(orderId: string): Promise<Order> {
   return result.order;
 }
 
-export async function transitionOrder(
-  orderId: string,
-  state: string,
-  extra: Record<string, unknown> = {},
-): Promise<Order> {
-  const result = await request<{ order: Order }>(`/orders/${orderId}/transition`, {
+export type CreateOrderInput = {
+  productId: string;
+  title?: string;
+  quantity?: number;
+  size?: string;
+  material?: string;
+  finish?: string;
+  deadline?: string | null;
+  address?: string;
+  zone?: string;
+  deliveryFeeMinor?: number;
+  artworkName?: string | null;
+  submit?: boolean;
+};
+
+export async function createOrder(input: CreateOrderInput): Promise<Order> {
+  const result = await request<{ order: Order }>("/orders", {
     method: "POST",
-    body: JSON.stringify({ state, ...extra }),
+    body: JSON.stringify(input),
   });
   return result.order;
 }
 
-export async function listNotifications(): Promise<Notification[]> {
-  const result = await request<{ notifications: Notification[] }>("/notifications");
-  return result.notifications;
+export type TransitionExtra = {
+  supplierId?: string;
+  matchingServiceIds?: string[];
+  paymentMethod?: string;
+  promisedDate?: string | null;
+  finalTotalMinor?: number;
+  reason?: string;
+  note?: string;
+  [key: string]: unknown;
+};
+
+export async function transitionOrder(
+  orderId: string,
+  state: string,
+  extra: TransitionExtra = {},
+): Promise<Order> {
+  const result = await request<{ order: Order }>(
+    `/orders/${orderId}/transition`,
+    {
+      method: "POST",
+      body: JSON.stringify({ state, ...extra }),
+    },
+  );
+  return result.order;
 }
 
-export async function creditBalance(clientId?: string): Promise<CreditBalance> {
-  const q = clientId ? `?clientId=${encodeURIComponent(clientId)}` : "";
-  return request(`/credits/balance${q}`);
+// ---------------------------------------------------------------------------
+// Notifications / catalog / health
+// ---------------------------------------------------------------------------
+
+export async function listNotifications(): Promise<Notification[]> {
+  const result = await request<{ notifications: Notification[] }>(
+    "/notifications",
+  );
+  return result.notifications;
 }
 
 export async function listCatalog(): Promise<CatalogItem[]> {
@@ -146,6 +271,487 @@ export async function listCatalog(): Promise<CatalogItem[]> {
   return result.catalog;
 }
 
-export async function health(): Promise<{ ok: boolean; service?: string }> {
+export async function health(): Promise<HealthResult> {
   return request("/health");
+}
+
+// ---------------------------------------------------------------------------
+// Pilot Credits
+// ---------------------------------------------------------------------------
+
+export async function creditBalance(clientId?: string): Promise<CreditBalance> {
+  const q = clientId ? `?clientId=${encodeURIComponent(clientId)}` : "";
+  return request(`/credits/balance${q}`);
+}
+
+export async function authorizeCredits(input: {
+  orderId: string;
+  amountMinor?: number;
+}): Promise<CreditBalance & { order?: Order }> {
+  return request("/credits/authorize", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/** Super Admin only. Not a purchase — pilot grant instrument. */
+export async function grantCredits(input: {
+  clientId: string;
+  amountMinor: number;
+  reason?: string;
+}): Promise<CreditGrantResult> {
+  return request("/credits/grant", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Users, roles, verification
+// ---------------------------------------------------------------------------
+
+export async function listUsers(role?: RoleOrString): Promise<User[]> {
+  const q = buildQuery({ role });
+  const result = await request<{ users: User[] }>(`/users${q}`);
+  return result.users;
+}
+
+export async function getUser(userId: string): Promise<User> {
+  const result = await request<{ user: User }>(`/users/${userId}`);
+  return result.user;
+}
+
+/** Super Admin only. */
+export async function updateUserRole(
+  userId: string,
+  input: { role: User["role"]; reason?: string },
+): Promise<User> {
+  const result = await request<{ user: User }>(`/users/${userId}/role`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+  return result.user;
+}
+
+/** Ops / Super Admin — supplier or rider only. */
+export async function setUserVerification(
+  userId: string,
+  input: { status: VerificationStatus; reason?: string; note?: string },
+): Promise<User> {
+  const result = await request<{ user: User }>(
+    `/users/${userId}/verification`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+  return result.user;
+}
+
+type RoleOrString = User["role"] | string;
+
+// ---------------------------------------------------------------------------
+// Zones & fees
+// ---------------------------------------------------------------------------
+
+export async function listZones(): Promise<Zone[]> {
+  const result = await request<{ zones: Zone[] }>("/zones");
+  return result.zones;
+}
+
+/** Super Admin only. */
+export async function createZone(input: CreateZoneInput): Promise<Zone> {
+  const result = await request<{ zone: Zone }>("/zones", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.zone;
+}
+
+/** Super Admin only. `zoneId` may be id or code. */
+export async function updateZone(
+  zoneId: string,
+  input: UpdateZoneInput,
+): Promise<Zone> {
+  const result = await request<{ zone: Zone }>(`/zones/${zoneId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+  return result.zone;
+}
+
+// ---------------------------------------------------------------------------
+// Taxonomy
+// ---------------------------------------------------------------------------
+
+export async function getTaxonomy(): Promise<Taxonomy> {
+  const result = await request<{ taxonomy: Taxonomy }>("/taxonomy");
+  return result.taxonomy;
+}
+
+export async function createTaxonomyCategory(input: {
+  code: string;
+  name: string;
+  productFamilyIds?: string[];
+  active?: boolean;
+}): Promise<TaxonomyCategory> {
+  const result = await request<{ category: TaxonomyCategory }>(
+    "/taxonomy/categories",
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.category;
+}
+
+export async function updateTaxonomyCategory(
+  idOrCode: string,
+  input: {
+    name?: string;
+    productFamilyIds?: string[];
+    active?: boolean;
+  },
+): Promise<TaxonomyCategory> {
+  const result = await request<{ category: TaxonomyCategory }>(
+    `/taxonomy/categories/${idOrCode}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return result.category;
+}
+
+export async function createTaxonomyMaterial(input: {
+  code: string;
+  name: string;
+  categoryCodes?: string[];
+  active?: boolean;
+}): Promise<TaxonomyMaterial> {
+  const result = await request<{ material: TaxonomyMaterial }>(
+    "/taxonomy/materials",
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.material;
+}
+
+export async function updateTaxonomyMaterial(
+  idOrCode: string,
+  input: {
+    name?: string;
+    categoryCodes?: string[];
+    active?: boolean;
+  },
+): Promise<TaxonomyMaterial> {
+  const result = await request<{ material: TaxonomyMaterial }>(
+    `/taxonomy/materials/${idOrCode}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return result.material;
+}
+
+export async function createTaxonomyFinish(input: {
+  code: string;
+  name: string;
+  categoryCodes?: string[];
+  active?: boolean;
+}): Promise<TaxonomyFinish> {
+  const result = await request<{ finish: TaxonomyFinish }>(
+    "/taxonomy/finishes",
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.finish;
+}
+
+export async function updateTaxonomyFinish(
+  idOrCode: string,
+  input: {
+    name?: string;
+    categoryCodes?: string[];
+    active?: boolean;
+  },
+): Promise<TaxonomyFinish> {
+  const result = await request<{ finish: TaxonomyFinish }>(
+    `/taxonomy/finishes/${idOrCode}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return result.finish;
+}
+
+// ---------------------------------------------------------------------------
+// Supplier services
+// ---------------------------------------------------------------------------
+
+export async function listSupplierServices(filters?: {
+  supplierId?: string;
+  state?: string;
+}): Promise<SupplierService[]> {
+  const q = buildQuery({
+    supplierId: filters?.supplierId,
+    state: filters?.state,
+  });
+  const result = await request<{ services: SupplierService[] }>(
+    `/supplier-services${q}`,
+  );
+  return result.services;
+}
+
+export async function getSupplierService(
+  serviceId: string,
+): Promise<SupplierService> {
+  const result = await request<{ service: SupplierService }>(
+    `/supplier-services/${serviceId}`,
+  );
+  return result.service;
+}
+
+export async function createSupplierService(
+  input: CreateSupplierServiceInput,
+): Promise<SupplierService> {
+  const result = await request<{ service: SupplierService }>(
+    "/supplier-services",
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.service;
+}
+
+export async function updateSupplierService(
+  serviceId: string,
+  input: UpdateSupplierServiceInput,
+): Promise<SupplierService> {
+  const result = await request<{ service: SupplierService }>(
+    `/supplier-services/${serviceId}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return result.service;
+}
+
+export async function submitSupplierService(
+  serviceId: string,
+): Promise<SupplierService> {
+  const result = await request<{ service: SupplierService }>(
+    `/supplier-services/${serviceId}/submit`,
+    { method: "POST" },
+  );
+  return result.service;
+}
+
+export async function verifySupplierService(
+  serviceId: string,
+  input?: { reason?: string },
+): Promise<SupplierService> {
+  const result = await request<{ service: SupplierService }>(
+    `/supplier-services/${serviceId}/verify`,
+    { method: "POST", body: JSON.stringify(input ?? {}) },
+  );
+  return result.service;
+}
+
+export async function suspendSupplierService(
+  serviceId: string,
+  input: { reason: string },
+): Promise<SupplierService> {
+  const result = await request<{ service: SupplierService }>(
+    `/supplier-services/${serviceId}/suspend`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.service;
+}
+
+export async function withdrawSupplierService(
+  serviceId: string,
+): Promise<SupplierService> {
+  const result = await request<{ service: SupplierService }>(
+    `/supplier-services/${serviceId}/withdraw`,
+    { method: "POST" },
+  );
+  return result.service;
+}
+
+// ---------------------------------------------------------------------------
+// Matching
+// ---------------------------------------------------------------------------
+
+export async function getEligibleSuppliers(
+  orderId: string,
+): Promise<EligibleSuppliersResult> {
+  return request(`/orders/${orderId}/eligible-suppliers`);
+}
+
+// ---------------------------------------------------------------------------
+// Claims
+// ---------------------------------------------------------------------------
+
+export async function listClaims(filters?: {
+  orderId?: string;
+  status?: string;
+}): Promise<Claim[]> {
+  const q = buildQuery({
+    orderId: filters?.orderId,
+    status: filters?.status,
+  });
+  const result = await request<{ claims: Claim[] }>(`/claims${q}`);
+  return result.claims;
+}
+
+export async function getClaim(claimId: string): Promise<Claim> {
+  const result = await request<{ claim: Claim }>(`/claims/${claimId}`);
+  return result.claim;
+}
+
+export async function createClaim(input: {
+  orderId: string;
+  reason: string;
+  /** When false, claim is raised without hold (status `open`). Default holds. */
+  hold?: boolean;
+}): Promise<Claim> {
+  const result = await request<{ claim: Claim }>("/claims", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.claim;
+}
+
+export async function holdClaim(
+  claimId: string,
+  input: { reason: string },
+): Promise<Claim> {
+  const result = await request<{ claim: Claim }>(`/claims/${claimId}/hold`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.claim;
+}
+
+export async function releaseClaim(
+  claimId: string,
+  input: { reason: string },
+): Promise<Claim> {
+  const result = await request<{ claim: Claim }>(`/claims/${claimId}/release`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.claim;
+}
+
+// ---------------------------------------------------------------------------
+// Issues
+// ---------------------------------------------------------------------------
+
+export async function listIssues(filters?: {
+  orderId?: string;
+  status?: string;
+}): Promise<Issue[]> {
+  const q = buildQuery({
+    orderId: filters?.orderId,
+    status: filters?.status,
+  });
+  const result = await request<{ issues: Issue[] }>(`/issues${q}`);
+  return result.issues;
+}
+
+export async function getIssue(issueId: string): Promise<Issue> {
+  const result = await request<{ issue: Issue }>(`/issues/${issueId}`);
+  return result.issue;
+}
+
+/** Client only, while order is `issue_window_open`. Auto-creates a payout hold. */
+export async function reportOrderIssue(
+  orderId: string,
+  input: { description?: string; reason?: string; kind?: string },
+): Promise<{ issue: Issue; claim: Claim }> {
+  return request(`/orders/${orderId}/issues`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function resolveIssue(
+  issueId: string,
+  input: {
+    resolution?: string;
+    reason?: string;
+    status?: "resolved" | "dismissed";
+    releasePayout?: boolean;
+  },
+): Promise<Issue> {
+  const result = await request<{ issue: Issue }>(`/issues/${issueId}/resolve`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.issue;
+}
+
+// ---------------------------------------------------------------------------
+// Audit
+// ---------------------------------------------------------------------------
+
+export async function listAudit(filters?: {
+  entityType?: string;
+  entityId?: string;
+  orderId?: string;
+  actorId?: string;
+  action?: string;
+  limit?: number;
+}): Promise<AuditEntry[]> {
+  const q = buildQuery({
+    entityType: filters?.entityType,
+    entityId: filters?.entityId,
+    orderId: filters?.orderId,
+    actorId: filters?.actorId,
+    action: filters?.action,
+    limit: filters?.limit,
+  });
+  const result = await request<{ audit: AuditEntry[] }>(`/audit${q}`);
+  return result.audit;
+}
+
+// ---------------------------------------------------------------------------
+// Dispatch (ops visibility + location read used by portal)
+// ---------------------------------------------------------------------------
+
+export async function listDispatchOffers(): Promise<Order[]> {
+  const result = await request<{ offers: Order[] }>("/dispatch/offers");
+  return result.offers;
+}
+
+export async function getDispatchLocation(
+  orderId: string,
+): Promise<LocationPing | null> {
+  const result = await request<{ ping: LocationPing | null }>(
+    `/dispatch/${orderId}/location`,
+  );
+  return result.ping;
+}
+
+/** Rider only — included so the client surface is complete. */
+export async function acceptDispatchOffer(orderId: string): Promise<Order> {
+  const result = await request<{ order: Order }>(
+    `/dispatch/${orderId}/accept`,
+    { method: "POST" },
+  );
+  return result.order;
+}
+
+/** Rider only. */
+export async function postDispatchLocation(
+  orderId: string,
+  input: { lat: number; lng: number; accuracy?: number | null },
+): Promise<LocationPing> {
+  const result = await request<{ ping: LocationPing }>(
+    `/dispatch/${orderId}/location`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.ping;
+}
+
+/** Rider only. */
+export async function postDispatchProof(
+  orderId: string,
+  input: {
+    kind?: string;
+    otp?: string | null;
+    photoName?: string | null;
+    note?: string;
+  },
+): Promise<{ proof: DispatchProof; order: Order }> {
+  return request(`/dispatch/${orderId}/proof`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
