@@ -108,9 +108,9 @@ export default function AdminOverviewPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
           Snapshot from live API data: orders, credit balances for clients seen
-          on those orders, and supplier/rider IDs referenced by orders. There is
-          no platform directory endpoint for users, zones, fees, or Pilot Credit
-          grants.
+          on those orders, and supplier/rider IDs referenced by orders. Dedicated
+          directory, zones, grants, and verification screens are linked from the
+          rail (some still marked Coming next).
         </p>
         <Button variant="secondary" onClick={() => void load()}>
           Refresh
@@ -233,8 +233,8 @@ export default function AdminOverviewPage() {
             </ul>
           )}
           <p className="text-caption text-text-muted m-0 mt-3">
-            Granting or adjusting Pilot Credits is not available — the API has no
-            grant endpoint for this portal.
+            Grant Pilot Credits from the Pilot Credits rail entry when that
+            screen ships (`grantCredits` on the typed client).
           </p>
         </section>
 
@@ -269,8 +269,8 @@ export default function AdminOverviewPage() {
             </div>
           </div>
           <p className="text-caption text-text-muted m-0 mt-3">
-            Verification, roles, catalogue, zones, and fee configuration screens
-            are out of scope — those endpoints do not exist on the demo API.
+            Verification, roles, catalogue, zones, and fees are available on the
+            API client; open those rail entries for the dedicated screens.
           </p>
         </section>
       </div>
