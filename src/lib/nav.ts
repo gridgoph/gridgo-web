@@ -74,7 +74,7 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Service catalogue",
       title: "Service catalogue",
       icon: "catalogue",
-      ready: false,
+      ready: true,
       placeholderBody:
         "Manage taxonomy-backed services through draft → verification → live. Use listSupplierServices, createSupplierService, submitSupplierService, withdrawSupplierService, and getTaxonomy.",
     },
@@ -84,7 +84,7 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Schedule",
       title: "Schedule",
       icon: "schedule",
-      ready: false,
+      ready: true,
       placeholderBody:
         "Show promised dates and capacity commitments for accepted jobs. Built on listJobs / getOrder — no separate schedule endpoint.",
     },
@@ -94,7 +94,7 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Capacity",
       title: "Capacity",
       icon: "capacity",
-      ready: false,
+      ready: true,
       placeholderBody:
         "Edit daily/weekly capacity and turnaround on live service lines via updateSupplierService. Capability expansion re-enters verification.",
     },
@@ -104,7 +104,7 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Payouts",
       title: "Payouts",
       icon: "payouts",
-      ready: false,
+      ready: true,
       placeholderBody:
         "Track completed jobs and payout holds. Use listJobs with payoutHold on Order, plus listClaims / listIssues scoped to your orders. Active holds block payout_released.",
     },
