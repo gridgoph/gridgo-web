@@ -266,6 +266,7 @@ export default function OpsClaimsPage() {
           <Button variant="secondary" onClick={() => void load()}>
             Refresh
           </Button>
+          {/* Sole page-surface yellow CTA. Dialog footer submit is a separate panel. */}
           <Button variant="primary" onClick={() => openDialog({ type: "raise" })}>
             Raise claim
           </Button>
@@ -551,6 +552,7 @@ export default function OpsClaimsPage() {
             >
               Cancel
             </Button>
+            {/* Yellow allowed here: bounded dialog panel CTA, not a page-surface row. */}
             <Button
               variant="primary"
               disabled={submitting}
