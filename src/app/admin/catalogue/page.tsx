@@ -66,6 +66,10 @@ export default function AdminCataloguePage() {
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
   const [active, setActive] = useState(true);
+  /** Controlled tab so the single page-level yellow CTA matches the open panel. */
+  const [tab, setTab] = useState<"categories" | "materials" | "finishes">(
+    "categories",
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -372,9 +376,29 @@ export default function AdminCataloguePage() {
           what the marketplace can express. Live service usage is shown before
           you save.
         </p>
-        <Button variant="secondary" onClick={() => void load()}>
-          Refresh
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => void load()}>
+            Refresh
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() =>
+              openCreate(
+                tab === "categories"
+                  ? "category"
+                  : tab === "materials"
+                    ? "material"
+                    : "finish",
+              )
+            }
+          >
+            {tab === "categories"
+              ? "Add category"
+              : tab === "materials"
+                ? "Add material"
+                : "Add finish"}
+          </Button>
+        </div>
       </div>
 
       {actionOk ? (
@@ -383,7 +407,18 @@ export default function AdminCataloguePage() {
         </p>
       ) : null}
 
-      <Tabs defaultValue="categories">
+      <Tabs
+        value={tab}
+        onValueChange={(value) => {
+          if (
+            value === "categories" ||
+            value === "materials" ||
+            value === "finishes"
+          ) {
+            setTab(value);
+          }
+        }}
+      >
         <TabsList>
           <TabsTrigger value="categories">
             Categories ({taxonomy.categories.length})
@@ -397,20 +432,10 @@ export default function AdminCataloguePage() {
         </TabsList>
 
         <TabsContent value="categories" className="mt-4 flex flex-col gap-3">
-          <div className="flex justify-end">
-            <Button variant="primary" onClick={() => openCreate("category")}>
-              Add category
-            </Button>
-          </div>
           {!taxonomy.categories.length ? (
             <EmptyState
               title="No categories"
-              body="Add a category so suppliers can declare service lines against it."
-              action={
-                <Button variant="primary" onClick={() => openCreate("category")}>
-                  Add category
-                </Button>
-              }
+              body="Use Add category above so suppliers can declare service lines against a platform code."
             />
           ) : (
             <DataTable
@@ -432,15 +457,10 @@ export default function AdminCataloguePage() {
         </TabsContent>
 
         <TabsContent value="materials" className="mt-4 flex flex-col gap-3">
-          <div className="flex justify-end">
-            <Button variant="primary" onClick={() => openCreate("material")}>
-              Add material
-            </Button>
-          </div>
           {!taxonomy.materials.length ? (
             <EmptyState
               title="No materials"
-              body="Add materials suppliers can attach to service declarations."
+              body="Use Add material above so suppliers can attach materials to service declarations."
             />
           ) : (
             <DataTable
@@ -462,15 +482,10 @@ export default function AdminCataloguePage() {
         </TabsContent>
 
         <TabsContent value="finishes" className="mt-4 flex flex-col gap-3">
-          <div className="flex justify-end">
-            <Button variant="primary" onClick={() => openCreate("finish")}>
-              Add finish
-            </Button>
-          </div>
           {!taxonomy.finishes.length ? (
             <EmptyState
               title="No finishes"
-              body="Add finishes suppliers can attach to service declarations."
+              body="Use Add finish above so suppliers can attach finishes to service declarations."
             />
           ) : (
             <DataTable

@@ -220,12 +220,7 @@ export default function AdminZonesPage() {
       {!zones.length ? (
         <EmptyState
           title="No delivery zones"
-          body="Add a zone so clients can place orders with the correct delivery fee snapshot."
-          action={
-            <Button variant="primary" onClick={openNew}>
-              Add zone
-            </Button>
-          }
+          body="Use Add zone above so clients can place orders with the correct delivery fee snapshot."
         />
       ) : (
         <DataTable

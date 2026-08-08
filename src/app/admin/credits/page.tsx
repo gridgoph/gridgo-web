@@ -329,12 +329,7 @@ export default function AdminCreditsPage() {
           ) : balance ? (
             <EmptyState
               title="No ledger entries yet"
-              body="Grant Pilot Credits to seed this client’s pilot balance. Grants are administrative, not purchases."
-              action={
-                <Button variant="primary" onClick={() => setGrantOpen(true)}>
-                  Grant credits
-                </Button>
-              }
+              body="Use Grant credits above to seed this client’s pilot balance. Grants are administrative, not purchases — never a wallet top-up."
             />
           ) : null}
         </>
