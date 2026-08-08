@@ -1,10 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DataTable,
+  type DataTableColumn,
+} from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
@@ -59,6 +63,83 @@ export default function SupplierJobsPage() {
     void load();
   }, [load]);
 
+  const columns = useMemo<DataTableColumn<Order>[]>(
+    () => [
+      {
+        id: "job",
+        header: "Job",
+        primary: true,
+        sortValue: (job) => job.title,
+        filterValue: (job) =>
+          `${job.title} ${job.size} ${job.material} ${job.id}`,
+        cell: (job) => (
+          <div>
+            <p
+              className="text-body text-text-primary m-0"
+              style={{ fontFamily: "var(--font-medium)" }}
+            >
+              {job.title}
+            </p>
+            <p className="text-caption text-text-muted m-0 mt-0.5">
+              {job.size} · {job.material}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "status",
+        header: "Status",
+        sortValue: (job) => presentOrderState(job.state).label,
+        filterValue: (job) => presentOrderState(job.state).label,
+        cell: (job) => {
+          const status = presentOrderState(job.state);
+          return (
+            <StatusChip
+              tone={status.tone}
+              label={status.label}
+              icon={status.icon}
+            />
+          );
+        },
+      },
+      {
+        id: "deadline",
+        header: "Deadline",
+        sortValue: (job) => job.deadline || job.promisedDate || "",
+        cell: (job) => (
+          <span className="text-body text-text-secondary whitespace-nowrap">
+            {formatDateTime(job.deadline)}
+          </span>
+        ),
+      },
+      {
+        id: "total",
+        header: "Total",
+        sortValue: (job) => job.totalMinor + job.deliveryFeeMinor,
+        cell: (job) => (
+          <span className="text-body text-text-primary whitespace-nowrap">
+            {formatPhp(job.totalMinor + job.deliveryFeeMinor)}
+          </span>
+        ),
+      },
+      {
+        id: "next",
+        header: "Next step",
+        sortValue: (job) => primaryAction(job.state)?.label ?? "",
+        filterValue: (job) => primaryAction(job.state)?.label ?? "",
+        cell: (job) => {
+          const next = primaryAction(job.state);
+          return (
+            <span className="text-body text-text-secondary">
+              {next ? next.label : "No action needed"}
+            </span>
+          );
+        },
+      },
+    ],
+    [],
+  );
+
   if (loading && !jobs) return <LoadingBlock label="Loading assigned jobs…" />;
   if (error) {
     return (
@@ -104,136 +185,23 @@ export default function SupplierJobsPage() {
         </Button>
       </div>
 
-      {/* Desktop/tablet table */}
-      <div className="hidden md:block gg-card-flush overflow-x-auto">
-        <table className="w-full min-w-[640px] border-collapse text-left">
-          <thead>
-            <tr className="border-b border-outline bg-surface-variant">
-              <th className="text-caption text-text-muted px-4 py-3 font-normal">
-                Job
-              </th>
-              <th className="text-caption text-text-muted px-4 py-3 font-normal">
-                Status
-              </th>
-              <th className="text-caption text-text-muted px-4 py-3 font-normal">
-                Deadline
-              </th>
-              <th className="text-caption text-text-muted px-4 py-3 font-normal">
-                Total
-              </th>
-              <th className="text-caption text-text-muted px-4 py-3 font-normal">
-                Next step
-              </th>
-              <th className="px-4 py-3">
-                <span className="sr-only">Open</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {jobs.map((job) => {
-              const status = presentOrderState(job.state);
-              const next = primaryAction(job.state);
-              return (
-                <tr
-                  key={job.id}
-                  className="border-b border-outline-subtle last:border-0"
-                >
-                  <td className="px-4 py-3 align-top">
-                    <p className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
-                      {job.title}
-                    </p>
-                    <p className="text-caption text-text-muted m-0 mt-0.5">
-                      {job.size} · {job.material}
-                    </p>
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <StatusChip
-                      tone={status.tone}
-                      label={status.label}
-                      icon={status.icon}
-                    />
-                  </td>
-                  <td className="text-body text-text-secondary px-4 py-3 align-top whitespace-nowrap">
-                    {formatDateTime(job.deadline)}
-                  </td>
-                  <td className="text-body text-text-primary px-4 py-3 align-top whitespace-nowrap">
-                    {formatPhp(job.totalMinor + job.deliveryFeeMinor)}
-                  </td>
-                  <td className="text-body text-text-secondary px-4 py-3 align-top">
-                    {next ? next.label : "No action needed"}
-                  </td>
-                  <td className="px-4 py-3 align-top text-right">
-                    <Link
-                      href={`/supplier/jobs/${job.id}`}
-                      className="gg-btn gg-btn-secondary inline-flex"
-                    >
-                      Open
-                      <ChevronRight size={16} aria-hidden />
-                    </Link>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Mobile cards — no essential action needs horizontal scroll */}
-      <ul className="m-0 flex list-none flex-col gap-3 p-0 md:hidden">
-        {jobs.map((job) => {
-          const status = presentOrderState(job.state);
-          const next = primaryAction(job.state);
-          return (
-            <li key={job.id}>
-              <Link
-                href={`/supplier/jobs/${job.id}`}
-                className="gg-card flex flex-col gap-3 no-underline hover:bg-overlay-hover"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
-                      {job.title}
-                    </p>
-                    <p className="text-caption text-text-muted m-0 mt-0.5">
-                      {job.size} · {job.material}
-                    </p>
-                  </div>
-                  <ChevronRight
-                    className="shrink-0 text-text-muted"
-                    size={18}
-                    aria-hidden
-                  />
-                </div>
-                <StatusChip
-                  tone={status.tone}
-                  label={status.label}
-                  icon={status.icon}
-                />
-                <dl className="m-0 grid grid-cols-2 gap-2">
-                  <div>
-                    <dt className="text-caption text-text-muted">Deadline</dt>
-                    <dd className="text-body text-text-primary m-0">
-                      {formatDateTime(job.deadline)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-caption text-text-muted">Total</dt>
-                    <dd className="text-body text-text-primary m-0">
-                      {formatPhp(job.totalMinor + job.deliveryFeeMinor)}
-                    </dd>
-                  </div>
-                  <div className="col-span-2">
-                    <dt className="text-caption text-text-muted">Next step</dt>
-                    <dd className="text-body text-text-secondary m-0">
-                      {next ? next.label : "No action needed"}
-                    </dd>
-                  </div>
-                </dl>
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
+      <DataTable
+        columns={columns}
+        data={jobs}
+        getRowId={(job) => job.id}
+        caption="Assigned jobs"
+        filterPlaceholder="Filter jobs…"
+        rowActions={(job) => (
+          <Button
+            variant="secondary"
+            nativeButton={false}
+            render={<Link href={`/supplier/jobs/${job.id}`} />}
+          >
+            Open
+            <ChevronRight data-icon="inline-end" aria-hidden />
+          </Button>
+        )}
+      />
     </div>
   );
 }

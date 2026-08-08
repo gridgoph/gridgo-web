@@ -516,7 +516,9 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Visible focus — GRIDGO 2px outline on foreground (not shadcn ring) */
+/* Visible focus — GRIDGO 2px outline on foreground (not shadcn ring).
+   Stock shadcn components ship focus-visible:ring-*; neutralize the ring so
+   the outline is the only focus signal without editing every component file. */
 :focus {
   outline: none;
 }
@@ -524,6 +526,10 @@ body {
 :focus-visible {
   outline: 2px solid var(--foreground);
   outline-offset: 2px;
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-ring-offset-shadow: 0 0 #0000;
+  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow),
+    var(--tw-shadow, 0 0 #0000);
 }
 
 button:focus-visible,
@@ -535,6 +541,8 @@ textarea:focus-visible,
 [tabindex]:focus-visible {
   outline: 2px solid var(--foreground);
   outline-offset: 2px;
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-ring-offset-shadow: 0 0 #0000;
 }
 
 /* Reduced motion */
