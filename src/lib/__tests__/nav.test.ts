@@ -57,7 +57,11 @@ describe("ROLE_NAV", () => {
     expect(ready).toEqual([
       "/admin/overview",
       "/ops/qa",
+      "/supplier/capacity",
+      "/supplier/catalogue",
       "/supplier/jobs",
+      "/supplier/payouts",
+      "/supplier/schedule",
     ]);
   });
 
