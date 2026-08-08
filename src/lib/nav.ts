@@ -208,9 +208,8 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Verification",
       title: "Verification",
       icon: "verification",
-      ready: false,
-      placeholderBody:
-        "Supplier and rider accreditation. Use listUsers, setUserVerification, and verifySupplierService / suspendSupplierService for catalogue lines.",
+      ready: true,
+      placeholderBody: "",
     },
     {
       id: "admin-roles",
@@ -218,9 +217,8 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Roles",
       title: "Roles",
       icon: "roles",
-      ready: false,
-      placeholderBody:
-        "User directory and role changes. Use listUsers, getUser, and updateUserRole (super_admin only; audited).",
+      ready: true,
+      placeholderBody: "",
     },
     {
       id: "admin-catalogue",
@@ -228,9 +226,8 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Catalogue & taxonomy",
       title: "Catalogue & taxonomy",
       icon: "catalogue",
-      ready: false,
-      placeholderBody:
-        "Own platform codes (categories, materials, finishes) and review supplier services. Use getTaxonomy + create/update taxonomy helpers and listSupplierServices.",
+      ready: true,
+      placeholderBody: "",
     },
     {
       id: "admin-zones",
@@ -238,9 +235,8 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Zones & fees",
       title: "Zones & fees",
       icon: "zones",
-      ready: false,
-      placeholderBody:
-        "Delivery zones and fee snapshots. Use listZones, createZone, updateZone. Money stays in PHP minor units until formatPhp at the edge.",
+      ready: true,
+      placeholderBody: "",
     },
     {
       id: "admin-credits",
@@ -248,9 +244,8 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Pilot Credits",
       title: "Pilot Credits",
       icon: "credits",
-      ready: false,
-      placeholderBody:
-        "Grant pilot balances and inspect ledgers. Use grantCredits and creditBalance(clientId). Grants are not purchases.",
+      ready: true,
+      placeholderBody: "",
     },
     {
       id: "admin-finance",
@@ -258,9 +253,8 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Finance",
       title: "Finance",
       icon: "finance",
-      ready: false,
-      placeholderBody:
-        "COD, credits, claims, and payout posture across orders. Compose listOrders, creditBalance, listClaims — no single finance rollup endpoint.",
+      ready: true,
+      placeholderBody: "",
     },
     {
       id: "admin-audit",
@@ -268,9 +262,8 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Audit",
       title: "Audit log",
       icon: "audit",
-      ready: false,
-      placeholderBody:
-        "Platform-wide audit log via listAudit. Per-order history stays on Order.timeline.",
+      ready: true,
+      placeholderBody: "",
     },
     {
       id: "admin-planning",
@@ -278,9 +271,8 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Planning calendar",
       title: "Planning calendar",
       icon: "planning",
-      ready: false,
-      placeholderBody:
-        "Calendar of promised dates and capacity. Compose listOrders and listSupplierServices — no dedicated calendar endpoint.",
+      ready: true,
+      placeholderBody: "",
     },
   ],
 } as const;
