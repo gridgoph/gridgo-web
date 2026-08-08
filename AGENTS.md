@@ -42,7 +42,8 @@ Demo logins, password `demo`:
 | `src/components/ui/` | shadcn/ui primitives + GRIDGO-specific components |
 | `src/components/shell/` | App shell, nav rail, RoleGate, `ComingNext` placeholders |
 | `src/app/supplier/` | Supplier partner surfaces |
-| `src/app/ops/` | Operations surfaces |
+| `src/app/ops/` | Operations surfaces (QA queue + overview, matching, recovery, dispatch, claims, schedule, audit) |
+| `src/app/ops/_lib/` | Ops-only pure helpers (overview buckets, matching explainers, location freshness, schedule events) — tests under `_lib/__tests__` |
 | `src/app/admin/` | Super Admin surfaces |
 | `src/app/globals.css` | Design tokens + shadcn semantic CSS variables |
 | `components.json` | shadcn CLI config (style: `base-nova`, Base UI) |

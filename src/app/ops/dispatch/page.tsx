@@ -1,8 +1,361 @@
-import { ComingNext } from "@/components/shell/ComingNext";
-import { ROLE_NAV } from "@/lib/nav";
+"use client";
 
-const item = ROLE_NAV.ops_admin.find((n) => n.href === "/ops/dispatch")!;
+import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { ChevronRight, MapPin, RefreshCw } from "lucide-react";
 
-export default function Page() {
-  return <ComingNext item={item} />;
+import {
+  filterDispatchOrders,
+  formatCoords,
+  locationTone,
+  presentLocation,
+  type LocationView,
+} from "@/app/ops/_lib/dispatch";
+import { presentZone } from "@/app/ops/_lib/present";
+import { Button } from "@/components/ui/button";
+import {
+  DataTable,
+  type DataTableColumn,
+} from "@/components/ui/data-table";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { StatusChip } from "@/components/ui/StatusChip";
+import {
+  ApiError,
+  getDispatchLocation,
+  listDispatchOffers,
+  listOrders,
+  transitionOrder,
+} from "@/lib/api/client";
+import type { Order } from "@/lib/api/types";
+import { formatDateTime } from "@/lib/format";
+import { presentOrderState, presentTimelineActor } from "@/lib/order-state";
+
+/** Demo rider when order has none — same honesty as QA workspace. */
+const DEMO_RIDER_ID = "user_rider";
+
+type LocationMap = Record<string, LocationView>;
+
+export default function OpsDispatchPage() {
+  const searchParams = useSearchParams();
+  const focusOrder = searchParams.get("order");
+
+  const [orders, setOrders] = useState<Order[] | null>(null);
+  const [offers, setOffers] = useState<Order[]>([]);
+  const [locations, setLocations] = useState<LocationMap>({});
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [locLoading, setLocLoading] = useState(false);
+  const [acting, setActing] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [all, offerList] = await Promise.all([
+        listOrders(),
+        listDispatchOffers().catch(() => [] as Order[]),
+      ]);
+      setOrders(all);
+      setOffers(offerList);
+      // Locations are session-memory only — never localStorage / never treated as durable.
+      setLocations({});
+    } catch (err) {
+      setOrders(null);
+      if (err instanceof ApiError) {
+        setError(`Could not load dispatch board (${err.code}).`);
+      } else {
+        setError("Network error loading dispatch.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const board = useMemo(
+    () => (orders ? filterDispatchOrders(orders) : []),
+    [orders],
+  );
+
+  const refreshLocations = useCallback(async (list: Order[]) => {
+    const trackable = list.filter(
+      (o) =>
+        o.riderId &&
+        (o.state === "picked_up" ||
+          o.state === "out_for_delivery" ||
+          o.state === "rider_assigned"),
+    );
+    if (!trackable.length) {
+      setLocations({});
+      return;
+    }
+    setLocLoading(true);
+    const next: LocationMap = {};
+    await Promise.all(
+      trackable.map(async (o) => {
+        try {
+          const ping = await getDispatchLocation(o.id);
+          next[o.id] = presentLocation(ping, o.state);
+        } catch {
+          next[o.id] = presentLocation(null, o.state);
+        }
+      }),
+    );
+    // In-memory only for this view refresh.
+    setLocations(next);
+    setLocLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (board.length) void refreshLocations(board);
+  }, [board, refreshLocations]);
+
+  async function assignRider(order: Order) {
+    setActing(order.id);
+    setActionError(null);
+    try {
+      await transitionOrder(order.id, "rider_assigned", {
+        riderId: order.riderId || DEMO_RIDER_ID,
+        note: "Rider assigned for pickup",
+      });
+      await load();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setActionError(`Could not assign rider (${err.code}).`);
+      } else {
+        setActionError("Network error while assigning rider.");
+      }
+    } finally {
+      setActing(null);
+    }
+  }
+
+  const columns = useMemo<DataTableColumn<Order>[]>(
+    () => [
+      {
+        id: "order",
+        header: "Order",
+        primary: true,
+        sortValue: (o) => o.title,
+        filterValue: (o) =>
+          `${o.title} ${o.id} ${o.riderId ?? ""} ${o.zone}`,
+        cell: (o) => (
+          <div>
+            <p
+              className="text-body text-text-primary m-0"
+              style={{ fontFamily: "var(--font-medium)" }}
+            >
+              {o.title}
+            </p>
+            <p className="text-caption text-text-muted m-0 mt-0.5">
+              {presentZone(o.zone)}
+              {focusOrder === o.id ? " · focused" : ""}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "status",
+        header: "Status",
+        sortValue: (o) => presentOrderState(o.state).label,
+        cell: (o) => {
+          const s = presentOrderState(o.state);
+          return (
+            <StatusChip tone={s.tone} label={s.label} icon={s.icon} />
+          );
+        },
+      },
+      {
+        id: "rider",
+        header: "Rider",
+        sortValue: (o) => o.riderId ?? "",
+        cell: (o) => (
+          <span className="text-body text-text-secondary">
+            {o.riderId
+              ? presentTimelineActor(o.riderId)
+              : "Unassigned"}
+          </span>
+        ),
+      },
+      {
+        id: "location",
+        header: "Location",
+        sortValue: (o) => locations[o.id]?.label ?? "",
+        cell: (o) => {
+          const loc = locations[o.id] ?? presentLocation(null, o.state);
+          return (
+            <div className="flex flex-col gap-1">
+              <StatusChip
+                tone={locationTone(loc.freshness)}
+                label={loc.label}
+                icon={
+                  loc.freshness === "live"
+                    ? "circle-check"
+                    : loc.freshness === "stale"
+                      ? "triangle-alert"
+                      : "clock"
+                }
+              />
+              {loc.lat != null && loc.lng != null ? (
+                <span className="text-caption text-text-muted">
+                  {formatCoords(loc.lat, loc.lng)}
+                  {loc.freshness === "stale" && loc.at
+                    ? ` · last ${formatDateTime(loc.at)}`
+                    : loc.at
+                      ? ` · ${formatDateTime(loc.at)}`
+                      : ""}
+                </span>
+              ) : null}
+            </div>
+          );
+        },
+      },
+      {
+        id: "promised",
+        header: "Promised",
+        sortValue: (o) => o.promisedDate || "",
+        cell: (o) => (
+          <span className="text-body text-text-secondary whitespace-nowrap">
+            {formatDateTime(o.promisedDate)}
+          </span>
+        ),
+      },
+    ],
+    [locations, focusOrder],
+  );
+
+  if (loading && !orders) {
+    return <LoadingBlock label="Loading dispatch…" />;
+  }
+
+  if (error || !orders) {
+    return (
+      <ErrorState
+        body={error ?? "No data."}
+        action={
+          <Button variant="secondary" onClick={() => void load()}>
+            Retry
+          </Button>
+        }
+      />
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <p className="text-body text-text-secondary m-0 max-w-prose">
+          Riders and orders in delivery states. Location is re-fetched only —
+          stale pings are never shown as live, and nothing is stored on this
+          device.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            disabled={locLoading}
+            onClick={() => void refreshLocations(board)}
+          >
+            <RefreshCw size={16} aria-hidden />
+            {locLoading ? "Refreshing location…" : "Refresh location"}
+          </Button>
+          <Button variant="secondary" onClick={() => void load()}>
+            Refresh board
+          </Button>
+        </div>
+      </div>
+
+      {actionError ? (
+        <p className="text-body text-error m-0" role="alert">
+          {actionError}
+        </p>
+      ) : null}
+
+      {offers.length > 0 ? (
+        <section
+          className="gg-card"
+          aria-labelledby="offers-heading"
+        >
+          <h2 id="offers-heading" className="text-h3 text-text-primary m-0 mb-2">
+            Open dispatch offers ({offers.length})
+          </h2>
+          <p className="text-caption text-text-muted m-0 mb-3">
+            Offers visible to riders. Accept and proof stay on the rider app.
+          </p>
+          <ul className="m-0 flex list-none flex-col gap-2 p-0">
+            {offers.map((o) => (
+              <li
+                key={o.id}
+                className="flex flex-wrap items-center justify-between gap-2 border-t border-outline-subtle pt-2 first:border-0 first:pt-0"
+              >
+                <span className="text-body text-text-primary">{o.title}</span>
+                <StatusChip
+                  tone={presentOrderState(o.state).tone}
+                  label={presentOrderState(o.state).label}
+                  icon={presentOrderState(o.state).icon}
+                />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {!board.length ? (
+        <EmptyState
+          title="No orders in dispatch"
+          body="Orders appear when production clears self-QC and is ready for pickup. Nothing is out with a rider right now."
+          action={
+            <Button variant="secondary" onClick={() => void load()}>
+              Refresh
+            </Button>
+          }
+        />
+      ) : (
+        <DataTable
+          columns={columns}
+          data={board}
+          getRowId={(o) => o.id}
+          caption="Dispatch board"
+          filterPlaceholder="Filter dispatch…"
+          defaultSortId="status"
+          rowActions={(o) => (
+            <div className="flex flex-wrap gap-2">
+              {o.state === "ready_for_dispatch" ? (
+                <Button
+                  variant="secondary"
+                  disabled={acting !== null}
+                  onClick={() => void assignRider(o)}
+                >
+                  {acting === o.id ? "Assigning…" : "Assign rider"}
+                </Button>
+              ) : null}
+              <Button
+                variant="secondary"
+                nativeButton={false}
+                render={<Link href={`/ops/qa/${o.id}`} />}
+              >
+                Open
+                <ChevronRight data-icon="inline-end" aria-hidden />
+              </Button>
+            </div>
+          )}
+        />
+      )}
+
+      <p className="text-caption text-text-muted m-0 flex items-start gap-2">
+        <MapPin size={14} className="mt-0.5 shrink-0" aria-hidden />
+        <span>
+          Assign rider uses the demo rider when no directory endpoint exists.
+          Tracking becomes active after pickup; before that the board shows
+          “Tracking starts at pickup”, not a fake live pin.
+        </span>
+      </p>
+    </div>
+  );
 }
