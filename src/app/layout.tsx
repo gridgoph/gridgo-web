@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+
+import { Toaster } from "@/components/ui/toast";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/lib/auth/AuthProvider";
 import "./globals.css";
 
@@ -15,11 +18,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>
+      <body className="font-sans antialiased">
         <a href="#main-content" className="skip-link">
           Skip to main content
         </a>
-        <AuthProvider>{children}</AuthProvider>
+        <TooltipProvider>
+          <Toaster>
+            <AuthProvider>{children}</AuthProvider>
+          </Toaster>
+        </TooltipProvider>
       </body>
     </html>
   );

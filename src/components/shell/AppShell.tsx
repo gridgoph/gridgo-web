@@ -15,6 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/ui/Logo";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import type { Role } from "@/lib/api/types";
@@ -73,14 +74,16 @@ export function AppShell({ role, children }: Props) {
     >
       <div className="mb-4 flex items-center justify-between px-2 pt-1">
         <Logo />
-        <button
+        <Button
           type="button"
-          className="gg-btn gg-btn-secondary min-h-11 min-w-11 p-0 lg:hidden"
+          variant="outline"
+          size="icon"
+          className="lg:hidden"
           onClick={() => setMobileOpen(false)}
           aria-label="Close navigation"
         >
-          <X size={18} aria-hidden />
-        </button>
+          <X aria-hidden />
+        </Button>
       </div>
 
       <p className="text-overline text-text-muted mb-2 px-3 uppercase">
@@ -134,14 +137,16 @@ export function AppShell({ role, children }: Props) {
         <p className="text-caption text-text-muted px-3 truncate mb-2">
           {user?.email}
         </p>
-        <button
+        <Button
           type="button"
+          variant="outline"
+          fullWidth
+          className="justify-start"
           onClick={() => void signOut()}
-          className="gg-btn gg-btn-secondary w-full justify-start gap-2"
         >
-          <LogOut size={16} aria-hidden />
+          <LogOut data-icon="inline-start" aria-hidden />
           Sign out
-        </button>
+        </Button>
       </div>
     </nav>
   );
@@ -171,14 +176,16 @@ export function AppShell({ role, children }: Props) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b border-outline bg-surface px-4 py-2 md:px-6 xl:px-8">
-          <button
+          <Button
             type="button"
-            className="gg-btn gg-btn-secondary min-h-11 min-w-11 p-0 md:hidden"
+            variant="outline"
+            size="icon"
+            className="md:hidden"
             onClick={() => setMobileOpen(true)}
             aria-label="Open navigation"
           >
-            <Menu size={18} aria-hidden />
-          </button>
+            <Menu aria-hidden />
+          </Button>
 
           <div className="min-w-0 flex-1">
             <p className="text-overline text-text-muted m-0 uppercase hidden sm:block">
@@ -187,29 +194,30 @@ export function AppShell({ role, children }: Props) {
             <h1 className="text-h3 text-text-primary m-0 truncate">{title}</h1>
           </div>
 
-          <button
+          <Button
             type="button"
-            className="gg-btn gg-btn-secondary min-h-11 min-w-11 p-0"
+            variant="outline"
+            size="icon"
             aria-label="Notifications"
             title="Notifications"
           >
-            <Bell size={18} aria-hidden />
-          </button>
+            <Bell aria-hidden />
+          </Button>
 
           <div className="relative">
-            <button
+            <Button
               type="button"
-              className="gg-btn gg-btn-secondary min-h-11 gap-2"
+              variant="outline"
               aria-expanded={accountOpen}
               aria-haspopup="menu"
               aria-label="Account menu"
               onClick={() => setAccountOpen((v) => !v)}
             >
-              <UserRound size={18} aria-hidden />
+              <UserRound data-icon="inline-start" aria-hidden />
               <span className="hidden sm:inline max-w-[10rem] truncate">
                 {user?.name ?? "Account"}
               </span>
-            </button>
+            </Button>
             {accountOpen ? (
               <div
                 role="menu"
@@ -223,18 +231,20 @@ export function AppShell({ role, children }: Props) {
                     {user.supplierName}
                   </p>
                 ) : null}
-                <button
+                <Button
                   type="button"
                   role="menuitem"
-                  className="gg-btn gg-btn-secondary w-full justify-start"
+                  variant="outline"
+                  fullWidth
+                  className="justify-start"
                   onClick={() => {
                     setAccountOpen(false);
                     void signOut();
                   }}
                 >
-                  <LogOut size={16} aria-hidden />
+                  <LogOut data-icon="inline-start" aria-hidden />
                   Sign out
-                </button>
+                </Button>
               </div>
             ) : null}
           </div>

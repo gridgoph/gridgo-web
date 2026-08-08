@@ -4,9 +4,18 @@
    Ported from gridgo-client/global.css and constants/theme.ts.
    Identical canvas/surface/text/outline values, light and dark pairs,
    type scale, 4px spacing base, and radii. No new hex values.
+
+   shadcn/ui semantic tokens (--background, --primary, --ring, …) are
+   wired to these GRIDGO values so stock components inherit the brand
+   without per-component colour overrides. See AGENTS.md.
    ============================================================================ */
 
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Class-based dark for shadcn; system preference still drives :root pairs. */
+@custom-variant dark (&:is(.dark *));
 
 /* Satoshi — UI type. Fallback to system-ui until licensed CDN is settled. */
 @font-face {
@@ -40,6 +49,10 @@
   font-style: normal;
   font-display: swap;
 }
+
+/* -------------------------------------------------------------------------- */
+/* GRIDGO tokens (source of truth) + shadcn semantic contract                 */
+/* -------------------------------------------------------------------------- */
 
 @theme {
   --color-*: initial;
@@ -93,17 +106,22 @@
   --font-bold: "Satoshi-Bold", system-ui, Arial, sans-serif;
   --font-black: "Satoshi-Black", system-ui, Arial, sans-serif;
   --font-brand: "Satoshi-Black", system-ui, Arial, sans-serif;
+  --font-heading: "Satoshi-Bold", system-ui, Arial, sans-serif;
 
   --text-*: initial;
 
   /* 4px base. p-4 = 16px page padding; gap-2/3/4/6/8 = 8/12/16/24/32 */
   --spacing: 4px;
 
+  /* GRIDGO radii win over shadcn defaults */
   --radius-*: initial;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
   --radius-xl: 24px;
+  --radius-2xl: 24px;
+  --radius-3xl: 24px;
+  --radius-4xl: 24px;
   --radius-field: 12px;
   --radius-card: 16px;
   --radius-pill: 9999px;
@@ -121,6 +139,98 @@
   --breakpoint-xl: 1440px;
 }
 
+/* shadcn utilities map to CSS variables defined on :root / .dark */
+@theme inline {
+  --font-sans: "Satoshi-Regular", system-ui, Arial, sans-serif;
+  --font-heading: "Satoshi-Bold", system-ui, Arial, sans-serif;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Keep GRIDGO radii fixed — do not derive from a single --radius calc */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-2xl: 24px;
+  --radius-3xl: 24px;
+  --radius-4xl: 24px;
+}
+
+/*
+  shadcn semantic contract ← GRIDGO tokens.
+
+  Important mapping (see AGENTS.md):
+  - --primary is monochrome structural accent, NOT action-yellow.
+  - Yellow lives only on the Button `primary` / CTA path via action-yellow tokens.
+  - --ring is unused for focus; GRIDGO uses a 2px outline on accent.
+*/
+:root {
+  --background: #f8f8f8;
+  --foreground: #1a1a1a;
+  --card: #ffffff;
+  --card-foreground: #1a1a1a;
+  --popover: #ffffff;
+  --popover-foreground: #1a1a1a;
+  /* Structural fill — monochrome. Yellow is reserved for CTA variant only. */
+  --primary: #1a1a1a;
+  --primary-foreground: #ffffff;
+  --secondary: #f0f0f0;
+  --secondary-foreground: #1a1a1a;
+  --muted: #f0f0f0;
+  --muted-foreground: #7a7a7a;
+  --accent: #f0f0f0;
+  --accent-foreground: #1a1a1a;
+  --destructive: #c62828;
+  --border: #dcdcdc;
+  --input: #dcdcdc;
+  --ring: #1a1a1a;
+  --chart-1: #1a1a1a;
+  --chart-2: #4a4a4a;
+  --chart-3: #7a7a7a;
+  --chart-4: #d4a017;
+  --chart-5: #dcdcdc;
+  --radius: 12px;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #1a1a1a;
+  --sidebar-primary: #1a1a1a;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f0f0f0;
+  --sidebar-accent-foreground: #1a1a1a;
+  --sidebar-border: #dcdcdc;
+  --sidebar-ring: #1a1a1a;
+}
+
+/* System dark (existing portal behaviour) */
 @media (prefers-color-scheme: dark) {
   :root {
     --color-canvas: #000000;
@@ -148,7 +258,105 @@
     --color-overlay-hover: rgb(255 255 255 / 0.04);
     --color-overlay-pressed: rgb(255 255 255 / 0.08);
     --color-scrim: rgb(0 0 0 / 0.6);
+
+    /* shadcn contract dark */
+    --background: #000000;
+    --foreground: #f0f0f0;
+    --card: #141414;
+    --card-foreground: #f0f0f0;
+    --popover: #141414;
+    --popover-foreground: #f0f0f0;
+    --primary: #f0f0f0;
+    --primary-foreground: #000000;
+    --secondary: #1e1e1e;
+    --secondary-foreground: #f0f0f0;
+    --muted: #1e1e1e;
+    --muted-foreground: #808080;
+    --accent: #1e1e1e;
+    --accent-foreground: #f0f0f0;
+    --destructive: #ef5350;
+    --border: #2e2e2e;
+    --input: #2e2e2e;
+    --ring: #f0f0f0;
+    --chart-1: #f0f0f0;
+    --chart-2: #cccccc;
+    --chart-3: #808080;
+    --chart-4: #ffde58;
+    --chart-5: #2e2e2e;
+    --sidebar: #141414;
+    --sidebar-foreground: #f0f0f0;
+    --sidebar-primary: #f0f0f0;
+    --sidebar-primary-foreground: #000000;
+    --sidebar-accent: #1e1e1e;
+    --sidebar-accent-foreground: #f0f0f0;
+    --sidebar-border: #2e2e2e;
+    --sidebar-ring: #f0f0f0;
   }
+}
+
+/* Class-based dark (shadcn / next-themes) — same GRIDGO dark pairs */
+.dark {
+  --color-canvas: #000000;
+  --color-surface: #141414;
+  --color-surface-variant: #1e1e1e;
+  --color-surface-high: #2a2a2a;
+
+  --color-text-primary: #f0f0f0;
+  --color-text-secondary: #cccccc;
+  --color-text-muted: #808080;
+
+  --color-outline: #2e2e2e;
+  --color-outline-subtle: #1e1e1e;
+
+  --color-accent: #f0f0f0;
+  --color-accent-on: #000000;
+
+  --color-brand: #ffde58;
+  --color-brand-logo: #ffde58;
+
+  --color-action-yellow: #ffde58;
+  --color-action-yellow-on: #1a1a1a;
+
+  --color-success: #66bb6a;
+  --color-error: #ef5350;
+  --color-warning: #ffca28;
+  --color-info: #42a5f5;
+
+  --color-overlay-hover: rgb(255 255 255 / 0.04);
+  --color-overlay-pressed: rgb(255 255 255 / 0.08);
+  --color-scrim: rgb(0 0 0 / 0.6);
+
+  --background: #000000;
+  --foreground: #f0f0f0;
+  --card: #141414;
+  --card-foreground: #f0f0f0;
+  --popover: #141414;
+  --popover-foreground: #f0f0f0;
+  --primary: #f0f0f0;
+  --primary-foreground: #000000;
+  --secondary: #1e1e1e;
+  --secondary-foreground: #f0f0f0;
+  --muted: #1e1e1e;
+  --muted-foreground: #808080;
+  --accent: #1e1e1e;
+  --accent-foreground: #f0f0f0;
+  --destructive: #ef5350;
+  --border: #2e2e2e;
+  --input: #2e2e2e;
+  --ring: #f0f0f0;
+  --chart-1: #f0f0f0;
+  --chart-2: #cccccc;
+  --chart-3: #808080;
+  --chart-4: #ffde58;
+  --chart-5: #2e2e2e;
+  --sidebar: #141414;
+  --sidebar-foreground: #f0f0f0;
+  --sidebar-primary: #f0f0f0;
+  --sidebar-primary-foreground: #000000;
+  --sidebar-accent: #1e1e1e;
+  --sidebar-accent-foreground: #f0f0f0;
+  --sidebar-border: #2e2e2e;
+  --sidebar-ring: #f0f0f0;
 }
 
 /* Type scale utilities */
@@ -256,7 +464,10 @@
   font-family: var(--font-bold);
   font-size: 14px;
   line-height: 20px;
-  transition: background-color 200ms ease-out, border-color 200ms ease-out, opacity 200ms ease-out;
+  transition:
+    background-color 200ms ease-out,
+    border-color 200ms ease-out,
+    opacity 200ms ease-out;
 }
 
 @utility gg-btn-primary {
@@ -305,14 +516,20 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Visible focus — never suppress */
+/* Visible focus — GRIDGO 2px outline on foreground (not shadcn ring).
+   Stock shadcn components ship focus-visible:ring-*; neutralize the ring so
+   the outline is the only focus signal without editing every component file. */
 :focus {
   outline: none;
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--foreground);
   outline-offset: 2px;
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-ring-offset-shadow: 0 0 #0000;
+  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow),
+    var(--tw-shadow, 0 0 #0000);
 }
 
 button:focus-visible,
@@ -322,8 +539,10 @@ select:focus-visible,
 textarea:focus-visible,
 [role="button"]:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--foreground);
   outline-offset: 2px;
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-ring-offset-shadow: 0 0 #0000;
 }
 
 /* Reduced motion */
@@ -352,4 +571,18 @@ textarea:focus-visible,
 .skip-link:focus {
   left: 16px;
   top: 16px;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+
+  html {
+    @apply font-sans;
+  }
 }
