@@ -36,11 +36,14 @@ Demo logins, password `demo`:
 | `src/lib/order-state.ts` | Plain-language state labels (no snake_case on screen) |
 | `src/lib/supplier-actions.ts` | Valid supplier transitions for current state |
 | `src/lib/ops-actions.ts` | Valid ops transitions + queue membership |
+| `src/components/ui/` | shadcn/ui primitives + GRIDGO-specific components |
 | `src/components/shell/` | App shell, nav rail, RoleGate |
 | `src/app/supplier/` | Supplier partner surfaces |
 | `src/app/ops/` | Operations surfaces |
 | `src/app/admin/` | Super Admin surfaces |
-| `src/app/globals.css` | Design tokens (must match mobile) |
+| `src/app/globals.css` | Design tokens + shadcn semantic CSS variables |
+| `components.json` | shadcn CLI config (style: `base-nova`, Base UI) |
+| `.agents/skills/shadcn/` | Committed shadcn agent skill — use it for UI work |
 
 ## Design tokens
 
@@ -51,8 +54,90 @@ Ported from `gridgo-client/constants/theme.ts` and `global.css`.
 - Status is never colour alone — use `StatusChip` (icon + label).
 - Spacing base 4px; radii field 12 / card 16 / pill 999.
 - Breakpoints: mobile &lt;768, tablet 768–1023, desktop 1024–1439, wide 1440+.
+- Face: **Satoshi** (`--font-sans` / `--font-bold` / …). Never reintroduce Geist or the shadcn default stack.
 
 Binding UX copy/interaction rules: `/home/kali/firstmate/data/gridgo-design-addendum.md` and the design requirements document under `gridgo-tinker`.
+
+## shadcn/ui foundation
+
+This portal uses **shadcn/ui** (Base UI, `base-nova` style) as the component foundation. **GRIDGO identity always wins** over stock shadcn look.
+
+### Agent skill
+
+The official skill is committed under `.agents/skills/shadcn/` (and symlinked for Claude/Grok via `.claude/skills/`). Before adding or restyling UI:
+
+1. Read `.agents/skills/shadcn/SKILL.md`
+2. Run `npx shadcn@latest info` / `docs <component>` as needed
+3. Prefer the skill’s composition and form rules (`FieldGroup` + `Field`, no `space-y-*`, semantic tokens only)
+
+### How to add a component
+
+```bash
+npx shadcn@latest add <name>
+```
+
+- Components land in `src/components/ui/`.
+- Do **not** re-theme each file with hard-coded colours. Theme is `src/app/globals.css`.
+- After add, skim the file for focus rings / heights that violate the a11y floor (44×44, GRIDGO 2px outline) and align if needed — prefer global CSS over per-file paint.
+- Keep GRIDGO-specific components (`StatusChip`, `Logo`, `EmptyState`, `ErrorState`, `LoadingBlock`, `DataTable`) — they encode product rules shadcn does not.
+
+### Token mapping (shadcn ← GRIDGO)
+
+Defined once in `src/app/globals.css`. Stock components consume these with no local overrides.
+
+| shadcn variable | GRIDGO meaning |
+|---|---|
+| `--background` | canvas |
+| `--foreground` | text-primary |
+| `--card` / `--popover` | surface |
+| `--primary` / `--primary-foreground` | **monochrome accent** (structural fill) — **not yellow** |
+| `--secondary` / `--muted` | surface-variant |
+| `--muted-foreground` | text-muted |
+| `--accent` (shadcn hover surface) | surface-variant |
+| `--destructive` | error |
+| `--border` / `--input` | outline |
+| `--ring` | text-primary (fallback only; focus uses outline) |
+| `--radius` | 12px (field); fixed sm/md/lg/xl = 8/12/16/24 |
+
+Light + dark pairs match mobile. System dark uses `prefers-color-scheme`; class `.dark` is also defined for shadcn tooling.
+
+### Button variant → GRIDGO role
+
+| Variant | Role | Yellow? |
+|---|---|---|
+| **(default) / `outline` / `secondary`** | Neutral outlined control | **No** |
+| `primary` | Sole page/panel CTA | **Yes — action-yellow only here** |
+| `default` (shadcn filled) | Monochrome structural fill | No |
+| `destructive` / `danger` | Error / decline path | No |
+| `ghost` / `link` | Quiet / text actions | No (`link` may use brand gold for text links) |
+
+Rules:
+
+1. A bare `<Button>` is **outline**, never yellow.
+2. At most **one** `variant="primary"` on a page-level action surface. Dense queues use outline/secondary row actions.
+3. Do **not** map CSS `--primary` to action-yellow. That would yellow every stock control that uses `bg-primary`. Yellow is only the Button `primary` variant (and the skip-link / active-nav rail indicator).
+
+### What must never be overridden per-component
+
+- Palette / hex values (edit tokens in `globals.css` only)
+- Focus treatment: global 2px `outline` on `--foreground` — do not reintroduce `ring-3` as the only focus signal
+- Font stack (Satoshi)
+- Touch target floor (min 44×44)
+- Status meaning (always `StatusChip` with icon + label + tone)
+
+### Forms, tables, overlays (kit for remaining screens)
+
+| Need | Use |
+|---|---|
+| Form layout + errors | `Field` / `FieldGroup` / `FieldLabel` + `Input` / `Textarea` / `Select` / `Combobox` (`data-invalid` + `aria-invalid`) |
+| Dense queues | `DataTable` (`src/components/ui/data-table.tsx`) — cards below 768px |
+| Modal | `Dialog` |
+| Tablet secondary detail | `Sheet` or `Drawer` |
+| Tabs / tooltips / toast | `Tabs`, `Tooltip`, `toast` + root `Toaster` |
+| Pagination / schedule / search | `Pagination`, `Calendar`, `Command` |
+| Loading / empty | `LoadingBlock` / `Skeleton`, `EmptyState` |
+
+Root layout already wraps `TooltipProvider` and `Toaster`.
 
 ## Auth and role boundary
 
@@ -75,8 +160,9 @@ Missing endpoints (as of foundation): verification, roles admin, zones/fees, Pil
 2. Add calls only in `src/lib/api/client.ts`
 3. Map states through `presentOrderState` / action tables — never raw enums in UI
 4. Put the route under the correct role tree; nav items live in `AppShell`
-5. Mobile cards below 768; keep essential row actions free of horizontal scroll
-6. One yellow primary max on the page-level action surface
+5. Mobile cards below 768; keep essential row actions free of horizontal scroll — prefer `DataTable`
+6. One yellow primary max on the page-level action surface (`Button variant="primary"`)
+7. Compose from `src/components/ui/` — do not hand-roll a second button/input language
 
 ## Accessibility floor
 
@@ -85,6 +171,7 @@ Missing endpoints (as of foundation): verification, roles admin, zones/fees, Pil
 - Logical heading order
 - Accessible names on icon-only controls
 - `prefers-reduced-motion` respected in CSS
+- Status readable in greyscale (icon + label)
 
 ## Maintaining this file
 
