@@ -143,6 +143,25 @@ Rules:
 
 Root layout already wraps `TooltipProvider` and `Toaster`.
 
+### Primitive audit (2026-08-09)
+
+Only add a registry primitive when a real screen uses it in the same change.
+
+| Decision | Primitive | Current call site / reason |
+|---|---|---|
+| Added | `alert-dialog` | Destructive or irreversible confirmations in role changes, verification/suspension, claims and payout release, supplier withdrawal, and job decline. Keep `Dialog` for input tasks such as create/edit forms. |
+| Added | `sidebar` | `AppShell` desktop rail and mobile Sheet; it still renders only `navForRole(role)`. |
+| Added | `progress` | Supplier capacity shows committed units against declared daily capacity. |
+| Added | `chart` | Admin Finance compares exact order value by payment method. |
+| Added | `breadcrumb` | AppShell identifies the parent queue on nested supplier job and Operations QA workspaces. |
+| Added | `toggle-group` | Day/week schedule modes and the two-option claim hold choice. |
+| Rejected | `avatar` | The portal has no user photos or identity surface; the named account control is sufficient. |
+| Rejected | `accordion` / `collapsible` | No current screen has a disclosure hierarchy; Sidebar owns its own collapse behavior. |
+| Rejected | `slider` | Capacity and money inputs require exact API values, so a slider would reduce precision. |
+| Rejected | `sonner` | This is a Base UI project and already uses the Base `toast` manager and root `Toaster`. |
+
+Do not revisit a rejected primitive unless a new screen supplies a concrete call site.
+
 ## Auth and role boundary
 
 1. Login → `POST /auth/login` → cookies `gridgo_token` + `gridgo_role` + sessionStorage user

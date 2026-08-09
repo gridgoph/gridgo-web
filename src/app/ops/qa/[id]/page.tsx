@@ -1,9 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 
 import { OrderMeta } from "@/components/orders/OrderMeta";
 import { Timeline } from "@/components/orders/Timeline";
@@ -13,10 +11,7 @@ import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, getOrder, transitionOrder } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
-import {
-  actionsForOps,
-  type OpsAction,
-} from "@/lib/ops-actions";
+import { actionsForOps, type OpsAction } from "@/lib/ops-actions";
 import { presentOrderState } from "@/lib/order-state";
 
 /** Demo-only known IDs — the API has no supplier/rider directory endpoint. */
@@ -74,9 +69,7 @@ export default function OpsQaWorkspacePage() {
       setOrder(null);
       if (err instanceof ApiError) {
         setError(
-          err.status === 404
-            ? "Order not found."
-            : `Could not load order (${err.code}).`,
+          err.status === 404 ? "Order not found." : `Could not load order (${err.code}).`,
         );
       } else {
         setError("Network error loading this order.");
@@ -148,27 +141,13 @@ export default function OpsQaWorkspacePage() {
 
   return (
     <div className="flex flex-col gap-4 max-w-3xl">
-      <div>
-        <Link
-          href="/ops/qa"
-          className="inline-flex min-h-11 items-center gap-2 text-body text-text-secondary no-underline hover:text-text-primary"
-        >
-          <ArrowLeft size={16} aria-hidden />
-          QA queue
-        </Link>
-      </div>
-
       <header className="gg-card flex flex-col gap-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-h2 text-text-primary m-0">{order.title}</h2>
             <p className="text-caption text-text-muted m-0 mt-1">{order.id}</p>
           </div>
-          <StatusChip
-            tone={status.tone}
-            label={status.label}
-            icon={status.icon}
-          />
+          <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
         </div>
 
         <div className="border-t border-outline-subtle pt-3 flex flex-col gap-2">
@@ -203,15 +182,15 @@ export default function OpsQaWorkspacePage() {
               ) : null}
               {primary?.requires === "riderId" ? (
                 <p className="text-caption text-text-muted m-0">
-                  Assigns the demo rider when none is set. A rider directory endpoint
-                  is not available on the API yet.
+                  Assigns the demo rider when none is set. A rider directory endpoint is
+                  not available on the API yet.
                 </p>
               ) : null}
             </>
           ) : (
             <p className="text-body text-text-secondary m-0">
-              No Operations transition is available in this state. Use the timeline
-              for context, or return to the queue for actionable work.
+              No Operations transition is available in this state. Use the timeline for
+              context, or return to the queue for actionable work.
             </p>
           )}
           {actionError ? (

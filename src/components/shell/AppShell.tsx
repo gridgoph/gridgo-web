@@ -1,12 +1,11 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   AlertTriangle,
   Banknote,
-  Bell,
   BookOpen,
   CalendarDays,
   ClipboardCheck,
@@ -15,7 +14,6 @@ import {
   LayoutDashboard,
   LogOut,
   MapPinned,
-  Menu,
   Package,
   Scale,
   Search,
@@ -24,17 +22,50 @@ import {
   UserRound,
   Users,
   Wallet,
-  X,
   type LucideIcon,
 } from "lucide-react";
 
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Logo } from "@/components/ui/Logo";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarSeparator,
+  SidebarTrigger,
+  useSidebar,
+} from "@/components/ui/sidebar";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import type { Role } from "@/lib/api/types";
 import {
   contextTitleForPath,
   navForRole,
+  navItemForPath,
   type NavIconKey,
 } from "@/lib/nav";
 import { roleLabel } from "@/lib/routes";
@@ -69,204 +100,139 @@ type Props = {
   children: ReactNode;
 };
 
+function PortalSidebar({ role }: Pick<Props, "role">) {
+  const { user, signOut } = useAuth();
+  const pathname = usePathname();
+  const { setOpenMobile, state } = useSidebar();
+  const items = navForRole(role);
+
+  return (
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="gap-3 p-3">
+        <div className="flex min-h-11 items-center justify-between gap-2 px-1">
+          <Logo compact={state === "collapsed"} />
+          <SidebarTrigger aria-label="Toggle primary navigation" />
+        </div>
+      </SidebarHeader>
+
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>{roleLabel(role)}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <nav aria-label="Primary navigation">
+              <SidebarMenu>
+                {items.map((item) => {
+                  const active = isActive(pathname, item.href);
+                  const Icon = NAV_ICONS[item.icon];
+                  return (
+                    <SidebarMenuItem key={item.id}>
+                      <SidebarMenuButton
+                        render={<Link href={item.href} />}
+                        isActive={active}
+                        title={item.label}
+                        onClick={() => setOpenMobile(false)}
+                        aria-current={active ? "page" : undefined}
+                      >
+                        {active ? (
+                          <span
+                            className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-[var(--color-action-yellow)]"
+                            aria-hidden
+                          />
+                        ) : null}
+                        <Icon strokeWidth={active ? 2.25 : 1.75} aria-hidden />
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                      {!item.ready ? <SidebarMenuBadge>Soon</SidebarMenuBadge> : null}
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </nav>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <SidebarSeparator />
+      <SidebarFooter className="p-3">
+        <div className="min-w-0 px-2 group-data-[collapsible=icon]:hidden">
+          <p className="text-caption text-text-muted m-0 truncate">{user?.name}</p>
+          <p className="text-caption text-text-muted m-0 truncate">{user?.email}</p>
+        </div>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton title="Sign out" onClick={() => void signOut()}>
+              <LogOut aria-hidden />
+              <span>Sign out</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    </Sidebar>
+  );
+}
+
 export function AppShell({ role, children }: Props) {
   const { user, signOut } = useAuth();
   const pathname = usePathname();
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const [accountOpen, setAccountOpen] = useState(false);
-  const items = navForRole(role);
   const title = contextTitleForPath(pathname, role);
-
-  const rail = (
-    <nav className="flex h-full min-h-0 flex-col p-3" aria-label="Primary">
-      <div className="mb-3 flex shrink-0 items-center justify-between px-2 pt-1">
-        <Logo />
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="lg:hidden"
-          onClick={() => setMobileOpen(false)}
-          aria-label="Close navigation"
-        >
-          <X aria-hidden />
-        </Button>
-      </div>
-
-      <p className="text-overline text-text-muted mb-2 shrink-0 px-3 uppercase">
-        {roleLabel(role)}
-      </p>
-
-      {/* Scroll long role lists so the rail does not eat the workspace at 768. */}
-      <ul className="m-0 flex min-h-0 list-none flex-1 flex-col gap-0.5 overflow-y-auto p-0">
-        {items.map((item) => {
-          const active = isActive(pathname, item.href);
-          const Icon = NAV_ICONS[item.icon];
-          return (
-            <li key={item.id}>
-              <Link
-                href={item.href}
-                onClick={() => setMobileOpen(false)}
-                className={`relative flex min-h-11 items-center gap-3 rounded-field px-3 text-body transition-colors duration-200 ${
-                  active
-                    ? "bg-surface-variant text-text-primary"
-                    : "text-text-secondary hover:bg-overlay-hover"
-                }`}
-                aria-current={active ? "page" : undefined}
-              >
-                {active ? (
-                  <span
-                    className="absolute left-0 top-1/2 h-6 w-1 -translate-y-1/2 rounded-r-full"
-                    style={{ backgroundColor: "var(--color-action-yellow)" }}
-                    aria-hidden
-                  />
-                ) : null}
-                <Icon
-                  size={18}
-                  strokeWidth={active ? 2.25 : 1.75}
-                  className="shrink-0"
-                  aria-hidden
-                />
-                <span
-                  className="min-w-0 truncate"
-                  style={active ? { fontFamily: "var(--font-bold)" } : undefined}
-                >
-                  {item.label}
-                </span>
-                {!item.ready ? (
-                  <span className="text-caption text-text-muted ml-auto shrink-0">
-                    Soon
-                  </span>
-                ) : null}
-              </Link>
-            </li>
-          );
-        })}
-      </ul>
-
-      <div className="mt-3 shrink-0 border-t border-outline-subtle pt-3">
-        <p className="text-caption text-text-muted truncate px-3">
-          {user?.name}
-        </p>
-        <p className="text-caption text-text-muted mb-2 truncate px-3">
-          {user?.email}
-        </p>
-        <Button
-          type="button"
-          variant="outline"
-          fullWidth
-          className="justify-start"
-          onClick={() => void signOut()}
-        >
-          <LogOut data-icon="inline-start" aria-hidden />
-          Sign out
-        </Button>
-      </div>
-    </nav>
-  );
+  const parentItem = navItemForPath(pathname, role);
+  const isNested = Boolean(parentItem && pathname !== parentItem.href);
 
   return (
-    <div className="flex min-h-dvh bg-canvas">
-      {/* Desktop / tablet rail — fixed width so nine entries stay usable at 768 */}
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-outline bg-surface md:flex lg:w-60">
-        {rail}
-      </aside>
+    <SidebarProvider>
+      <PortalSidebar role={role} />
 
-      {/* Mobile drawer */}
-      {mobileOpen ? (
-        <div
-          className="fixed inset-0 z-40 md:hidden"
-          role="dialog"
-          aria-modal="true"
-          aria-label="Navigation"
-        >
-          <button
-            type="button"
-            className="absolute inset-0 border-0 p-0"
-            style={{ backgroundColor: "var(--color-scrim)" }}
-            aria-label="Dismiss navigation"
-            onClick={() => setMobileOpen(false)}
-          />
-          <aside className="relative z-10 flex h-full w-[min(100%,280px)] flex-col bg-surface shadow-sheet">
-            {rail}
-          </aside>
-        </div>
-      ) : null}
-
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col bg-canvas">
         <header className="sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b border-outline bg-surface px-4 py-2 md:px-6 xl:px-8">
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            className="md:hidden"
-            onClick={() => setMobileOpen(true)}
-            aria-label="Open navigation"
-          >
-            <Menu aria-hidden />
-          </Button>
+          <SidebarTrigger aria-label="Toggle primary navigation" />
 
           <div className="min-w-0 flex-1">
-            <p className="text-overline text-text-muted m-0 hidden uppercase sm:block">
-              {roleLabel(role)}
-            </p>
+            {isNested && parentItem ? (
+              <Breadcrumb className="hidden sm:block">
+                <BreadcrumbList>
+                  <BreadcrumbItem>
+                    <BreadcrumbLink render={<Link href={parentItem.href} />}>
+                      {parentItem.label}
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                  <BreadcrumbSeparator />
+                  <BreadcrumbItem>
+                    <BreadcrumbPage>{title}</BreadcrumbPage>
+                  </BreadcrumbItem>
+                </BreadcrumbList>
+              </Breadcrumb>
+            ) : (
+              <p className="text-overline text-text-muted m-0 hidden uppercase sm:block">
+                {roleLabel(role)}
+              </p>
+            )}
             <h1 className="text-h3 text-text-primary m-0 truncate">{title}</h1>
           </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label="Notifications"
-            title="Notifications"
-          >
-            <Bell aria-hidden />
-          </Button>
-
-          <div className="relative">
-            <Button
-              type="button"
-              variant="outline"
-              aria-expanded={accountOpen}
-              aria-haspopup="menu"
-              aria-label="Account menu"
-              onClick={() => setAccountOpen((v) => !v)}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={<Button variant="outline" aria-label="Account menu" />}
             >
               <UserRound data-icon="inline-start" aria-hidden />
               <span className="hidden max-w-[10rem] truncate sm:inline">
                 {user?.name ?? "Account"}
               </span>
-            </Button>
-            {accountOpen ? (
-              <div
-                role="menu"
-                className="absolute right-0 mt-1 w-56 rounded-card border border-outline bg-surface p-2 shadow-sheet"
-              >
-                <p className="text-caption text-text-muted truncate px-2 py-1">
-                  {user?.email}
-                </p>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-60">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="truncate">{user?.email}</DropdownMenuLabel>
                 {user?.supplierName ? (
-                  <p className="text-caption text-text-secondary truncate px-2 pb-2">
+                  <DropdownMenuLabel className="truncate">
                     {user.supplierName}
-                  </p>
+                  </DropdownMenuLabel>
                 ) : null}
-                <Button
-                  type="button"
-                  role="menuitem"
-                  variant="outline"
-                  fullWidth
-                  className="justify-start"
-                  onClick={() => {
-                    setAccountOpen(false);
-                    void signOut();
-                  }}
-                >
-                  <LogOut data-icon="inline-start" aria-hidden />
+                <DropdownMenuItem onClick={() => void signOut()}>
+                  <LogOut aria-hidden />
                   Sign out
-                </Button>
-              </div>
-            ) : null}
-          </div>
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </header>
 
         <main
@@ -276,6 +242,6 @@ export function AppShell({ role, children }: Props) {
           {children}
         </main>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }

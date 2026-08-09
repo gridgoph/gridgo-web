@@ -10,20 +10,13 @@ import {
 import { presentServiceState } from "@/app/supplier/_lib/service-state";
 import { categoryName } from "@/app/supplier/_lib/taxonomy-labels";
 import { Button } from "@/components/ui/button";
-import {
-  DataTable,
-  type DataTableColumn,
-} from "@/components/ui/data-table";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress";
 import { StatusChip } from "@/components/ui/StatusChip";
-import {
-  ApiError,
-  getTaxonomy,
-  listJobs,
-  listSupplierServices,
-} from "@/lib/api/client";
+import { ApiError, getTaxonomy, listJobs, listSupplierServices } from "@/lib/api/client";
 import type { Order, SupplierService, Taxonomy } from "@/lib/api/types";
 import { presentOrderState } from "@/lib/order-state";
 import { formatDateTime } from "@/lib/format";
@@ -72,10 +65,7 @@ export default function SupplierCapacityPage() {
   }, [load]);
 
   const snapshot = useMemo(
-    () =>
-      data
-        ? buildCapacitySnapshot(data.services, data.jobs)
-        : null,
+    () => (data ? buildCapacitySnapshot(data.services, data.jobs) : null),
     [data],
   );
 
@@ -106,9 +96,7 @@ export default function SupplierCapacityPage() {
         header: "Status",
         cell: (s) => {
           const st = presentServiceState(s.state, s);
-          return (
-            <StatusChip tone={st.tone} label={st.label} icon={st.icon} />
-          );
+          return <StatusChip tone={st.tone} label={st.label} icon={st.icon} />;
         },
       },
       {
@@ -140,9 +128,7 @@ export default function SupplierCapacityPage() {
         header: "Turnaround",
         sortValue: (s) => s.turnaroundHours,
         cell: (s) => (
-          <span className="text-body text-text-secondary">
-            {s.turnaroundHours}h
-          </span>
+          <span className="text-body text-text-secondary">{s.turnaroundHours}h</span>
         ),
       },
     ];
@@ -175,9 +161,7 @@ export default function SupplierCapacityPage() {
         sortValue: (j) => presentOrderState(j.state).label,
         cell: (j) => {
           const st = presentOrderState(j.state);
-          return (
-            <StatusChip tone={st.tone} label={st.label} icon={st.icon} />
-          );
+          return <StatusChip tone={st.tone} label={st.label} icon={st.icon} />;
         },
       },
       {
@@ -241,15 +225,18 @@ export default function SupplierCapacityPage() {
           : "Declared daily minus committed units",
     },
   ];
+  const dailyUtilisation =
+    snapshot.declared.daily != null && snapshot.declared.daily > 0
+      ? (snapshot.committed.unitCount / snapshot.declared.daily) * 100
+      : null;
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Shop headroom is derived from capacity you declare on live catalogue
-          lines, set against units already committed on accepted jobs. Figures
-          the API does not supply are labelled unavailable — nothing is
-          invented.
+          Shop headroom is derived from capacity you declare on live catalogue lines, set
+          against units already committed on accepted jobs. Figures the API does not
+          supply are labelled unavailable — nothing is invented.
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -279,6 +266,23 @@ export default function SupplierCapacityPage() {
           </div>
         ))}
       </div>
+
+      {dailyUtilisation != null ? (
+        <section className="gg-card" aria-labelledby="daily-load-heading">
+          <Progress value={Math.min(dailyUtilisation, 100)} max={100}>
+            <ProgressLabel id="daily-load-heading">Daily production load</ProgressLabel>
+            <ProgressValue />
+          </Progress>
+          <p className="text-caption text-text-secondary m-0 mt-2">
+            {snapshot.committed.unitCount} committed unit
+            {snapshot.committed.unitCount === 1 ? "" : "s"} against{" "}
+            {snapshot.declared.daily} declared daily.{" "}
+            {dailyUtilisation > 100
+              ? "Commitments exceed declared daily capacity; update the catalogue or coordinate the queue."
+              : "The bar shows current commitments as a share of declared daily capacity."}
+          </p>
+        </section>
+      ) : null}
 
       <ul className="m-0 flex list-disc flex-col gap-1 pl-5">
         {snapshot.notes.map((note) => (

@@ -15,9 +15,12 @@ import {
 } from "@/app/admin/_lib/present";
 import { Button } from "@/components/ui/button";
 import {
-  DataTable,
-  type DataTableColumn,
-} from "@/components/ui/data-table";
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
@@ -26,6 +29,14 @@ import { listClaims, listOrders } from "@/lib/api/client";
 import type { Claim, Order } from "@/lib/api/types";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
+
+const paymentMethodChartConfig = {
+  totalMinor: {
+    label: "Order total",
+    color: "var(--color-chart-1)",
+  },
+} satisfies ChartConfig;
 
 function formatFigure(fig: MoneyFigure): { value: string; hint?: string } {
   if (fig.kind === "amount") return { value: formatPhp(fig.minor) };
@@ -68,10 +79,7 @@ export default function AdminFinancePage() {
     return rollupFinance(orders, claims);
   }, [orders, claims]);
 
-  const codRows = useMemo(
-    () => (orders ? codReconciliationRows(orders) : []),
-    [orders],
-  );
+  const codRows = useMemo(() => (orders ? codReconciliationRows(orders) : []), [orders]);
 
   const codColumns = useMemo<DataTableColumn<Order>[]>(
     () => [
@@ -157,9 +165,7 @@ export default function AdminFinancePage() {
             >
               {c.reason}
             </p>
-            <p className="text-caption text-text-muted m-0 mt-0.5">
-              Order {c.orderId}
-            </p>
+            <p className="text-caption text-text-muted m-0 mt-0.5">Order {c.orderId}</p>
           </div>
         ),
       },
@@ -209,15 +215,16 @@ export default function AdminFinancePage() {
   const released = formatFigure(rollup.payoutReleased);
   const codCollected = formatFigure(rollup.codCollected);
   const codOutstanding = formatFigure(rollup.codOutstanding);
+  const paymentMethods = summariseMethods(orders);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Money picture across orders: authorised, collected, held, released,
-          and outstanding. Figures are composed from order payment fields and
-          claims — where the demo ledger cannot supply a number, it is labelled
-          unavailable rather than invented.
+          Money picture across orders: authorised, collected, held, released, and
+          outstanding. Figures are composed from order payment fields and claims — where
+          the demo ledger cannot supply a number, it is labelled unavailable rather than
+          invented.
         </p>
         <Button variant="secondary" onClick={() => void load()}>
           Refresh
@@ -237,11 +244,7 @@ export default function AdminFinancePage() {
           value={held.value}
           hint={`${rollup.activeHoldClaims} active claim hold${rollup.activeHoldClaims === 1 ? "" : "s"}`}
         />
-        <FigureCard
-          label="Payout released"
-          value={released.value}
-          hint={released.hint}
-        />
+        <FigureCard label="Payout released" value={released.value} hint={released.hint} />
         <FigureCard
           label="COD collected"
           value={codCollected.value}
@@ -260,8 +263,8 @@ export default function AdminFinancePage() {
               <strong className="text-text-primary font-medium">
                 {codOutstanding.value}
               </strong>
-              . Method and status come from each order — not a separate cash
-              drawer endpoint.
+              . Method and status come from each order — not a separate cash drawer
+              endpoint.
             </p>
           </div>
         </div>
@@ -309,19 +312,40 @@ export default function AdminFinancePage() {
         <h2 id="method-heading" className="text-h3 text-text-primary m-0 mb-3">
           Payment method mix
         </h2>
-        <ul className="m-0 flex list-none flex-col gap-2 p-0">
-          {summariseMethods(orders).map((row) => (
-            <li
-              key={row.method}
-              className="flex flex-wrap items-center justify-between gap-2 border-b border-outline-subtle pb-2 last:border-0 last:pb-0"
-            >
-              <span className="text-body text-text-primary">{row.label}</span>
-              <span className="text-body text-text-secondary">
-                {row.count} · {formatPhp(row.totalMinor)}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <p className="text-body text-text-secondary m-0 mb-3">
+          Bar height compares order value. Tooltips preserve the exact peso total; each
+          axis label names the payment method.
+        </p>
+        {!paymentMethods.length ? (
+          <EmptyState
+            title="No payment methods yet"
+            body="Payment method totals appear after an order chooses Pilot Credits or cash on delivery."
+          />
+        ) : (
+          <ChartContainer
+            config={paymentMethodChartConfig}
+            className="h-72 w-full"
+            aria-label="Order value by payment method"
+          >
+            <BarChart data={paymentMethods} accessibilityLayer>
+              <CartesianGrid vertical={false} />
+              <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
+              <YAxis
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(value) => formatPhp(Number(value))}
+                width={92}
+              />
+              <ChartTooltip
+                cursor={false}
+                content={
+                  <ChartTooltipContent formatter={(value) => formatPhp(Number(value))} />
+                }
+              />
+              <Bar dataKey="totalMinor" fill="var(--color-totalMinor)" radius={8} />
+            </BarChart>
+          </ChartContainer>
+        )}
       </section>
     </div>
   );
@@ -340,9 +364,7 @@ function FigureCard({
     <div className="gg-card">
       <p className="text-caption text-text-muted m-0">{label}</p>
       <p className="text-h2 text-text-primary m-0 mt-1">{value}</p>
-      {hint ? (
-        <p className="text-caption text-text-muted m-0 mt-1">{hint}</p>
-      ) : null}
+      {hint ? <p className="text-caption text-text-muted m-0 mt-1">{hint}</p> : null}
     </div>
   );
 }

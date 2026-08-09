@@ -11,17 +11,16 @@ import {
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
 import { Button } from "@/components/ui/button";
 import {
-  DataTable,
-  type DataTableColumn,
-} from "@/components/ui/data-table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -62,9 +61,7 @@ export default function AdminVerificationPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionOk, setActionOk] = useState<string | null>(null);
   const [confirmUser, setConfirmUser] = useState<ConfirmUser | null>(null);
-  const [confirmService, setConfirmService] = useState<ConfirmService | null>(
-    null,
-  );
+  const [confirmService, setConfirmService] = useState<ConfirmService | null>(null);
   const [reason, setReason] = useState("");
 
   const load = useCallback(async () => {
@@ -108,8 +105,7 @@ export default function AdminVerificationPage() {
         header: "Service",
         primary: true,
         sortValue: (s) => s.categoryCode,
-        filterValue: (s) =>
-          `${s.categoryCode} ${s.id} ${s.supplierId} ${s.state}`,
+        filterValue: (s) => `${s.categoryCode} ${s.id} ${s.supplierId} ${s.state}`,
         cell: (s) => (
           <div>
             <p
@@ -139,9 +135,7 @@ export default function AdminVerificationPage() {
         sortValue: (s) => s.zones.join(", "),
         cell: (s) => (
           <span className="text-body text-text-secondary">
-            {s.zones.length
-              ? s.zones.map((z) => z.replace(/_/g, " ")).join(", ")
-              : "—"}
+            {s.zones.length ? s.zones.map((z) => z.replace(/_/g, " ")).join(", ") : "—"}
           </span>
         ),
       },
@@ -177,9 +171,7 @@ export default function AdminVerificationPage() {
       setReason("");
       await load();
     } catch (err) {
-      setActionError(
-        adminErrorMessage(err, "Could not update verification."),
-      );
+      setActionError(adminErrorMessage(err, "Could not update verification."));
     } finally {
       setBusy(false);
     }
@@ -213,9 +205,7 @@ export default function AdminVerificationPage() {
       setReason("");
       await load();
     } catch (err) {
-      setActionError(
-        adminErrorMessage(err, "Could not update the supplier service."),
-      );
+      setActionError(adminErrorMessage(err, "Could not update the supplier service."));
     } finally {
       setBusy(false);
     }
@@ -296,11 +286,10 @@ export default function AdminVerificationPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Supplier and rider accreditation. Suspension stops a supplier’s live
-          services from being matched to{" "}
-          <strong className="text-text-primary font-medium">new</strong> work;
-          existing assigned orders continue. Rider suspension blocks new
-          dispatch offers.
+          Supplier and rider accreditation. Suspension stops a supplier’s live services
+          from being matched to{" "}
+          <strong className="text-text-primary font-medium">new</strong> work; existing
+          assigned orders continue. Rider suspension blocks new dispatch offers.
         </p>
         <Button variant="secondary" onClick={() => void load()}>
           Refresh
@@ -312,14 +301,10 @@ export default function AdminVerificationPage() {
           className="flex items-start gap-3 rounded-card border border-outline bg-surface px-4 py-3"
           role="status"
         >
-          <StatusChip
-            tone="warning"
-            label={`${pendingCount} pending`}
-            icon="clock"
-          />
+          <StatusChip tone="warning" label={`${pendingCount} pending`} icon="clock" />
           <p className="text-body text-text-secondary m-0">
-            Accounts waiting for an accreditation decision. Review the Suppliers
-            and Riders tabs.
+            Accounts waiting for an accreditation decision. Review the Suppliers and
+            Riders tabs.
           </p>
         </div>
       ) : null}
@@ -337,12 +322,8 @@ export default function AdminVerificationPage() {
 
       <Tabs defaultValue="suppliers">
         <TabsList>
-          <TabsTrigger value="suppliers">
-            Suppliers ({data.suppliers.length})
-          </TabsTrigger>
-          <TabsTrigger value="riders">
-            Riders ({data.riders.length})
-          </TabsTrigger>
+          <TabsTrigger value="suppliers">Suppliers ({data.suppliers.length})</TabsTrigger>
+          <TabsTrigger value="riders">Riders ({data.riders.length})</TabsTrigger>
           <TabsTrigger value="services">
             Service lines ({data.services.length})
           </TabsTrigger>
@@ -404,10 +385,10 @@ export default function AdminVerificationPage() {
 
         <TabsContent value="services" className="mt-4">
           <p className="text-body text-text-secondary m-0 mb-3 max-w-prose">
-            Catalogue lines declared by suppliers. Verifying a line makes it
-            live for matching. Suspending a live line removes it from{" "}
-            <strong className="text-text-primary font-medium">new</strong>{" "}
-            matching only — jobs already assigned keep running.
+            Catalogue lines declared by suppliers. Verifying a line makes it live for
+            matching. Suspending a live line removes it from{" "}
+            <strong className="text-text-primary font-medium">new</strong> matching only —
+            jobs already assigned keep running.
           </p>
           {!data.services.length ? (
             <EmptyState
@@ -467,7 +448,7 @@ export default function AdminVerificationPage() {
         </TabsContent>
       </Tabs>
 
-      <Dialog
+      <AlertDialog
         open={!!confirmUser}
         onOpenChange={(open) => {
           if (!open) {
@@ -477,15 +458,15 @@ export default function AdminVerificationPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
               {confirmUser?.action.label} {confirmUser?.user.name}?
-            </DialogTitle>
-            <DialogDescription>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
               {confirmUser?.action.consequence}
-            </DialogDescription>
-          </DialogHeader>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="verify-reason">
@@ -505,8 +486,8 @@ export default function AdminVerificationPage() {
               {actionError}
             </p>
           ) : null}
-          <DialogFooter>
-            <Button
+          <AlertDialogFooter>
+            <AlertDialogCancel
               variant="secondary"
               disabled={busy}
               onClick={() => {
@@ -515,19 +496,19 @@ export default function AdminVerificationPage() {
               }}
             >
               Cancel
-            </Button>
-            <Button
+            </AlertDialogCancel>
+            <AlertDialogAction
               variant={confirmUser?.action.danger ? "danger" : "primary"}
               disabled={busy}
               onClick={() => void applyUserVerification()}
             >
               {busy ? "Saving…" : confirmUser?.action.label}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
-      <Dialog
+      <AlertDialog
         open={!!confirmService}
         onOpenChange={(open) => {
           if (!open) {
@@ -537,19 +518,19 @@ export default function AdminVerificationPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
               {confirmService?.kind === "suspend"
                 ? "Suspend this service line?"
                 : "Mark this service live?"}
-            </DialogTitle>
-            <DialogDescription>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
               {confirmService?.kind === "suspend"
                 ? "Suspension removes this line from new matching only. Existing orders already assigned to this supplier are not cancelled or rewound. A reason is required and audited."
                 : "Verification makes this line eligible for new supplier matching. Suppliers still need an approved account."}
-            </DialogDescription>
-          </DialogHeader>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="svc-reason">
@@ -571,8 +552,8 @@ export default function AdminVerificationPage() {
               {actionError}
             </p>
           ) : null}
-          <DialogFooter>
-            <Button
+          <AlertDialogFooter>
+            <AlertDialogCancel
               variant="secondary"
               disabled={busy}
               onClick={() => {
@@ -581,11 +562,9 @@ export default function AdminVerificationPage() {
               }}
             >
               Cancel
-            </Button>
-            <Button
-              variant={
-                confirmService?.kind === "suspend" ? "danger" : "primary"
-              }
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant={confirmService?.kind === "suspend" ? "danger" : "primary"}
               disabled={busy}
               onClick={() => void applyServiceAction()}
             >
@@ -594,10 +573,10 @@ export default function AdminVerificationPage() {
                 : confirmService?.kind === "suspend"
                   ? "Suspend service"
                   : "Verify live"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
