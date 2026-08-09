@@ -150,6 +150,8 @@ Root layout already wraps `TooltipProvider` and `Toaster`.
 3. `RoleGate` re-checks live session via context
 4. Logout → clear cookies + storage → `router.replace("/login")` (no back-button re-entry)
 
+Client-rendered credential inputs must initialize empty. Populate demo credentials only through explicit account controls so hydration cannot overwrite typing with a privileged or role-specific default.
+
 Suppliers are external partners. Never serve `/ops/*` or `/admin/*` to them — not even as soft-hidden UI.
 
 ## API client contract
