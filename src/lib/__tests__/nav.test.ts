@@ -55,7 +55,15 @@ describe("ROLE_NAV", () => {
       .map((n) => n.href)
       .sort();
     expect(ready).toEqual([
+      "/admin/audit",
+      "/admin/catalogue",
+      "/admin/credits",
+      "/admin/finance",
       "/admin/overview",
+      "/admin/planning",
+      "/admin/roles",
+      "/admin/verification",
+      "/admin/zones",
       "/ops/qa",
       "/supplier/capacity",
       "/supplier/catalogue",

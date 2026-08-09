@@ -1,8 +1,337 @@
-import { ComingNext } from "@/components/shell/ComingNext";
-import { ROLE_NAV } from "@/lib/nav";
+"use client";
 
-const item = ROLE_NAV.super_admin.find((n) => n.href === "/admin/zones")!;
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-export default function Page() {
-  return <ComingNext item={item} />;
+import { adminErrorMessage, pesosToMinor } from "@/app/admin/_lib/errors";
+import { Button } from "@/components/ui/button";
+import {
+  DataTable,
+  type DataTableColumn,
+} from "@/components/ui/data-table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { StatusChip } from "@/components/ui/StatusChip";
+import { Switch } from "@/components/ui/switch";
+import { createZone, listZones, updateZone } from "@/lib/api/client";
+import type { Zone } from "@/lib/api/types";
+import { formatPhp } from "@/lib/format";
+
+export default function AdminZonesPage() {
+  const [zones, setZones] = useState<Zone[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionOk, setActionOk] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Zone | null | "new">(null);
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [feePesos, setFeePesos] = useState("");
+  const [active, setActive] = useState(true);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setZones(await listZones());
+    } catch (err) {
+      setZones(null);
+      setError(
+        adminErrorMessage(
+          err,
+          "Could not load delivery zones. Confirm the demo API is running.",
+        ),
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const openNew = () => {
+    setEditing("new");
+    setCode("");
+    setName("");
+    setFeePesos("150.00");
+    setActive(true);
+    setActionError(null);
+  };
+
+  const openEdit = (z: Zone) => {
+    setEditing(z);
+    setCode(z.code);
+    setName(z.name);
+    setFeePesos((z.deliveryFeeMinor / 100).toFixed(2));
+    setActive(z.active);
+    setActionError(null);
+  };
+
+  const columns = useMemo<DataTableColumn<Zone>[]>(
+    () => [
+      {
+        id: "name",
+        header: "Zone",
+        primary: true,
+        sortValue: (z) => z.name,
+        filterValue: (z) => `${z.name} ${z.code}`,
+        cell: (z) => (
+          <div>
+            <p
+              className="text-body text-text-primary m-0"
+              style={{ fontFamily: "var(--font-medium)" }}
+            >
+              {z.name}
+            </p>
+            <p className="text-caption text-text-muted m-0 mt-0.5">
+              {z.code.replace(/_/g, " ")}
+            </p>
+          </div>
+        ),
+      },
+      {
+        id: "fee",
+        header: "Delivery fee",
+        sortValue: (z) => z.deliveryFeeMinor,
+        cell: (z) => (
+          <span
+            className="text-body text-text-primary"
+            style={{ fontFamily: "var(--font-medium)" }}
+          >
+            {formatPhp(z.deliveryFeeMinor)}
+          </span>
+        ),
+      },
+      {
+        id: "active",
+        header: "Status",
+        sortValue: (z) => (z.active ? 1 : 0),
+        cell: (z) =>
+          z.active ? (
+            <StatusChip tone="success" label="Active" icon="circle-check" />
+          ) : (
+            <StatusChip tone="neutral" label="Inactive" icon="circle-x" />
+          ),
+      },
+    ],
+    [],
+  );
+
+  async function save() {
+    const feeMinor = pesosToMinor(feePesos);
+    if (!name.trim()) {
+      setActionError("Name is required.");
+      return;
+    }
+    if (feeMinor === null) {
+      setActionError("Enter a valid delivery fee in pesos (e.g. 150.00).");
+      return;
+    }
+    if (editing === "new" && !code.trim()) {
+      setActionError("Zone code is required.");
+      return;
+    }
+    setBusy(true);
+    setActionError(null);
+    setActionOk(null);
+    try {
+      if (editing === "new") {
+        await createZone({
+          code: code.trim().toLowerCase().replace(/\s+/g, "_"),
+          name: name.trim(),
+          deliveryFeeMinor: feeMinor,
+          active,
+        });
+        setActionOk(
+          "Zone created. The fee applies to future orders only — existing orders keep their snapshotted fee.",
+        );
+      } else if (editing) {
+        await updateZone(editing.id, {
+          name: name.trim(),
+          deliveryFeeMinor: feeMinor,
+          active,
+        });
+        setActionOk(
+          "Zone updated. Fee changes apply to future orders only; live orders keep the fee snapshotted at creation.",
+        );
+      }
+      setEditing(null);
+      await load();
+    } catch (err) {
+      setActionError(adminErrorMessage(err, "Could not save the zone."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (loading && !zones) {
+    return <LoadingBlock label="Loading delivery zones…" />;
+  }
+  if (error || !zones) {
+    return (
+      <ErrorState
+        body={error ?? "No data."}
+        action={
+          <Button variant="secondary" onClick={() => void load()}>
+            Retry
+          </Button>
+        }
+      />
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <p className="text-body text-text-secondary m-0 max-w-prose">
+          Delivery zones and fees. Orders snapshot the fee at creation — changing
+          a fee here never reprices live work. Only future orders pick up the
+          new amount.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => void load()}>
+            Refresh
+          </Button>
+          <Button variant="primary" onClick={openNew}>
+            Add zone
+          </Button>
+        </div>
+      </div>
+
+      {actionOk ? (
+        <p className="text-body text-success m-0" role="status">
+          {actionOk}
+        </p>
+      ) : null}
+
+      {!zones.length ? (
+        <EmptyState
+          title="No delivery zones"
+          body="Use Add zone above so clients can place orders with the correct delivery fee snapshot."
+        />
+      ) : (
+        <DataTable
+          columns={columns}
+          data={zones}
+          getRowId={(z) => z.id}
+          caption="Delivery zones and fees"
+          filterPlaceholder="Filter zones…"
+          defaultSortId="name"
+          rowActions={(z) => (
+            <Button variant="secondary" onClick={() => openEdit(z)}>
+              Edit fee
+            </Button>
+          )}
+        />
+      )}
+
+      <Dialog
+        open={editing !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditing(null);
+            setActionError(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {editing === "new" ? "Add delivery zone" : "Edit delivery zone"}
+            </DialogTitle>
+            <DialogDescription>
+              Fee changes apply to future orders only. Existing orders keep the
+              delivery fee snapshotted when they were created.
+            </DialogDescription>
+          </DialogHeader>
+
+          <FieldGroup>
+            {editing === "new" ? (
+              <Field>
+                <FieldLabel htmlFor="zone-code">Code</FieldLabel>
+                <Input
+                  id="zone-code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  placeholder="e.g. davao central"
+                  autoComplete="off"
+                />
+              </Field>
+            ) : editing ? (
+              <p className="text-caption text-text-muted m-0">
+                Code {editing.code.replace(/_/g, " ")}
+              </p>
+            ) : null}
+            <Field>
+              <FieldLabel htmlFor="zone-name">Display name</FieldLabel>
+              <Input
+                id="zone-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="zone-fee">Delivery fee (₱)</FieldLabel>
+              <Input
+                id="zone-fee"
+                inputMode="decimal"
+                value={feePesos}
+                onChange={(e) => setFeePesos(e.target.value)}
+                placeholder="150.00"
+              />
+              <FieldDescription>
+                Stored as centavos. Future orders only — never rewrites live
+                orders.
+              </FieldDescription>
+            </Field>
+            <Field orientation="horizontal" className="items-center">
+              <Switch
+                id="zone-active"
+                checked={active}
+                onCheckedChange={setActive}
+              />
+              <FieldLabel htmlFor="zone-active">Active for new orders</FieldLabel>
+            </Field>
+          </FieldGroup>
+
+          {actionError ? (
+            <p className="text-body text-error m-0" role="alert">
+              {actionError}
+            </p>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              variant="secondary"
+              disabled={busy}
+              onClick={() => setEditing(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              disabled={busy}
+              onClick={() => void save()}
+            >
+              {busy ? "Saving…" : "Save zone"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }
