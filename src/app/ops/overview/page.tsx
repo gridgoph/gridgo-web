@@ -2,12 +2,25 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronRight,
+  ClipboardList,
+  Factory,
+  QrCode,
+  Search,
+  Siren,
+  Timer,
+  Truck,
+  UserRoundCheck,
+  type LucideIcon,
+} from "lucide-react";
 
 import {
   buildOverviewBuckets,
   pickOverviewNextAction,
   type OverviewBucket,
+  type OverviewBucketId,
 } from "@/app/ops/_lib/overview";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -200,7 +213,7 @@ export default function OpsOverviewPage() {
         <h2 id="queues-heading" className="text-h3 text-text-primary m-0 mb-3">
           Queues
         </h2>
-        <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 xl:grid-cols-3">
+        <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {buckets.map((bucket) => (
             <BucketCard key={bucket.id} bucket={bucket} />
           ))}
@@ -210,38 +223,59 @@ export default function OpsOverviewPage() {
   );
 }
 
+/**
+ * Each queue borrows the icon its screen already carries on the rail, so the
+ * card and the destination read as the same place.
+ */
+const BUCKET_ICONS: Record<OverviewBucketId, LucideIcon> = {
+  needs_qa: ClipboardList,
+  payment_confirmation: QrCode,
+  awaiting_matching: Search,
+  signup_approvals: UserRoundCheck,
+  in_production: Factory,
+  out_for_delivery: Truck,
+  escalated: Siren,
+  blocked: AlertTriangle,
+  sla_risk: Timer,
+};
+
 function BucketCard({ bucket }: { bucket: OverviewBucket }) {
+  const Icon = BUCKET_ICONS[bucket.id];
   return (
-    <li className="gg-card flex flex-col gap-2">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p
-            className="text-body text-text-primary m-0"
-            style={{ fontFamily: "var(--font-medium)" }}
+    <li>
+      {/* The whole card is the control. Eight identical "Open" buttons taught
+          nothing that the card title did not already say. */}
+      <Link
+        href={bucket.href}
+        aria-label={`${bucket.label}: ${bucket.count}`}
+        className="gg-card group flex h-full min-h-11 flex-col gap-2 no-underline hover:bg-overlay-hover"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <span
+            className="bg-surface-variant text-text-muted flex size-9 shrink-0 items-center justify-center rounded-field"
+            aria-hidden
           >
-            {bucket.label}
-          </p>
-          <p className="text-caption text-text-muted m-0 mt-1">
-            {bucket.description}
+            <Icon size={18} strokeWidth={1.75} />
+          </span>
+          <p
+            className="text-h2 text-text-primary m-0 tabular-nums"
+            aria-hidden
+          >
+            {bucket.count}
           </p>
         </div>
         <p
-          className="text-h2 text-text-primary m-0 tabular-nums"
-          aria-label={`${bucket.count} in ${bucket.label}`}
+          className="text-body text-text-primary m-0 mt-1"
+          style={{ fontFamily: "var(--font-medium)" }}
         >
-          {bucket.count}
+          {bucket.label}
         </p>
-      </div>
-      <div className="mt-auto pt-1">
-        <Button
-          variant="secondary"
-          nativeButton={false}
-          render={<Link href={bucket.href} />}
-        >
+        <p className="text-caption text-text-muted m-0">{bucket.description}</p>
+        <span className="text-caption text-text-secondary mt-auto inline-flex items-center gap-1 pt-2">
           Open
-          <ChevronRight data-icon="inline-end" aria-hidden />
-        </Button>
-      </div>
+          <ChevronRight size={14} aria-hidden />
+        </span>
+      </Link>
     </li>
   );
 }

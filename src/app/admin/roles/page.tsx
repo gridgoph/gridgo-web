@@ -206,6 +206,7 @@ export default function AdminRolesPage() {
           getRowId={(u) => u.id}
           caption="Platform users and roles"
           filterPlaceholder="Filter people…"
+          itemLabel="people"
           defaultSortId="role"
           rowActions={(u) => (
             <Button
@@ -253,7 +254,9 @@ export default function AdminRolesPage() {
                 onValueChange={(v) => setNextRole(v as Role)}
               >
                 <SelectTrigger className="min-h-11 w-full">
-                  <SelectValue />
+                  <SelectValue placeholder="Choose a role">
+                    {(v) => (v ? presentRole(v as Role) : "Choose a role")}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {ASSIGNABLE_ROLES.map((r) => (

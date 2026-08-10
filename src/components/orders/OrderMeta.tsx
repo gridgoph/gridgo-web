@@ -1,4 +1,5 @@
 import { formatDateTime, formatPhp } from "@/lib/format";
+import { presentZone } from "@/lib/order-state";
 import type { Order } from "@/lib/api/types";
 
 type Props = {
@@ -19,7 +20,7 @@ export function OrderMeta({ order, showMoney = true }: Props) {
     { label: "Quantity", value: String(order.quantity) },
     { label: "Size", value: order.size || "—" },
     { label: "Material", value: order.material || "—" },
-    { label: "Zone", value: order.zone || "—" },
+    { label: "Zone", value: order.zone ? presentZone(order.zone) : "—" },
     { label: "Deadline", value: formatDateTime(order.deadline) },
     { label: "Promised", value: formatDateTime(order.promisedDate) },
   ];

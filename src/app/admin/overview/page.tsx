@@ -1,19 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Coins, Package, Truck, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { StatCard } from "@/components/ui/StatCard";
 import { StatusChip } from "@/components/ui/StatusChip";
-import { ApiError, creditBalance, listOrders } from "@/lib/api/client";
-import type { CreditBalance, Order } from "@/lib/api/types";
+import { ApiError, creditBalance, listOrders, listUsers } from "@/lib/api/client";
+import type { CreditBalance, Order, User } from "@/lib/api/types";
 import { formatPhp } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
 
 type OverviewData = {
   orders: Order[];
   credits: CreditBalance[];
+  /** Person id → the name a human would use for them. */
+  people: Map<string, string>;
 };
 
 function countByState(orders: Order[]): { state: string; count: number }[] {
@@ -35,7 +39,17 @@ export default function AdminOverviewPage() {
     setLoading(true);
     setError(null);
     try {
-      const orders = await listOrders();
+      const [orders, suppliers, riders, clients] = await Promise.all([
+        listOrders(),
+        listUsers("supplier"),
+        listUsers("rider"),
+        listUsers("client"),
+      ]);
+      const people = new Map<string, string>();
+      for (const u of [...suppliers, ...riders, ...clients] as User[]) {
+        people.set(u.id, u.supplierName ?? u.name ?? u.email);
+      }
+
       const clientIds = [
         ...new Set(orders.map((o) => o.clientId).filter(Boolean)),
       ];
@@ -48,7 +62,7 @@ export default function AdminOverviewPage() {
           // Skip clients without a credit ledger.
         }
       }
-      setData({ orders, credits });
+      setData({ orders, credits, people });
     } catch (err) {
       setData(null);
       if (err instanceof ApiError) {
@@ -117,22 +131,30 @@ export default function AdminOverviewPage() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Orders" value={String(data.orders.length)} />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="Suppliers on orders"
-          value={String(derived.supplierCount)}
-          hint="Distinct supplierId values"
+          label="Orders"
+          value={String(data.orders.length)}
+          hint={`For ${derived.clientCount} client${derived.clientCount === 1 ? "" : "s"}`}
+          icon={Package}
         />
         <StatCard
-          label="Riders on orders"
+          label="Suppliers working"
+          value={String(derived.supplierCount)}
+          hint="Named on at least one order"
+          icon={Users}
+        />
+        <StatCard
+          label="Riders carrying"
           value={String(derived.riderCount)}
-          hint="Distinct riderId values"
+          hint="Named on at least one order"
+          icon={Truck}
         />
         <StatCard
           label="Pilot Credit balance"
           value={formatPhp(derived.totalCredit)}
-          hint={`${data.credits.length} client ledger${data.credits.length === 1 ? "" : "s"}`}
+          hint={`Across ${data.credits.length} client ledger${data.credits.length === 1 ? "" : "s"}`}
+          icon={Coins}
         />
       </div>
 
@@ -218,11 +240,11 @@ export default function AdminOverviewPage() {
                 >
                   <div>
                     <p className="text-body text-text-primary m-0">
-                      {c.clientId}
+                      {data.people.get(c.clientId) ?? "Unnamed client"}
                     </p>
                     <p className="text-caption text-text-muted m-0">
-                      {c.ledger.length} ledger entr
-                      {c.ledger.length === 1 ? "y" : "ies"}
+                      {c.ledger.length} grant{c.ledger.length === 1 ? "" : "s"} on
+                      record
                     </p>
                   </div>
                   <p className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-bold)" }}>
@@ -233,8 +255,8 @@ export default function AdminOverviewPage() {
             </ul>
           )}
           <p className="text-caption text-text-muted m-0 mt-3">
-            Grant Pilot Credits from the Pilot Credits rail entry when that
-            screen ships (`grantCredits` on the typed client).
+            Credits are a grant ledger. They never pay for an order — issue them
+            on Pilot Credits.
           </p>
         </section>
 
@@ -248,7 +270,7 @@ export default function AdminOverviewPage() {
               {derived.supplierIds.length ? (
                 <ul className="m-0 list-none p-0 text-body text-text-primary">
                   {derived.supplierIds.map((id) => (
-                    <li key={id}>{id}</li>
+                    <li key={id}>{data.people.get(id) ?? "Unnamed supplier"}</li>
                   ))}
                 </ul>
               ) : (
@@ -260,7 +282,7 @@ export default function AdminOverviewPage() {
               {derived.riderIds.length ? (
                 <ul className="m-0 list-none p-0 text-body text-text-primary">
                   {derived.riderIds.map((id) => (
-                    <li key={id}>{id}</li>
+                    <li key={id}>{data.people.get(id) ?? "Unnamed rider"}</li>
                   ))}
                 </ul>
               ) : (
@@ -269,8 +291,8 @@ export default function AdminOverviewPage() {
             </div>
           </div>
           <p className="text-caption text-text-muted m-0 mt-3">
-            Verification, roles, catalogue, zones, and fees are available on the
-            API client; open those rail entries for the dedicated screens.
+            Accredit a supplier or rider on Accreditation before they can be
+            given work.
           </p>
         </section>
       </div>
@@ -278,22 +300,3 @@ export default function AdminOverviewPage() {
   );
 }
 
-function StatCard({
-  label,
-  value,
-  hint,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-}) {
-  return (
-    <div className="gg-card">
-      <p className="text-caption text-text-muted m-0">{label}</p>
-      <p className="text-h2 text-text-primary m-0 mt-1">{value}</p>
-      {hint ? (
-        <p className="text-caption text-text-muted m-0 mt-1">{hint}</p>
-      ) : null}
-    </div>
-  );
-}

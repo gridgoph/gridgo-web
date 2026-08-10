@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 
+import { presentZone } from "@/app/ops/_lib/present";
 import { Button } from "@/components/ui/button";
 import {
   DataTable,
@@ -103,10 +104,10 @@ export default function OpsQaQueuePage() {
       {
         id: "zone",
         header: "Zone",
-        sortValue: (order) => order.zone,
-        filterValue: (order) => order.zone,
+        sortValue: (order) => presentZone(order.zone),
+        filterValue: (order) => `${presentZone(order.zone)} ${order.zone}`,
         cell: (order) => (
-          <span className="text-body text-text-secondary">{order.zone}</span>
+          <span className="text-body text-text-secondary">{presentZone(order.zone)}</span>
         ),
       },
       {
@@ -151,6 +152,14 @@ export default function OpsQaQueuePage() {
     );
   }
 
+  const statusFacet = {
+    columnId: "status",
+    title: "Status",
+    options: [...new Set(queue.map((o) => presentOrderState(o.state).label))]
+      .sort((a, b) => a.localeCompare(b))
+      .map((label) => ({ value: label, label })),
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -158,7 +167,10 @@ export default function OpsQaQueuePage() {
           {showAll
             ? `All orders (${queue.length})`
             : `Awaiting Operations action (${queue.length})`}
-          . Queue membership is based on order state.
+          .{" "}
+          {showAll
+            ? "Everything on the book, newest activity first."
+            : "These are the orders that stop moving until Operations decides."}
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -195,6 +207,8 @@ export default function OpsQaQueuePage() {
           getRowId={(order) => order.id}
           caption="QA queue"
           filterPlaceholder="Filter orders…"
+          facets={statusFacet.options.length > 1 ? [statusFacet] : undefined}
+          itemLabel="orders"
           rowActions={(order) => (
             <Button
               variant="secondary"

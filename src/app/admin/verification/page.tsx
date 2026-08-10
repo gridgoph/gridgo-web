@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { presentZone } from "@/lib/order-state";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -131,7 +132,7 @@ function ServiceLines() {
         cell: (s) => (
           <span className="text-body text-text-secondary">
             {s.zones.length
-              ? s.zones.map((z) => z.replace(/_/g, " ")).join(", ")
+              ? s.zones.map(presentZone).join(", ")
               : "—"}
           </span>
         ),
