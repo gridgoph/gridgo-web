@@ -48,7 +48,6 @@ function order(partial: Partial<Order> & Pick<Order, "id" | "state">): Order {
     deliveryFeeMinor: 15000,
     paymentMethod: null,
     paymentStatus: "unpaid",
-    codEligible: true,
     promisedDate: null,
     artworkName: null,
     createdAt: "2026-08-01T00:00:00.000Z",

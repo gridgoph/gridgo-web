@@ -16,19 +16,25 @@ import type {
   CreateZoneInput,
   CreditBalance,
   CreditGrantResult,
-  DispatchProof,
   EligibleSuppliersResult,
+  Escalation,
   HealthResult,
   Issue,
   LocationPing,
   LoginResult,
   Notification,
   Order,
+  PaymentInstallment,
+  PayoutMilestone,
+  PayoutMilestoneCode,
+  PlatformSettings,
+  StoredFile,
   SupplierService,
   Taxonomy,
   TaxonomyCategory,
   TaxonomyFinish,
   TaxonomyMaterial,
+  UpdateSettingsInput,
   UpdateSupplierServiceInput,
   UpdateZoneInput,
   User,
@@ -216,7 +222,6 @@ export type CreateOrderInput = {
   deadline?: string | null;
   address?: string;
   zone?: string;
-  deliveryFeeMinor?: number;
   artworkName?: string | null;
   submit?: boolean;
 };
@@ -231,10 +236,14 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
 
 export type TransitionExtra = {
   supplierId?: string;
+  riderId?: string;
   matchingServiceIds?: string[];
-  paymentMethod?: string;
+  /**
+   * Required with `state: "supplier_accepted"`. The supplier's own asking price
+   * in minor units; the server derives commission, totals and the installments.
+   */
+  supplierPriceMinor?: number;
   promisedDate?: string | null;
-  finalTotalMinor?: number;
   reason?: string;
   note?: string;
   [key: string]: unknown;
@@ -253,6 +262,83 @@ export async function transitionOrder(
     },
   );
   return result.order;
+}
+
+// ---------------------------------------------------------------------------
+// Split digital payment — 75% downpayment, then the 25% balance
+// ---------------------------------------------------------------------------
+
+/**
+ * Client only — the owning client submits the QR transfer reference.
+ * Included so this module is the complete spine; the portal has no client role.
+ */
+export async function submitPayment(
+  orderId: string,
+  installment: PaymentInstallment,
+  input: { method?: string; reference: string },
+): Promise<Order> {
+  const result = await request<{ order: Order }>(
+    `/orders/${orderId}/payments/${installment}/submit`,
+    {
+      method: "POST",
+      body: JSON.stringify({ method: input.method ?? "qr_manual", ...input }),
+    },
+  );
+  return result.order;
+}
+
+/**
+ * Ops / Super Admin — the manual confirmation that lets an order leave payment.
+ * Confirming the downpayment moves the order to `payment_authorized`.
+ */
+export async function confirmPayment(
+  orderId: string,
+  installment: PaymentInstallment,
+  input: { note?: string } = {},
+): Promise<Order> {
+  const result = await request<{ order: Order }>(
+    `/orders/${orderId}/payments/${installment}/confirm`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.order;
+}
+
+/**
+ * Ops / Super Admin — the money did not arrive, or the reference does not match.
+ * Returns the installment to `not_submitted` so the client can submit again,
+ * and carries the reason back to them.
+ */
+export async function rejectPayment(
+  orderId: string,
+  installment: PaymentInstallment,
+  input: { reason: string },
+): Promise<Order> {
+  const result = await request<{ order: Order }>(
+    `/orders/${orderId}/payments/${installment}/reject`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.order;
+}
+
+// ---------------------------------------------------------------------------
+// Milestone payouts
+// ---------------------------------------------------------------------------
+
+/**
+ * Ops / Super Admin — release one milestone share of the supplier's own price.
+ * `409 pof_required` when no Proof of Fulfilment is attached,
+ * `409 milestone_not_reached` when production has not got there yet,
+ * `409 payout_held` while a claim holds the order.
+ */
+export async function releaseMilestone(
+  orderId: string,
+  code: PayoutMilestoneCode | string,
+  input: { note?: string } = {},
+): Promise<{ order: Order; milestone: PayoutMilestone }> {
+  return request(`/orders/${orderId}/milestones/${code}/release`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -276,22 +362,79 @@ export async function health(): Promise<HealthResult> {
 }
 
 // ---------------------------------------------------------------------------
-// Pilot Credits
+// Platform settings — issue window length and delivery distance bands
+// ---------------------------------------------------------------------------
+
+export async function getSettings(): Promise<PlatformSettings> {
+  const result = await request<{ settings: PlatformSettings }>("/settings");
+  return result.settings;
+}
+
+/** Ops / Super Admin. Either field may be sent on its own. */
+export async function updateSettings(
+  input: UpdateSettingsInput,
+): Promise<PlatformSettings> {
+  const result = await request<{ settings: PlatformSettings }>("/settings", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+  return result.settings;
+}
+
+// ---------------------------------------------------------------------------
+// Escalations — a rider failed a pickup check and must not transport
+// ---------------------------------------------------------------------------
+
+export async function listEscalations(filters?: {
+  status?: string;
+  orderId?: string;
+}): Promise<Escalation[]> {
+  const q = buildQuery({
+    status: filters?.status,
+    orderId: filters?.orderId,
+  });
+  const result = await request<{ escalations: Escalation[] }>(
+    `/escalations${q}`,
+  );
+  return result.escalations;
+}
+
+/** Ops / Super Admin. The rider is notified and must repeat all six checks. */
+export async function resolveEscalation(
+  escalationId: string,
+  input: { resolution: string },
+): Promise<Escalation> {
+  const result = await request<{ escalation: Escalation }>(
+    `/escalations/${escalationId}/resolve`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.escalation;
+}
+
+// ---------------------------------------------------------------------------
+// Files — Proof of Fulfilment and pickup-failure evidence
+// ---------------------------------------------------------------------------
+
+export async function getFile(fileId: string): Promise<StoredFile> {
+  const result = await request<{ file: StoredFile }>(`/files/${fileId}`);
+  return result.file;
+}
+
+/** Five-minute signed GET for the stored object. */
+export async function getFileDownloadUrl(fileId: string): Promise<string> {
+  const result = await request<{ url: string }>(
+    `/files/${fileId}/download-url`,
+  );
+  return result.url;
+}
+
+// ---------------------------------------------------------------------------
+// Pilot Credits — a non-cash grant ledger. Never a way to pay for an order.
 // ---------------------------------------------------------------------------
 
 export async function creditBalance(clientId?: string): Promise<CreditBalance> {
   const q = clientId ? `?clientId=${encodeURIComponent(clientId)}` : "";
   return request(`/credits/balance${q}`);
-}
-
-export async function authorizeCredits(input: {
-  orderId: string;
-  amountMinor?: number;
-}): Promise<CreditBalance & { order?: Order }> {
-  return request("/credits/authorize", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
 }
 
 /** Super Admin only. Not a purchase — pilot grant instrument. */
@@ -740,18 +883,20 @@ export async function postDispatchLocation(
   return result.ping;
 }
 
-/** Rider only. */
-export async function postDispatchProof(
+/**
+ * Rider only. Records delivery evidence and atomically opens the issue window.
+ * Requires a confirmed balance and a delivered Proof of Fulfilment on the order.
+ */
+export async function recordDelivery(
   orderId: string,
-  input: {
-    kind?: string;
-    otp?: string | null;
-    photoName?: string | null;
-    note?: string;
-  },
-): Promise<{ proof: DispatchProof; order: Order }> {
-  return request(`/dispatch/${orderId}/proof`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  input: { evidenceFileId: string; evidenceType?: "photo" | "signature" },
+): Promise<Order> {
+  const result = await request<{ order: Order }>(
+    `/dispatch/${orderId}/delivery`,
+    {
+      method: "POST",
+      body: JSON.stringify({ evidenceType: "photo", ...input }),
+    },
+  );
+  return result.order;
 }

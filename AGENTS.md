@@ -8,6 +8,10 @@ A single Next.js (App Router) portal for three roles: `supplier`, `ops_admin`, `
 
 Mobile apps (client / supplier / rider) are separate repos. Do not invent a parallel product identity here.
 
+**Operations is a required participant in the order flow, not an observer.** A client's 75% downpayment waits for a person here to confirm the money arrived; until they do, the order physically cannot progress. `/ops/payments` is that screen, and it is the reason this portal exists rather than being a dashboard.
+
+The operational model is v2. Its contract is `gridgo-api/docs/OPERATIONAL_MODEL_V2_API.md`; the captain's reasoning is in `/home/kali/firstmate/data/gridgo-operational-model-v2.md`. Read the contract before changing anything that touches money, states, or roles.
+
 ## Commands
 
 ```bash
@@ -32,7 +36,7 @@ Demo logins, password `demo`:
 |---|---|
 | `src/lib/api/client.ts` | Typed HTTP client — **only** place that calls `fetch` for the API |
 | `src/lib/api/types.ts` | Response/request types (no `any`) |
-| `src/lib/api/constraints.ts` | Server rules the UI can explain *before* rejection (COD cap, holds, issue window) |
+| `src/lib/api/constraints.ts` | Server rules the UI can explain *before* rejection (payment/milestone gates, holds, issue window) |
 | `src/lib/nav.ts` | **Single** role→nav structure (`ROLE_NAV`); AppShell reads this only |
 | `src/lib/auth/` | Session cookies, AuthProvider, sign-in/out |
 | `src/middleware.ts` | Role-path gate (supplier / ops / admin prefixes) |
@@ -42,8 +46,9 @@ Demo logins, password `demo`:
 | `src/components/ui/` | shadcn/ui primitives + GRIDGO-specific components |
 | `src/components/shell/` | App shell, nav rail, RoleGate, `ComingNext` placeholders |
 | `src/app/supplier/` | Supplier partner surfaces |
-| `src/app/ops/` | Operations surfaces (QA queue + overview, matching, recovery, dispatch, claims, schedule, audit) |
-| `src/app/ops/_lib/` | Ops-only pure helpers (overview buckets, matching explainers, location freshness, schedule events) — tests under `_lib/__tests__` |
+| `src/app/ops/` | Operations surfaces — overview, QA, **payment confirmations**, matching, sign-up approvals, dispatch, **pickup escalations**, **milestone payouts**, claims, recovery, schedule, settings, audit |
+| `src/app/ops/_lib/` | Ops-only pure helpers (payment queue, overview buckets, matching explainers, location freshness, schedule events, error copy) — tests under `_lib/__tests__` |
+| `src/components/orders/` | Order-shaped views: `MoneyBreakdown` (ops/super **only**), `PaymentSummary`, `MilestoneList`, `OrderMeta`, `Timeline` |
 | `src/app/admin/` | Super Admin surfaces |
 | `src/app/globals.css` | Design tokens + shadcn semantic CSS variables |
 | `components.json` | shadcn CLI config (style: `base-nova`, Base UI) |
@@ -152,7 +157,7 @@ Only add a registry primitive when a real screen uses it in the same change.
 | Added | `alert-dialog` | Destructive or irreversible confirmations in role changes, verification/suspension, claims and payout release, supplier withdrawal, and job decline. Keep `Dialog` for input tasks such as create/edit forms. |
 | Added | `sidebar` | `AppShell` desktop rail and mobile Sheet; it still renders only `navForRole(role)`. |
 | Added | `progress` | Supplier capacity shows committed units against declared daily capacity. |
-| Added | `chart` | Admin Finance compares exact order value by payment method. |
+| Added | `chart` | Admin Finance splits each order's client total into supplier earnings, commission and delivery — the reconciliation only Operations and Super Admin may see. (Its original call site, a payment-method mix, died with cash on delivery.) |
 | Added | `breadcrumb` | AppShell identifies the parent queue on nested supplier job and Operations QA workspaces. |
 | Added | `toggle-group` | Day/week schedule modes and the two-option claim hold choice. |
 | Rejected | `avatar` | The portal has no user photos or identity surface; the named account control is sufficient. |
@@ -185,14 +190,19 @@ Authoritative API docs live in the separate `gridgo-api` repo (`AGENTS.md`, `REA
 |---|---|
 | `src/lib/api/client.ts` | One typed function per endpoint |
 | `src/lib/api/types.ts` | Shared shapes (Order, User, Claim, …) |
-| `src/lib/api/constraints.ts` | COD max (`COD_MAX_MINOR` = 150_000), payout-hold helpers, issue-window check, plain-language guidance |
+| `src/lib/api/constraints.ts` | Split-payment and milestone gates, payout-hold helpers, issue-window bounds, plain-language guidance |
 | `src/lib/format.ts` | `formatPhp` / dates — money stays in **PHP minor units** through the client; format only at the edge |
 
 ### Client coverage (spine)
 
 Auth: `login`, `logout`, `me`.  
 Orders/jobs: `listOrders`, `listJobs`, `getOrder`, `createOrder`, `transitionOrder`.  
-Credits: `creditBalance`, `authorizeCredits`, `grantCredits` (super).  
+Credits: `creditBalance`, `grantCredits` (super). Credits are a **grant ledger only** — never a way to pay for an order.  
+Payments: `submitPayment` (client), `confirmPayment`, `rejectPayment` (ops/super).  
+Milestones: `releaseMilestone` (ops/super).  
+Settings: `getSettings`, `updateSettings` (ops/super).  
+Escalations: `listEscalations`, `resolveEscalation` (ops/super).  
+Files: `getFile`, `getFileDownloadUrl`.  
 Users: `listUsers`, `getUser`, `updateUserRole` (super), `setUserVerification` (ops/super).  
 Zones: `listZones`, `createZone`, `updateZone`.  
 Taxonomy: `getTaxonomy`, create/update category · material · finish.  
@@ -211,7 +221,7 @@ API returns `{ error: "snake_case" }` with meaningful HTTP status. The client th
 | Field | Meaning |
 |---|---|
 | `status` | HTTP status |
-| `code` | `error` string (e.g. `forbidden`, `payout_held`, `cod_limit`) |
+| `code` | `error` string (e.g. `forbidden`, `payout_held`, `pof_required`) |
 | `kind` | `unauthorized` · `forbidden` · `not_found` · `conflict` · `validation` · `server` · `unknown` |
 | `details` / `detail(key)` | Extra body fields (`maxMinor`, `from`, …) |
 
@@ -221,12 +231,13 @@ Use `isApiError(err)` and branch on `kind` / `code` — **never** string-match h
 
 Explain these *before* the user hits submit when the screen can know:
 
-- COD total (product + delivery) ≤ ₱1,500 → `isWithinCodLimit` / `COD_MAX_MINOR`
-- One active COD order → server `409 cod_one_active`
-- Active claim hold blocks `payout_released` → `order.payoutHold`, `claimBlocksPayout`, `409 payout_held`
+- A milestone needs a Proof of Fulfilment, and releases in order → `milestoneReleaseBlocker` (mirrors `409 pof_required` / `milestone_not_reached`)
+- An active claim hold blocks every remaining milestone → `order.payoutHold`, `claimBlocksPayout`, `409 payout_held`
+- The balance cannot be submitted before the downpayment settles → `canSubmitBalance`
+- Payment cannot be asked for before the client was told the final price → `clientWasNotifiedOfPrice`, `409 assignment_notification_required`
 - Client issues only in `issue_window_open` → `canReportIssue`
 
-Copy helpers: `PLATFORM_CONSTRAINT_COPY` in `constraints.ts`.
+Copy helpers: `PLATFORM_CONSTRAINT_COPY` in `constraints.ts`; Operations error copy in `src/app/ops/_lib/errors.ts`.
 
 ### API honesty
 
@@ -241,8 +252,15 @@ If a screen still needs a capability the demo API does not expose, show an hones
 | Role | Surface (hrefs) |
 |---|---|
 | supplier | `/supplier/jobs`, `catalogue`, `schedule`, `capacity`, `payouts` |
-| ops_admin | `/ops/overview`, `qa`, `matching`, `recovery`, `dispatch`, `claims`, `schedule`, `audit` |
-| super_admin | `/admin/overview`, `verification`, `roles`, `catalogue`, `zones`, `credits`, `finance`, `audit`, `planning` |
+| ops_admin | `/ops/overview`, `qa`, `payments`, `matching`, `approvals`, `dispatch`, `escalations`, `payouts`, `claims`, `recovery`, `schedule`, `settings`, `audit` |
+| super_admin | `/admin/overview`, `verification`, `roles`, `catalogue`, `zones`, `settings`, `credits`, `finance`, `audit`, `planning` |
+
+Two surfaces are mounted for both Operations and Super Admin from **one** implementation, so they can never drift:
+
+| Component | Mounted at |
+|---|---|
+| `src/components/approvals/SignupApprovals.tsx` | `/ops/approvals`, and the Sign-ups tab of `/admin/verification` |
+| `src/components/settings/OperationalSettings.tsx` | `/ops/settings`, `/admin/settings` |
 
 - AppShell renders `navForRole(role)` only. Do **not** maintain separate nav arrays in components.
 - Middleware + `RoleGate` still refuse another role’s URL; nav is not a security boundary.
@@ -251,6 +269,43 @@ If a screen still needs a capability the demo API does not expose, show an hones
 - When shipping a real page: replace the placeholder `page.tsx`, set `ready: true` on that nav item, keep the same `href`.
 
 Header title: `contextTitleForPath(pathname, role)` (nested job/QA workspaces have special titles).
+
+## Operational model v2 — what this portal must get right
+
+### Money, and who may see it
+
+Commission secrecy is an **authorization rule**, not a layout preference. The server strips fields per role; the portal must not undo that.
+
+| Figure | Who sees it |
+|---|---|
+| `supplierPriceMinor` | Operations, Super Admin, and the assigned supplier (its own) |
+| `commissionRatePercent` / `commissionMinor` | **Operations and Super Admin only** |
+| `subtotalMinor`, `deliveryFeeMinor`, `totalMinor`, `downpaymentMinor`, `balanceMinor` | everyone on the order |
+
+`MoneyBreakdown` is the Operations/Super Admin view and must never be imported into `src/app/supplier/**`. `src/components/orders/__tests__/money-visibility.test.ts` walks the supplier route tree and fails the build if it is, if a commission field is read there, or if cash on delivery reappears.
+
+`totalMinor` **already includes delivery** in v2. Never write `totalMinor + deliveryFeeMinor` — that was the v1 shape and it double-counts.
+
+### Payment is two installments, confirmed by hand
+
+75% downpayment then 25% balance, both digital QR transfers. The client submits a reference; Operations confirms it (`payment_authorized`) or rejects it with a client-visible reason that returns the installment to `not_submitted` so they can resubmit. Rejection reasons are written **for the client to read** — see `PAYMENT_REJECTION_REASONS` in `src/app/ops/_lib/payments.ts`.
+
+The seam is deliberately clean: a payment provider can replace the manual confirmation without redesigning the flow.
+
+### Supplier payout is four milestones
+
+Printing 50%, packaging and QC 15%, delivered 25%, retention 10% — of the **supplier's own price**, not the client total. Each releases only against a Proof of Fulfilment, and any active claim holds all of them.
+
+### Removed by the captain's decision — do not reintroduce
+
+- **Cash on delivery**, everywhere. This is a risk decision about rider cash handling, not a temporary simplification.
+- **Paying with Pilot Credits.** Balances and grants remain (`admin/credits`); `POST /credits/authorize` is `410`.
+- **The supplier proof approve / request-changes loop.** States `supplier_proof_*` and `awaiting_payment` are never accepted.
+- **Flat per-zone delivery fees.** `Zone.deliveryFeeMinor` no longer exists; distance bands in Operational settings are the only authority.
+
+### Settings the captain owns
+
+`issueWindowHours` and `deliveryFeeBands` live in configuration so they change without a release. The shipped band figures (₱25 / ₱50 / ₱75) are **Firstmate's suggestion, not the captain's prices** — the screen says so, and should keep saying so until they set real ones.
 
 ## Adding a screen
 

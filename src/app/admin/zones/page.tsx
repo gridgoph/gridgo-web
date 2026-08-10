@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
-import { adminErrorMessage, pesosToMinor } from "@/app/admin/_lib/errors";
+import { adminErrorMessage } from "@/app/admin/_lib/errors";
 import { Button } from "@/components/ui/button";
 import {
   DataTable,
@@ -25,7 +26,6 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { Switch } from "@/components/ui/switch";
 import { createZone, listZones, updateZone } from "@/lib/api/client";
 import type { Zone } from "@/lib/api/types";
-import { formatPhp } from "@/lib/format";
 
 export default function AdminZonesPage() {
   const [zones, setZones] = useState<Zone[] | null>(null);
@@ -37,7 +37,6 @@ export default function AdminZonesPage() {
   const [editing, setEditing] = useState<Zone | null | "new">(null);
   const [code, setCode] = useState("");
   const [name, setName] = useState("");
-  const [feePesos, setFeePesos] = useState("");
   const [active, setActive] = useState(true);
 
   const load = useCallback(async () => {
@@ -66,7 +65,6 @@ export default function AdminZonesPage() {
     setEditing("new");
     setCode("");
     setName("");
-    setFeePesos("150.00");
     setActive(true);
     setActionError(null);
   };
@@ -75,7 +73,6 @@ export default function AdminZonesPage() {
     setEditing(z);
     setCode(z.code);
     setName(z.name);
-    setFeePesos((z.deliveryFeeMinor / 100).toFixed(2));
     setActive(z.active);
     setActionError(null);
   };
@@ -103,19 +100,6 @@ export default function AdminZonesPage() {
         ),
       },
       {
-        id: "fee",
-        header: "Delivery fee",
-        sortValue: (z) => z.deliveryFeeMinor,
-        cell: (z) => (
-          <span
-            className="text-body text-text-primary"
-            style={{ fontFamily: "var(--font-medium)" }}
-          >
-            {formatPhp(z.deliveryFeeMinor)}
-          </span>
-        ),
-      },
-      {
         id: "active",
         header: "Status",
         sortValue: (z) => (z.active ? 1 : 0),
@@ -131,17 +115,12 @@ export default function AdminZonesPage() {
   );
 
   async function save() {
-    const feeMinor = pesosToMinor(feePesos);
     if (!name.trim()) {
-      setActionError("Name is required.");
-      return;
-    }
-    if (feeMinor === null) {
-      setActionError("Enter a valid delivery fee in pesos (e.g. 150.00).");
+      setActionError("Give the zone a name clients will recognise.");
       return;
     }
     if (editing === "new" && !code.trim()) {
-      setActionError("Zone code is required.");
+      setActionError("Give the zone a code. It is how orders refer to it.");
       return;
     }
     setBusy(true);
@@ -152,21 +131,12 @@ export default function AdminZonesPage() {
         await createZone({
           code: code.trim().toLowerCase().replace(/\s+/g, "_"),
           name: name.trim(),
-          deliveryFeeMinor: feeMinor,
           active,
         });
-        setActionOk(
-          "Zone created. The fee applies to future orders only — existing orders keep their snapshotted fee.",
-        );
+        setActionOk("Zone created. Clients can choose it on a new order.");
       } else if (editing) {
-        await updateZone(editing.id, {
-          name: name.trim(),
-          deliveryFeeMinor: feeMinor,
-          active,
-        });
-        setActionOk(
-          "Zone updated. Fee changes apply to future orders only; live orders keep the fee snapshotted at creation.",
-        );
+        await updateZone(editing.id, { name: name.trim(), active });
+        setActionOk("Zone updated.");
       }
       setEditing(null);
       await load();
@@ -197,9 +167,9 @@ export default function AdminZonesPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Delivery zones and fees. Orders snapshot the fee at creation — changing
-          a fee here never reprices live work. Only future orders pick up the
-          new amount.
+          The delivery areas a client picks from when placing an order. Zones
+          name a place and nothing more — what delivery costs comes from the
+          distance between the supplier and the address.
         </p>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => void load()}>
@@ -211,6 +181,14 @@ export default function AdminZonesPage() {
         </div>
       </div>
 
+      <p className="text-body text-text-secondary m-0 max-w-prose">
+        Delivery pricing lives in{" "}
+        <Button variant="link" nativeButton={false} render={<Link href="/admin/settings" />}>
+          Operational settings
+        </Button>
+        , as bands of distance.
+      </p>
+
       {actionOk ? (
         <p className="text-body text-success m-0" role="status">
           {actionOk}
@@ -220,19 +198,24 @@ export default function AdminZonesPage() {
       {!zones.length ? (
         <EmptyState
           title="No delivery zones"
-          body="Use Add zone above so clients can place orders with the correct delivery fee snapshot."
+          body="Add a zone so clients have somewhere to send an order to."
+          action={
+            <Button variant="secondary" onClick={openNew}>
+              Add the first zone
+            </Button>
+          }
         />
       ) : (
         <DataTable
           columns={columns}
           data={zones}
           getRowId={(z) => z.id}
-          caption="Delivery zones and fees"
+          caption="Delivery zones"
           filterPlaceholder="Filter zones…"
           defaultSortId="name"
           rowActions={(z) => (
             <Button variant="secondary" onClick={() => openEdit(z)}>
-              Edit fee
+              Edit
             </Button>
           )}
         />
@@ -253,8 +236,8 @@ export default function AdminZonesPage() {
               {editing === "new" ? "Add delivery zone" : "Edit delivery zone"}
             </DialogTitle>
             <DialogDescription>
-              Fee changes apply to future orders only. Existing orders keep the
-              delivery fee snapshotted when they were created.
+              A zone is the area a client chooses on an order. It carries no
+              price of its own.
             </DialogDescription>
           </DialogHeader>
 
@@ -269,6 +252,9 @@ export default function AdminZonesPage() {
                   placeholder="e.g. davao central"
                   autoComplete="off"
                 />
+                <FieldDescription>
+                  Set once and never changed — orders refer to it.
+                </FieldDescription>
               </Field>
             ) : editing ? (
               <p className="text-caption text-text-muted m-0">
@@ -283,20 +269,6 @@ export default function AdminZonesPage() {
                 onChange={(e) => setName(e.target.value)}
                 required
               />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="zone-fee">Delivery fee (₱)</FieldLabel>
-              <Input
-                id="zone-fee"
-                inputMode="decimal"
-                value={feePesos}
-                onChange={(e) => setFeePesos(e.target.value)}
-                placeholder="150.00"
-              />
-              <FieldDescription>
-                Stored as centavos. Future orders only — never rewrites live
-                orders.
-              </FieldDescription>
             </Field>
             <Field orientation="horizontal" className="items-center">
               <Switch

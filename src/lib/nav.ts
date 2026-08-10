@@ -26,10 +26,14 @@ export type NavIconKey =
   | "payouts"
   | "overview"
   | "qa"
+  | "payments"
+  | "approvals"
   | "matching"
   | "recovery"
   | "dispatch"
+  | "escalations"
   | "claims"
+  | "settings"
   | "audit"
   | "verification"
   | "roles"
@@ -117,9 +121,8 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Overview",
       title: "Operations overview",
       icon: "overview",
-      ready: false,
-      placeholderBody:
-        "Ops snapshot across queues. Compose from listOrders, listClaims, listIssues, and listDispatchOffers — no single dashboard endpoint.",
+      ready: true,
+      placeholderBody: "",
     },
     {
       id: "ops-qa",
@@ -131,24 +134,31 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       placeholderBody: "",
     },
     {
+      id: "ops-payments",
+      href: "/ops/payments",
+      label: "Payments",
+      title: "Payment confirmations",
+      icon: "payments",
+      ready: true,
+      placeholderBody: "",
+    },
+    {
       id: "ops-matching",
       href: "/ops/matching",
       label: "Matching",
       title: "Supplier matching",
       icon: "matching",
-      ready: false,
-      placeholderBody:
-        "Explainable eligibility for assignment. Use getEligibleSuppliers then transitionOrder to supplier_assigned with supplierId (optional matchingServiceIds).",
+      ready: true,
+      placeholderBody: "",
     },
     {
-      id: "ops-recovery",
-      href: "/ops/recovery",
-      label: "Recovery",
-      title: "Recovery",
-      icon: "recovery",
-      ready: false,
-      placeholderBody:
-        "Stuck or exception paths (declined, failed delivery, open issues). Compose listOrders + listIssues + listClaims; transitions via transitionOrder.",
+      id: "ops-approvals",
+      href: "/ops/approvals",
+      label: "Sign-up approvals",
+      title: "Sign-up approvals",
+      icon: "approvals",
+      ready: true,
+      placeholderBody: "",
     },
     {
       id: "ops-dispatch",
@@ -156,9 +166,26 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Dispatch",
       title: "Dispatch",
       icon: "dispatch",
-      ready: false,
-      placeholderBody:
-        "Open delivery offers and live location. Use listDispatchOffers and getDispatchLocation. Rider accept/proof stay on the rider app.",
+      ready: true,
+      placeholderBody: "",
+    },
+    {
+      id: "ops-escalations",
+      href: "/ops/escalations",
+      label: "Escalations",
+      title: "Pickup escalations",
+      icon: "escalations",
+      ready: true,
+      placeholderBody: "",
+    },
+    {
+      id: "ops-payouts",
+      href: "/ops/payouts",
+      label: "Supplier payouts",
+      title: "Supplier payouts",
+      icon: "payouts",
+      ready: true,
+      placeholderBody: "",
     },
     {
       id: "ops-claims",
@@ -166,9 +193,17 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Claims & holds",
       title: "Claims & payout holds",
       icon: "claims",
-      ready: false,
-      placeholderBody:
-        "Raise claims, hold and release payout. Use listClaims, createClaim, holdClaim, releaseClaim. Active hold blocks payout_released (409 payout_held).",
+      ready: true,
+      placeholderBody: "",
+    },
+    {
+      id: "ops-recovery",
+      href: "/ops/recovery",
+      label: "Recovery",
+      title: "Recovery",
+      icon: "recovery",
+      ready: true,
+      placeholderBody: "",
     },
     {
       id: "ops-schedule",
@@ -176,9 +211,17 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Schedule",
       title: "Schedule",
       icon: "schedule",
-      ready: false,
-      placeholderBody:
-        "Cross-order promised dates and dispatch windows from listOrders. No dedicated schedule endpoint on the demo API.",
+      ready: true,
+      placeholderBody: "",
+    },
+    {
+      id: "ops-settings",
+      href: "/ops/settings",
+      label: "Operational settings",
+      title: "Operational settings",
+      icon: "settings",
+      ready: true,
+      placeholderBody: "",
     },
     {
       id: "ops-audit",
@@ -186,9 +229,8 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Audit",
       title: "Audit log",
       icon: "audit",
-      ready: false,
-      placeholderBody:
-        "Platform audit trail (roles, grants, verification, claims, taxonomy). Use listAudit with filters. Separate from per-order timeline.",
+      ready: true,
+      placeholderBody: "",
     },
   ],
 
@@ -205,8 +247,8 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
     {
       id: "admin-verification",
       href: "/admin/verification",
-      label: "Verification",
-      title: "Verification",
+      label: "Accreditation",
+      title: "Accreditation",
       icon: "verification",
       ready: true,
       placeholderBody: "",
@@ -232,9 +274,18 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
     {
       id: "admin-zones",
       href: "/admin/zones",
-      label: "Zones & fees",
-      title: "Zones & fees",
+      label: "Delivery zones",
+      title: "Delivery zones",
       icon: "zones",
+      ready: true,
+      placeholderBody: "",
+    },
+    {
+      id: "admin-settings",
+      href: "/admin/settings",
+      label: "Operational settings",
+      title: "Operational settings",
+      icon: "settings",
       ready: true,
       placeholderBody: "",
     },
@@ -311,6 +362,8 @@ export function contextTitleForPath(
   // Nested workspaces that share a list parent
   if (pathname.startsWith("/supplier/jobs/")) return "Order workspace";
   if (pathname.startsWith("/ops/qa/")) return "QA workspace";
+  if (pathname.startsWith("/ops/payments/")) return "Payment review";
+  if (pathname.startsWith("/ops/payouts/")) return "Payout review";
 
   const item = navItemForPath(pathname, role);
   if (item) return item.title;

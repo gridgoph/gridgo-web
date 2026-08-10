@@ -113,12 +113,14 @@ export default function SupplierJobsPage() {
         ),
       },
       {
-        id: "total",
-        header: "Total",
-        sortValue: (job) => job.totalMinor + job.deliveryFeeMinor,
+        id: "earnings",
+        header: "You earn",
+        sortValue: (job) => job.supplierPriceMinor ?? -1,
         cell: (job) => (
-          <span className="text-body text-text-primary whitespace-nowrap">
-            {formatPhp(job.totalMinor + job.deliveryFeeMinor)}
+          <span className="text-body text-text-primary tabular-nums whitespace-nowrap">
+            {job.supplierPriceMinor !== undefined
+              ? formatPhp(job.supplierPriceMinor)
+              : "Set on accept"}
           </span>
         ),
       },

@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import { ApiError, isApiError } from "@/lib/api/client";
 import {
+  allMilestonesReleased,
   canReportIssue,
   claimBlocksPayout,
-  COD_MAX_MINOR,
-  isWithinCodLimit,
+  COMMISSION_PERCENT,
+  DOWNPAYMENT_PERCENT,
+  milestoneReleaseBlocker,
   orderHasPayoutHold,
+  paymentAwaitsConfirmation,
+  paymentIsSettled,
   PLATFORM_CONSTRAINT_COPY,
 } from "@/lib/api/constraints";
 
@@ -43,10 +47,20 @@ describe("ApiError", () => {
 });
 
 describe("platform constraints", () => {
-  it("encodes the COD cap in minor units", () => {
-    expect(COD_MAX_MINOR).toBe(150_000);
-    expect(isWithinCodLimit(100_000, 50_000)).toBe(true);
-    expect(isWithinCodLimit(100_001, 50_000)).toBe(false);
+  it("encodes the split payment and commission shares", () => {
+    expect(DOWNPAYMENT_PERCENT).toBe(75);
+    expect(COMMISSION_PERCENT).toBe(10);
+  });
+
+  it("reads an installment by where it stands, not by its wording", () => {
+    expect(paymentAwaitsConfirmation({ status: "pending_confirmation" })).toBe(
+      true,
+    );
+    expect(paymentAwaitsConfirmation({ status: "not_submitted" })).toBe(false);
+    expect(paymentIsSettled({ status: "confirmed" })).toBe(true);
+    // Orders migrated from the pre-v2 model are just as paid.
+    expect(paymentIsSettled({ status: "legacy_confirmed" })).toBe(true);
+    expect(paymentIsSettled({ status: "pending_confirmation" })).toBe(false);
   });
 
   it("detects payout hold and issue window", () => {
@@ -59,6 +73,37 @@ describe("platform constraints", () => {
 
   it("provides pre-hit guidance for known constraints", () => {
     expect(PLATFORM_CONSTRAINT_COPY.payout_held.guidance).toMatch(/hold/i);
-    expect(PLATFORM_CONSTRAINT_COPY.cod_limit.guidance).toMatch(/1,500/);
+    expect(PLATFORM_CONSTRAINT_COPY.pof_required.guidance).toMatch(/proof/i);
+  });
+
+  it("explains a blocked milestone before the click rather than after it", () => {
+    const held = milestoneReleaseBlocker(
+      { payoutHold: true, state: "completed" },
+      { code: "printing", status: "pof_attached", pofFileIds: ["f1"] },
+    );
+    expect(held).toMatch(/claim/i);
+
+    const noProof = milestoneReleaseBlocker(
+      { payoutHold: false, state: "production" },
+      { code: "printing", status: "pending_pof", pofFileIds: [] },
+    );
+    expect(noProof).toMatch(/proof/i);
+
+    const clear = milestoneReleaseBlocker(
+      { payoutHold: false, state: "production" },
+      { code: "printing", status: "pof_attached", pofFileIds: ["f1"] },
+    );
+    expect(clear).toBeNull();
+  });
+
+  it("only clears payout close-out when every milestone has released", () => {
+    expect(
+      allMilestonesReleased([{ status: "released" }, { status: "released" }]),
+    ).toBe(true);
+    expect(
+      allMilestonesReleased([{ status: "released" }, { status: "pof_attached" }]),
+    ).toBe(false);
+    expect(allMilestonesReleased([])).toBe(false);
+    expect(allMilestonesReleased(undefined)).toBe(false);
   });
 });

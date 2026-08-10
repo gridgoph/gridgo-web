@@ -4,13 +4,22 @@ import {
   actionsForJob,
   needsSupplierAction,
   primaryAction,
+  supplierWaitingOn,
 } from "@/lib/supplier-actions";
 import { presentOrderState } from "@/lib/order-state";
 
 describe("presentOrderState", () => {
   it("maps supplier states to plain language without snake_case", () => {
     expect(presentOrderState("supplier_assigned").label).toBe("Awaiting supplier decision");
-    expect(presentOrderState("payment_authorized").label).toBe("Paid — start production");
+    expect(presentOrderState("payment_authorized").label).toBe(
+      "Downpayment confirmed",
+    );
+    expect(presentOrderState("awaiting_downpayment").label).toBe(
+      "Awaiting downpayment",
+    );
+    expect(presentOrderState("downpayment_review").label).toBe(
+      "Downpayment needs confirming",
+    );
     expect(presentOrderState("ready_for_dispatch").label).toBe("Ready for dispatch");
     expect(presentOrderState("supplier_assigned").label).not.toMatch(/_/);
   });
@@ -31,8 +40,30 @@ describe("actionsForJob", () => {
     expect(primaryAction("supplier_assigned")?.targetState).toBe("supplier_accepted");
   });
 
+  it("makes accepting the step that carries the supplier's price", () => {
+    expect(primaryAction("supplier_assigned")?.needsPrice).toBe(true);
+  });
+
+  it("leaves payment to the client and Operations", () => {
+    // The supplier no longer asks for payment; the client is told the price
+    // automatically on acceptance and Operations confirms the transfer.
+    expect(actionsForJob("awaiting_downpayment")).toEqual([]);
+    expect(actionsForJob("downpayment_review")).toEqual([]);
+    expect(supplierWaitingOn("downpayment_review")).toMatch(/Operations/);
+  });
+
+  it("has no actions left in the retired supplier-proof loop", () => {
+    for (const state of [
+      "supplier_proof_review",
+      "supplier_proof_changes_requested",
+      "supplier_proof_approved",
+      "awaiting_payment",
+    ]) {
+      expect(actionsForJob(state)).toEqual([]);
+    }
+  });
+
   it("offers a single primary production action chain", () => {
-    expect(primaryAction("supplier_accepted")?.targetState).toBe("awaiting_payment");
     expect(primaryAction("payment_authorized")?.targetState).toBe("production");
     expect(primaryAction("production")?.targetState).toBe("supplier_self_qc");
     expect(primaryAction("supplier_self_qc")?.targetState).toBe("ready_for_dispatch");

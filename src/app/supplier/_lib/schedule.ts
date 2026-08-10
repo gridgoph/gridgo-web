@@ -7,8 +7,8 @@ import type { Order } from "@/lib/api/types";
 
 /** Jobs the shop has accepted and should plan production around. */
 export const SCHEDULE_STATES = [
-  "supplier_accepted",
-  "awaiting_payment",
+  "awaiting_downpayment",
+  "downpayment_review",
   "payment_authorized",
   "production",
   "supplier_self_qc",

@@ -44,9 +44,9 @@ export function presentVerification(
 ): Presentation {
   switch (status) {
     case "approved":
-      return { label: "Verified", tone: "success", icon: "circle-check" };
+      return { label: "Approved", tone: "success", icon: "circle-check" };
     case "pending":
-      return { label: "Pending review", tone: "warning", icon: "clock" };
+      return { label: "Waiting for a decision", tone: "warning", icon: "clock" };
     case "suspended":
       return { label: "Suspended", tone: "error", icon: "triangle-alert" };
     case "rejected":
@@ -55,9 +55,9 @@ export function presentVerification(
     case null:
     case undefined:
     case "":
-      return { label: "Not verified", tone: "neutral", icon: "square-pen" };
+      return { label: "Not approved", tone: "neutral", icon: "square-pen" };
     default:
-      return { label: "Verification unknown", tone: "neutral", icon: "clock" };
+      return { label: "Approval unknown", tone: "neutral", icon: "clock" };
   }
 }
 
@@ -82,16 +82,16 @@ export function verificationActions(
       return [
         {
           status: "approved",
-          label: "Verify",
+          label: "Approve",
           consequence:
-            "Marks this account as accredited. Verified suppliers can offer live services for matching; verified riders can receive dispatch offers.",
+            "Lets this account start working. An approved supplier can be matched to orders; an approved rider can accept dispatch offers. Neither can do anything until this decision is made.",
         },
         {
           status: "rejected",
           label: "Reject",
           danger: true,
           consequence:
-            "Rejects accreditation. The account stays signed in but cannot pass matching or dispatch eligibility until re-verified.",
+            "Turns this sign-up down. The account can still sign in but will never be offered work. Give a reason — it is the only thing they have to go on.",
         },
       ];
     case "approved":
@@ -110,7 +110,7 @@ export function verificationActions(
           status: "approved",
           label: "Reinstate",
           consequence:
-            "Restores verified status. Live services become eligible for new matching again; existing orders were never disrupted.",
+            "Restores approved status. Live services become eligible for new matching again; existing orders were never disrupted.",
         },
       ];
     case "rejected":
@@ -121,23 +121,23 @@ export function verificationActions(
       return [
         {
           status: "pending",
-          label: "Mark pending",
+          label: "Move to the queue",
           consequence:
-            "Places the account in the review queue so Super Admin or Operations can decide next.",
+            "Places the account back in the sign-up queue so Operations or Super Admin can decide next.",
         },
         {
           status: "approved",
-          label: "Verify",
+          label: "Approve",
           consequence:
-            "Marks this account as accredited without a separate pending step.",
+            "Lets this account start working straight away, without a separate queue step.",
         },
       ];
     default:
       return [
         {
           status: "pending",
-          label: "Mark pending",
-          consequence: "Places the account in the review queue.",
+          label: "Move to the queue",
+          consequence: "Places the account back in the sign-up queue.",
         },
       ];
   }
@@ -201,37 +201,36 @@ export function roleChangeConsequence(
   return parts.join(" ");
 }
 
+/**
+ * The legacy roll-up summary on an order. `Order.payments` is the authoritative
+ * split — prefer `presentPaymentProgress` from `@/lib/order-state` on screens
+ * that show a live order.
+ */
 export function presentPaymentStatus(status: string | null | undefined): Presentation {
   switch (status) {
+    case "downpayment_pending":
+      return {
+        label: "Downpayment to confirm",
+        tone: "warning",
+        icon: "triangle-alert",
+      };
+    case "downpayment_confirmed":
     case "authorized":
-      return { label: "Authorised", tone: "info", icon: "circle-check" };
-    case "collected":
-      return { label: "Collected", tone: "success", icon: "circle-check" };
+      return { label: "Downpayment in", tone: "info", icon: "circle-check" };
+    case "balance_pending":
+      return {
+        label: "Balance to confirm",
+        tone: "warning",
+        icon: "triangle-alert",
+      };
+    case "paid":
+      return { label: "Paid in full", tone: "success", icon: "circle-check" };
     case "unpaid":
-      return { label: "Unpaid", tone: "warning", icon: "clock" };
-    case "failed":
-      return { label: "Payment failed", tone: "error", icon: "circle-x" };
+      return { label: "Nothing paid yet", tone: "warning", icon: "clock" };
     case "refunded":
       return { label: "Refunded", tone: "neutral", icon: "circle-x" };
     default:
       return { label: "Payment unknown", tone: "neutral", icon: "clock" };
-  }
-}
-
-export function presentPaymentMethod(
-  method: string | null | undefined,
-): string {
-  switch (method) {
-    case "cod":
-      return "Cash on delivery";
-    case "pilot_credit":
-      return "Pilot Credits";
-    case null:
-    case undefined:
-    case "":
-      return "Not chosen";
-    default:
-      return "Other method";
   }
 }
 

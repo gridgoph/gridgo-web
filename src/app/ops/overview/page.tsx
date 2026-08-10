@@ -17,8 +17,10 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import {
   ApiError,
   listClaims,
+  listEscalations,
   listIssues,
   listOrders,
+  listUsers,
 } from "@/lib/api/client";
 import type { Claim, Issue, Order } from "@/lib/api/types";
 
@@ -26,6 +28,9 @@ type LoadState = {
   orders: Order[];
   claims: Claim[];
   issues: Issue[];
+  /** Suppliers and riders who cannot be given work until someone decides. */
+  pendingSignups: number;
+  openEscalations: number;
 };
 
 export default function OpsOverviewPage() {
@@ -37,12 +42,24 @@ export default function OpsOverviewPage() {
     setLoading(true);
     setError(null);
     try {
-      const [orders, claims, issues] = await Promise.all([
-        listOrders(),
-        listClaims(),
-        listIssues(),
-      ]);
-      setData({ orders, claims, issues });
+      const [orders, claims, issues, escalations, suppliers, riders] =
+        await Promise.all([
+          listOrders(),
+          listClaims(),
+          listIssues(),
+          listEscalations({ status: "open" }),
+          listUsers("supplier"),
+          listUsers("rider"),
+        ]);
+      setData({
+        orders,
+        claims,
+        issues,
+        pendingSignups: [...suppliers, ...riders].filter(
+          (u) => u.verificationStatus === "pending",
+        ).length,
+        openEscalations: escalations.length,
+      });
     } catch (err) {
       setData(null);
       if (err instanceof ApiError) {
@@ -66,7 +83,16 @@ export default function OpsOverviewPage() {
   const buckets = useMemo(
     () =>
       data
-        ? buildOverviewBuckets(data.orders, data.claims, data.issues)
+        ? buildOverviewBuckets(
+            data.orders,
+            data.claims,
+            data.issues,
+            Date.now(),
+            {
+              pendingSignups: data.pendingSignups,
+              openEscalations: data.openEscalations,
+            },
+          )
         : [],
     [data],
   );
@@ -74,7 +100,13 @@ export default function OpsOverviewPage() {
   const next = useMemo(
     () =>
       data
-        ? pickOverviewNextAction(data.orders, data.claims, data.issues)
+        ? pickOverviewNextAction(
+            data.orders,
+            data.claims,
+            data.issues,
+            Date.now(),
+            { openEscalations: data.openEscalations },
+          )
         : null,
     [data],
   );

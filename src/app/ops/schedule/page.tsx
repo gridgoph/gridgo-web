@@ -40,7 +40,7 @@ function kindTone(
     case "delivery":
     case "pickup":
       return "info";
-    case "cash_reconciliation":
+    case "payment_confirmation":
       return "warning";
     default:
       return "neutral";

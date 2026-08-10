@@ -6,7 +6,26 @@ import {
   isPayoutRelevant,
   presentSettlement,
 } from "./payouts";
-import type { Issue, Order } from "@/lib/api/types";
+import type { Issue, Order, PayoutMilestone } from "@/lib/api/types";
+
+/** The four milestones as the server sends them to a supplier. */
+function milestones(
+  overrides: Partial<Record<string, PayoutMilestone["status"]>> = {},
+): PayoutMilestone[] {
+  const shares: [string, number, number][] = [
+    ["printing", 50, 50000],
+    ["packaging_qc", 15, 15000],
+    ["delivered", 25, 25000],
+    ["retention", 10, 10000],
+  ];
+  return shares.map(([code, sharePercent, amountMinor]) => ({
+    code,
+    sharePercent,
+    amountMinor,
+    status: overrides[code] ?? "pending_pof",
+    pofFileIds: [],
+  }));
+}
 
 function job(
   partial: Partial<Order> & Pick<Order, "id" | "state" | "totalMinor">,
@@ -26,7 +45,6 @@ function job(
     deliveryFeeMinor: 15000,
     paymentMethod: null,
     paymentStatus: "authorized",
-    codEligible: false,
     promisedDate: null,
     artworkName: null,
     createdAt: "2026-01-01T00:00:00Z",
@@ -37,10 +55,12 @@ function job(
 }
 
 describe("isPayoutRelevant", () => {
-  it("includes completed path only", () => {
+  it("starts at production, because the first milestone is earned there", () => {
+    expect(isPayoutRelevant("production")).toBe(true);
     expect(isPayoutRelevant("completed")).toBe(true);
     expect(isPayoutRelevant("payout_released")).toBe(true);
-    expect(isPayoutRelevant("production")).toBe(false);
+    expect(isPayoutRelevant("supplier_assigned")).toBe(false);
+    expect(isPayoutRelevant("awaiting_downpayment")).toBe(false);
   });
 });
 
@@ -52,11 +72,7 @@ describe("presentSettlement", () => {
       "completed",
       "payout_released",
     ]) {
-      const s = presentSettlement({
-        state,
-        paymentStatus: "authorized",
-        payoutHold: false,
-      });
+      const s = presentSettlement({ state, payoutHold: false });
       expect(s.label.toLowerCase()).not.toContain("escrow");
       expect(s.detail.toLowerCase()).not.toContain("escrow");
       expect(s.label.toLowerCase()).not.toMatch(/_/);
@@ -66,32 +82,66 @@ describe("presentSettlement", () => {
   it("flags hold above state", () => {
     const s = presentSettlement({
       state: "completed",
-      paymentStatus: "collected",
       payoutHold: true,
+      payoutMilestones: milestones({ printing: "released" }),
     });
     expect(s.label).toMatch(/hold/i);
     expect(s.tone).toBe("warning");
   });
 
-  it("uses protected payment language on release", () => {
-    const s = presentSettlement({
-      state: "payout_released",
-      paymentStatus: "collected",
+  it("counts milestones rather than announcing a single payout", () => {
+    const part = presentSettlement({
+      state: "issue_window_open",
       payoutHold: false,
+      payoutMilestones: milestones({
+        printing: "released",
+        packaging_qc: "released",
+      }),
     });
-    expect(s.detail).toMatch(/Protected payment/i);
+    expect(part.label).toBe("2 of 4 milestones paid");
+
+    const all = presentSettlement({
+      state: "payout_released",
+      payoutHold: false,
+      payoutMilestones: milestones({
+        printing: "released",
+        packaging_qc: "released",
+        delivered: "released",
+        retention: "released",
+      }),
+    });
+    expect(all.label).toBe("Paid in full");
+    expect(all.tone).toBe("success");
   });
 });
 
 describe("buildPayoutRows", () => {
-  it("uses product total as gross and leaves commission/net unavailable", () => {
+  it("splits milestone money into released and still owed", () => {
     const rows = buildPayoutRows([
-      job({ id: "1", state: "completed", totalMinor: 45000 }),
+      job({
+        id: "1",
+        state: "completed",
+        totalMinor: 112500,
+        supplierPriceMinor: 100000,
+        payoutMilestones: milestones({
+          printing: "released",
+          packaging_qc: "released",
+        }),
+      }),
     ]);
     expect(rows).toHaveLength(1);
-    expect(rows[0].grossMinor).toBe(45000);
-    expect(rows[0].commissionMinor).toBeNull();
-    expect(rows[0].netMinor).toBeNull();
+    expect(rows[0].earnsMinor).toBe(100000);
+    expect(rows[0].releasedMinor).toBe(65000);
+    expect(rows[0].outstandingMinor).toBe(35000);
+  });
+
+  it("says unavailable rather than under-reporting a withheld amount", () => {
+    const withheld = milestones();
+    delete withheld[0].amountMinor;
+    const rows = buildPayoutRows([
+      job({ id: "1", state: "production", totalMinor: 1000, payoutMilestones: withheld }),
+    ]);
+    expect(rows[0].outstandingMinor).toBeNull();
   });
 
   it("includes hold jobs and surfaces issue description as hold reason", () => {
@@ -126,9 +176,9 @@ describe("buildPayoutRows", () => {
     expect(rows[0].holdReason).toContain("colours washed out");
   });
 
-  it("excludes pure production jobs without hold", () => {
+  it("excludes jobs that have not reached production and carry no hold", () => {
     const rows = buildPayoutRows([
-      job({ id: "1", state: "production", totalMinor: 1000 }),
+      job({ id: "1", state: "awaiting_downpayment", totalMinor: 1000 }),
     ]);
     expect(rows).toHaveLength(0);
   });

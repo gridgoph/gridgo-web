@@ -374,8 +374,9 @@ export default function SupplierCataloguePage() {
               title="No service lines yet"
               body="Add a capability from the platform taxonomy so Operations can match jobs to your shop."
               action={
+                // Secondary: the page already carries its one yellow CTA above.
                 <Button
-                  variant="primary"
+                  variant="secondary"
                   onClick={() => {
                     setFormMode("create");
                     setEditing(null);

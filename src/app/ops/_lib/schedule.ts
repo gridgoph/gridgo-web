@@ -22,7 +22,7 @@ export type ScheduleKind =
   | "pickup"
   | "delivery"
   | "recovery"
-  | "cash_reconciliation"
+  | "payment_confirmation"
   | "payout_hold";
 
 export type ScheduleEvent = {
@@ -47,7 +47,7 @@ export const SCHEDULE_KIND_LABEL: Record<ScheduleKind, string> = {
   pickup: "Pickup",
   delivery: "Delivery",
   recovery: "Recovery",
-  cash_reconciliation: "Cash reconciliation",
+  payment_confirmation: "Payment to confirm",
   payout_hold: "Payout hold",
 };
 
@@ -62,7 +62,8 @@ const PRODUCTION_STATES = new Set([
 const PICKUP_STATES = new Set(["ready_for_dispatch", "rider_assigned"]);
 const DELIVERY_STATES = new Set(["picked_up", "out_for_delivery"]);
 const RECOVERY_STATES = new Set(["client_correction", "issue_window_open"]);
-const CASH_STATES = new Set(["delivered", "issue_window_open", "completed"]);
+/** Cash on delivery is gone; what needs attention now is a transfer to confirm. */
+const PAYMENT_REVIEW_STATES = new Set(["downpayment_review"]);
 
 function safeIso(value: string | null | undefined, fallback: string): string {
   if (!value) return fallback;
@@ -190,20 +191,23 @@ export function buildScheduleEvents(
       });
     }
 
-    if (
-      CASH_STATES.has(order.state) &&
-      order.paymentMethod === "cod" &&
-      order.paymentStatus !== "reconciled"
-    ) {
+    const pendingInstallment = (["downpayment", "balance"] as const).find(
+      (code) => order.payments?.[code].status === "pending_confirmation",
+    );
+    if (pendingInstallment || PAYMENT_REVIEW_STATES.has(order.state)) {
+      const code = pendingInstallment ?? "downpayment";
       events.push({
-        id: `${order.id}:cash`,
-        kind: "cash_reconciliation",
-        title: "Cash reconciliation",
-        at: anchor,
+        id: `${order.id}:payment`,
+        kind: "payment_confirmation",
+        title: "Payment to confirm",
+        at: order.payments?.[code].submittedAt || anchor,
         orderId: order.id,
         orderTitle: order.title,
-        href: `/ops/qa/${order.id}`,
-        detail: "COD collection needs reconciliation",
+        href: `/ops/payments/${order.id}?installment=${code}`,
+        detail:
+          code === "downpayment"
+            ? "The client's downpayment is waiting on Operations"
+            : "The client's balance is waiting on Operations",
       });
     }
 

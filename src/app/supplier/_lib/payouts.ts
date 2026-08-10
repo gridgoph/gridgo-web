@@ -1,13 +1,23 @@
 /**
- * Protected-payment (never "escrow") presentation for completed / near-complete jobs.
- * Demo ledger does not return commission or net — those stay unavailable.
+ * What a supplier is owed, and where each part of it has got to.
+ *
+ * A supplier is paid in four milestones against its own asking price, each one
+ * released by Operations only after a Proof of Fulfilment. The server shows a
+ * supplier its own price and its own milestone amounts — never GRIDGO's
+ * commission, which this module must never try to derive either.
  */
 
-import type { Issue, Order } from "@/lib/api/types";
+import type { Issue, Order, PayoutMilestone } from "@/lib/api/types";
 import type { StatusIconName, StatusTone } from "@/lib/order-state";
 
-/** States where protected payment / settlement is meaningful to the supplier. */
+/** States where a milestone can already have been earned. */
 export const PAYOUT_RELEVANT_STATES = [
+  "production",
+  "supplier_self_qc",
+  "ready_for_dispatch",
+  "rider_assigned",
+  "picked_up",
+  "out_for_delivery",
   "delivered",
   "issue_window_open",
   "completed",
@@ -26,83 +36,101 @@ export type SettlementPresentation = {
 };
 
 /**
- * Settlement posture from order state + payment flags + hold.
- * Does not invent ledger amounts.
+ * Where this order's payout stands overall, from its milestones and any hold.
+ * Never invents an amount the server did not send.
  */
 export function presentSettlement(
-  order: Pick<Order, "state" | "paymentStatus" | "payoutHold">,
+  order: Pick<Order, "state" | "payoutHold" | "payoutMilestones">,
 ): SettlementPresentation {
+  const milestones = order.payoutMilestones ?? [];
+  const released = milestones.filter((m) => m.status === "released").length;
+  const total = milestones.length;
+
   if (order.payoutHold) {
     return {
-      label: "Protected payment on hold",
+      label: "Payout on hold",
       tone: "warning",
       icon: "triangle-alert",
       detail:
-        "An open claim or issue holds release. Protected payment stays frozen until Operations releases the hold.",
+        "A claim holds this order. Nothing further releases until Operations lifts it — the milestones you have already been paid are unaffected.",
+    };
+  }
+
+  if (total && released === total) {
+    return {
+      label: "Paid in full",
+      tone: "success",
+      icon: "circle-check",
+      detail: "All four milestones have been released to you.",
+    };
+  }
+
+  if (released > 0) {
+    return {
+      label: `${released} of ${total} milestones paid`,
+      tone: "info",
+      icon: "clock",
+      detail:
+        "The rest release as the job reaches each stage and its proof is reviewed.",
     };
   }
 
   switch (order.state) {
-    case "payout_released":
-      return {
-        label: "Released",
-        tone: "success",
-        icon: "circle-check",
-        detail: "Protected payment has been released to you.",
-      };
-    case "completed":
-      return {
-        label: "Ready for release",
-        tone: "info",
-        icon: "clock",
-        detail:
-          "Order completed. Operations can release protected payment when no hold is active.",
-      };
     case "issue_window_open":
       return {
-        label: "Issue window open",
+        label: "Waiting on the issue window",
         tone: "warning",
         icon: "clock",
         detail:
-          "Client may still report an issue. Protected payment stays held until the window closes and any claims clear.",
+          "Delivered. The final 10% retention releases when the client's issue window closes with nothing raised.",
       };
-    case "delivered":
+    case "production":
+    case "supplier_self_qc":
       return {
-        label: "Delivered — settling",
-        tone: "info",
+        label: "Nothing released yet",
+        tone: "neutral",
         icon: "clock",
-        detail: "Delivery confirmed. Settlement continues through the issue window.",
+        detail:
+          "Upload a Proof of Fulfilment for printing, and Operations can release the first 50%.",
       };
     default:
       return {
-        label: "Not yet settling",
+        label: "Nothing released yet",
         tone: "neutral",
         icon: "clock",
-        detail: "Protected payment tracking starts after delivery.",
+        detail: "Milestones begin releasing once production starts.",
       };
   }
 }
 
 export type PayoutRow = {
   order: Order;
-  /** Product total in minor units (supplier gross before commission). */
-  grossMinor: number;
-  /**
-   * GRIDGO commission — demo API does not expose a ledger figure.
-   * Always null here; UI must label unavailable.
-   */
-  commissionMinor: number | null;
-  /**
-   * Net to supplier — unavailable without commission.
-   */
-  netMinor: number | null;
+  /** The supplier's own asking price, when the server sent it. */
+  earnsMinor: number | null;
+  /** Milestone amounts already released. */
+  releasedMinor: number | null;
+  /** Milestone amounts not yet released. */
+  outstandingMinor: number | null;
+  milestones: PayoutMilestone[];
   settlement: SettlementPresentation;
   holdReason: string | null;
 };
 
+function sumMilestones(
+  milestones: PayoutMilestone[],
+  keep: (m: PayoutMilestone) => boolean,
+): number | null {
+  const relevant = milestones.filter(keep);
+  if (!relevant.length) return 0;
+  // A milestone without an amount means the server withheld it; say so rather
+  // than reporting a total that quietly leaves money out.
+  if (relevant.some((m) => m.amountMinor === undefined)) return null;
+  return relevant.reduce((total, m) => total + (m.amountMinor ?? 0), 0);
+}
+
 /**
- * Build payout rows from jobs + optional issues (claims list is ops-only for suppliers).
- * Gross uses product total only (delivery fee is not supplier production value).
+ * Build payout rows from the supplier's own jobs, plus any issues visible to
+ * them. The claims list is Operations-only, so a hold arrives as a flag.
  */
 export function buildPayoutRows(
   jobs: Order[],
@@ -127,21 +155,23 @@ export function buildPayoutRows(
       );
       let holdReason: string | null = null;
       if (order.payoutHold) {
-        if (openOrHoldIssue?.description) {
-          holdReason = openOrHoldIssue.description;
-        } else if (openOrHoldIssue?.resolution) {
-          holdReason = openOrHoldIssue.resolution;
-        } else {
-          holdReason =
-            "A claim hold is active on this order. Detail is limited on the supplier view.";
-        }
+        holdReason =
+          openOrHoldIssue?.description ||
+          openOrHoldIssue?.resolution ||
+          "A claim hold is active on this order. Operations can tell you more.";
       }
+
+      const milestones = order.payoutMilestones ?? [];
 
       return {
         order,
-        grossMinor: order.totalMinor,
-        commissionMinor: null as number | null,
-        netMinor: null as number | null,
+        earnsMinor: order.supplierPriceMinor ?? null,
+        releasedMinor: sumMilestones(milestones, (m) => m.status === "released"),
+        outstandingMinor: sumMilestones(
+          milestones,
+          (m) => m.status !== "released",
+        ),
+        milestones,
         settlement: presentSettlement(order),
         holdReason,
       };
@@ -154,7 +184,7 @@ export function buildPayoutRows(
   });
 }
 
-/** Display money or honest unavailable. */
+/** Display money, or say plainly that the figure is not available. */
 export function formatMoneyOrUnavailable(
   minor: number | null | undefined,
   formatPhp: (n: number) => string,

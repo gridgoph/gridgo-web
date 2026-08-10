@@ -24,11 +24,16 @@ describe("ROLE_NAV", () => {
     expect(hrefs).toEqual([
       "/ops/overview",
       "/ops/qa",
+      "/ops/payments",
       "/ops/matching",
-      "/ops/recovery",
+      "/ops/approvals",
       "/ops/dispatch",
+      "/ops/escalations",
+      "/ops/payouts",
       "/ops/claims",
+      "/ops/recovery",
       "/ops/schedule",
+      "/ops/settings",
       "/ops/audit",
     ]);
   });
@@ -41,6 +46,7 @@ describe("ROLE_NAV", () => {
       "/admin/roles",
       "/admin/catalogue",
       "/admin/zones",
+      "/admin/settings",
       "/admin/credits",
       "/admin/finance",
       "/admin/audit",
@@ -62,9 +68,22 @@ describe("ROLE_NAV", () => {
       "/admin/overview",
       "/admin/planning",
       "/admin/roles",
+      "/admin/settings",
       "/admin/verification",
       "/admin/zones",
+      "/ops/approvals",
+      "/ops/audit",
+      "/ops/claims",
+      "/ops/dispatch",
+      "/ops/escalations",
+      "/ops/matching",
+      "/ops/overview",
+      "/ops/payments",
+      "/ops/payouts",
       "/ops/qa",
+      "/ops/recovery",
+      "/ops/schedule",
+      "/ops/settings",
       "/supplier/capacity",
       "/supplier/catalogue",
       "/supplier/jobs",
@@ -102,7 +121,10 @@ describe("nav helpers", () => {
       "QA workspace",
     );
     expect(contextTitleForPath("/admin/zones", "super_admin")).toBe(
-      "Zones & fees",
+      "Delivery zones",
+    );
+    expect(contextTitleForPath("/ops/payments/ord_1", "ops_admin")).toBe(
+      "Payment review",
     );
   });
 
