@@ -20,8 +20,8 @@ const DEMO_HINTS = [
 export default function LoginPage() {
   const { signIn, user, loading } = useAuth();
   const router = useRouter();
-  const [email, setEmail] = useState("supplier@gridgo.local");
-  const [password, setPassword] = useState("demo");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -34,6 +34,12 @@ export default function LoginPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!email.trim() || !password) {
+      setError(
+        "Enter your email and password, or choose a demo account below.",
+      );
+      return;
+    }
     setSubmitting(true);
     try {
       await signIn(email.trim(), password);
