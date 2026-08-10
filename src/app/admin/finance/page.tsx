@@ -30,7 +30,9 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { listClaims, listOrders } from "@/lib/api/client";
 import type { Claim, Order } from "@/lib/api/types";
 import { formatDateTime, formatPhp } from "@/lib/format";
-import { presentOrderState, presentPaymentProgress } from "@/lib/order-state";
+import { presentOrderState, presentPaymentProgress,
+  presentZone,
+} from "@/lib/order-state";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 /**
@@ -120,7 +122,7 @@ export default function AdminFinancePage() {
               {o.title}
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5">
-              {o.zone.replace(/_/g, " ")}
+              {presentZone(o.zone)}
             </p>
           </div>
         ),

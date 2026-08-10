@@ -19,21 +19,8 @@ export type ChipPresentation = {
   icon: StatusIconName;
 };
 
-export function presentZone(zone: string): string {
-  const map: Record<string, string> = {
-    davao_central: "Davao Central",
-    davao_north: "Davao North",
-    davao_south: "Davao South",
-    davao_east: "Davao East",
-    davao_west: "Davao West",
-  };
-  if (map[zone]) return map[zone];
-  return zone
-    .split(/[_-]/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
+/** Re-exported so Operations screens keep one import for plain language. */
+export { presentZone } from "@/lib/order-state";
 
 export function presentVerification(
   status: VerificationStatus | string | undefined | null,

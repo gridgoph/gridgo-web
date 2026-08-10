@@ -280,7 +280,12 @@ export default function AdminCreditsPage() {
               <FieldLabel>Client</FieldLabel>
               <Select value={selectedId} onValueChange={(v) => setSelectedId(v ?? "")}>
                 <SelectTrigger className="min-h-11 w-full max-w-md">
-                  <SelectValue />
+                  <SelectValue placeholder="Choose a client">
+                    {(v) => {
+                      const c = clients.find((x) => x.id === v);
+                      return c ? `${c.name} · ${c.email}` : "Choose a client";
+                    }}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {clients.map((c) => (

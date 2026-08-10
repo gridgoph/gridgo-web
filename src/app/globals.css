@@ -133,10 +133,23 @@
   --default-transition-duration: 200ms;
   --default-transition-timing-function: ease-out;
 
-  /* Breakpoints matching design requirements */
+  /*
+   * Breakpoints matching design requirements: mobile <768, tablet 768–1023,
+   * desktop 1024–1439, wide 1440+.
+   *
+   * Declare ALL of them, in ascending order. Tailwind v4 emits breakpoint
+   * media queries in theme-declaration order, not numeric order — so
+   * redefining only md/lg/xl pushed the untouched `sm` and `2xl` blocks after
+   * them in the stylesheet, and `sm:` then beat `lg:` and `xl:` at every width
+   * above 640px. That silently flattened every responsive step on any element
+   * that used both.
+   */
+  --breakpoint-*: initial;
+  --breakpoint-sm: 640px;
   --breakpoint-md: 768px;
   --breakpoint-lg: 1024px;
   --breakpoint-xl: 1440px;
+  --breakpoint-2xl: 1536px;
 }
 
 /* shadcn utilities map to CSS variables defined on :root / .dark */

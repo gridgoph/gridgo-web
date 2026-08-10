@@ -5,6 +5,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import LoginPage from "@/app/login/page";
@@ -63,5 +64,14 @@ describe("LoginPage", () => {
       "Enter your email and password, or choose a demo account below.",
     );
     expect(signInMock).not.toHaveBeenCalled();
+  });
+
+  it("cannot be submitted before React attaches its handler", () => {
+    // The server markup is what a fast click hits. If the button were enabled
+    // there, the browser would submit the form natively — a GET that writes the
+    // password into the address bar and browser history.
+    const markup = renderToStaticMarkup(<LoginPage />);
+    const submit = markup.slice(markup.indexOf('type="submit"') - 400);
+    expect(submit).toContain("disabled");
   });
 });

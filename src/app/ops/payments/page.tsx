@@ -191,6 +191,7 @@ export default function OpsPaymentsPage() {
           getRowId={(row) => `${row.order.id}:${row.installment}`}
           caption="Payments waiting for confirmation"
           filterPlaceholder="Filter by order or reference…"
+          itemLabel="payments"
           rowActions={(row) => (
             <Button
               variant="secondary"

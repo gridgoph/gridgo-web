@@ -21,7 +21,9 @@ import {
 } from "@/lib/api/client";
 import type { Order, SupplierService, User } from "@/lib/api/types";
 import { formatDateTime, formatPhp } from "@/lib/format";
-import { presentOrderState } from "@/lib/order-state";
+import { presentOrderState,
+  presentZone,
+} from "@/lib/order-state";
 import { StatusChip } from "@/components/ui/StatusChip";
 
 export default function AdminPlanningPage() {
@@ -165,7 +167,9 @@ export default function AdminPlanningPage() {
             >
               Previous
             </Button>
-            <Button variant="primary" onClick={() => setAnchor(new Date())}>
+            {/* Yellow is for the action a page exists to take. Planning is a
+                read-only view, and "Today" is a navigation convenience. */}
+            <Button variant="secondary" onClick={() => setAnchor(new Date())}>
               Today
             </Button>
             <Button
@@ -254,7 +258,7 @@ export default function AdminPlanningPage() {
                       {item.title}
                     </p>
                     <p className="text-caption text-text-secondary m-0 mt-0.5">
-                      {item.zone.replace(/_/g, " ")}
+                      {presentZone(item.zone)}
                       {order
                         ? ` · ${formatPhp(order.totalMinor)}`
                         : ""}
@@ -311,7 +315,7 @@ export default function AdminPlanningPage() {
                     </p>
                     <p className="text-caption text-text-muted m-0 mt-0.5">
                       {formatDateTime(item.at)} ·{" "}
-                      {item.zone.replace(/_/g, " ")}
+                      {presentZone(item.zone)}
                     </p>
                   </div>
                   {status ? (

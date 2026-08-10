@@ -24,6 +24,16 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  /**
+   * Until React has attached `onSubmit`, a click would submit the form
+   * natively — a GET to this same URL that writes the password into the
+   * address bar and browser history. The control stays disabled until then.
+   */
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    setReady(true);
+  }, []);
 
   useEffect(() => {
     if (!loading && user) {
@@ -121,7 +131,7 @@ export default function LoginPage() {
               type="submit"
               variant="primary"
               fullWidth
-              disabled={submitting}
+              disabled={!ready || submitting}
             >
               {submitting ? "Signing in…" : "Sign in"}
             </Button>

@@ -110,6 +110,8 @@ export default function AdminAuditPage() {
       {
         id: "action",
         header: "Action",
+        // Reasons are free text: cap the column and wrap instead of overflowing.
+        className: "max-w-[26rem] whitespace-normal",
         sortValue: (e) => presentAuditAction(e.action),
         filterValue: (e) =>
           `${presentAuditAction(e.action)} ${e.reason ?? ""} ${e.entityId ?? ""}`,
@@ -133,16 +135,22 @@ export default function AdminAuditPage() {
         id: "actor",
         header: "Actor",
         sortValue: (e) => presentActorRole(e.actorRole),
-        cell: (e) => (
-          <div>
-            <p className="text-body text-text-primary m-0">
-              {presentActorRole(e.actorRole)}
-            </p>
-            <p className="text-caption text-text-muted m-0 mt-0.5">
-              {e.actorId ? e.actorId.replace(/^user_/, "") : "system"}
-            </p>
-          </div>
-        ),
+        cell: (e) => {
+          const role = presentActorRole(e.actorRole);
+          const account = e.actorId ? e.actorId.replace(/^user_/, "") : "";
+          return (
+            <div>
+              <p className="text-body text-text-primary m-0">{role}</p>
+              {/* The account line only earns its place when it is not the role
+                  label repeated back. */}
+              {account && account.toLowerCase() !== role.toLowerCase() ? (
+                <p className="text-caption text-text-muted m-0 mt-0.5">
+                  {account}
+                </p>
+              ) : null}
+            </div>
+          );
+        },
       },
       {
         id: "entity",
@@ -219,7 +227,12 @@ export default function AdminAuditPage() {
             <FieldLabel>Entity type</FieldLabel>
             <Select value={entityType} onValueChange={(v) => setEntityType(v ?? "all")}>
               <SelectTrigger className="min-h-11 w-full">
-                <SelectValue />
+                <SelectValue>
+                  {(v) =>
+                    ENTITY_FILTERS.find((f) => f.value === v)?.label ??
+                    ENTITY_FILTERS[0]?.label
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {ENTITY_FILTERS.map((f) => (

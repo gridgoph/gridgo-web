@@ -63,6 +63,11 @@ Ported from `gridgo-client/constants/theme.ts` and `global.css`.
 - Status is never colour alone — use `StatusChip` (icon + label).
 - Spacing base 4px; radii field 12 / card 16 / pill 999.
 - Breakpoints: mobile &lt;768, tablet 768–1023, desktop 1024–1439, wide 1440+.
+  **All five must stay declared in ascending order in the `@theme` block of `globals.css`.**
+  Tailwind v4 emits breakpoint media queries in theme-declaration order, not numeric
+  order — leaving `sm`/`2xl` at their defaults while redefining `md`/`lg`/`xl` puts the
+  `sm` block last, and `sm:` then silently beats `lg:` and `xl:` at every width above
+  640px. That flattens every responsive step on any element that uses both.
 - Face: **Satoshi** (`--font-sans` / `--font-bold` / …). Never reintroduce Geist or the shadcn default stack.
 
 Binding UX copy/interaction rules: `/home/kali/firstmate/data/gridgo-design-addendum.md` and the design requirements document under `gridgo-tinker`.
@@ -139,7 +144,7 @@ Rules:
 | Need | Use |
 |---|---|
 | Form layout + errors | `Field` / `FieldGroup` / `FieldLabel` + `Input` / `Textarea` / `Select` / `Combobox` (`data-invalid` + `aria-invalid`) |
-| Dense queues | `DataTable` (`src/components/ui/data-table.tsx`) — cards below 768px |
+| Dense queues | `DataTable` (`src/components/ui/data-table.tsx`) — TanStack Table; cards below 768px |
 | Modal | `Dialog` |
 | Tablet secondary detail | `Sheet` or `Drawer` |
 | Tabs / tooltips / toast | `Tabs`, `Tooltip`, `toast` + root `Toaster` |
@@ -147,6 +152,28 @@ Rules:
 | Loading / empty | `LoadingBlock` / `Skeleton`, `EmptyState` |
 
 Root layout already wraps `TooltipProvider` and `Toaster`.
+
+### DataTable
+
+`src/components/ui/data-table.tsx` runs on **`@tanstack/react-table`** and follows the
+captain's own composition (`rxguard/src/components/data-table.tsx`): a column header that
+is the sort control, a toolbar, faceted filters with live counts, a column-visibility
+menu, and pagination.
+
+Columns are authored as `DataTableColumn<T>` and compiled to TanStack `ColumnDef` by
+`toColumnDefs`. That descriptor stays because a GRIDGO queue renders twice — a table on
+desktop and labelled cards below 768px — and `header` + `primary` + `hideOnMobile` is the
+pairing a bare `ColumnDef` cannot express. `ColumnDef` is re-exported for screens that
+need raw TanStack columns.
+
+- `facets` — opt in per screen; values must equal `String(sortValue(row))`.
+- `pageSize` (default 10) — the footer only mounts when there is a second page.
+- `loading` — skeleton rows that hold the table's layout.
+- `empty` — the page's own empty state, used only when there is genuinely no data. A
+  filtered-to-nothing table says so separately and offers to clear the filters.
+- Row actions are pinned to the trailing edge on desktop, so wide rows never scroll them
+  out of reach; on mobile they sit on the card.
+- Toolbar controls obey the GRIDGO 44×44 floor rather than shadcn's 32px density.
 
 ### Primitive audit (2026-08-09)
 
@@ -167,6 +194,17 @@ Only add a registry primitive when a real screen uses it in the same change.
 
 Do not revisit a rejected primitive unless a new screen supplies a concrete call site.
 
+### Dependency decisions (2026-08-11)
+
+The captain's `yanolint/web` and `rxguard` also carry `@tanstack/react-query` and `sonner`.
+Both were evaluated here and deliberately not adopted:
+
+| Decision | Package | Reason |
+|---|---|---|
+| Adopted | `@tanstack/react-table` | The captain names DataTables specifically and uses this everywhere. Powers `src/components/ui/data-table.tsx`. |
+| Declined | `@tanstack/react-query` | Every screen here is one `load()` per mount with an explicit `LoadingBlock` / `ErrorState` / `EmptyState` triad and `ApiError.kind` → recovery-copy mapping. Swapping the data layer touches ~28 pages and the error-copy contract for no user-visible gain while there is no polling, cache invalidation, or shared-query story. Revisit when live refresh or optimistic transitions land. |
+| Declined | `sonner` | Already rejected in the primitive audit above and still correct: this is a Base UI project with the Base `toast` manager and a root `Toaster`. Adding sonner means two toast roots. |
+
 ## Auth and role boundary
 
 1. Login → `POST /auth/login` → cookies `gridgo_token` + `gridgo_role` + sessionStorage user
@@ -175,6 +213,11 @@ Do not revisit a rejected primitive unless a new screen supplies a concrete call
 4. Logout → clear cookies + storage → `router.replace("/login")` (no back-button re-entry)
 
 Client-rendered credential inputs must initialize empty. Populate demo credentials only through explicit account controls so hydration cannot overwrite typing with a privileged or role-specific default.
+
+The sign-in submit control stays `disabled` until the client has mounted. Before React
+attaches `onSubmit`, a click submits the form natively — a GET to `/login` that writes the
+password into the address bar and browser history. `src/app/login/__tests__/page.test.tsx`
+asserts the server markup renders it disabled.
 
 Suppliers are external partners. Never serve `/ops/*` or `/admin/*` to them — not even as soft-hidden UI.
 
@@ -269,6 +312,26 @@ Two surfaces are mounted for both Operations and Super Admin from **one** implem
 - When shipping a real page: replace the placeholder `page.tsx`, set `ready: true` on that nav item, keep the same `href`.
 
 Header title: `contextTitleForPath(pathname, role)` (nested job/QA workspaces have special titles).
+
+### App shell
+
+- **One** `SidebarTrigger`, in the page header, left of the title. It is in the same place
+  at every width and is what a collapsed rail leaves reachable. `SidebarRail` is the second
+  affordance — a drag/click edge, not a duplicate button. Do not add a trigger inside
+  `SidebarHeader`.
+- `--sidebar-width-icon` is `3.75rem`, not shadcn's `3rem`: GRIDGO's 44×44 control floor
+  overrides shadcn's `size-8`, and a 3rem rail clips nav labels mid-word. Labels are
+  hidden with `group-data-[collapsible=icon]:hidden` rather than left to width clipping.
+- Nav items use `tooltip={item.label}` so the collapsed rail is readable.
+- The `Logo` belongs in exactly two places: the sign-in card, where identity is being
+  established, and `SidebarHeader`, where it doubles as the home control. It is furniture
+  anywhere else. On collapse the wordmark goes and the mark stays.
+  **Known limitation:** the mark is a wordmark plus a dot, so what survives collapse is a
+  10px dot — legible as a place-holder, weak as identity. A dedicated square glyph would
+  serve a collapsing rail properly; that is the captain's call, and the mark was not
+  redrawn here.
+- Every `NavIconKey` maps to a distinct lucide icon. Two screens sharing a glyph teaches
+  nothing; if you add a nav entry, give it an icon no sibling already uses.
 
 ## Operational model v2 — what this portal must get right
 

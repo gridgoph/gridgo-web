@@ -160,19 +160,24 @@ export default function OpsAuditPage() {
         sortValue: (e) => presentActor(e.actorId, e.actorRole),
         filterValue: (e) =>
           `${presentActor(e.actorId, e.actorRole)} ${presentActorRole(e.actorRole)} ${e.actorId ?? ""}`,
-        cell: (e) => (
-          <div>
-            <p
-              className="text-body text-text-primary m-0"
-              style={{ fontFamily: "var(--font-medium)" }}
-            >
-              {presentActor(e.actorId, e.actorRole)}
-            </p>
-            <p className="text-caption text-text-muted m-0 mt-0.5">
-              {presentActorRole(e.actorRole)}
-            </p>
-          </div>
-        ),
+        cell: (e) => {
+          const who = presentActor(e.actorId, e.actorRole);
+          const role = presentActorRole(e.actorRole);
+          return (
+            <div>
+              <p
+                className="text-body text-text-primary m-0"
+                style={{ fontFamily: "var(--font-medium)" }}
+              >
+                {who}
+              </p>
+              {/* Only when the role says something the name did not. */}
+              {role !== who ? (
+                <p className="text-caption text-text-muted m-0 mt-0.5">{role}</p>
+              ) : null}
+            </div>
+          );
+        },
       },
       {
         id: "action",
@@ -209,6 +214,9 @@ export default function OpsAuditPage() {
       {
         id: "reason",
         header: "Reason / detail",
+        // Free text: give it a ceiling and let it wrap rather than run off the
+        // right edge of the table.
+        className: "max-w-[26rem] whitespace-normal",
         sortValue: (e) => e.reason ?? "",
         filterValue: (e) =>
           `${e.reason ?? ""} ${detailSummary(e.detail)}`,
@@ -280,7 +288,11 @@ export default function OpsAuditPage() {
               onValueChange={(v) => setEntityType(v ?? "all")}
             >
               <SelectTrigger id="audit-entity" className="min-h-11 w-full">
-                <SelectValue />
+                <SelectValue>
+                  {(v) =>
+                    !v || v === "all" ? "All types" : presentEntityType(String(v))
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All types</SelectItem>
@@ -308,7 +320,13 @@ export default function OpsAuditPage() {
               onValueChange={(v) => setActionFilter(v ?? "all")}
             >
               <SelectTrigger id="audit-action" className="min-h-11 w-full">
-                <SelectValue />
+                <SelectValue>
+                  {(v) =>
+                    !v || v === "all"
+                      ? "All actions"
+                      : presentAuditAction(String(v))
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All actions</SelectItem>
@@ -391,6 +409,7 @@ export default function OpsAuditPage() {
           getRowId={(e) => e.id}
           caption="Platform audit log"
           filterPlaceholder="Search who, action, reason…"
+          itemLabel="entries"
           defaultSortId="when"
           defaultSortDirection="desc"
         />

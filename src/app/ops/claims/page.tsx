@@ -59,6 +59,14 @@ import { presentTimelineActor } from "@/lib/order-state";
 type DialogMode =
   { type: "raise" } | { type: "hold"; claim: Claim } | { type: "release"; claim: Claim };
 
+/** Filter values are API-shaped; only these labels reach the screen. */
+const CLAIM_FILTER_LABELS: Record<string, string> = {
+  all: "All claims",
+  open: "Open",
+  payout_held: "Payout held",
+  released: "Released",
+};
+
 export default function OpsClaimsPage() {
   const [claims, setClaims] = useState<Claim[] | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -276,7 +284,9 @@ export default function OpsClaimsPage() {
         </label>
         <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "all")}>
           <SelectTrigger id="claim-status-filter" className="min-h-11">
-            <SelectValue />
+            <SelectValue>
+              {(v) => CLAIM_FILTER_LABELS[String(v ?? "all")] ?? "All claims"}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All claims</SelectItem>
@@ -459,7 +469,11 @@ export default function OpsClaimsPage() {
                 onValueChange={(v) => setRaiseOrderId(v ?? "")}
               >
                 <SelectTrigger id="claim-order" className="min-h-11 w-full">
-                  <SelectValue placeholder="Select order" />
+                  <SelectValue placeholder="Choose an order">
+                    {(v) =>
+                      orders.find((o) => o.id === v)?.title ?? "Choose an order"
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {orders

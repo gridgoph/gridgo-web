@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -8,6 +8,7 @@ import {
   Banknote,
   BookOpen,
   CalendarDays,
+  CalendarRange,
   ClipboardCheck,
   ClipboardList,
   Coins,
@@ -17,13 +18,14 @@ import {
   Package,
   QrCode,
   Scale,
-  Search,
+  ScrollText,
   Settings,
   ShieldCheck,
   Siren,
   Truck,
   UserRound,
   UserRoundCheck,
+  UserSearch,
   Users,
   Wallet,
   type LucideIcon,
@@ -47,19 +49,20 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Logo } from "@/components/ui/Logo";
+import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
+  SidebarRail,
   SidebarSeparator,
   SidebarTrigger,
   useSidebar,
@@ -72,7 +75,7 @@ import {
   navItemForPath,
   type NavIconKey,
 } from "@/lib/nav";
-import { roleLabel } from "@/lib/routes";
+import { homeForRole, roleLabel } from "@/lib/routes";
 
 const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   jobs: Package,
@@ -84,19 +87,19 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   qa: ClipboardList,
   payments: QrCode,
   approvals: UserRoundCheck,
-  matching: Search,
+  matching: UserSearch,
   recovery: AlertTriangle,
   dispatch: Truck,
   escalations: Siren,
   claims: Scale,
   settings: Settings,
-  audit: ClipboardList,
+  audit: ScrollText,
   verification: ShieldCheck,
   roles: Users,
   zones: MapPinned,
   credits: Coins,
   finance: Banknote,
-  planning: CalendarDays,
+  planning: CalendarRange,
 };
 
 function isActive(pathname: string, href: string): boolean {
@@ -111,21 +114,43 @@ type Props = {
 function PortalSidebar({ role }: Pick<Props, "role">) {
   const { user, signOut } = useAuth();
   const pathname = usePathname();
-  const { setOpenMobile, state } = useSidebar();
+  const { setOpenMobile } = useSidebar();
   const items = navForRole(role);
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="gap-3 p-3">
-        <div className="flex min-h-11 items-center justify-between gap-2 px-1">
-          <Logo compact={state === "collapsed"} />
-          <SidebarTrigger aria-label="Toggle primary navigation" />
-        </div>
+      {/* ── Identity: the mark is the rail's home control, and all that survives
+             collapse. There is no second toggle here — the header owns that. ── */}
+      <SidebarHeader className="p-2">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="lg"
+              render={<Link href={homeForRole(role)} />}
+              tooltip="GRIDGO home"
+              onClick={() => setOpenMobile(false)}
+            >
+              <span className="flex size-6 shrink-0 items-center justify-center">
+                <Logo compact />
+              </span>
+              <div className="grid min-w-0 flex-1 text-left group-data-[collapsible=icon]:hidden">
+                <span
+                  className="text-body-lg truncate tracking-tight"
+                  style={{ fontFamily: "var(--font-black)" }}
+                >
+                  GRIDGO
+                </span>
+                <span className="text-caption text-text-muted truncate">
+                  {roleLabel(role)}
+                </span>
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>{roleLabel(role)}</SidebarGroupLabel>
           <SidebarGroupContent>
             <nav aria-label="Primary navigation">
               <SidebarMenu>
@@ -137,7 +162,7 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
                       <SidebarMenuButton
                         render={<Link href={item.href} />}
                         isActive={active}
-                        title={item.label}
+                        tooltip={item.label}
                         onClick={() => setOpenMobile(false)}
                         aria-current={active ? "page" : undefined}
                       >
@@ -148,7 +173,9 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
                           />
                         ) : null}
                         <Icon strokeWidth={active ? 2.25 : 1.75} aria-hidden />
-                        <span>{item.label}</span>
+                        <span className="group-data-[collapsible=icon]:hidden">
+                          {item.label}
+                        </span>
                       </SidebarMenuButton>
                       {!item.ready ? <SidebarMenuBadge>Soon</SidebarMenuBadge> : null}
                     </SidebarMenuItem>
@@ -168,13 +195,17 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
         </div>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton title="Sign out" onClick={() => void signOut()}>
+            <SidebarMenuButton tooltip="Sign out" onClick={() => void signOut()}>
               <LogOut aria-hidden />
-              <span>Sign out</span>
+              <span className="group-data-[collapsible=icon]:hidden">Sign out</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+
+      {/* Drag/click edge — the rail is how a collapsed sidebar comes back
+          without hunting for a button. */}
+      <SidebarRail />
     </Sidebar>
   );
 }
@@ -187,12 +218,23 @@ export function AppShell({ role, children }: Props) {
   const isNested = Boolean(parentItem && pathname !== parentItem.href);
 
   return (
-    <SidebarProvider>
+    <SidebarProvider
+      // The rail has to clear GRIDGO's 44x44 control floor. shadcn's 3rem
+      // assumes a 32px button, which leaves the label clipped mid-word.
+      style={{ "--sidebar-width-icon": "3.75rem" } as CSSProperties}
+    >
       <PortalSidebar role={role} />
 
       <div className="flex min-w-0 flex-1 flex-col bg-canvas">
         <header className="sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b border-outline bg-surface px-4 py-2 md:px-6 xl:px-8">
+          {/* The only navigation toggle in the shell. It sits here because it is
+              in the same place at every width, and it is what a collapsed rail
+              leaves reachable. */}
           <SidebarTrigger aria-label="Toggle primary navigation" />
+          <Separator
+            orientation="vertical"
+            className="hidden data-[orientation=vertical]:h-6 sm:block"
+          />
 
           <div className="min-w-0 flex-1">
             {isNested && parentItem ? (
@@ -209,11 +251,7 @@ export function AppShell({ role, children }: Props) {
                   </BreadcrumbItem>
                 </BreadcrumbList>
               </Breadcrumb>
-            ) : (
-              <p className="text-overline text-text-muted m-0 hidden uppercase sm:block">
-                {roleLabel(role)}
-              </p>
-            )}
+            ) : null}
             <h1 className="text-h3 text-text-primary m-0 truncate">{title}</h1>
           </div>
 
