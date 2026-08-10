@@ -49,7 +49,6 @@ describe("buildPlanningSnapshot", () => {
         deliveryFeeMinor: 100,
         paymentMethod: "cod",
         paymentStatus: "collected",
-        codEligible: true,
         promisedDate: "2026-08-05T10:00:00+08:00",
         artworkName: null,
         createdAt: "",

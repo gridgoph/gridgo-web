@@ -1,114 +1,155 @@
 /**
  * Finance rollups composed from orders + claims.
- * Only sums figures the demo ledger actually exposes — never invents rows.
+ * Only sums figures the ledger actually exposes — never invents rows.
+ *
+ * Operations and Super Admin are the only roles the server gives supplier price
+ * and commission to, which is what makes reconciliation possible here and
+ * nowhere else.
  */
 
 import type { Claim, Order } from "@/lib/api/types";
+import { claimBlocksPayout, paymentIsSettled } from "@/lib/api/constraints";
 
 export type MoneyFigure =
   | { kind: "amount"; minor: number }
   | { kind: "unavailable"; reason: string };
 
 export type FinanceRollup = {
-  /** Sum of order totals with paymentStatus authorised. */
-  authorised: MoneyFigure;
-  /** Sum of order totals with paymentStatus collected. */
-  collected: MoneyFigure;
-  /** Sum of order totals still unpaid (any method or none). */
-  unpaid: MoneyFigure;
-  /**
-   * Order totals where payoutHold is true.
-   * Reflects active claim holds blocking payout_released.
-   */
+  /** Client money actually confirmed as received, across both installments. */
+  confirmedIn: MoneyFigure;
+  /** Submitted by a client and waiting on an Operations decision. */
+  awaitingConfirmation: MoneyFigure;
+  /** Billed on live orders but not yet paid. */
+  outstanding: MoneyFigure;
+  /** GRIDGO's 10% across orders that have a supplier price. */
+  commissionEarned: MoneyFigure;
+  /** Milestone amounts already paid out to suppliers. */
+  supplierReleased: MoneyFigure;
+  /** Milestone amounts still owed to suppliers on live orders. */
+  supplierOutstanding: MoneyFigure;
+  /** Order totals where an active claim holds payout. */
   heldOnOrders: MoneyFigure;
-  /** Count of claims currently in payout_held status. */
   activeHoldClaims: number;
-  /** COD orders with payment collected. */
-  codCollected: MoneyFigure;
-  /** COD orders not yet collected. */
-  codOutstanding: MoneyFigure;
-  /**
-   * Payout released amounts.
-   * Demo orders expose state `payout_released` but no separate payout amount
-   * field — we use order totalMinor when that state is present.
-   */
-  payoutReleased: MoneyFigure;
   orderCount: number;
-  codOrderCount: number;
+  /** Orders whose money is still only an estimate — no supplier price yet. */
+  unpricedOrderCount: number;
 };
 
-function sumTotals(
-  orders: Order[],
-  predicate: (o: Order) => boolean,
-): number {
-  return orders.reduce(
-    (sum, o) => (predicate(o) ? sum + (o.totalMinor ?? 0) : sum),
-    0,
-  );
+/** Orders that no longer represent money in flight. */
+const DEAD_STATES = new Set(["draft"]);
+
+function sum(values: number[]): number {
+  return values.reduce((total, value) => total + value, 0);
 }
 
-export function rollupFinance(
-  orders: Order[],
-  claims: Claim[],
-): FinanceRollup {
-  const authorisedMinor = sumTotals(
-    orders,
-    (o) => o.paymentStatus === "authorized",
-  );
-  const collectedMinor = sumTotals(
-    orders,
-    (o) => o.paymentStatus === "collected",
-  );
-  const unpaidMinor = sumTotals(orders, (o) => o.paymentStatus === "unpaid");
-  const heldMinor = sumTotals(orders, (o) => o.payoutHold === true);
+export function rollupFinance(orders: Order[], claims: Claim[]): FinanceRollup {
+  const live = orders.filter((o) => !DEAD_STATES.has(o.state));
 
-  const codOrders = orders.filter((o) => o.paymentMethod === "cod");
-  const codCollectedMinor = sumTotals(
-    codOrders,
-    (o) => o.paymentStatus === "collected",
-  );
-  const codOutstandingMinor = sumTotals(
-    codOrders,
-    (o) => o.paymentStatus !== "collected",
+  const confirmedIn = sum(
+    live.flatMap((order) => {
+      if (!order.payments) return [];
+      return (["downpayment", "balance"] as const)
+        .filter((code) => paymentIsSettled(order.payments![code]))
+        .map((code) => order.payments![code].amountMinor);
+    }),
   );
 
-  const releasedOrders = orders.filter((o) => o.state === "payout_released");
-  const releasedMinor = sumTotals(releasedOrders, () => true);
+  const awaiting = sum(
+    live.flatMap((order) => {
+      if (!order.payments) return [];
+      return (["downpayment", "balance"] as const)
+        .filter(
+          (code) => order.payments![code].status === "pending_confirmation",
+        )
+        .map((code) => order.payments![code].amountMinor);
+    }),
+  );
 
-  const activeHoldClaims = claims.filter(
-    (c) => c.status === "payout_held",
-  ).length;
+  const outstanding = sum(
+    live.flatMap((order) => {
+      if (!order.payments) return [];
+      return (["downpayment", "balance"] as const)
+        .filter((code) => order.payments![code].status === "not_submitted")
+        .map((code) => order.payments![code].amountMinor);
+    }),
+  );
+
+  const priced = live.filter((o) => o.commissionMinor !== undefined);
+  const commission = sum(priced.map((o) => o.commissionMinor ?? 0));
+
+  const milestones = live.flatMap((o) => o.payoutMilestones ?? []);
+  const released = sum(
+    milestones
+      .filter((m) => m.status === "released")
+      .map((m) => m.amountMinor ?? 0),
+  );
+  const stillOwed = sum(
+    milestones
+      .filter((m) => m.status !== "released")
+      .map((m) => m.amountMinor ?? 0),
+  );
+
+  const held = sum(
+    live.filter((o) => o.payoutHold === true).map((o) => o.totalMinor ?? 0),
+  );
 
   return {
-    authorised: { kind: "amount", minor: authorisedMinor },
-    collected: { kind: "amount", minor: collectedMinor },
-    unpaid: { kind: "amount", minor: unpaidMinor },
-    heldOnOrders: { kind: "amount", minor: heldMinor },
-    activeHoldClaims,
-    codCollected: { kind: "amount", minor: codCollectedMinor },
-    codOutstanding: { kind: "amount", minor: codOutstandingMinor },
-    payoutReleased:
-      releasedOrders.length > 0
-        ? { kind: "amount", minor: releasedMinor }
-        : {
-            kind: "unavailable",
-            reason:
-              "No orders in payout released on the demo ledger. When that state appears, totals use the order amount (no separate payout field exists).",
-          },
-    orderCount: orders.length,
-    codOrderCount: codOrders.length,
+    confirmedIn: { kind: "amount", minor: confirmedIn },
+    awaitingConfirmation: { kind: "amount", minor: awaiting },
+    outstanding: { kind: "amount", minor: outstanding },
+    commissionEarned: priced.length
+      ? { kind: "amount", minor: commission }
+      : {
+          kind: "unavailable",
+          reason:
+            "No order has a supplier price yet, so there is no commission to count.",
+        },
+    supplierReleased: { kind: "amount", minor: released },
+    supplierOutstanding: { kind: "amount", minor: stillOwed },
+    heldOnOrders: { kind: "amount", minor: held },
+    activeHoldClaims: claims.filter((c) => claimBlocksPayout(c.status)).length,
+    orderCount: live.length,
+    unpricedOrderCount: live.length - priced.length,
   };
 }
 
-/** Whether an order is cash-on-delivery. */
-export function isCodOrder(order: Order): boolean {
-  return order.paymentMethod === "cod";
+export type OrderMoneySplit = {
+  orderId: string;
+  label: string;
+  supplierPriceMinor: number;
+  commissionMinor: number;
+  deliveryFeeMinor: number;
+  totalMinor: number;
+};
+
+/**
+ * Per-order split of what the client pays into supplier earnings, GRIDGO's
+ * commission and delivery. Only orders the server priced appear — an estimate
+ * has no supplier price to split.
+ */
+export function orderMoneySplits(orders: Order[]): OrderMoneySplit[] {
+  return orders
+    .filter(
+      (order) =>
+        order.supplierPriceMinor !== undefined &&
+        order.commissionMinor !== undefined &&
+        !DEAD_STATES.has(order.state),
+    )
+    .map((order) => ({
+      orderId: order.id,
+      label: order.title,
+      supplierPriceMinor: order.supplierPriceMinor!,
+      commissionMinor: order.commissionMinor!,
+      deliveryFeeMinor: order.deliveryFeeMinor,
+      totalMinor: order.totalMinor,
+    }))
+    .sort((a, b) => b.totalMinor - a.totalMinor);
 }
 
-/** COD rows for reconciliation table. */
-export function codReconciliationRows(orders: Order[]): Order[] {
+/** Orders with money still to move, newest activity last. */
+export function reconciliationRows(orders: Order[]): Order[] {
   return orders
-    .filter(isCodOrder)
+    .filter((o) => !DEAD_STATES.has(o.state))
     .slice()
     .sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
 }

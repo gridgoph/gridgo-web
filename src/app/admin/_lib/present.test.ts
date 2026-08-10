@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   presentAuditAction,
   presentLedgerType,
-  presentPaymentMethod,
   presentRole,
   presentVerification,
   roleChangeConsequence,
@@ -12,10 +11,10 @@ import {
 
 describe("presentVerification", () => {
   it("maps statuses to plain language", () => {
-    expect(presentVerification("approved").label).toBe("Verified");
-    expect(presentVerification("pending").label).toBe("Pending review");
+    expect(presentVerification("approved").label).toBe("Approved");
+    expect(presentVerification("pending").label).toBe("Waiting for a decision");
     expect(presentVerification("suspended").label).toBe("Suspended");
-    expect(presentVerification("unverified").label).toBe("Not verified");
+    expect(presentVerification("unverified").label).toBe("Not approved");
   });
 
   it("never returns snake_case", () => {
@@ -54,16 +53,10 @@ describe("roleChangeConsequence", () => {
   });
 });
 
-describe("presentRole / payment / audit", () => {
+describe("presentRole / audit", () => {
   it("uses plain role labels", () => {
     expect(presentRole("ops_admin")).toBe("Operations");
     expect(presentRole("super_admin")).not.toMatch(/_/);
-  });
-
-  it("maps payment methods without snake_case", () => {
-    expect(presentPaymentMethod("pilot_credit")).toBe("Pilot Credits");
-    expect(presentPaymentMethod("cod")).toBe("Cash on delivery");
-    expect(presentPaymentMethod(null)).toBe("Not chosen");
   });
 
   it("maps ledger and audit actions to plain language", () => {

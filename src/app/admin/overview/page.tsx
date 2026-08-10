@@ -107,10 +107,10 @@ export default function AdminOverviewPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Snapshot from live API data: orders, credit balances for clients seen
-          on those orders, and supplier/rider IDs referenced by orders. Dedicated
-          directory, zones, grants, and verification screens are linked from the
-          rail (some still marked Coming next).
+          A snapshot from live data: orders, the pilot grant balances of clients
+          on those orders, and the suppliers and riders those orders name.
+          Accreditation, zones, grants and settings each have their own screen
+          on the rail.
         </p>
         <Button variant="secondary" onClick={() => void load()}>
           Refresh

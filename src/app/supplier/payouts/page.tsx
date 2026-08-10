@@ -6,13 +6,9 @@ import Link from "next/link";
 import {
   buildPayoutRows,
   formatMoneyOrUnavailable,
-  type PayoutRow,
 } from "@/app/supplier/_lib/payouts";
+import { MilestoneList } from "@/components/orders/MilestoneList";
 import { Button } from "@/components/ui/button";
-import {
-  DataTable,
-  type DataTableColumn,
-} from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
@@ -20,7 +16,6 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, listIssues, listJobs } from "@/lib/api/client";
 import type { Issue, Order } from "@/lib/api/types";
 import { formatDateTime, formatPhp } from "@/lib/format";
-import { presentOrderState } from "@/lib/order-state";
 
 type LoadState = {
   jobs: Order[];
@@ -43,10 +38,10 @@ export default function SupplierPayoutsPage() {
       try {
         issues = await listIssues();
       } catch (err) {
-        // Claims list is ops-only; issues may still fail for some roles.
+        // Claims are Operations-only; issues can fail on their own.
         if (err instanceof ApiError) {
           setIssuesNote(
-            "Hold detail from issues could not be loaded. Settlement still uses each job’s hold flag from the order.",
+            "The reason behind a hold could not be loaded. Each job still shows whether it is held.",
           );
         }
       }
@@ -57,7 +52,7 @@ export default function SupplierPayoutsPage() {
         setError(
           err.status === 403
             ? "Payout history is only available to supplier accounts."
-            : `Could not load payouts (${err.code}).`,
+            : "Could not load payouts. Retry when the API responds.",
         );
       } else {
         setError(
@@ -78,91 +73,8 @@ export default function SupplierPayoutsPage() {
     [data],
   );
 
-  const columns = useMemo<DataTableColumn<PayoutRow>[]>(
-    () => [
-      {
-        id: "job",
-        header: "Job",
-        primary: true,
-        sortValue: (r) => r.order.title,
-        filterValue: (r) =>
-          `${r.order.title} ${r.order.id} ${r.settlement.label}`,
-        cell: (r) => (
-          <div>
-            <p
-              className="text-body text-text-primary m-0"
-              style={{ fontFamily: "var(--font-medium)" }}
-            >
-              {r.order.title}
-            </p>
-            <p className="text-caption text-text-muted m-0 mt-0.5">
-              {presentOrderState(r.order.state).label}
-            </p>
-          </div>
-        ),
-      },
-      {
-        id: "gross",
-        header: "Gross",
-        sortValue: (r) => r.grossMinor,
-        cell: (r) => (
-          <span className="text-body text-text-primary whitespace-nowrap">
-            {formatPhp(r.grossMinor)}
-          </span>
-        ),
-      },
-      {
-        id: "commission",
-        header: "GRIDGO commission",
-        cell: () => (
-          <span className="text-body text-text-muted">Unavailable</span>
-        ),
-      },
-      {
-        id: "net",
-        header: "Net",
-        cell: (r) => (
-          <span className="text-body text-text-muted">
-            {formatMoneyOrUnavailable(r.netMinor, formatPhp)}
-          </span>
-        ),
-      },
-      {
-        id: "settlement",
-        header: "Settlement",
-        sortValue: (r) => r.settlement.label,
-        filterValue: (r) => r.settlement.label,
-        cell: (r) => (
-          <div>
-            <StatusChip
-              tone={r.settlement.tone}
-              label={r.settlement.label}
-              icon={r.settlement.icon}
-            />
-            {r.holdReason ? (
-              <p className="text-caption text-text-secondary m-0 mt-1 max-w-xs">
-                Hold reason: {r.holdReason}
-              </p>
-            ) : null}
-          </div>
-        ),
-      },
-      {
-        id: "updated",
-        header: "Updated",
-        sortValue: (r) => r.order.updatedAt,
-        cell: (r) => (
-          <span className="text-body text-text-secondary whitespace-nowrap">
-            {formatDateTime(r.order.updatedAt)}
-          </span>
-        ),
-      },
-    ],
-    [],
-  );
-
   if (loading && !data) {
-    return <LoadingBlock label="Loading protected payment history…" />;
+    return <LoadingBlock label="Loading payouts…" />;
   }
   if (error || !data) {
     return (
@@ -184,16 +96,15 @@ export default function SupplierPayoutsPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="max-w-prose">
           <p className="text-body text-text-secondary m-0">
-            Protected payment status for completed and settling jobs. Gross is
-            the product total from the order. The demo ledger does not return
-            GRIDGO commission or net — those columns stay unavailable rather
-            than guessed.
+            You are paid in four parts of your own price: half when printing is
+            under way, 15% on packaging and quality check, a quarter on
+            delivery, and the last 10% once the client&rsquo;s issue window
+            closes. Each part needs a Proof of Fulfilment before Operations can
+            release it.
           </p>
           <p className="text-caption text-text-muted m-0 mt-1">
             {rows.length} job{rows.length === 1 ? "" : "s"}
-            {heldCount > 0
-              ? ` · ${heldCount} on hold`
-              : ""}
+            {heldCount > 0 ? ` · ${heldCount} on hold` : ""}
           </p>
         </div>
         <Button variant="secondary" onClick={() => void load()}>
@@ -209,8 +120,8 @@ export default function SupplierPayoutsPage() {
 
       {!rows.length ? (
         <EmptyState
-          title="No protected payments yet"
-          body="When jobs reach delivery and completion, their protected payment status appears here with gross totals and any holds."
+          title="No payouts yet"
+          body="Once a job you have accepted reaches production, its four milestones appear here as you earn them."
           action={
             <Button
               variant="secondary"
@@ -222,25 +133,85 @@ export default function SupplierPayoutsPage() {
           }
         />
       ) : (
-        <DataTable
-          columns={columns}
-          data={rows}
-          getRowId={(r) => r.order.id}
-          caption="Protected payment history"
-          filterPlaceholder="Filter payouts…"
-          defaultSortId="updated"
-          defaultSortDirection="desc"
-          rowActions={(r) => (
-            <Button
-              variant="secondary"
-              nativeButton={false}
-              render={<Link href={`/supplier/jobs/${r.order.id}`} />}
-            >
-              Open job
-            </Button>
-          )}
-        />
+        <ul className="m-0 flex list-none flex-col gap-4 p-0">
+          {rows.map((row) => (
+            <li key={row.order.id} className="gg-card flex flex-col gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p
+                    className="text-body text-text-primary m-0"
+                    style={{ fontFamily: "var(--font-medium)" }}
+                  >
+                    {row.order.title}
+                  </p>
+                  <p className="text-caption text-text-muted m-0 mt-0.5">
+                    Updated {formatDateTime(row.order.updatedAt)}
+                  </p>
+                </div>
+                <StatusChip
+                  tone={row.settlement.tone}
+                  label={row.settlement.label}
+                  icon={row.settlement.icon}
+                />
+              </div>
+
+              <p className="text-body text-text-secondary m-0">
+                {row.settlement.detail}
+              </p>
+
+              <dl className="m-0 grid grid-cols-1 gap-3 border-t border-outline-subtle pt-3 sm:grid-cols-3">
+                <Figure
+                  label="You earn on this job"
+                  value={formatMoneyOrUnavailable(row.earnsMinor, formatPhp)}
+                />
+                <Figure
+                  label="Released to you"
+                  value={formatMoneyOrUnavailable(row.releasedMinor, formatPhp)}
+                />
+                <Figure
+                  label="Still to come"
+                  value={formatMoneyOrUnavailable(
+                    row.outstandingMinor,
+                    formatPhp,
+                  )}
+                />
+              </dl>
+
+              {row.holdReason ? (
+                <p className="text-body text-warning m-0">
+                  On hold: {row.holdReason}
+                </p>
+              ) : null}
+
+              <MilestoneList order={row.order} />
+
+              <div className="border-t border-outline-subtle pt-3">
+                <Button
+                  variant="secondary"
+                  nativeButton={false}
+                  render={<Link href={`/supplier/jobs/${row.order.id}`} />}
+                >
+                  Open job
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
       )}
+    </div>
+  );
+}
+
+function Figure({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-caption text-text-muted m-0">{label}</dt>
+      <dd
+        className="text-h3 text-text-primary m-0 mt-0.5 tabular-nums"
+        style={{ fontFamily: "var(--font-bold)" }}
+      >
+        {value}
+      </dd>
     </div>
   );
 }

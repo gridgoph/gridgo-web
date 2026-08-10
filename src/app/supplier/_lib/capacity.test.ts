@@ -57,7 +57,6 @@ function job(
     deliveryFeeMinor: 0,
     paymentMethod: null,
     paymentStatus: "unpaid",
-    codEligible: false,
     promisedDate: null,
     artworkName: null,
     createdAt: "",
@@ -70,7 +69,11 @@ function job(
 describe("isCapacityCommitting", () => {
   it("counts production pipeline, not delivery", () => {
     expect(isCapacityCommitting("production")).toBe(true);
-    expect(isCapacityCommitting("awaiting_payment")).toBe(true);
+    // A job commits the shop from the moment it is accepted and priced,
+    // through payment review, not only once production starts.
+    expect(isCapacityCommitting("awaiting_downpayment")).toBe(true);
+    expect(isCapacityCommitting("downpayment_review")).toBe(true);
+    expect(isCapacityCommitting("supplier_assigned")).toBe(false);
     expect(isCapacityCommitting("rider_assigned")).toBe(false);
     expect(isCapacityCommitting("delivered")).toBe(false);
   });
@@ -104,7 +107,7 @@ describe("committedLoad", () => {
     const load = committedLoad([
       job({ id: "a", state: "production", quantity: 5 }),
       job({ id: "b", state: "rider_assigned", quantity: 10 }),
-      job({ id: "c", state: "awaiting_payment", quantity: 2 }),
+      job({ id: "c", state: "downpayment_review", quantity: 2 }),
     ]);
     expect(load.jobCount).toBe(2);
     expect(load.unitCount).toBe(7);

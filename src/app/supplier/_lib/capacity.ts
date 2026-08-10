@@ -8,8 +8,8 @@ import type { Order, SupplierService } from "@/lib/api/types";
 
 /** Order states that still consume shop production capacity. */
 export const CAPACITY_COMMITTING_STATES = [
-  "supplier_accepted",
-  "awaiting_payment",
+  "awaiting_downpayment",
+  "downpayment_review",
   "payment_authorized",
   "production",
   "supplier_self_qc",

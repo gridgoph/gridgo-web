@@ -10,9 +10,12 @@ import { presentOrderState } from "@/lib/order-state";
 
 export type OverviewBucketId =
   | "needs_qa"
+  | "payment_confirmation"
   | "awaiting_matching"
+  | "signup_approvals"
   | "in_production"
   | "out_for_delivery"
+  | "escalated"
   | "blocked"
   | "sla_risk";
 
@@ -38,10 +41,11 @@ export type OverviewNextAction = {
 
 const QA_STATES = new Set(["submitted", "needs_qa"]);
 const MATCH_STATES = new Set(["approved_for_matching"]);
+/** An order stalls here until Operations confirms the client's transfer. */
+const PAYMENT_REVIEW_STATES = new Set(["downpayment_review"]);
 const PRODUCTION_STATES = new Set([
   "supplier_assigned",
-  "supplier_accepted",
-  "awaiting_payment",
+  "awaiting_downpayment",
   "payment_authorized",
   "production",
   "supplier_self_qc",
@@ -119,10 +123,15 @@ export function buildOverviewBuckets(
   claims: Claim[] = [],
   issues: Issue[] = [],
   nowMs: number = Date.now(),
+  extras: {
+    pendingSignups?: number;
+    openEscalations?: number;
+  } = {},
 ): OverviewBucket[] {
   const active = orders.filter((o) => o.state !== "draft");
 
   const needsQa = active.filter((o) => QA_STATES.has(o.state));
+  const payments = active.filter((o) => PAYMENT_REVIEW_STATES.has(o.state));
   const matching = active.filter((o) => MATCH_STATES.has(o.state));
   const production = active.filter((o) => PRODUCTION_STATES.has(o.state));
   const delivery = active.filter((o) => DELIVERY_STATES.has(o.state));
@@ -130,12 +139,32 @@ export function buildOverviewBuckets(
   const slaRisk = active.filter(
     (o) => isSlaAtRisk(o, nowMs) || isSlaBreached(o, nowMs),
   );
+  const pendingSignups = extras.pendingSignups ?? 0;
+  const openEscalations = extras.openEscalations ?? 0;
 
   const buckets: OverviewBucket[] = [
     {
+      id: "payment_confirmation",
+      label: "Payments to confirm",
+      description:
+        "A client has transferred and is waiting. Nothing moves until the money is confirmed.",
+      count: payments.length,
+      href: "/ops/payments",
+      urgent: payments.length > 0,
+    },
+    {
+      id: "escalated",
+      label: "Riders blocked",
+      description:
+        "A pickup check failed. The rider must not transport until you say what happens.",
+      count: openEscalations,
+      href: "/ops/escalations",
+      urgent: openEscalations > 0,
+    },
+    {
       id: "needs_qa",
       label: "Needs QA",
-      description: "Submitted or in review — proof and specs need a decision.",
+      description: "Submitted or in review — artwork and specs need a decision.",
       count: needsQa.length,
       href: "/ops/qa",
       urgent: needsQa.length > 0,
@@ -147,6 +176,15 @@ export function buildOverviewBuckets(
       count: matching.length,
       href: "/ops/matching",
       urgent: matching.length > 0,
+    },
+    {
+      id: "signup_approvals",
+      label: "Sign-ups waiting",
+      description:
+        "Suppliers and riders who cannot be given work until they are approved.",
+      count: pendingSignups,
+      href: "/ops/approvals",
+      urgent: pendingSignups > 0,
     },
     {
       id: "in_production",
@@ -193,10 +231,40 @@ export function pickOverviewNextAction(
   claims: Claim[] = [],
   issues: Issue[] = [],
   nowMs: number = Date.now(),
+  extras: { openEscalations?: number } = {},
 ): OverviewNextAction | null {
   const active = orders.filter((o) => o.state !== "draft");
 
-  // 1. QA that Operations can progress
+  // 1. A rider standing at a supplier with a failed check outranks everything:
+  //    they cannot move, and an unlogged defect becomes GRIDGO's liability.
+  if (extras.openEscalations) {
+    return {
+      title: "A rider is blocked at pickup",
+      body:
+        extras.openEscalations === 1
+          ? "A pickup check failed and the rider is waiting for your instruction before they can transport."
+          : `${extras.openEscalations} pickup checks failed. Those riders are waiting for your instruction.`,
+      href: "/ops/escalations",
+      cta: "Open escalations",
+    };
+  }
+
+  // 2. Money a client has already sent. The order is stopped until it clears.
+  const paymentOrder = active
+    .filter((o) => PAYMENT_REVIEW_STATES.has(o.state))
+    .sort((a, b) => (a.updatedAt || "").localeCompare(b.updatedAt || ""))[0];
+  if (paymentOrder) {
+    return {
+      title: "Confirm a downpayment",
+      body: `${paymentOrder.title} — the client has transferred and the order cannot move until the money is confirmed.`,
+      href: `/ops/payments/${paymentOrder.id}?installment=downpayment`,
+      cta: "Review payment",
+      orderId: paymentOrder.id,
+      orderTitle: paymentOrder.title,
+    };
+  }
+
+  // 3. QA that Operations can progress
   const qaOrder = active
     .filter((o) => QA_STATES.has(o.state))
     .sort((a, b) => (a.updatedAt || "").localeCompare(b.updatedAt || ""))[0];
@@ -306,28 +374,23 @@ export function pickOverviewNextAction(
     };
   }
 
-  // 6. Issue window / payout release
-  const issueWindow = active.find((o) => o.state === "issue_window_open");
-  if (issueWindow) {
-    return {
-      title: "Close issue window",
-      body: `${issueWindow.title} can be marked completed if no open claim blocks payout.`,
-      href: `/ops/qa/${issueWindow.id}`,
-      cta: "Open order",
-      orderId: issueWindow.id,
-      orderTitle: issueWindow.title,
-    };
-  }
-
+  // 6. Milestones a supplier has earned and can be paid for.
+  //    The issue window is not here: only the platform closes it, once it has
+  //    actually expired, so there is nothing for Operations to do about it.
   const payoutReady = active.find(
-    (o) => o.state === "completed" && !o.payoutHold,
+    (o) =>
+      !o.payoutHold &&
+      (o.payoutMilestones ?? []).some(
+        (m) => m.status === "pof_attached" || m.pofFileIds.length > 0,
+      ) &&
+      (o.payoutMilestones ?? []).some((m) => m.status !== "released"),
   );
   if (payoutReady) {
     return {
-      title: "Release supplier payout",
-      body: `${payoutReady.title} is completed and clear of holds.`,
-      href: `/ops/qa/${payoutReady.id}`,
-      cta: "Open order",
+      title: "Release a supplier milestone",
+      body: `${payoutReady.title} has proof waiting against a milestone the supplier has already earned.`,
+      href: "/ops/payouts",
+      cta: "Open payouts",
       orderId: payoutReady.id,
       orderTitle: payoutReady.title,
     };

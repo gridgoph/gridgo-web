@@ -4,18 +4,20 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
 import {
-  codReconciliationRows,
+  orderMoneySplits,
+  reconciliationRows,
   rollupFinance,
   type MoneyFigure,
 } from "@/app/admin/_lib/finance";
 import {
   presentClaimStatus,
-  presentPaymentMethod,
   presentPaymentStatus,
 } from "@/app/admin/_lib/present";
 import { Button } from "@/components/ui/button";
 import {
   ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
   ChartTooltip,
   ChartTooltipContent,
   type ChartConfig,
@@ -28,13 +30,26 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { listClaims, listOrders } from "@/lib/api/client";
 import type { Claim, Order } from "@/lib/api/types";
 import { formatDateTime, formatPhp } from "@/lib/format";
-import { presentOrderState } from "@/lib/order-state";
+import { presentOrderState, presentPaymentProgress } from "@/lib/order-state";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
-const paymentMethodChartConfig = {
-  totalMinor: {
-    label: "Order total",
+/**
+ * Where each order's money goes. Operations and Super Admin are the only roles
+ * the server hands supplier price and commission to, so this reconciliation
+ * exists on this screen and nowhere else in the portal.
+ */
+const splitChartConfig = {
+  supplierPriceMinor: {
+    label: "Supplier earns",
     color: "var(--color-chart-1)",
+  },
+  commissionMinor: {
+    label: "GRIDGO commission",
+    color: "var(--color-chart-2)",
+  },
+  deliveryFeeMinor: {
+    label: "Delivery",
+    color: "var(--color-chart-3)",
   },
 } satisfies ChartConfig;
 
@@ -79,9 +94,16 @@ export default function AdminFinancePage() {
     return rollupFinance(orders, claims);
   }, [orders, claims]);
 
-  const codRows = useMemo(() => (orders ? codReconciliationRows(orders) : []), [orders]);
+  const rows = useMemo(
+    () => (orders ? reconciliationRows(orders) : []),
+    [orders],
+  );
+  const splits = useMemo(
+    () => (orders ? orderMoneySplits(orders) : []),
+    [orders],
+  );
 
-  const codColumns = useMemo<DataTableColumn<Order>[]>(
+  const orderColumns = useMemo<DataTableColumn<Order>[]>(
     () => [
       {
         id: "order",
@@ -115,19 +137,48 @@ export default function AdminFinancePage() {
       {
         id: "payment",
         header: "Payment",
-        sortValue: (o) => presentPaymentStatus(o.paymentStatus).label,
+        sortValue: (o) =>
+          o.payments
+            ? presentPaymentProgress(o.payments).label
+            : presentPaymentStatus(o.paymentStatus).label,
         cell: (o) => {
-          const p = presentPaymentStatus(o.paymentStatus);
+          const p = o.payments
+            ? presentPaymentProgress(o.payments)
+            : presentPaymentStatus(o.paymentStatus);
           return <StatusChip tone={p.tone} label={p.label} icon={p.icon} />;
         },
       },
       {
+        id: "supplier",
+        header: "Supplier earns",
+        sortValue: (o) => o.supplierPriceMinor ?? -1,
+        cell: (o) => (
+          <span className="text-body text-text-secondary tabular-nums whitespace-nowrap">
+            {o.supplierPriceMinor !== undefined
+              ? formatPhp(o.supplierPriceMinor)
+              : "Not priced yet"}
+          </span>
+        ),
+      },
+      {
+        id: "commission",
+        header: "Commission",
+        sortValue: (o) => o.commissionMinor ?? -1,
+        cell: (o) => (
+          <span className="text-body text-text-secondary tabular-nums whitespace-nowrap">
+            {o.commissionMinor !== undefined
+              ? formatPhp(o.commissionMinor)
+              : "—"}
+          </span>
+        ),
+      },
+      {
         id: "total",
-        header: "Order total",
+        header: "Client total",
         sortValue: (o) => o.totalMinor,
         cell: (o) => (
           <span
-            className="text-body text-text-primary"
+            className="text-body text-text-primary tabular-nums whitespace-nowrap"
             style={{ fontFamily: "var(--font-medium)" }}
           >
             {formatPhp(o.totalMinor)}
@@ -165,7 +216,9 @@ export default function AdminFinancePage() {
             >
               {c.reason}
             </p>
-            <p className="text-caption text-text-muted m-0 mt-0.5">Order {c.orderId}</p>
+            <p className="text-caption text-text-muted m-0 mt-0.5">
+              {c.holdReason ?? "No hold reason recorded"}
+            </p>
           </div>
         ),
       },
@@ -208,128 +261,113 @@ export default function AdminFinancePage() {
     );
   }
 
-  const authorised = formatFigure(rollup.authorised);
-  const collected = formatFigure(rollup.collected);
-  const unpaid = formatFigure(rollup.unpaid);
+  const confirmedIn = formatFigure(rollup.confirmedIn);
+  const awaiting = formatFigure(rollup.awaitingConfirmation);
+  const outstanding = formatFigure(rollup.outstanding);
+  const commission = formatFigure(rollup.commissionEarned);
+  const released = formatFigure(rollup.supplierReleased);
+  const owed = formatFigure(rollup.supplierOutstanding);
   const held = formatFigure(rollup.heldOnOrders);
-  const released = formatFigure(rollup.payoutReleased);
-  const codCollected = formatFigure(rollup.codCollected);
-  const codOutstanding = formatFigure(rollup.codOutstanding);
-  const paymentMethods = summariseMethods(orders);
 
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Money picture across orders: authorised, collected, held, released, and
-          outstanding. Figures are composed from order payment fields and claims — where
-          the demo ledger cannot supply a number, it is labelled unavailable rather than
-          invented.
+          What clients have paid, what GRIDGO has earned, and what suppliers are
+          still owed. Every order is paid in two digital installments and every
+          supplier in four milestones, so both sides are counted separately.
         </p>
         <Button variant="secondary" onClick={() => void load()}>
           Refresh
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        <FigureCard
-          label="Authorised"
-          value={authorised.value}
-          hint={`${rollup.orderCount} orders in view`}
-        />
-        <FigureCard label="Collected" value={collected.value} />
-        <FigureCard label="Unpaid / outstanding" value={unpaid.value} />
-        <FigureCard
-          label="Held on orders"
-          value={held.value}
-          hint={`${rollup.activeHoldClaims} active claim hold${rollup.activeHoldClaims === 1 ? "" : "s"}`}
-        />
-        <FigureCard label="Payout released" value={released.value} hint={released.hint} />
-        <FigureCard
-          label="COD collected"
-          value={codCollected.value}
-          hint={`${rollup.codOrderCount} cash-on-delivery order${rollup.codOrderCount === 1 ? "" : "s"}`}
-        />
-      </div>
-
-      <section className="gg-card" aria-labelledby="cod-heading">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h2 id="cod-heading" className="text-h3 text-text-primary m-0">
-              Cash-on-delivery reconciliation
-            </h2>
-            <p className="text-body text-text-secondary m-0 mt-1">
-              Outstanding COD total:{" "}
-              <strong className="text-text-primary font-medium">
-                {codOutstanding.value}
-              </strong>
-              . Method and status come from each order — not a separate cash drawer
-              endpoint.
-            </p>
-          </div>
+      <section aria-labelledby="in-heading" className="flex flex-col gap-3">
+        <h2 id="in-heading" className="text-h3 text-text-primary m-0">
+          Money in from clients
+        </h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <FigureCard
+            label="Confirmed"
+            value={confirmedIn.value}
+            hint={`${rollup.orderCount} live order${rollup.orderCount === 1 ? "" : "s"}`}
+          />
+          <FigureCard
+            label="Waiting on Operations"
+            value={awaiting.value}
+            hint="Submitted by a client, not yet confirmed"
+          />
+          <FigureCard
+            label="Not sent yet"
+            value={outstanding.value}
+            hint="Billed but the client has not transferred"
+          />
         </div>
-
-        {!codRows.length ? (
-          <EmptyState
-            title="No cash-on-delivery orders"
-            body="COD orders appear here when clients choose cash on delivery. Until then, nothing to reconcile."
-          />
-        ) : (
-          <DataTable
-            columns={codColumns}
-            data={codRows}
-            getRowId={(o) => o.id}
-            caption="Cash-on-delivery orders"
-            filterPlaceholder="Filter COD orders…"
-          />
-        )}
       </section>
 
-      <section className="gg-card" aria-labelledby="claims-heading">
-        <h2 id="claims-heading" className="text-h3 text-text-primary m-0 mb-1">
-          Claims affecting payout
+      <section aria-labelledby="out-heading" className="flex flex-col gap-3">
+        <h2 id="out-heading" className="text-h3 text-text-primary m-0">
+          GRIDGO and supplier earnings
         </h2>
-        <p className="text-body text-text-secondary m-0 mb-3">
-          Active holds block payout release. Released holds are historical.
-        </p>
-        {!claims.length ? (
-          <EmptyState
-            title="No claims"
-            body="Claims appear when Operations or a client issue raises a payout hold."
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <FigureCard
+            label="Commission earned"
+            value={commission.value}
+            hint={
+              commission.hint ??
+              (rollup.unpricedOrderCount
+                ? `${rollup.unpricedOrderCount} order${rollup.unpricedOrderCount === 1 ? "" : "s"} not priced yet`
+                : "10% on top of every supplier price")
+            }
           />
-        ) : (
-          <DataTable
-            columns={claimColumns}
-            data={claims}
-            getRowId={(c) => c.id}
-            caption="Claims and holds"
-            filterPlaceholder="Filter claims…"
+          <FigureCard
+            label="Paid to suppliers"
+            value={released.value}
+            hint="Milestones already released"
           />
-        )}
+          <FigureCard
+            label="Still owed to suppliers"
+            value={owed.value}
+            hint="Milestones awaiting proof or release"
+          />
+          <FigureCard
+            label="Held by claims"
+            value={held.value}
+            hint={`${rollup.activeHoldClaims} active hold${rollup.activeHoldClaims === 1 ? "" : "s"}`}
+          />
+        </div>
       </section>
 
-      <section className="gg-card" aria-labelledby="method-heading">
-        <h2 id="method-heading" className="text-h3 text-text-primary m-0 mb-3">
-          Payment method mix
+      <section className="gg-card" aria-labelledby="split-heading">
+        <h2 id="split-heading" className="text-h3 text-text-primary m-0 mb-1">
+          Where each order&rsquo;s money goes
         </h2>
-        <p className="text-body text-text-secondary m-0 mb-3">
-          Bar height compares order value. Tooltips preserve the exact peso total; each
-          axis label names the payment method.
+        <p className="text-body text-text-secondary m-0 mb-3 max-w-prose">
+          The client total split three ways. The supplier keeps its asking price
+          in full; commission sits on top of it, and delivery on top of that.
         </p>
-        {!paymentMethods.length ? (
+        {!splits.length ? (
           <EmptyState
-            title="No payment methods yet"
-            body="Payment method totals appear after an order chooses Pilot Credits or cash on delivery."
+            title="Nothing priced yet"
+            body="An order only has a real split once a supplier accepts and names its price. Until then the client has an estimate."
           />
         ) : (
           <ChartContainer
-            config={paymentMethodChartConfig}
+            config={splitChartConfig}
             className="h-72 w-full"
-            aria-label="Order value by payment method"
+            aria-label="Client total split into supplier earnings, commission and delivery"
           >
-            <BarChart data={paymentMethods} accessibilityLayer>
+            <BarChart data={splits} accessibilityLayer>
               <CartesianGrid vertical={false} />
-              <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
+              <XAxis
+                dataKey="label"
+                tickLine={false}
+                axisLine={false}
+                tickMargin={8}
+                tickFormatter={(value: string) =>
+                  value.length > 18 ? `${value.slice(0, 17)}…` : value
+                }
+              />
               <YAxis
                 tickLine={false}
                 axisLine={false}
@@ -339,12 +377,79 @@ export default function AdminFinancePage() {
               <ChartTooltip
                 cursor={false}
                 content={
-                  <ChartTooltipContent formatter={(value) => formatPhp(Number(value))} />
+                  <ChartTooltipContent
+                    formatter={(value) => formatPhp(Number(value))}
+                  />
                 }
               />
-              <Bar dataKey="totalMinor" fill="var(--color-totalMinor)" radius={8} />
+              <ChartLegend content={<ChartLegendContent />} />
+              <Bar
+                dataKey="supplierPriceMinor"
+                stackId="money"
+                fill="var(--color-supplierPriceMinor)"
+                radius={[0, 0, 8, 8]}
+              />
+              <Bar
+                dataKey="commissionMinor"
+                stackId="money"
+                fill="var(--color-commissionMinor)"
+              />
+              <Bar
+                dataKey="deliveryFeeMinor"
+                stackId="money"
+                fill="var(--color-deliveryFeeMinor)"
+                radius={[8, 8, 0, 0]}
+              />
             </BarChart>
           </ChartContainer>
+        )}
+      </section>
+
+      <section className="gg-card" aria-labelledby="orders-heading">
+        <h2 id="orders-heading" className="text-h3 text-text-primary m-0 mb-1">
+          Order by order
+        </h2>
+        <p className="text-body text-text-secondary m-0 mb-3">
+          Supplier price and commission are shown here because Operations and
+          Super Admin are the only roles allowed to see them.
+        </p>
+        {!rows.length ? (
+          <EmptyState
+            title="No live orders"
+            body="Orders appear here as soon as a client submits one."
+          />
+        ) : (
+          <DataTable
+            columns={orderColumns}
+            data={rows}
+            getRowId={(o) => o.id}
+            caption="Order money reconciliation"
+            filterPlaceholder="Filter orders…"
+          />
+        )}
+      </section>
+
+      <section className="gg-card" aria-labelledby="claims-heading">
+        <h2 id="claims-heading" className="text-h3 text-text-primary m-0 mb-1">
+          Claims holding payout
+        </h2>
+        <p className="text-body text-text-secondary m-0 mb-3">
+          An active hold stops every remaining milestone on that order. Released
+          holds are history.
+        </p>
+        {!claims.length ? (
+          <EmptyState
+            title="No claims"
+            body="Claims appear when Operations raises one, or when a client reports an issue inside the issue window."
+          />
+        ) : (
+          <DataTable
+            columns={claimColumns}
+            data={claims}
+            getRowId={(c) => c.id}
+            caption="Claims and holds"
+            filterPlaceholder="Filter claims…"
+          />
         )}
       </section>
     </div>
@@ -363,26 +468,8 @@ function FigureCard({
   return (
     <div className="gg-card">
       <p className="text-caption text-text-muted m-0">{label}</p>
-      <p className="text-h2 text-text-primary m-0 mt-1">{value}</p>
+      <p className="text-h2 text-text-primary m-0 mt-1 tabular-nums">{value}</p>
       {hint ? <p className="text-caption text-text-muted m-0 mt-1">{hint}</p> : null}
     </div>
   );
-}
-
-function summariseMethods(orders: Order[]) {
-  const map = new Map<string, { label: string; count: number; totalMinor: number }>();
-  for (const o of orders) {
-    const key = o.paymentMethod ?? "none";
-    const existing = map.get(key) ?? {
-      label: presentPaymentMethod(o.paymentMethod),
-      count: 0,
-      totalMinor: 0,
-    };
-    existing.count += 1;
-    existing.totalMinor += o.totalMinor;
-    map.set(key, existing);
-  }
-  return [...map.entries()]
-    .map(([method, v]) => ({ method, ...v }))
-    .sort((a, b) => b.totalMinor - a.totalMinor);
 }

@@ -30,7 +30,6 @@ function job(
     deliveryFeeMinor: 0,
     paymentMethod: null,
     paymentStatus: "unpaid",
-    codEligible: false,
     promisedDate: null,
     artworkName: null,
     createdAt: "",
