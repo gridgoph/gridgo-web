@@ -9,18 +9,17 @@ import {
   roleChangeConsequence,
 } from "@/app/admin/_lib/present";
 import { Button } from "@/components/ui/button";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import {
-  DataTable,
-  type DataTableColumn,
-} from "@/components/ui/data-table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -98,9 +97,7 @@ export default function AdminRolesPage() {
         sortValue: (u) => presentRole(u.role),
         filterValue: (u) => presentRole(u.role),
         cell: (u) => (
-          <span className="text-body text-text-primary">
-            {presentRole(u.role)}
-          </span>
+          <span className="text-body text-text-primary">{presentRole(u.role)}</span>
         ),
       },
       {
@@ -119,9 +116,9 @@ export default function AdminRolesPage() {
 
   const isHighRisk = Boolean(
     target &&
-      nextRole &&
-      nextRole !== target.role &&
-      (nextRole === "super_admin" || target.role === "super_admin"),
+    nextRole &&
+    nextRole !== target.role &&
+    (nextRole === "super_admin" || target.role === "super_admin"),
   );
 
   const confirmPhrase = target ? target.email : "";
@@ -177,9 +174,9 @@ export default function AdminRolesPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Platform role changes are the highest-blast-radius control in GRIDGO.
-          Granting Super Admin creates another full administrator; removing it
-          revokes governance access immediately. Every change is audited.
+          Platform role changes are the highest-blast-radius control in GRIDGO. Granting
+          Super Admin creates another full administrator; removing it revokes governance
+          access immediately. Every change is audited.
         </p>
         <Button variant="secondary" onClick={() => void load()}>
           Refresh
@@ -227,7 +224,7 @@ export default function AdminRolesPage() {
         />
       )}
 
-      <Dialog
+      <AlertDialog
         open={!!target}
         onOpenChange={(open) => {
           if (!open) {
@@ -239,14 +236,14 @@ export default function AdminRolesPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Change role for {target?.name}</DialogTitle>
-            <DialogDescription>
-              Currently {target ? presentRole(target.role) : ""}. Role changes
-              are written to the platform audit log with your reason.
-            </DialogDescription>
-          </DialogHeader>
+        <AlertDialogContent className="sm:max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Change role for {target?.name}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Currently {target ? presentRole(target.role) : ""}. Role changes are written
+              to the platform audit log with your reason.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
 
           <FieldGroup>
             <Field>
@@ -315,8 +312,8 @@ export default function AdminRolesPage() {
             </p>
           ) : null}
 
-          <DialogFooter>
-            <Button
+          <AlertDialogFooter>
+            <AlertDialogCancel
               variant="secondary"
               disabled={busy}
               onClick={() => {
@@ -327,17 +324,17 @@ export default function AdminRolesPage() {
               }}
             >
               Cancel
-            </Button>
-            <Button
+            </AlertDialogCancel>
+            <AlertDialogAction
               variant={isHighRisk ? "danger" : "primary"}
               disabled={busy || !canSubmit}
               onClick={() => void applyRole()}
             >
               {busy ? "Saving…" : "Confirm role change"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -528,8 +528,8 @@ body {
   outline-offset: 2px;
   --tw-ring-shadow: 0 0 #0000;
   --tw-ring-offset-shadow: 0 0 #0000;
-  box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow),
-    var(--tw-shadow, 0 0 #0000);
+  box-shadow:
+    var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
 }
 
 button:focus-visible,
@@ -543,6 +543,14 @@ textarea:focus-visible,
   outline-offset: 2px;
   --tw-ring-shadow: 0 0 #0000;
   --tw-ring-offset-shadow: 0 0 #0000;
+}
+
+/* Registry controls inherit GRIDGO's 44px touch-target floor globally. */
+[data-slot="toggle"],
+[data-sidebar="menu-button"],
+[data-slot="dropdown-menu-item"] {
+  min-height: 44px;
+  min-width: 44px;
 }
 
 /* Reduced motion */

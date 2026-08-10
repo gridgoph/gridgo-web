@@ -17,17 +17,17 @@ import {
 } from "@/app/supplier/_lib/taxonomy-labels";
 import { Button } from "@/components/ui/button";
 import {
-  DataTable,
-  type DataTableColumn,
-} from "@/components/ui/data-table";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
@@ -67,9 +67,7 @@ export default function SupplierCataloguePage() {
   const [formBusy, setFormBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const [withdrawTarget, setWithdrawTarget] = useState<SupplierService | null>(
-    null,
-  );
+  const [withdrawTarget, setWithdrawTarget] = useState<SupplierService | null>(null);
   const [actionBusy, setActionBusy] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -221,8 +219,7 @@ export default function SupplierCataloguePage() {
               {categoryName(s.categoryCode, taxonomy)}
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5">
-              {materialNames(s.materialCodes, taxonomy).join(", ") ||
-                "No materials"}
+              {materialNames(s.materialCodes, taxonomy).join(", ") || "No materials"}
             </p>
           </div>
         ),
@@ -235,11 +232,7 @@ export default function SupplierCataloguePage() {
         cell: (s) => {
           const status = presentServiceState(s.state, s);
           return (
-            <StatusChip
-              tone={status.tone}
-              label={status.label}
-              icon={status.icon}
-            />
+            <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
           );
         },
       },
@@ -249,8 +242,7 @@ export default function SupplierCataloguePage() {
         sortValue: (s) => s.referenceRateMinor,
         cell: (s) => (
           <span className="text-body text-text-secondary">
-            {formatPhp(s.referenceRateMinor)} ·{" "}
-            {presentPricingBasis(s.pricingBasis)}
+            {formatPhp(s.referenceRateMinor)} · {presentPricingBasis(s.pricingBasis)}
           </span>
         ),
       },
@@ -297,13 +289,9 @@ export default function SupplierCataloguePage() {
           return (
             <div className="max-w-xs">
               {p.whyNotLive ? (
-                <p className="text-caption text-text-secondary m-0">
-                  {p.whyNotLive}
-                </p>
+                <p className="text-caption text-text-secondary m-0">{p.whyNotLive}</p>
               ) : null}
-              <p className="text-caption text-text-muted m-0 mt-0.5">
-                {p.nextStep}
-              </p>
+              <p className="text-caption text-text-muted m-0 mt-0.5">{p.nextStep}</p>
             </div>
           );
         },
@@ -333,125 +321,158 @@ export default function SupplierCataloguePage() {
   ).length;
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="max-w-prose">
-          <p className="text-body text-text-secondary m-0">
-            Declare what your shop can produce using platform categories,
-            materials, finishes, and zones. Lines move{" "}
-            <span style={{ fontFamily: "var(--font-medium)" }}>
-              draft → verification → live
-            </span>
-            . Withdrawing a line stops new matches only — in-flight orders keep
-            running.
-          </p>
-          <p className="text-caption text-text-muted m-0 mt-1">
-            {services.length} line{services.length === 1 ? "" : "s"}
-            {needsAttention > 0
-              ? ` · ${needsAttention} not live yet`
-              : ""}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => void load()}>
-            Refresh
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() => {
-              setFormMode("create");
-              setEditing(null);
-              setFormError(null);
-              setFormOpen(true);
-            }}
-          >
-            Add service line
-          </Button>
-        </div>
-      </div>
+    <>
+      <AlertDialog
+        open={withdrawTarget != null}
+        onOpenChange={(open) => {
+          if (!open) setWithdrawTarget(null);
+        }}
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="max-w-prose">
+              <p className="text-body text-text-secondary m-0">
+                Declare what your shop can produce using platform categories, materials,
+                finishes, and zones. Lines move{" "}
+                <span style={{ fontFamily: "var(--font-medium)" }}>
+                  draft → verification → live
+                </span>
+                . Withdrawing a line stops new matches only — in-flight orders keep
+                running.
+              </p>
+              <p className="text-caption text-text-muted m-0 mt-1">
+                {services.length} line{services.length === 1 ? "" : "s"}
+                {needsAttention > 0 ? ` · ${needsAttention} not live yet` : ""}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => void load()}>
+                Refresh
+              </Button>
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setFormMode("create");
+                  setEditing(null);
+                  setFormError(null);
+                  setFormOpen(true);
+                }}
+              >
+                Add service line
+              </Button>
+            </div>
+          </div>
 
-      {actionError ? (
-        <p className="text-body text-error m-0" role="alert">
-          {actionError}
-        </p>
-      ) : null}
+          {actionError ? (
+            <p className="text-body text-error m-0" role="alert">
+              {actionError}
+            </p>
+          ) : null}
 
-      {!services.length ? (
-        <EmptyState
-          title="No service lines yet"
-          body="Add a capability from the platform taxonomy so Operations can match jobs to your shop."
-          action={
-            <Button
-              variant="primary"
-              onClick={() => {
-                setFormMode("create");
-                setEditing(null);
-                setFormError(null);
-                setFormOpen(true);
+          {!services.length ? (
+            <EmptyState
+              title="No service lines yet"
+              body="Add a capability from the platform taxonomy so Operations can match jobs to your shop."
+              action={
+                <Button
+                  variant="primary"
+                  onClick={() => {
+                    setFormMode("create");
+                    setEditing(null);
+                    setFormError(null);
+                    setFormOpen(true);
+                  }}
+                >
+                  Add service line
+                </Button>
+              }
+            />
+          ) : (
+            <DataTable
+              columns={columns}
+              data={services}
+              getRowId={(s) => s.id}
+              caption="Service catalogue"
+              filterPlaceholder="Filter services…"
+              rowActions={(s) => {
+                const actions = actionsForService(s.state);
+                return (
+                  <div className="flex flex-wrap gap-2">
+                    {actions.map((action) => {
+                      if (action.kind === "edit") {
+                        return (
+                          <Button
+                            key={action.kind}
+                            variant="secondary"
+                            disabled={actionBusy === s.id}
+                            onClick={() => {
+                              setFormMode("edit");
+                              setEditing(s);
+                              setFormError(null);
+                              setFormOpen(true);
+                            }}
+                          >
+                            {action.label}
+                          </Button>
+                        );
+                      }
+                      if (action.kind === "submit") {
+                        return (
+                          <Button
+                            key={action.kind}
+                            variant="secondary"
+                            disabled={actionBusy === s.id}
+                            onClick={() => void handleSubmit(s)}
+                          >
+                            {actionBusy === s.id ? "Submitting…" : action.label}
+                          </Button>
+                        );
+                      }
+                      return (
+                        <AlertDialogTrigger
+                          key={action.kind}
+                          render={
+                            <Button variant="danger" disabled={actionBusy === s.id} />
+                          }
+                          onClick={() => setWithdrawTarget(s)}
+                        >
+                          {action.label}
+                        </AlertDialogTrigger>
+                      );
+                    })}
+                  </div>
+                );
               }}
+            />
+          )}
+        </div>
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Withdraw from matching?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the line from new job matches only. In-flight orders already
+              assigned to your shop keep running — withdrawal does not cancel them. You
+              can re-submit later for verification.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              variant="secondary"
+              disabled={actionBusy != null}
+              onClick={() => setWithdrawTarget(null)}
             >
-              Add service line
-            </Button>
-          }
-        />
-      ) : (
-        <DataTable
-          columns={columns}
-          data={services}
-          getRowId={(s) => s.id}
-          caption="Service catalogue"
-          filterPlaceholder="Filter services…"
-          rowActions={(s) => {
-            const actions = actionsForService(s.state);
-            return (
-              <div className="flex flex-wrap gap-2">
-                {actions.map((action) => {
-                  if (action.kind === "edit") {
-                    return (
-                      <Button
-                        key={action.kind}
-                        variant="secondary"
-                        disabled={actionBusy === s.id}
-                        onClick={() => {
-                          setFormMode("edit");
-                          setEditing(s);
-                          setFormError(null);
-                          setFormOpen(true);
-                        }}
-                      >
-                        {action.label}
-                      </Button>
-                    );
-                  }
-                  if (action.kind === "submit") {
-                    return (
-                      <Button
-                        key={action.kind}
-                        variant="secondary"
-                        disabled={actionBusy === s.id}
-                        onClick={() => void handleSubmit(s)}
-                      >
-                        {actionBusy === s.id ? "Submitting…" : action.label}
-                      </Button>
-                    );
-                  }
-                  return (
-                    <Button
-                      key={action.kind}
-                      variant="danger"
-                      disabled={actionBusy === s.id}
-                      onClick={() => setWithdrawTarget(s)}
-                    >
-                      {action.label}
-                    </Button>
-                  );
-                })}
-              </div>
-            );
-          }}
-        />
-      )}
-
+              Keep line
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="danger"
+              disabled={actionBusy != null}
+              onClick={() => void handleWithdraw()}
+            >
+              {actionBusy ? "Withdrawing…" : "Confirm withdraw"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <ServiceFormDialog
         open={formOpen}
         onOpenChange={(open) => {
@@ -469,40 +490,6 @@ export default function SupplierCataloguePage() {
         error={formError}
         onSubmit={formMode === "create" ? handleCreate : handleUpdate}
       />
-
-      <Dialog
-        open={withdrawTarget != null}
-        onOpenChange={(open) => {
-          if (!open) setWithdrawTarget(null);
-        }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Withdraw from matching?</DialogTitle>
-            <DialogDescription>
-              This removes the line from new job matches only. In-flight orders
-              already assigned to your shop keep running — withdrawal does not
-              cancel them. You can re-submit later for verification.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="secondary"
-              disabled={actionBusy != null}
-              onClick={() => setWithdrawTarget(null)}
-            >
-              Keep line
-            </Button>
-            <Button
-              variant="danger"
-              disabled={actionBusy != null}
-              onClick={() => void handleWithdraw()}
-            >
-              {actionBusy ? "Withdrawing…" : "Confirm withdraw"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+    </>
   );
 }

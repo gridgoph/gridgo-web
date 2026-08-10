@@ -2,12 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  addDays,
-  format,
-  isSameDay,
-  parseISO,
-} from "date-fns";
+import { addDays, format, isSameDay, parseISO } from "date-fns";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import {
@@ -25,6 +20,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { StatusChip } from "@/components/ui/StatusChip";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ApiError, listClaims, listOrders } from "@/lib/api/client";
 import type { Claim, Order } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
@@ -89,10 +85,7 @@ export default function OpsSchedulePage() {
     [orders, claims],
   );
 
-  const { start, end } = useMemo(
-    () => rangeForView(mode, anchor),
-    [mode, anchor],
-  );
+  const { start, end } = useMemo(() => rangeForView(mode, anchor), [mode, anchor]);
 
   const visible = useMemo(
     () => filterEventsInRange(allEvents, start, end, kinds),
@@ -142,10 +135,9 @@ export default function OpsSchedulePage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Deadlines Operations works to — QA, proof, acceptance, production,
-          pickup, delivery, recovery, cash reconciliation, and payout holds.
-          Selecting an event opens the existing workspace; nothing new is
-          created here.
+          Deadlines Operations works to — QA, proof, acceptance, production, pickup,
+          delivery, recovery, cash reconciliation, and payout holds. Selecting an event
+          opens the existing workspace; nothing new is created here.
         </p>
         <Button variant="secondary" onClick={() => void load()}>
           Refresh
@@ -154,56 +146,46 @@ export default function OpsSchedulePage() {
 
       <div className="gg-card flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <div
-            className="inline-flex rounded-[var(--radius-field)] border border-outline p-0.5"
-            role="group"
+          <ToggleGroup
+            value={[mode]}
+            onValueChange={(values) => {
+              const next = values[0] as ScheduleViewMode | undefined;
+              if (next) setMode(next);
+            }}
+            variant="outline"
+            spacing={0}
             aria-label="Day or week view"
           >
-            <Button
-              variant={mode === "day" ? "default" : "ghost"}
-              aria-pressed={mode === "day"}
-              onClick={() => setMode("day")}
-            >
-              Day
-            </Button>
-            <Button
-              variant={mode === "week" ? "default" : "ghost"}
-              aria-pressed={mode === "week"}
-              onClick={() => setMode("week")}
-            >
-              Week
-            </Button>
-          </div>
+            <ToggleGroupItem value="day">Day</ToggleGroupItem>
+            <ToggleGroupItem value="week">Week</ToggleGroupItem>
+          </ToggleGroup>
 
           <Button
             variant="secondary"
             aria-label="Previous period"
             onClick={() => step(-1)}
           >
-            <ChevronLeft size={16} aria-hidden />
+            <ChevronLeft data-icon="inline-start" aria-hidden />
             Prev
           </Button>
           <Button variant="secondary" onClick={() => setAnchor(new Date())}>
             Today
           </Button>
-          <Button
-            variant="secondary"
-            aria-label="Next period"
-            onClick={() => step(1)}
-          >
+          <Button variant="secondary" aria-label="Next period" onClick={() => step(1)}>
             Next
-            <ChevronRight size={16} aria-hidden />
+            <ChevronRight data-icon="inline-end" aria-hidden />
           </Button>
         </div>
 
-        <p className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+        <p
+          className="text-body text-text-primary m-0"
+          style={{ fontFamily: "var(--font-medium)" }}
+        >
           {rangeLabel}
         </p>
 
         <fieldset className="m-0 border-0 p-0">
-          <legend className="text-caption text-text-muted mb-2">
-            Show event types
-          </legend>
+          <legend className="text-caption text-text-muted mb-2">Show event types</legend>
           <div className="flex flex-wrap gap-2">
             {ALL_KINDS.map((kind) => {
               const on = kinds.has(kind);
@@ -252,21 +234,11 @@ export default function OpsSchedulePage() {
   );
 }
 
-function WeekGrid({
-  start,
-  events,
-}: {
-  start: Date;
-  events: ScheduleEvent[];
-}) {
+function WeekGrid({ start, events }: { start: Date; events: ScheduleEvent[] }) {
   const days = Array.from({ length: 7 }, (_, i) => addDays(start, i));
 
   return (
-    <div
-      className="grid grid-cols-7 gap-2"
-      role="grid"
-      aria-label="Week schedule"
-    >
+    <div className="grid grid-cols-7 gap-2" role="grid" aria-label="Week schedule">
       {days.map((day) => {
         const dayEvents = events.filter((ev) => {
           try {
@@ -286,9 +258,7 @@ function WeekGrid({
               className="text-caption m-0"
               style={{
                 fontFamily: isToday ? "var(--font-bold)" : "var(--font-medium)",
-                color: isToday
-                  ? "var(--color-text-primary)"
-                  : "var(--color-text-muted)",
+                color: isToday ? "var(--color-text-primary)" : "var(--color-text-muted)",
               }}
             >
               {format(day, "EEE d")}
@@ -332,10 +302,7 @@ function AgendaList({
     <div className="flex flex-col gap-4" aria-label="Schedule agenda">
       {groups.map((group) => (
         <section key={group.dayKey} aria-labelledby={`day-${group.dayKey}`}>
-          <h2
-            id={`day-${group.dayKey}`}
-            className="text-h3 text-text-primary m-0 mb-2"
-          >
+          <h2 id={`day-${group.dayKey}`} className="text-h3 text-text-primary m-0 mb-2">
             {group.dayLabel}
           </h2>
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
@@ -366,9 +333,7 @@ function AgendaList({
                     >
                       {ev.orderTitle}
                     </p>
-                    <p className="text-caption text-text-secondary m-0">
-                      {ev.detail}
-                    </p>
+                    <p className="text-caption text-text-secondary m-0">{ev.detail}</p>
                   </div>
                   <span className="text-body text-text-secondary inline-flex items-center gap-1 shrink-0">
                     Open

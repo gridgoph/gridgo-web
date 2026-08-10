@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { StatusChip } from "@/components/ui/StatusChip";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ApiError, listJobs } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
@@ -53,11 +54,7 @@ function JobCard({ entry }: { entry: ScheduleEntry }) {
         {entry.job.title}
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <StatusChip
-          tone={status.tone}
-          label={status.label}
-          icon={status.icon}
-        />
+        <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
         <span className="text-caption text-text-muted">
           Due {formatDateTime(entry.job.deadline || entry.job.promisedDate)}
         </span>
@@ -109,15 +106,9 @@ export default function SupplierSchedulePage() {
     [mode, anchor],
   );
 
-  const entries = useMemo(
-    () => (jobs ? buildScheduleEntries(jobs) : []),
-    [jobs],
-  );
+  const entries = useMemo(() => (jobs ? buildScheduleEntries(jobs) : []), [jobs]);
 
-  const visible = useMemo(
-    () => filterEntriesInRange(entries, range),
-    [entries, range],
-  );
+  const visible = useMemo(() => filterEntriesInRange(entries, range), [entries, range]);
 
   const byDay = useMemo(() => groupEntriesByDay(visible), [visible]);
   const days = useMemo(() => eachDayInRange(range), [range]);
@@ -143,8 +134,8 @@ export default function SupplierSchedulePage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Accepted jobs by promised date. Open any entry for the existing job
-          workspace — this view never creates a parallel record.
+          Accepted jobs by promised date. Open any entry for the existing job workspace —
+          this view never creates a parallel record.
         </p>
         <Button variant="secondary" onClick={() => void load()}>
           Refresh
@@ -152,28 +143,19 @@ export default function SupplierSchedulePage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <div
-          className="inline-flex rounded-[var(--radius-field)] border border-outline p-1"
-          role="group"
+        <ToggleGroup
+          value={[mode]}
+          onValueChange={(values) => {
+            const next = values[0] as ScheduleViewMode | undefined;
+            if (next) setMode(next);
+          }}
+          variant="outline"
+          spacing={0}
           aria-label="Schedule density"
         >
-          <Button
-            variant={mode === "day" ? "default" : "ghost"}
-            size="sm"
-            aria-pressed={mode === "day"}
-            onClick={() => setMode("day")}
-          >
-            Day
-          </Button>
-          <Button
-            variant={mode === "week" ? "default" : "ghost"}
-            size="sm"
-            aria-pressed={mode === "week"}
-            onClick={() => setMode("week")}
-          >
-            Week
-          </Button>
-        </div>
+          <ToggleGroupItem value="day">Day</ToggleGroupItem>
+          <ToggleGroupItem value="week">Week</ToggleGroupItem>
+        </ToggleGroup>
 
         <Button
           variant="secondary"
@@ -275,8 +257,7 @@ export default function SupplierSchedulePage() {
           })}
           {visible.length === 0 ? (
             <p className="text-body text-text-secondary m-0">
-              No accepted jobs fall in this range. Move the week or open the
-              inbox.
+              No accepted jobs fall in this range. Move the week or open the inbox.
             </p>
           ) : null}
         </div>

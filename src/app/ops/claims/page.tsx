@@ -11,6 +11,16 @@ import {
 } from "@/app/ops/_lib/present";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -18,10 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  DataTable,
-  type DataTableColumn,
-} from "@/components/ui/data-table";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -35,6 +42,7 @@ import {
 } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   ApiError,
   createClaim,
@@ -49,9 +57,7 @@ import { formatDateTime } from "@/lib/format";
 import { presentTimelineActor } from "@/lib/order-state";
 
 type DialogMode =
-  | { type: "raise" }
-  | { type: "hold"; claim: Claim }
-  | { type: "release"; claim: Claim };
+  { type: "raise" } | { type: "hold"; claim: Claim } | { type: "release"; claim: Claim };
 
 export default function OpsClaimsPage() {
   const [claims, setClaims] = useState<Claim[] | null>(null);
@@ -92,20 +98,15 @@ export default function OpsClaimsPage() {
   }, [load]);
 
   const orderTitle = useCallback(
-    (orderId: string) =>
-      orders.find((o) => o.id === orderId)?.title ?? orderId,
+    (orderId: string) => orders.find((o) => o.id === orderId)?.title ?? orderId,
     [orders],
   );
 
   const filtered = useMemo(() => {
     if (!claims) return [];
     const list =
-      statusFilter === "all"
-        ? claims
-        : claims.filter((c) => c.status === statusFilter);
-    return [...list].sort((a, b) =>
-      (b.updatedAt || "").localeCompare(a.updatedAt || ""),
-    );
+      statusFilter === "all" ? claims : claims.filter((c) => c.status === statusFilter);
+    return [...list].sort((a, b) => (b.updatedAt || "").localeCompare(a.updatedAt || ""));
   }, [claims, statusFilter]);
 
   const detail = useMemo(
@@ -195,9 +196,7 @@ export default function OpsClaimsPage() {
         sortValue: (c) => presentClaimStatus(c.status).label,
         cell: (c) => {
           const s = presentClaimStatus(c.status);
-          return (
-            <StatusChip tone={s.tone} label={s.label} icon={s.icon} />
-          );
+          return <StatusChip tone={s.tone} label={s.label} icon={s.icon} />;
         },
       },
       {
@@ -205,9 +204,7 @@ export default function OpsClaimsPage() {
         header: "Reason",
         sortValue: (c) => c.reason,
         cell: (c) => (
-          <span className="text-body text-text-secondary line-clamp-2">
-            {c.reason}
-          </span>
+          <span className="text-body text-text-secondary line-clamp-2">{c.reason}</span>
         ),
       },
       {
@@ -259,8 +256,8 @@ export default function OpsClaimsPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          {payoutCopy.guidance} Every raise, hold, and release needs a reason
-          that is visible, attributable, and timestamped.
+          {payoutCopy.guidance} Every raise, hold, and release needs a reason that is
+          visible, attributable, and timestamped.
         </p>
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => void load()}>
@@ -277,10 +274,7 @@ export default function OpsClaimsPage() {
         <label htmlFor="claim-status-filter" className="text-caption text-text-muted">
           Status
         </label>
-        <Select
-          value={statusFilter}
-          onValueChange={(v) => setStatusFilter(v ?? "all")}
-        >
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "all")}>
           <SelectTrigger id="claim-status-filter" className="min-h-11">
             <SelectValue />
           </SelectTrigger>
@@ -355,10 +349,7 @@ export default function OpsClaimsPage() {
         >
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <h2
-                id="claim-detail-heading"
-                className="text-h3 text-text-primary m-0"
-              >
+              <h2 id="claim-detail-heading" className="text-h3 text-text-primary m-0">
                 {orderTitle(detail.orderId)}
               </h2>
               <p className="text-caption text-text-muted m-0 mt-1">
@@ -387,9 +378,7 @@ export default function OpsClaimsPage() {
               <dt className="text-caption text-text-muted">Hold reason</dt>
               <dd className="text-body text-text-primary m-0">
                 {detail.holdReason ?? "—"}
-                {detail.heldBy
-                  ? ` · ${presentTimelineActor(detail.heldBy)}`
-                  : ""}
+                {detail.heldBy ? ` · ${presentTimelineActor(detail.heldBy)}` : ""}
                 {detail.heldAt ? ` · ${formatDateTime(detail.heldAt)}` : ""}
               </dd>
             </div>
@@ -397,26 +386,24 @@ export default function OpsClaimsPage() {
               <dt className="text-caption text-text-muted">Release reason</dt>
               <dd className="text-body text-text-primary m-0">
                 {detail.releaseReason ?? "—"}
-                {detail.releasedBy
-                  ? ` · ${presentTimelineActor(detail.releasedBy)}`
-                  : ""}
-                {detail.releasedAt
-                  ? ` · ${formatDateTime(detail.releasedAt)}`
-                  : ""}
+                {detail.releasedBy ? ` · ${presentTimelineActor(detail.releasedBy)}` : ""}
+                {detail.releasedAt ? ` · ${formatDateTime(detail.releasedAt)}` : ""}
               </dd>
             </div>
             <div>
               <dt className="text-caption text-text-muted">Zone</dt>
               <dd className="text-body text-text-primary m-0">
-                {presentZone(
-                  orders.find((o) => o.id === detail.orderId)?.zone ?? "",
-                ) || "—"}
+                {presentZone(orders.find((o) => o.id === detail.orderId)?.zone ?? "") ||
+                  "—"}
               </dd>
             </div>
           </dl>
 
           <div>
-            <h3 className="text-body text-text-primary m-0 mb-2" style={{ fontFamily: "var(--font-medium)" }}>
+            <h3
+              className="text-body text-text-primary m-0 mb-2"
+              style={{ fontFamily: "var(--font-medium)" }}
+            >
               Claim timeline
             </h3>
             {detail.timeline?.length ? (
@@ -432,8 +419,7 @@ export default function OpsClaimsPage() {
                         {presentClaimAction(entry.action)}
                       </p>
                       <p className="text-caption text-text-muted m-0 mt-0.5">
-                        {formatDateTime(entry.at)} ·{" "}
-                        {presentTimelineActor(entry.by)}
+                        {formatDateTime(entry.at)} · {presentTimelineActor(entry.by)}
                       </p>
                       {entry.note ? (
                         <p className="text-caption text-text-secondary m-0 mt-1">
@@ -451,79 +437,61 @@ export default function OpsClaimsPage() {
       ) : null}
 
       <Dialog
-        open={dialog !== null}
+        open={dialog?.type === "raise"}
         onOpenChange={(open) => {
           if (!open) setDialog(null);
         }}
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              {dialog?.type === "raise"
-                ? "Raise claim"
-                : dialog?.type === "hold"
-                  ? "Hold payout"
-                  : "Release payout hold"}
-            </DialogTitle>
+            <DialogTitle>Raise claim</DialogTitle>
             <DialogDescription>
-              {dialog?.type === "raise"
-                ? "State why this claim exists. Holding payout blocks supplier payout release until released."
-                : dialog?.type === "hold"
-                  ? "Record why payout is held. This reason is shown on the claim and in the audit trail."
-                  : "Record why the hold is released. Payout can proceed only after release when the order is completed."}
+              State why this claim exists. Holding payout blocks supplier payout release
+              until released.
             </DialogDescription>
           </DialogHeader>
 
           <FieldGroup>
-            {dialog?.type === "raise" ? (
-              <>
-                <Field>
-                  <FieldLabel htmlFor="claim-order">Order</FieldLabel>
-                  <Select
-                    value={raiseOrderId}
-                    onValueChange={(v) => setRaiseOrderId(v ?? "")}
-                  >
-                    <SelectTrigger id="claim-order" className="min-h-11 w-full">
-                      <SelectValue placeholder="Select order" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {orders
-                        .filter((o) => o.state !== "draft")
-                        .map((o) => (
-                          <SelectItem key={o.id} value={o.id}>
-                            {o.title}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field>
-                  <FieldLabel>Hold payout now</FieldLabel>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant={raiseHold ? "default" : "secondary"}
-                      aria-pressed={raiseHold}
-                      onClick={() => setRaiseHold(true)}
-                    >
-                      Hold payout
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={!raiseHold ? "default" : "secondary"}
-                      aria-pressed={!raiseHold}
-                      onClick={() => setRaiseHold(false)}
-                    >
-                      Raise without hold
-                    </Button>
-                  </div>
-                  <p className="text-caption text-text-muted m-0">
-                    Holding blocks supplier payout release until Operations
-                    releases the hold with a reason.
-                  </p>
-                </Field>
-              </>
-            ) : null}
+            <Field>
+              <FieldLabel htmlFor="claim-order">Order</FieldLabel>
+              <Select
+                value={raiseOrderId}
+                onValueChange={(v) => setRaiseOrderId(v ?? "")}
+              >
+                <SelectTrigger id="claim-order" className="min-h-11 w-full">
+                  <SelectValue placeholder="Select order" />
+                </SelectTrigger>
+                <SelectContent>
+                  {orders
+                    .filter((o) => o.state !== "draft")
+                    .map((o) => (
+                      <SelectItem key={o.id} value={o.id}>
+                        {o.title}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Hold payout now</FieldLabel>
+              <ToggleGroup
+                value={[raiseHold ? "hold" : "open"]}
+                onValueChange={(values) => {
+                  const next = values[0];
+                  if (next) setRaiseHold(next === "hold");
+                }}
+                variant="outline"
+                spacing={0}
+                aria-label="Payout hold choice"
+              >
+                <ToggleGroupItem value="hold">Hold payout</ToggleGroupItem>
+                <ToggleGroupItem value="open">Raise without hold</ToggleGroupItem>
+              </ToggleGroup>
+              <p className="text-caption text-text-muted m-0">
+                Holding blocks supplier payout release until Operations releases the hold
+                with a reason.
+              </p>
+            </Field>
 
             <Field>
               <FieldLabel htmlFor="claim-reason">Reason</FieldLabel>
@@ -558,17 +526,67 @@ export default function OpsClaimsPage() {
               disabled={submitting}
               onClick={() => void submitDialog()}
             >
-              {submitting
-                ? "Saving…"
-                : dialog?.type === "raise"
-                  ? "Raise claim"
-                  : dialog?.type === "hold"
-                    ? "Hold payout"
-                    : "Release hold"}
+              {submitting ? "Saving…" : "Raise claim"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog
+        open={dialog?.type === "hold" || dialog?.type === "release"}
+        onOpenChange={(open) => {
+          if (!open) setDialog(null);
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {dialog?.type === "hold"
+                ? "Hold this payout?"
+                : "Release this payout hold?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {dialog?.type === "hold"
+                ? "The supplier cannot receive this payout until Operations releases the hold. Record the reason for the claim and audit trail."
+                : "This removes the claim’s payment block. Payout can proceed when the order is complete, and the release is recorded on the audit trail."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="payout-action-reason">Reason</FieldLabel>
+              <Textarea
+                id="payout-action-reason"
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+                rows={3}
+                required
+                placeholder="What happened and why this action is required"
+              />
+            </Field>
+          </FieldGroup>
+          {actionError ? (
+            <p className="text-body text-error m-0" role="alert">
+              {actionError}
+            </p>
+          ) : null}
+          <AlertDialogFooter>
+            <AlertDialogCancel variant="secondary" disabled={submitting}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant={dialog?.type === "hold" ? "danger" : "primary"}
+              disabled={submitting}
+              onClick={() => void submitDialog()}
+            >
+              {submitting
+                ? "Saving…"
+                : dialog?.type === "hold"
+                  ? "Hold payout"
+                  : "Release hold"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
