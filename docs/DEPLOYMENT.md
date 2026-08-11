@@ -112,17 +112,29 @@ forwards it as HTTP again, forever.
 
 ## First-time server installation
 
-`~/gridgo/web/` exists and is empty until someone puts the compose file there. `deploy.sh`
-refuses with exit 65 (`web is not provisioned yet`) until they do. Once, as the deploy user:
+**Already done on the current host** — `~/gridgo/web/docker-compose.yml` is installed and
+resolves to `ghcr.io/rqms40/gridgo-web:latest`. This section is for a rebuilt or replacement
+server.
+
+`deploy.sh` refuses with exit 65 (`web is not provisioned yet`) while that file is missing.
+Once, as the deploy user:
 
 ```bash
 mkdir -p ~/gridgo/web
 # copy deploy/docker-compose.yml from this repository to ~/gridgo/web/docker-compose.yml
-cd ~/gridgo/web && docker compose config          # must print the resolved service
+cd ~/gridgo/web
+docker compose config --images        # must print ghcr.io/rqms40/gridgo-web:latest
 ```
 
 Then merge to `main` and let the pipeline do the first deploy. Do not `docker compose up`
-by hand first: the image is private, and the pipeline is what supplies the pull credential.
+by hand first: the image is private, and CI is what supplies the pull credential — by
+design, nothing durable authenticates this host to the registry. A manual pull failing with
+`unauthorized` before the first CI publish is the expected, correct state, not a fault.
+
+**Keep the installed copy in step with `deploy/docker-compose.yml`.** Nothing synchronises
+them; CI never writes to the server. After changing the compose file in this repository, an
+operator must copy it across, or the server keeps running the old definition while the repo
+suggests otherwise.
 
 ## Confirming a deploy actually succeeded
 
