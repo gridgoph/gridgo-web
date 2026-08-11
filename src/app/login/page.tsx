@@ -11,11 +11,28 @@ import { ApiError } from "@/lib/api/client";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { homeForRole } from "@/lib/routes";
 
-const DEMO_HINTS = [
-  { email: "supplier@gridgo.local", role: "Supplier partner" },
-  { email: "ops@gridgo.local", role: "Operations" },
-  { email: "admin@gridgo.local", role: "Super Admin" },
-];
+import { DEV_ACCOUNTS } from "./dev-accounts";
+
+/**
+ * Sign-in failures say what went wrong and what to do next — and nothing about
+ * who holds an account here. A message that names an address, a role or an
+ * internal error code turns a failed guess into a free hint.
+ */
+function signInErrorMessage(err: unknown): string {
+  if (!(err instanceof ApiError)) {
+    return "Could not reach GRIDGO. Check your connection and try again.";
+  }
+  if (err.code === "invalid_credentials") {
+    return "Email or password is wrong. Check both and try again.";
+  }
+  if (err.kind === "unauthorized" || err.kind === "forbidden") {
+    return "This account cannot open the portal. Ask GRIDGO Operations to check it.";
+  }
+  if (err.kind === "server") {
+    return "Sign-in is unavailable right now. Try again in a moment.";
+  }
+  return "Sign-in did not complete. Try again.";
+}
 
 export default function LoginPage() {
   const { signIn, user, loading } = useAuth();
@@ -45,50 +62,43 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null);
     if (!email.trim() || !password) {
-      setError(
-        "Enter your email and password, or choose a demo account below.",
-      );
+      setError("Enter your email and password.");
       return;
     }
     setSubmitting(true);
     try {
       await signIn(email.trim(), password);
     } catch (err) {
-      if (err instanceof ApiError) {
-        if (err.code === "invalid_credentials") {
-          setError(
-            "Email or password is wrong. Use a demo account ending in @gridgo.local with password demo.",
-          );
-        } else {
-          setError(
-            `Sign-in failed (${err.code}). Confirm the demo API is running at the configured base URL.`,
-          );
-        }
-      } else {
-        setError(
-          "Could not reach the API. Confirm it is running on http://127.0.0.1:8787 (or set NEXT_PUBLIC_API_URL).",
-        );
-      }
+      setError(signInErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <div className="flex min-h-dvh items-center justify-center bg-canvas px-4 py-8">
+    <div className="flex min-h-dvh items-center justify-center bg-canvas px-4 py-10">
       <main
         id="main-content"
-        className="w-full max-w-md"
+        className="grid w-full max-w-md gap-8 lg:max-w-4xl lg:grid-cols-[minmax(0,1fr)_26rem] lg:items-center lg:gap-12"
       >
+        {/*
+          Which site am I on? `gridgo-dash.talasora.com` and the public
+          `gridgo.talasora.com` landing site are different places, and this is
+          the only screen that can say so before someone types a password.
+        */}
+        <section className="flex flex-col gap-4">
+          <Logo />
+          <h1 className="text-h2 lg:text-display text-text-primary m-0">
+            Partner and operations portal
+          </h1>
+          <p className="text-body-lg text-text-secondary m-0 lg:max-w-sm">
+            One sign-in for suppliers, Operations and Super Admin. Your role decides which
+            workspace opens.
+          </p>
+        </section>
+
         <div className="gg-card flex flex-col gap-6">
-          <div className="flex flex-col gap-2">
-            <Logo />
-            <h1 className="text-h2 text-text-primary m-0">Sign in</h1>
-            <p className="text-body text-text-secondary m-0">
-              Partner portal, Operations, and Super Admin share this sign-in.
-              Your role decides which workspace you enter.
-            </p>
-          </div>
+          <h2 className="text-h3 text-text-primary m-0">Sign in</h2>
 
           <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
             <FieldGroup>
@@ -137,33 +147,39 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="border-t border-outline-subtle pt-4">
-            <p className="text-overline text-text-muted m-0 mb-2 uppercase">
-              Demo accounts
-            </p>
-            <ul className="m-0 flex list-none flex-col gap-2 p-0">
-              {DEMO_HINTS.map((hint) => (
-                <li key={hint.email}>
-                  <button
+          <p className="text-caption text-text-muted m-0">
+            Locked out? Ask GRIDGO Operations to check your account.
+          </p>
+
+          {/*
+            Local development only — one tap fills both fields. `DEV_ACCOUNTS`
+            is a constant empty list in a production build, so this renders
+            nothing and neither the addresses nor the local password are in the
+            bundle at all. See `./dev-accounts.ts`.
+          */}
+          {DEV_ACCOUNTS.length > 0 ? (
+            <div className="flex flex-col gap-2 border-t border-outline-subtle pt-4">
+              <p className="text-overline text-text-muted m-0 uppercase">
+                Local development
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {DEV_ACCOUNTS.map((account) => (
+                  <Button
+                    key={account.email}
                     type="button"
-                    className="w-full rounded-field border border-outline bg-surface px-3 py-2 text-left hover:bg-overlay-hover"
+                    size="sm"
                     onClick={() => {
-                      setEmail(hint.email);
-                      setPassword("demo");
+                      setEmail(account.email);
+                      setPassword(account.password);
                       setError(null);
                     }}
                   >
-                    <span className="text-body text-text-primary block">
-                      {hint.role}
-                    </span>
-                    <span className="text-caption text-text-muted">
-                      {hint.email} · password demo
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
+                    {account.role}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
       </main>
     </div>
