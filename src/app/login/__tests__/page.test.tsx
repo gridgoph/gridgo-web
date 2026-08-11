@@ -43,16 +43,17 @@ describe("LoginPage", () => {
     expect(screen.getByLabelText("Password")).toHaveValue("");
   });
 
-  it("fills only the email when a local development account is chosen", async () => {
+  it("fills both fields when a local development account is chosen", async () => {
     const user = userEvent.setup();
     render(<LoginPage />);
 
     await user.click(screen.getByRole("button", { name: "Super Admin" }));
 
+    // One tap signs in locally. Safe only because the whole list — address and
+    // local password together — folds away in a production build; see
+    // `account-disclosure.test.ts` and `scripts/assert-no-account-addresses.mjs`.
     expect(screen.getByLabelText("Email")).toHaveValue("admin@gridgo.ph");
-    // The password is never prefilled: the shipped one was rotated, and a
-    // prefilled secret is the habit that put the account list on a public page.
-    expect(screen.getByLabelText("Password")).toHaveValue("");
+    expect(screen.getByLabelText("Password")).toHaveValue("demo");
   });
 
   it("explains how to continue when credentials are empty", async () => {

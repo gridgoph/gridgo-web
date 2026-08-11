@@ -152,9 +152,10 @@ export default function LoginPage() {
           </p>
 
           {/*
-            Local development only. `DEV_ACCOUNTS` is a constant empty list in a
-            production build, so this renders nothing and the addresses are not
-            in the bundle at all. See `./dev-accounts.ts`.
+            Local development only — one tap fills both fields. `DEV_ACCOUNTS`
+            is a constant empty list in a production build, so this renders
+            nothing and neither the addresses nor the local password are in the
+            bundle at all. See `./dev-accounts.ts`.
           */}
           {DEV_ACCOUNTS.length > 0 ? (
             <div className="flex flex-col gap-2 border-t border-outline-subtle pt-4">
@@ -169,7 +170,7 @@ export default function LoginPage() {
                     size="sm"
                     onClick={() => {
                       setEmail(account.email);
-                      setPassword("");
+                      setPassword(account.password);
                       setError(null);
                     }}
                   >

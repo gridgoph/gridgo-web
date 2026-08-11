@@ -227,6 +227,11 @@ Three rules follow, and all three are asserted:
   `process.env.NODE_ENV === "production" ? [] : […]`. The compiler substitutes `NODE_ENV`,
   so the list folds to a constant and the literals leave the bundle. A runtime flag or an
   environment variable would not — both still ship the strings to the browser.
+  The local password rides in the same object literals, so local sign-in is one tap and
+  the credential folds away with the address it belongs to. Write such values **inline**,
+  not as a hoisted module constant: a top-level `const` sits outside the discarded branch
+  and survives on tree shaking rather than on the guard. Never put a real credential here
+  — the guard keeps values out of the bundle, not out of the repository.
 - `scripts/assert-no-account-addresses.mjs` greps the emitted client chunks *and* server
   bundle for any `…@gridgo.ph` / `…@gridgo.local` address. It runs as part of
   `npm run build`, so a reintroduction fails the build rather than the deploy.

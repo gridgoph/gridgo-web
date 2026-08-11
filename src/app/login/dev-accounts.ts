@@ -20,13 +20,30 @@ export type DevAccount = {
   /** Plain-language role — the accessible name of the control. */
   role: string;
   email: string;
+  /**
+   * The local demo API's password, so choosing an account is one tap. It rides
+   * the same guard as the address, so it folds away with it; a production build
+   * has no list to carry it. Never put a real credential here — the guard keeps
+   * this out of the bundle, not out of the repository.
+   */
+  password: string;
 };
 
+/**
+ * `demo` is the local demo API's shared password. It is written inline rather
+ * than hoisted to a module constant so it sits *inside* the branch the compiler
+ * discards — a top-level constant would survive the fold and rely on tree
+ * shaking instead.
+ */
 export const DEV_ACCOUNTS: readonly DevAccount[] =
   process.env.NODE_ENV === "production"
     ? []
     : [
-        { role: "Supplier partner", email: "supplier@gridgo.ph" },
-        { role: "Operations", email: "ops@gridgo.ph" },
-        { role: "Super Admin", email: "admin@gridgo.ph" },
+        {
+          role: "Supplier partner",
+          email: "supplier@gridgo.ph",
+          password: "demo",
+        },
+        { role: "Operations", email: "ops@gridgo.ph", password: "demo" },
+        { role: "Super Admin", email: "admin@gridgo.ph", password: "demo" },
       ];
