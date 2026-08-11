@@ -37,6 +37,17 @@ Open [http://localhost:3000](http://localhost:3000).
 | `npm test` | Vitest unit tests |
 | `npm run format` | Prettier write |
 
+## Deployment
+
+Hosted at **`https://gridgo-dash.talasora.com`**. Merging to `main` builds a container
+image, publishes it, and restarts the service on the captain's server; a pull request does
+neither. Runbook — environment, rollback, and how to confirm a deploy landed — is
+**[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)**.
+
+`NEXT_PUBLIC_API_URL` is compiled into the browser bundle, so the deployed API URL is a
+Docker **build** argument, never a runtime environment variable. `docs/DEPLOYMENT.md`
+explains why and what asserts it.
+
 ## Architecture
 
 - **App Router** with TypeScript strict and Tailwind v4

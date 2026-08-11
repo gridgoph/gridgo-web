@@ -1,0 +1,290 @@
+name: Build and deploy portal
+
+# Which event does what, and why:
+#
+#   pull_request  -> verify + build the image. Never publishes, never deploys.
+#                    A proposal is not a decision: the registry the server pulls
+#                    from must only ever contain reviewed code, and a fork PR
+#                    gets a read-only token precisely so it cannot publish.
+#                    Only fork PRs run here — for branches in this repository the
+#                    `push` event below already covers the same commit, and two
+#                    identical builds per commit is waste, not safety.
+#
+#   push: fm/**   -> verify + build + publish an immutable `sha-` / `branch-`
+#                    tag. Does NOT move `latest` and does NOT deploy. This is how
+#                    the pipeline is proven end-to-end before it is trusted with
+#                    the live portal.
+#
+#   push: main    -> verify + build + publish, move `latest`, then deploy.
+#                    Merging to the default branch is the decision to ship.
+#
+#   workflow_dispatch -> the same, honouring whichever ref it is run from, so an
+#                    operator can re-publish or re-deploy without an empty commit.
+
+on:
+  push:
+    branches:
+      - main
+      - "fm/**"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# The API URL is compiled into the browser bundle, so it belongs to the build,
+# not to the server's environment. Changing it means a rebuild and a redeploy.
+env:
+  NEXT_PUBLIC_API_URL: https://gridgo-api.talasora.com
+  PORTAL_URL: https://gridgo-dash.talasora.com
+  REGISTRY: ghcr.io
+  # A high port for the smoke test. 3000/8787/9000 belong to the captain's demo.
+  SMOKE_PORT: "39300"
+
+permissions:
+  contents: read
+
+concurrency:
+  # One deploy at a time per ref. Superseding an in-flight run on the default
+  # branch would abandon a half-finished deploy, so only branches cancel.
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  verify:
+    name: Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+
+      # Builds with the production API URL so this check exercises exactly what
+      # the image build compiles, then proves the URL reached the bundle.
+      - run: npm run build
+      - run: node scripts/assert-api-url.mjs
+
+  image:
+    name: Build image
+    needs: verify
+    runs-on: ubuntu-latest
+    # For branches in this repository the push event already runs this job on the
+    # same commit; only PRs from forks need their own run.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.meta.outputs.image }}
+      published: ${{ steps.meta.outputs.published }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve image name and tags
+        id: meta
+        run: |
+          set -euo pipefail
+          image="${REGISTRY}/${GITHUB_REPOSITORY,,}"
+          sha_tag="sha-${GITHUB_SHA::12}"
+          branch_slug="$(printf '%s' "${GITHUB_REF_NAME}" | tr -c 'a-zA-Z0-9._-' '-')"
+
+          tags="${image}:${sha_tag}"
+          if [ "${GITHUB_REF}" = "refs/heads/${DEFAULT_BRANCH}" ]; then
+            # `latest` is what the server pulls, so it moves only for the
+            # default branch — never for a branch build.
+            tags="${tags},${image}:latest"
+          else
+            tags="${tags},${image}:branch-${branch_slug}"
+          fi
+
+          published=false
+          if [ "${GITHUB_EVENT_NAME}" != "pull_request" ]; then
+            published=true
+          fi
+
+          {
+            echo "image=${image}"
+            echo "sha_tag=${sha_tag}"
+            echo "tags=${tags}"
+            echo "primary=${image}:${sha_tag}"
+            echo "published=${published}"
+            echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Build once, into the runner's own daemon, so the image that is smoke
+      # tested is byte-for-byte the image that gets pushed.
+      - name: Build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ env.NEXT_PUBLIC_API_URL }}
+            GRIDGO_BUILD_SHA=${{ github.sha }}
+            GRIDGO_BUILD_TIME=${{ steps.meta.outputs.built_at }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Assert the API URL is in the shipped image, not just the build
+        run: |
+          set -euo pipefail
+          hits="$(docker run --rm --entrypoint sh "$IMAGE" -c \
+            "grep -rlF '$NEXT_PUBLIC_API_URL' .next/static | wc -l")"
+          if [ "$hits" -eq 0 ]; then
+            echo "::error::$NEXT_PUBLIC_API_URL is absent from the shipped client bundle."
+            exit 1
+          fi
+          echo "Found in $hits client chunk(s)."
+        env:
+          IMAGE: ${{ steps.meta.outputs.primary }}
+
+      - name: Smoke test the container
+        run: |
+          set -euo pipefail
+          cid="$(docker run -d -p "127.0.0.1:${SMOKE_PORT}:3000" "$IMAGE")"
+          echo "container=$cid" >> "$GITHUB_ENV"
+
+          for _ in $(seq 1 30); do
+            if curl -fsS "http://127.0.0.1:${SMOKE_PORT}/api/health" >/tmp/health.json 2>/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+
+          echo "--- /api/health ---"
+          cat /tmp/health.json
+          echo
+
+          node -e '
+            const h = require("/tmp/health.json");
+            const want = process.env.NEXT_PUBLIC_API_URL;
+            if (h.ok !== true) throw new Error("health did not report ok");
+            if (h.apiBase !== want) throw new Error(`health reports apiBase ${h.apiBase}, expected ${want}`);
+            if (h.commit !== process.env.GITHUB_SHA) throw new Error(`health reports commit ${h.commit}`);
+            console.log("health ok:", h.commit, h.apiBase);
+          '
+
+          # The portal itself must answer, not only its health route.
+          code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${SMOKE_PORT}/login")"
+          [ "$code" = "200" ] || { echo "::error::/login returned $code"; exit 1; }
+
+          # Docker's own HEALTHCHECK must reach healthy, since compose relies on it.
+          for _ in $(seq 1 30); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' "$cid")"
+            [ "$status" = "starting" ] || break
+            sleep 2
+          done
+          echo "docker health: $status"
+          [ "$status" = "healthy" ] || { docker logs "$cid"; exit 1; }
+
+          # Never root: a compromised dependency should not own the filesystem.
+          user="$(docker exec "$cid" id -un)"
+          echo "runs as: $user"
+          [ "$user" != "root" ] || { echo "::error::container runs as root"; exit 1; }
+        env:
+          IMAGE: ${{ steps.meta.outputs.primary }}
+
+      - name: Stop smoke container
+        if: always() && env.container != ''
+        run: docker rm -f "$container" >/dev/null
+
+      - name: Log in to the registry
+        if: steps.meta.outputs.published == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish the tested image
+        if: steps.meta.outputs.published == 'true'
+        run: |
+          set -euo pipefail
+          IFS=',' read -ra tags <<< "$TAGS"
+          for tag in "${tags[@]}"; do
+            echo "pushing $tag"
+            docker push "$tag"
+          done
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+
+  deploy:
+    name: Deploy
+    needs: image
+    # Only the default branch ships. A pull request — and a branch build — stops
+    # at a published tag that nothing on the server points at.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    environment:
+      name: production
+      url: https://gridgo-dash.talasora.com
+    steps:
+      - name: Trigger the restricted deploy command
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/known_hosts ~/.ssh/deploy_key
+
+          # The key is pinned to ~/gridgo/bin/deploy.sh in authorized_keys, so
+          # `web` is the entire command surface. The token on stdin is this run's
+          # own GITHUB_TOKEN: the server needs a credential to pull from the
+          # private registry, and this one expires when the run ends, so nothing
+          # durable is left on the box.
+          #
+          # Host key checking stays on. Accepting an unknown key would let anyone
+          # who can intercept the connection collect the deploy key.
+          printf '%s\n' "$GITHUB_TOKEN" | ssh \
+            -i ~/.ssh/deploy_key \
+            -o IdentitiesOnly=yes \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o ConnectTimeout=20 \
+            "$DEPLOY_USER@$DEPLOY_HOST" web
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Confirm the live portal is running this commit
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 20); do
+            body="$(curl -fsS "${PORTAL_URL}/api/health?ci=${GITHUB_RUN_ID}-${attempt}" || true)"
+            echo "$body"
+            case "$body" in
+              *"\"commit\":\"${GITHUB_SHA}\""*)
+                echo "Deployed commit confirmed live at ${PORTAL_URL}."
+                exit 0
+                ;;
+            esac
+            sleep 6
+          done
+          echo "::error::${PORTAL_URL} never reported commit ${GITHUB_SHA}. The deploy did not take."
+          exit 1
+
+      - name: Clean up deploy credentials
+        if: always()
+        run: rm -f ~/.ssh/deploy_key ~/.ssh/known_hosts
