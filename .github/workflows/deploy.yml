@@ -52,6 +52,13 @@ jobs:
   verify:
     name: Checks
     runs-on: ubuntu-latest
+    # A pull request whose branch lives in this repository has already been run
+    # by the `push` event on the very same commit, and its result is attached to
+    # that commit. Running it twice buys nothing. A fork PR has no such run —
+    # `push` never fires here for it — so that is the case this event exists for.
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     steps:
       - uses: actions/checkout@v4
 
@@ -73,13 +80,10 @@ jobs:
 
   image:
     name: Build image
+    # Skipped whenever `verify` is skipped, which is what keeps a same-repo pull
+    # request from rebuilding a commit the push run already built.
     needs: verify
     runs-on: ubuntu-latest
-    # For branches in this repository the push event already runs this job on the
-    # same commit; only PRs from forks need their own run.
-    if: >-
-      github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
     permissions:
       contents: read
       packages: write
