@@ -569,6 +569,48 @@ export type LocationPing = {
   at: string;
 };
 
+// ---- Push broadcasts ----
+//
+// Super Admin only. A broadcast lands on the lock screen of every registered
+// phone in the chosen audience and there is no unsend, so the portal reads the
+// live device count before it lets anyone commit.
+//
+// ASSUMED CONTRACT — the endpoints are being built in gridgo-api in parallel.
+// Confirm before release; the server wins when it disagrees.
+
+/** Who a broadcast interrupts. `all` is every registered device. */
+export type BroadcastAudience = "all" | "client" | "supplier" | "rider";
+
+/** True blast radius: devices registered for push right now. */
+export type BroadcastAudienceSize = {
+  audience: BroadcastAudience;
+  deviceCount: number;
+};
+
+export type Broadcast = {
+  id: string;
+  title: string;
+  body: string;
+  audience: BroadcastAudience;
+  /** Null when tapping the notification just opens the app. */
+  url?: string | null;
+  sentAt: string;
+  sentBy?: string | null;
+  sentByName?: string | null;
+  /** Best effort — devices the push service accepted the message for. */
+  deliveredCount: number;
+  /** Devices it could not reach (never registered, reinstalled, wiped). */
+  failedCount: number;
+};
+
+export type SendBroadcastInput = {
+  title: string;
+  body: string;
+  audience: BroadcastAudience;
+  /** Omitted entirely when the notification carries no destination. */
+  url?: string;
+};
+
 // ---- Auth / health ----
 
 export type LoginResult = {

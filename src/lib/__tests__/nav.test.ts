@@ -51,6 +51,7 @@ describe("ROLE_NAV", () => {
       "/admin/finance",
       "/admin/audit",
       "/admin/planning",
+      "/admin/broadcast",
     ]);
   });
 
@@ -62,6 +63,7 @@ describe("ROLE_NAV", () => {
       .sort();
     expect(ready).toEqual([
       "/admin/audit",
+      "/admin/broadcast",
       "/admin/catalogue",
       "/admin/credits",
       "/admin/finance",

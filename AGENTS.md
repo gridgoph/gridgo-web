@@ -49,7 +49,8 @@ Demo logins, password `demo`:
 | `src/app/ops/` | Operations surfaces — overview, QA, **payment confirmations**, matching, sign-up approvals, dispatch, **pickup escalations**, **milestone payouts**, claims, recovery, schedule, settings, audit |
 | `src/app/ops/_lib/` | Ops-only pure helpers (payment queue, overview buckets, matching explainers, location freshness, schedule events, error copy) — tests under `_lib/__tests__` |
 | `src/components/orders/` | Order-shaped views: `MoneyBreakdown` (ops/super **only**), `PaymentSummary`, `MilestoneList`, `OrderMeta`, `Timeline` |
-| `src/app/admin/` | Super Admin surfaces |
+| `src/app/admin/` | Super Admin surfaces — including `broadcast`, the push megaphone |
+| `src/app/admin/_lib/broadcasts.ts` | Broadcast rules: destination allow-list, lock-screen budget, resend detection, delivery reading |
 | `src/app/globals.css` | Design tokens + shadcn semantic CSS variables |
 | `components.json` | shadcn CLI config (style: `base-nova`, Base UI) |
 | `.agents/skills/shadcn/` | Committed shadcn agent skill — use it for UI work |
@@ -322,7 +323,7 @@ If a screen still needs a capability the demo API does not expose, show an hones
 |---|---|
 | supplier | `/supplier/jobs`, `catalogue`, `schedule`, `capacity`, `payouts` |
 | ops_admin | `/ops/overview`, `qa`, `payments`, `matching`, `approvals`, `dispatch`, `escalations`, `payouts`, `claims`, `recovery`, `schedule`, `settings`, `audit` |
-| super_admin | `/admin/overview`, `verification`, `roles`, `catalogue`, `zones`, `settings`, `credits`, `finance`, `audit`, `planning` |
+| super_admin | `/admin/overview`, `verification`, `roles`, `catalogue`, `zones`, `settings`, `credits`, `finance`, `audit`, `planning`, `broadcast` |
 
 Two surfaces are mounted for both Operations and Super Admin from **one** implementation, so they can never drift:
 
@@ -396,6 +397,33 @@ Printing 50%, packaging and QC 15%, delivered 25%, retention 10% — of the **su
 ### Settings the captain owns
 
 `issueWindowHours` and `deliveryFeeBands` live in configuration so they change without a release. The shipped band figures (₱25 / ₱50 / ₱75) are **Firstmate's suggestion, not the captain's prices** — the screen says so, and should keep saying so until they set real ones.
+
+## Push broadcasts — the one control that leaves the platform
+
+`/admin/broadcast` is Super Admin only. One press puts a notification on the
+lock screen of every registered phone in the audience, and **there is no
+unsend**. The screen is built to make sending deliberate rather than fast; if
+you touch it, keep these five properties.
+
+- **No audience is pre-selected**, and "Everyone" sits last in the list.
+  `AUDIENCE_CHOICES` in `src/app/admin/_lib/broadcasts.ts` owns that order.
+- **The device count is read live** from the API before every send, and sending
+  is **blocked** while it is unknown. "Send" and "Send to 1,240 phones" are
+  different presses; a broadcast whose size nobody can state should not go out.
+- **The destination rule is `https` on `talasora.com` or a subdomain of it**,
+  no credentials, no port — `validateDestination`. A GRIDGO notification is
+  trusted because GRIDGO sent it, so an arbitrary operator-typed URL is a
+  phishing message with our name on it. **The API must enforce the same rule.**
+  The UI's job is only to never offer what the API will refuse.
+- **Recent sends sit beside the compose fields**, and an identical message to
+  the same audience inside two hours raises a warning (`findRecentDuplicate`).
+- **Delivery is best effort.** "820 of 1,240" is a normal result and must not
+  read as failure; zero delivered is not normal and must. `presentDelivery`.
+
+The endpoints (`GET`/`POST /admin/broadcasts`, `GET /admin/broadcasts/audience`)
+are an **assumed contract** — see the header comment in `src/lib/api/client.ts`.
+Until gridgo-api ships them they 404 and the screen shows an honest unavailable
+state. When the server disagrees, the server wins.
 
 ## Adding a screen
 

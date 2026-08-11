@@ -15,6 +15,7 @@ import {
   LayoutDashboard,
   LogOut,
   MapPinned,
+  Megaphone,
   Package,
   QrCode,
   Scale,
@@ -100,6 +101,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   credits: Coins,
   finance: Banknote,
   planning: CalendarRange,
+  broadcast: Megaphone,
 };
 
 function isActive(pathname: string, href: string): boolean {

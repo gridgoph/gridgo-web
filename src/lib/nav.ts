@@ -40,7 +40,8 @@ export type NavIconKey =
   | "zones"
   | "credits"
   | "finance"
-  | "planning";
+  | "planning"
+  | "broadcast";
 
 export type NavItem = {
   /** Stable id for tests / analytics. */
@@ -322,6 +323,18 @@ export const ROLE_NAV: Record<PortalRole, readonly NavItem[]> = {
       label: "Planning calendar",
       title: "Planning calendar",
       icon: "planning",
+      ready: true,
+      placeholderBody: "",
+    },
+    // Last on purpose. This is the one control here that reaches outside the
+    // platform onto people's phones, and it cannot be undone — it should take
+    // a deliberate trip down the rail, not sit under the cursor.
+    {
+      id: "admin-broadcast",
+      href: "/admin/broadcast",
+      label: "Broadcast",
+      title: "Push broadcast",
+      icon: "broadcast",
       ready: true,
       placeholderBody: "",
     },
