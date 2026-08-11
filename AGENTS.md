@@ -392,6 +392,34 @@ Printing 50%, packaging and QC 15%, delivered 25%, retention 10% — of the **su
 - `prefers-reduced-motion` respected in CSS
 - Status readable in greyscale (icon + label)
 
+## Deployment
+
+Runbook: **`docs/DEPLOYMENT.md`** — environment, first-time install, rollback, and how to
+confirm a deploy landed. Read it before changing anything below.
+
+The portal is hosted at **`https://gridgo-dash.talasora.com`** (not `gridgo.talasora.com`,
+which is a separate landing site). Merging to `main` builds, publishes, and deploys; a
+pull request does neither. `Dockerfile` + `deploy/docker-compose.yml` +
+`.github/workflows/deploy.yml` + `GET /api/health` are the four moving parts.
+
+Three facts that are easy to break and expensive to discover:
+
+- **`NEXT_PUBLIC_API_URL` is compiled into the browser bundle at build time.** Supplying it
+  as a runtime environment variable does nothing — the portal builds green, boots green,
+  and then calls `http://127.0.0.1:8787` from the captain's users' browsers. It travels as
+  a Docker build argument, and `scripts/assert-api-url.mjs` greps the emitted client chunks
+  to prove it landed. Never "fix" a wrong API URL by adding it to `docker-compose.yml`.
+- **The container must be named `gridgo-web`, listen on 3000, and join `gridgo-edge`.** The
+  Caddy proxy in `~/gridgo-proxy` on the server resolves that exact name; the network is
+  `external` here because Caddy owns it. Renaming any of the three takes the portal off the
+  internet.
+- **Cloudflare terminates TLS in front of the server in Flexible mode.** The container
+  serves plain HTTP. An HTTPS redirect inside the container loops forever.
+
+`/api/health` is liveness for *this process only* and deliberately does not call the GRIDGO
+API — otherwise an API outage would mark a healthy portal unhealthy and block shipping the
+fix. It echoes the build commit and the baked `apiBase`, which is how a deploy is confirmed.
+
 ## Maintaining this file
 
 When you learn something durable about this project that future sessions will need, add it here (or point to the authoritative file). Prefer links over copied detail. Remove stale claims when they stop being true.

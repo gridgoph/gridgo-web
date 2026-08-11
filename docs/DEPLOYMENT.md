@@ -1,0 +1,211 @@
+# Deploying the GRIDGO web portal
+
+The portal is served at **`https://gridgo-dash.talasora.com`** and talks to the API at
+**`https://gridgo-api.talasora.com`**.
+
+Every merge to `main` builds a container image, publishes it to this repository's private
+GitHub Container Registry, and asks the server to pull and restart. Nothing is deployed by
+hand and nothing is built on the server.
+
+| Piece                     | Lives at                                                                     |
+| ------------------------- | ---------------------------------------------------------------------------- |
+| Production image          | `Dockerfile`                                                                 |
+| Server service definition | `deploy/docker-compose.yml` → installed as `~/gridgo/web/docker-compose.yml` |
+| Pipeline                  | `.github/workflows/deploy.yml`                                               |
+| Health check              | `GET /api/health` (`src/app/api/health/route.ts`)                            |
+| Build-output assertion    | `scripts/assert-api-url.mjs`                                                 |
+
+## How a change reaches users
+
+```
+merge to main
+  └─ verify      typecheck · lint · test · next build · assert API URL in bundle
+     └─ image    docker build → smoke test the built image → push sha-<12> and latest
+        └─ deploy  ssh <deploy key> "web"  (token piped on stdin)
+           └─ server: docker compose pull && up -d --remove-orphans
+              └─ confirm https://gridgo-dash.talasora.com/api/health reports the merged commit
+```
+
+Each stage gates the next. A failing test never produces an image; an image that will not
+start or answers `/api/health` wrongly is never pushed; a push that the server does not
+actually pick up fails the run rather than reporting success.
+
+### Which event does what, and why
+
+| Event                                | Verify                                           | Build | Publish                | Deploy                  |
+| ------------------------------------ | ------------------------------------------------ | ----- | ---------------------- | ----------------------- |
+| `pull_request` (from a fork)         | yes                                              | yes   | **no**                 | **no**                  |
+| `pull_request` (branch in this repo) | — covered by the `push` run on the same commit — |       |                        |                         |
+| `push` to `fm/**`                    | yes                                              | yes   | `sha-…` + `branch-…`   | **no**                  |
+| `push` to `main`                     | yes                                              | yes   | `sha-…` + **`latest`** | yes                     |
+| `workflow_dispatch`                  | yes                                              | yes   | yes                    | only if run from `main` |
+
+**A pull request must not deploy, and must not publish either.** A proposal is not a
+decision. The server pulls from this registry, so an image in it is one `docker compose
+pull` away from being live — an unreviewed branch has no business putting one there.
+GitHub reinforces this: a pull request from a fork gets a read-only token, so it _cannot_
+push even if the workflow asked it to. A branch push under `fm/**` does publish, but only
+under immutable `sha-` / `branch-` tags; it never moves `latest`, which is the only tag
+`~/gridgo/web/docker-compose.yml` names. That is what makes it possible to prove the whole
+pipeline before trusting it with the live portal.
+
+## The API URL is baked in, not configured
+
+`NEXT_PUBLIC_API_URL` is **inlined by the compiler into the JavaScript the browser
+downloads**. It is not read when the container starts. Setting it in `docker-compose.yml`
+would change nothing.
+
+Get this wrong and the portal builds green, boots green, passes its health check — and then
+every signed-in browser calls `http://127.0.0.1:8787`, the user's own machine. So the value
+travels as a Docker **build argument**, and three separate checks assert it against the real
+built output rather than against the environment that was meant to supply it:
+
+1. The `builder` stage refuses to build at all if `--build-arg NEXT_PUBLIC_API_URL` is absent.
+2. `scripts/assert-api-url.mjs` runs inside the build and greps the emitted client chunks for
+   the literal URL. A build with no URL passes `next build` and fails here.
+3. The workflow greps the _shipped_ image (not just the build stage), then boots it and
+   checks `/api/health` reports the expected `apiBase`.
+
+**To change the API URL** edit `NEXT_PUBLIC_API_URL` under `env:` in
+`.github/workflows/deploy.yml` and merge. A rebuild is mandatory; there is no server-side
+knob, deliberately, because a knob that appears to work but does nothing is worse than none.
+
+## What the environment needs
+
+Nothing new. Everything below already exists — this is the inventory to check against when
+something breaks.
+
+**On the server** (`~` is the deploy user's home):
+
+- Docker Engine with the Compose plugin.
+- `~/gridgo/bin/deploy.sh` — the only command the CI key may run. It accepts exactly `api`
+  or `web`, reads a registry token from stdin, `docker compose pull`, `up -d
+--remove-orphans`, then logs out of the registry.
+- `~/gridgo/web/docker-compose.yml` — a copy of `deploy/docker-compose.yml` from this repo.
+- The `gridgo-edge` Docker network, created and owned by the Caddy project in
+  `~/gridgo-proxy`. Our compose file joins it as `external`, so `docker compose down` here
+  can never delete the network the API and the landing site also sit on.
+- Caddy routing `gridgo-dash.talasora.com` → `gridgo-web:3000`. The container **must** be
+  named `gridgo-web`; renaming it takes the portal off the internet.
+
+**In this repository** (already present; do not recreate):
+
+| Secret                       | Used for                                                            |
+| ---------------------------- | ------------------------------------------------------------------- |
+| `DEPLOY_SSH_KEY`             | private key pinned to `deploy.sh` in the server's `authorized_keys` |
+| `DEPLOY_HOST`, `DEPLOY_USER` | where to connect                                                    |
+| `DEPLOY_KNOWN_HOSTS`         | the server's host key                                               |
+
+Host key checking stays **on** (`StrictHostKeyChecking=yes` against `DEPLOY_KNOWN_HOSTS`).
+Accepting an unknown key would let anyone able to intercept the connection collect the deploy
+key.
+
+Registry authentication uses the workflow run's own `GITHUB_TOKEN`, piped to `deploy.sh` on
+stdin. It expires when the run ends, so no long-lived registry credential sits on the server.
+
+### TLS
+
+Cloudflare terminates TLS **in front of** the server, in Flexible mode. Caddy and the
+container both serve plain HTTP. Do not add certificates, TLS, or an HTTPS redirect inside
+the container — behind Flexible mode a redirect to HTTPS returns to Cloudflare, which
+forwards it as HTTP again, forever.
+
+## First-time server installation
+
+**Already done on the current host** — `~/gridgo/web/docker-compose.yml` is installed and
+resolves to `ghcr.io/rqms40/gridgo-web:latest`. This section is for a rebuilt or replacement
+server.
+
+`deploy.sh` refuses with exit 65 (`web is not provisioned yet`) while that file is missing.
+Once, as the deploy user:
+
+```bash
+mkdir -p ~/gridgo/web
+# copy deploy/docker-compose.yml from this repository to ~/gridgo/web/docker-compose.yml
+cd ~/gridgo/web
+docker compose config --images        # must print ghcr.io/rqms40/gridgo-web:latest
+```
+
+Then merge to `main` and let the pipeline do the first deploy. Do not `docker compose up`
+by hand first: the image is private, and CI is what supplies the pull credential — by
+design, nothing durable authenticates this host to the registry. A manual pull failing with
+`unauthorized` before the first CI publish is the expected, correct state, not a fault.
+
+**Keep the installed copy in step with `deploy/docker-compose.yml`.** Nothing synchronises
+them; CI never writes to the server. After changing the compose file in this repository, an
+operator must copy it across, or the server keeps running the old definition while the repo
+suggests otherwise.
+
+## Confirming a deploy actually succeeded
+
+The pipeline already does this and fails the run if it cannot — `/api/health` reports the
+commit the image was built from, so an old container answering is indistinguishable from no
+deploy at all:
+
+```bash
+curl -s https://gridgo-dash.talasora.com/api/health
+# {"ok":true,"service":"gridgo-web","apiBase":"https://gridgo-api.talasora.com",
+#  "commit":"<the merged commit sha>","builtAt":"2026-08-11T00:38:09Z"}
+```
+
+Check, in order:
+
+1. `ok` is `true` and `commit` matches the commit you expect. A stale `commit` means the
+   restart did not take the new image.
+2. `apiBase` is `https://gridgo-api.talasora.com`. Anything else — especially
+   `http://127.0.0.1:8787` — means the image was built without the build argument.
+3. The portal itself answers: `curl -s -o /dev/null -w '%{http_code}\n'
+https://gridgo-dash.talasora.com/login` → `200`.
+
+On the server:
+
+```bash
+cd ~/gridgo/web
+docker compose ps          # gridgo-web must be Up and (healthy)
+docker compose logs --tail 50 web
+```
+
+`/api/health` is deliberately **local only** — it does not call the GRIDGO API. A health
+check that failed during an API outage would mark a working portal unhealthy and block
+shipping a fix at exactly the wrong moment. API reachability is
+`https://gridgo-api.talasora.com/health`.
+
+## Rollback
+
+Every successful build leaves an immutable `sha-<12 chars>` tag in the registry, so rolling
+back is pinning the tag the compose file resolves. `image:` reads
+`${GRIDGO_WEB_TAG:-latest}`, and Compose reads `.env` from the compose directory.
+
+On the server, as the deploy user:
+
+```bash
+cd ~/gridgo/web
+echo 'GRIDGO_WEB_TAG=sha-0123456789ab' > .env     # a known-good tag
+docker compose pull && docker compose up -d --wait
+curl -s https://gridgo-dash.talasora.com/api/health   # commit must be the older one
+```
+
+Find the tag to roll back to under **Packages → gridgo-web** on the repository, or from the
+"Resolve image name and tags" step of the run that shipped the version you want.
+
+While `.env` pins a tag, **CI deploys stop having any effect** — `deploy.sh` pulls and
+restarts, but the pinned tag never moves. That is the point during an incident, and a trap
+afterwards. To hand control back:
+
+```bash
+cd ~/gridgo/web && rm .env && docker compose pull && docker compose up -d --wait
+```
+
+If the registry pull itself fails (`no basic auth credentials`), the server is not logged
+in — that credential is supplied per-run by CI and removed on exit, by design. Re-run the
+workflow rather than storing a token on the box.
+
+Rolling forward from a bad commit is usually better than pinning: revert on `main` and let
+the pipeline ship it. Pinning is for when `main` cannot be fixed quickly enough.
+
+## Related
+
+- API deployment and its CORS allowlist: `docs/DEPLOYMENT.md` in `gridgo-api`. The API must
+  allow `https://gridgo-dash.talasora.com` as a browser origin, or the portal will load and
+  then fail every call.
+- Design and product rules for anything user-facing: `AGENTS.md`.
