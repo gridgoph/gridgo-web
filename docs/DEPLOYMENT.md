@@ -13,7 +13,8 @@ hand and nothing is built on the server.
 | Server service definition | `deploy/docker-compose.yml` → installed as `~/gridgo/web/docker-compose.yml` |
 | Pipeline                  | `.github/workflows/deploy.yml`                                               |
 | Health check              | `GET /api/health` (`src/app/api/health/route.ts`)                            |
-| Build-output assertion    | `scripts/assert-api-url.mjs`                                                 |
+| API URL assertion         | `scripts/assert-api-url.mjs`                                                 |
+| Account-address assertion | `scripts/assert-no-account-addresses.mjs` (runs inside `npm run build`)      |
 
 ## How a change reaches users
 
@@ -69,6 +70,20 @@ built output rather than against the environment that was meant to supply it:
 **To change the API URL** edit `NEXT_PUBLIC_API_URL` under `env:` in
 `.github/workflows/deploy.yml` and merge. A rebuild is mandatory; there is no server-side
 knob, deliberately, because a knob that appears to work but does nothing is worse than none.
+
+## The sign-in page must ship no account addresses
+
+The same "assert against the built output" reasoning applies to a second thing that is
+invisible until it is public. `/login` is reachable without a session, so any account
+address rendered there — or merely present in a chunk behind a runtime flag — publishes the
+account list to anyone who opens it.
+
+`scripts/assert-no-account-addresses.mjs` greps the client chunks and the server bundle for
+`…@gridgo.ph` / `…@gridgo.local`. It runs as part of `npm run build`, so both the workflow's
+verify job and the Docker `builder` stage get it for free — no separate step to forget.
+
+The local-development convenience that fills the email field lives behind a build-time
+constant in `src/app/login/dev-accounts.ts`. See **Auth and role boundary** in `AGENTS.md`.
 
 ## What the environment needs
 

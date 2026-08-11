@@ -26,9 +26,9 @@ API base: `NEXT_PUBLIC_API_URL` (default `http://127.0.0.1:8787`).
 
 Demo logins, password `demo`:
 
-- `supplier@gridgo.local`
-- `ops@gridgo.local`
-- `admin@gridgo.local`
+- `supplier@gridgo.ph`
+- `ops@gridgo.ph`
+- `admin@gridgo.ph`
 
 ## Layout of the code
 
@@ -214,6 +214,27 @@ Both were evaluated here and deliberately not adopted:
 
 Client-rendered credential inputs must initialize empty. Populate demo credentials only through explicit account controls so hydration cannot overwrite typing with a privileged or role-specific default.
 
+**The sign-in page never names an account.** It is public at
+`https://gridgo-dash.talasora.com/login`, so a list of addresses there hands anyone who
+opens it the account list — super admin included — before they have guessed a password.
+Rotating the passwords does not make it safe: the addresses are the disclosure. This holds
+for error copy too; "use a demo account ending in @…" is the same leak in a different
+place. A failed sign-in says the credentials are wrong, and no more.
+
+Three rules follow, and all three are asserted:
+
+- Account addresses live in exactly one module, `src/app/login/dev-accounts.ts`, behind
+  `process.env.NODE_ENV === "production" ? [] : […]`. The compiler substitutes `NODE_ENV`,
+  so the list folds to a constant and the literals leave the bundle. A runtime flag or an
+  environment variable would not — both still ship the strings to the browser.
+- `scripts/assert-no-account-addresses.mjs` greps the emitted client chunks *and* server
+  bundle for any `…@gridgo.ph` / `…@gridgo.local` address. It runs as part of
+  `npm run build`, so a reintroduction fails the build rather than the deploy.
+- `src/app/login/__tests__/account-disclosure.test.ts` holds the same line at review time,
+  and `page.test.tsx` asserts the failure copy names no account and no `ApiError.code`.
+
+`@gridgo.local` was the placeholder domain; accounts are `@gridgo.ph` fleet-wide.
+
 The sign-in submit control stays `disabled` until the client has mounted. Before React
 attaches `onSubmit`, a click submits the form natively — a GET to `/login` that writes the
 password into the address bar and browser history. `src/app/login/__tests__/page.test.tsx`
@@ -323,9 +344,10 @@ Header title: `contextTitleForPath(pathname, role)` (nested job/QA workspaces ha
   overrides shadcn's `size-8`, and a 3rem rail clips nav labels mid-word. Labels are
   hidden with `group-data-[collapsible=icon]:hidden` rather than left to width clipping.
 - Nav items use `tooltip={item.label}` so the collapsed rail is readable.
-- The `Logo` belongs in exactly two places: the sign-in card, where identity is being
-  established, and `SidebarHeader`, where it doubles as the home control. It is furniture
-  anywhere else. On collapse the wordmark goes and the mark stays.
+- The `Logo` belongs in exactly two places: the sign-in screen, where identity is being
+  established — once, in the orientation column that answers "which GRIDGO site is this",
+  not also inside the card — and `SidebarHeader`, where it doubles as the home control. It
+  is furniture anywhere else. On collapse the wordmark goes and the mark stays.
   **Known limitation:** the mark is a wordmark plus a dot, so what survives collapse is a
   10px dot — legible as a place-holder, weak as identity. A dedicated square glyph would
   serve a collapsing rail properly; that is the captain's call, and the mark was not

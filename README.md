@@ -2,13 +2,19 @@
 
 One Next.js application serving three role-gated experiences against the GRIDGO demo API:
 
-| Role | Account | Home |
+| Role | Local account | Home |
 |---|---|---|
-| Supplier partner | `supplier@gridgo.local` | `/supplier/jobs` |
-| Operations | `ops@gridgo.local` | `/ops/qa` |
-| Super Admin | `admin@gridgo.local` | `/admin/overview` |
+| Supplier partner | `supplier@gridgo.ph` | `/supplier/jobs` |
+| Operations | `ops@gridgo.ph` | `/ops/qa` |
+| Super Admin | `admin@gridgo.ph` | `/admin/overview` |
 
-Password for all demo accounts: `demo`.
+Those are the local demo API's accounts; ask Operations for the password. The
+deployed portal's accounts are not these, and the sign-in page names none of
+them — see [Auth and role boundary](AGENTS.md#auth-and-role-boundary).
+
+Running `npm run dev`, the sign-in card offers a row of buttons that fill the
+email field with the addresses above. That convenience is compiled out of a
+production build; `npm run build` asserts it.
 
 ## Prerequisites
 
