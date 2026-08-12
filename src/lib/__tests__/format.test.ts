@@ -42,6 +42,9 @@ describe("getApiBase", () => {
   });
 
   it("uses the same-origin proxy in the browser during next dev", () => {
+    // CI injects the hosted API URL as a workflow env. This case is local
+    // `next dev` talking to a loopback API — say so, do not inherit CI.
+    process.env.NEXT_PUBLIC_API_URL = "http://127.0.0.1:8787";
     vi.stubEnv("NODE_ENV", "development");
     (globalThis as { window: { location: { origin: string } } }).window = {
       location: { origin: "http://localhost:3310" },
