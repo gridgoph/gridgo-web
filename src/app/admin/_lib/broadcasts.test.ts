@@ -1,146 +1,124 @@
 import { describe, expect, it } from "vitest";
 
 import { ApiError } from "@/lib/api/client";
-import type { Broadcast } from "@/lib/api/types";
+import type { Announcement } from "@/lib/api/types";
 
 import {
   AUDIENCE_CHOICES,
+  ANNOUNCEMENT_LIMITS,
+  announcementErrorMessage,
+  audienceHitsStrangers,
   audienceLabel,
   audienceReach,
-  broadcastErrorMessage,
   describeAge,
   findRecentDuplicate,
-  phrasePhones,
-  presentDelivery,
-  validateDestination,
+  phraseAccounts,
+  phraseUnclaimed,
+  presentAnnouncementReach,
 } from "./broadcasts";
 
 const NOW = Date.parse("2026-08-11T10:00:00.000Z");
 
-function broadcast(overrides: Partial<Broadcast> = {}): Broadcast {
+function announcement(overrides: Partial<Announcement> = {}): Announcement {
   return {
-    id: "bc_1",
-    title: "GRIDGO 2.0 is out",
-    body: "Faster quotes and live delivery tracking. Update now.",
-    audience: "all",
-    url: "https://gridgo.talasora.com/download",
-    sentAt: "2026-08-11T09:56:00.000Z",
-    sentBy: "u_admin",
-    sentByName: "Super Admin",
-    deliveredCount: 820,
-    failedCount: 420,
+    id: "anc_1",
+    title: "GRIDGO 1.4 is available",
+    body: "Update from the store. This message is safe for any phone.",
+    audience: "everyone",
+    at: "2026-08-11T09:56:00.000Z",
+    notifiedUsers: 6,
+    unclaimedDevices: 3,
     ...overrides,
   };
 }
 
 describe("audience", () => {
   it("offers everyone last so it is never the resting choice", () => {
-    expect(AUDIENCE_CHOICES.at(-1)?.value).toBe("all");
+    expect(AUDIENCE_CHOICES.at(-1)?.value).toBe("everyone");
+    expect(AUDIENCE_CHOICES[0]?.value).not.toBe("everyone");
+  });
+
+  it("covers the five live audiences and no others", () => {
+    expect(AUDIENCE_CHOICES.map((choice) => choice.value)).toEqual([
+      "clients",
+      "suppliers",
+      "riders",
+      "ops",
+      "everyone",
+    ]);
   });
 
   it("never puts an API enum on screen", () => {
     for (const choice of AUDIENCE_CHOICES) {
-      expect(choice.label).not.toMatch(/_|^(all|client|supplier|rider)$/);
+      expect(choice.label).not.toMatch(
+        /_|^(everyone|clients|suppliers|riders|ops)$/,
+      );
     }
-    expect(audienceLabel("client")).toBe("Customers");
-    expect(audienceLabel("supplier")).toBe("Print shops");
+    expect(audienceLabel("clients")).toBe("Customers");
+    expect(audienceLabel("suppliers")).toBe("Print shops");
+    expect(audienceLabel("ops")).toBe("Operations");
     expect(audienceLabel("nonsense")).toBe("Unknown audience");
   });
 
-  it("spells out who 'Everyone' is when it sits inside a sentence", () => {
-    expect(audienceReach("all")).toBe("every customer, print shop and rider");
-    expect(audienceReach("supplier")).toBe("print shops");
+  it("spells out who Everyone is, including unsigned-in phones", () => {
+    expect(audienceReach("everyone")).toMatch(/never signed in/);
+    expect(audienceReach("suppliers")).toBe("print shops");
+    expect(audienceReach("ops")).toBe("operations");
     expect(audienceReach("nonsense")).toBe("this audience");
+  });
+
+  it("treats only Everyone as the stranger channel", () => {
+    expect(audienceHitsStrangers("everyone")).toBe(true);
+    expect(audienceHitsStrangers("clients")).toBe(false);
+    expect(audienceHitsStrangers("ops")).toBe(false);
+    expect(audienceHitsStrangers(null)).toBe(false);
+  });
+
+  it("says Everyone also hits unsigned-in phones before anyone sends", () => {
+    const everyone = AUDIENCE_CHOICES.find((choice) => choice.value === "everyone");
+    expect(everyone?.reason).toMatch(/never signed in/);
+    expect(everyone?.reason).toMatch(/stranger/);
   });
 });
 
-describe("validateDestination", () => {
-  it("accepts the captain's download link", () => {
-    const result = validateDestination("https://gridgo.talasora.com/download");
-    expect(result).toEqual({
-      ok: true,
-      url: "https://gridgo.talasora.com/download",
-    });
-  });
-
-  it("accepts the bare root domain and hyphenated subdomains", () => {
-    expect(validateDestination("https://talasora.com/news").ok).toBe(true);
-    expect(validateDestination("https://gridgo-dash.talasora.com/").ok).toBe(true);
-  });
-
-  it("trims and normalises before judging", () => {
-    const result = validateDestination("  https://GRIDGO.talasora.com/download  ");
-    expect(result.ok).toBe(true);
-  });
-
-  it("refuses an outside domain and says why", () => {
-    const result = validateDestination("https://bit.ly/free-print");
-    expect(result.ok).toBe(false);
-    if (result.ok) return;
-    expect(result.reason).toMatch(/bit\.ly/);
-    expect(result.reason).toMatch(/phishing/);
-  });
-
-  it("refuses a look-alike domain that only ends in the right words", () => {
-    expect(validateDestination("https://talasora.com.evil.example/x").ok).toBe(false);
-    expect(validateDestination("https://nottalasora.com/x").ok).toBe(false);
-  });
-
-  it("refuses credentials smuggled into the authority", () => {
-    const result = validateDestination(
-      "https://gridgo.talasora.com@evil.example/x",
-    );
-    expect(result.ok).toBe(false);
-  });
-
-  it("refuses non-https schemes", () => {
-    expect(validateDestination("http://gridgo.talasora.com/x").ok).toBe(false);
-    expect(
-      validateDestination("javascript:alert(document.cookie)").ok,
-    ).toBe(false);
-    expect(validateDestination("data:text/html,<h1>hi").ok).toBe(false);
-  });
-
-  it("refuses a port, whitespace, and anything that is not a URL", () => {
-    expect(validateDestination("https://gridgo.talasora.com:8443/x").ok).toBe(false);
-    expect(validateDestination("https://gridgo.talasora.com/a b").ok).toBe(false);
-    expect(validateDestination("gridgo.talasora.com/download").ok).toBe(false);
-    expect(validateDestination("").ok).toBe(false);
-  });
-
-  it("refuses a punycode homoglyph of the real domain", () => {
-    // "tаlasora.com" with a Cyrillic а — new URL() encodes it to xn--…
-    expect(validateDestination("https://tаlasora.com/x").ok).toBe(false);
+describe("limits", () => {
+  it("matches the API title and body ceilings", () => {
+    expect(ANNOUNCEMENT_LIMITS.title).toBe(120);
+    expect(ANNOUNCEMENT_LIMITS.body).toBe(500);
   });
 });
 
 describe("findRecentDuplicate", () => {
-  const recent = [broadcast()];
+  const recent = [announcement()];
 
   it("catches the same words to the same people minutes later", () => {
     const hit = findRecentDuplicate(
       {
-        title: "  GRIDGO 2.0 is out ",
-        body: "Faster quotes and live delivery tracking.  Update now.",
-        audience: "all",
+        title: "  GRIDGO 1.4 is available ",
+        body: "Update from the store.  This message is safe for any phone.",
+        audience: "everyone",
       },
       recent,
       NOW,
     );
-    expect(hit?.id).toBe("bc_1");
+    expect(hit?.id).toBe("anc_1");
   });
 
   it("does not fire for a different audience or different words", () => {
     expect(
       findRecentDuplicate(
-        { title: "GRIDGO 2.0 is out", body: recent[0].body, audience: "rider" },
+        {
+          title: "GRIDGO 1.4 is available",
+          body: recent[0].body,
+          audience: "riders",
+        },
         recent,
         NOW,
       ),
     ).toBeNull();
     expect(
       findRecentDuplicate(
-        { title: "Something else", body: recent[0].body, audience: "all" },
+        { title: "Something else", body: recent[0].body, audience: "everyone" },
         recent,
         NOW,
       ),
@@ -148,10 +126,10 @@ describe("findRecentDuplicate", () => {
   });
 
   it("does not fire outside the window, or before an audience is chosen", () => {
-    const old = [broadcast({ sentAt: "2026-08-11T06:00:00.000Z" })];
+    const old = [announcement({ at: "2026-08-11T06:00:00.000Z" })];
     expect(
       findRecentDuplicate(
-        { title: recent[0].title, body: recent[0].body, audience: "all" },
+        { title: recent[0].title, body: recent[0].body, audience: "everyone" },
         old,
         NOW,
       ),
@@ -178,63 +156,78 @@ describe("describeAge", () => {
   });
 });
 
-describe("presentDelivery", () => {
-  it("reads a partial delivery as normal, not as failure", () => {
-    const partial = presentDelivery(820, 420);
+describe("presentAnnouncementReach", () => {
+  it("reads a mixed everyone result as normal, not as failure", () => {
+    const partial = presentAnnouncementReach(6, 3, "everyone");
     expect(partial.tone).not.toBe("error");
-    expect(partial.label).toBe("Reached 820 of 1,240");
+    expect(partial.label).toBe("6 signed-in accounts, 3 unsigned-in phones");
     expect(partial.detail).toMatch(/normal/);
   });
 
-  it("reads a total failure as a failure", () => {
-    const none = presentDelivery(0, 1240);
+  it("reads a zero-zero result as a broken send", () => {
+    const none = presentAnnouncementReach(0, 0, "everyone");
     expect(none.tone).toBe("error");
-    expect(none.label).toBe("Reached no phones");
-    expect(none.detail).toMatch(/notification service/);
+    expect(none.label).toBe("Reached nobody");
+    expect(none.detail).toMatch(/broken send/);
   });
 
-  it("separates a clean sweep from an empty audience", () => {
-    expect(presentDelivery(1240, 0).tone).toBe("success");
-    expect(presentDelivery(0, 0).tone).toBe("neutral");
-    expect(presentDelivery(0, 0).label).toBe("No phones to reach");
+  it("does not treat a role send with zero unsigned-in phones as a miss", () => {
+    const shops = presentAnnouncementReach(4, 0, "suppliers");
+    expect(shops.tone).toBe("success");
+    expect(shops.label).toBe("4 signed-in accounts");
+    expect(shops.detail).toMatch(/only Everyone/);
+  });
+
+  it("reads an everyone send that reached only unsigned-in phones as partial", () => {
+    const strangers = presentAnnouncementReach(0, 3, "everyone");
+    expect(strangers.tone).not.toBe("error");
+    expect(strangers.label).toBe("3 unsigned-in phones");
+    expect(strangers.detail).toMatch(/normal/);
   });
 });
 
-describe("phrasePhones", () => {
-  it("counts and pluralises", () => {
-    expect(phrasePhones(1)).toBe("1 phone");
-    expect(phrasePhones(0)).toBe("0 phones");
-    expect(phrasePhones(1240)).toBe("1,240 phones");
+describe("count phrases", () => {
+  it("counts and pluralises accounts and unsigned-in phones", () => {
+    expect(phraseAccounts(1)).toBe("1 signed-in account");
+    expect(phraseAccounts(6)).toBe("6 signed-in accounts");
+    expect(phraseUnclaimed(1)).toBe("1 unsigned-in phone");
+    expect(phraseUnclaimed(3)).toBe("3 unsigned-in phones");
   });
 });
 
-describe("broadcastErrorMessage", () => {
+describe("announcementErrorMessage", () => {
   it("says plainly that nothing was sent, and never leaks a code", () => {
-    const missing = broadcastErrorMessage(
+    const missing = announcementErrorMessage(
       new ApiError(404, { error: "not_found" }),
       "fallback",
     );
-    expect(missing).toMatch(/not available/);
+    expect(missing).toMatch(/does not accept announcements/);
     expect(missing).toMatch(/Nothing was sent/);
     expect(missing).not.toMatch(/not_found/);
 
     expect(
-      broadcastErrorMessage(new ApiError(403, { error: "forbidden" }), "f"),
+      announcementErrorMessage(new ApiError(403, { error: "forbidden" }), "f"),
     ).toMatch(/Super Admin/);
   });
 
-  it("does not claim nothing was sent when nothing was being sent", () => {
-    const reading = broadcastErrorMessage(
-      new ApiError(404, { error: "not_found" }),
+  it("maps title and body validation without showing the API error name", () => {
+    const title = announcementErrorMessage(
+      new ApiError(400, { error: "invalid_announcement_title" }),
       "fallback",
-      "read",
     );
-    expect(reading).toMatch(/not available/);
-    expect(reading).not.toMatch(/sent/i);
+    expect(title).toMatch(/120/);
+    expect(title).not.toMatch(/invalid_announcement/);
+
+    const body = announcementErrorMessage(
+      new ApiError(400, { error: "invalid_announcement_body" }),
+      "fallback",
+    );
+    expect(body).toMatch(/500/);
+    expect(body).not.toMatch(/invalid_announcement/);
   });
 
   it("does not claim nothing was sent when the server broke mid-send", () => {
-    const server = broadcastErrorMessage(
+    const server = announcementErrorMessage(
       new ApiError(500, { error: "internal" }),
       "fallback",
     );

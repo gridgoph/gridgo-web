@@ -52,7 +52,7 @@ Demo logins, password is the API's `DEMO_PASSWORD` (`Ilovegridgo-0990` in `gridg
 | `src/app/ops/_lib/` | Ops-only pure helpers (payment queue, overview buckets, matching explainers, location freshness, schedule events, error copy) — tests under `_lib/__tests__` |
 | `src/components/orders/` | Order-shaped views: `MoneyBreakdown` (ops/super **only**), `PaymentSummary`, `MilestoneList`, `OrderMeta`, `Timeline` |
 | `src/app/admin/` | Super Admin surfaces — including `broadcast`, the push megaphone |
-| `src/app/admin/_lib/broadcasts.ts` | Broadcast rules: destination allow-list, lock-screen budget, resend detection, delivery reading |
+| `src/app/admin/_lib/broadcasts.ts` | Announcement rules: audience order/copy, lock-screen budget, session resend check, reach reading |
 | `src/app/globals.css` | Design tokens + shadcn semantic CSS variables |
 | `components.json` | shadcn CLI config (style: `base-nova`, Base UI) |
 | `.agents/skills/shadcn/` | Committed shadcn agent skill — use it for UI work |
@@ -410,30 +410,31 @@ Printing 50%, packaging and QC 15%, delivered 25%, retention 10% — of the **su
 
 ## Push broadcasts — the one control that leaves the platform
 
-`/admin/broadcast` is Super Admin only. One press puts a notification on the
-lock screen of every registered phone in the audience, and **there is no
-unsend**. The screen is built to make sending deliberate rather than fast; if
-you touch it, keep these five properties.
+`/admin/broadcast` is Super Admin only in this portal. The API also authorises
+`ops_admin`; **do not open the megaphone to Operations here.** One press puts a
+notification on lock screens, and **there is no unsend**. Live contract is
+`POST /announcements` in `gridgo-api/docs/OPERATIONAL_MODEL_V2_API.md`
+(Platform announcements). If you touch this screen, keep these properties.
 
-- **No audience is pre-selected**, and "Everyone" sits last in the list.
+- **No audience is pre-selected**, and "Everyone" sits last.
   `AUDIENCE_CHOICES` in `src/app/admin/_lib/broadcasts.ts` owns that order.
-- **The device count is read live** from the API before every send, and sending
-  is **blocked** while it is unknown. "Send" and "Send to 1,240 phones" are
-  different presses; a broadcast whose size nobody can state should not go out.
-- **The destination rule is `https` on `talasora.com` or a subdomain of it**,
-  no credentials, no port — `validateDestination`. A GRIDGO notification is
-  trusted because GRIDGO sent it, so an arbitrary operator-typed URL is a
-  phishing message with our name on it. **The API must enforce the same rule.**
-  The UI's job is only to never offer what the API will refuse.
-- **Recent sends sit beside the compose fields**, and an identical message to
-  the same audience inside two hours raises a warning (`findRecentDuplicate`).
-- **Delivery is best effort.** "820 of 1,240" is a normal result and must not
-  read as failure; zero delivered is not normal and must. `presentDelivery`.
+  Audiences are `everyone | clients | suppliers | riders | ops`. Labels stay
+  plain language (customers, print shops, riders, operations).
+- **`everyone` is the stranger channel.** It is the only audience that also
+  reaches never-signed-in / signed-out phones. Say that before send.
+  Confirmation restates audience and wording; for Everyone it restates the
+  stranger reach. No generic "Are you sure?"
+- **No destination URL.** Unclaimed push `data` is exactly `{type:"announcement"}`.
+  A tap opens the app. If the download page is mentioned, it is operator copy
+  ("tell them to open the app"), not a payload.
+- **No pre-send audience-count route and no GET list.** Do not call
+  `/admin/broadcasts`. Session-local last send is the resend guard
+  (`findRecentDuplicate`). After send, show `notifiedUsers` and
+  `unclaimedDevices`. A zero-zero result is a broken send; a partial count is
+  normal (`presentAnnouncementReach`).
+- Title ≤ 120, body ≤ 500. The lock-screen preview is the press check.
 
-The endpoints (`GET`/`POST /admin/broadcasts`, `GET /admin/broadcasts/audience`)
-are an **assumed contract** — see the header comment in `src/lib/api/client.ts`.
-Until gridgo-api ships them they 404 and the screen shows an honest unavailable
-state. When the server disagrees, the server wins.
+Client: `postAnnouncement` in `src/lib/api/client.ts`. Types: `Announcement`.
 
 ## Adding a screen
 

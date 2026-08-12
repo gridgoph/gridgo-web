@@ -569,46 +569,42 @@ export type LocationPing = {
   at: string;
 };
 
-// ---- Push broadcasts ----
+// ---- Platform announcements ----
 //
-// Super Admin only. A broadcast lands on the lock screen of every registered
-// phone in the chosen audience and there is no unsend, so the portal reads the
-// live device count before it lets anyone commit.
+// Super Admin only in this portal (the API also authorises ops_admin; do not
+// open the megaphone to Operations here). One POST, no list, no pre-send
+// count, no destination URL. Unclaimed push data is {type:"announcement"}
+// and a tap opens the app — a download link cannot ride the lock screen.
 //
-// ASSUMED CONTRACT — the endpoints are being built in gridgo-api in parallel.
-// Confirm before release; the server wins when it disagrees.
+// Contract: gridgo-api docs/OPERATIONAL_MODEL_V2_API.md → Platform announcements.
 
-/** Who a broadcast interrupts. `all` is every registered device. */
-export type BroadcastAudience = "all" | "client" | "supplier" | "rider";
+/** Who an announcement interrupts. `everyone` also reaches unclaimed phones. */
+export type AnnouncementAudience =
+  | "everyone"
+  | "clients"
+  | "suppliers"
+  | "riders"
+  | "ops";
 
-/** True blast radius: devices registered for push right now. */
-export type BroadcastAudienceSize = {
-  audience: BroadcastAudience;
-  deviceCount: number;
-};
-
-export type Broadcast = {
+export type Announcement = {
   id: string;
+  audience: AnnouncementAudience;
   title: string;
   body: string;
-  audience: BroadcastAudience;
-  /** Null when tapping the notification just opens the app. */
-  url?: string | null;
-  sentAt: string;
-  sentBy?: string | null;
-  sentByName?: string | null;
-  /** Best effort — devices the push service accepted the message for. */
-  deliveredCount: number;
-  /** Devices it could not reach (never registered, reinstalled, wiped). */
-  failedCount: number;
+  at: string;
+  /** Signed-in accounts that received a notification record. */
+  notifiedUsers: number;
+  /**
+   * Unclaimed (never-signed-in or signed-out) phones that were also pushed.
+   * Non-zero only for `everyone`; role audiences cannot reach them.
+   */
+  unclaimedDevices: number;
 };
 
-export type SendBroadcastInput = {
+export type PostAnnouncementInput = {
+  audience: AnnouncementAudience;
   title: string;
   body: string;
-  audience: BroadcastAudience;
-  /** Omitted entirely when the notification carries no destination. */
-  url?: string;
 };
 
 // ---- Auth / health ----
