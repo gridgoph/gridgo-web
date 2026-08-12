@@ -8,7 +8,8 @@ One Next.js application serving three role-gated experiences against the GRIDGO 
 | Operations | `ops@gridgo.ph` | `/ops/qa` |
 | Super Admin | `admin@gridgo.ph` | `/admin/overview` |
 
-Those are the **local demo API's** accounts, password `demo`. The deployed
+Those are the **local demo API's** accounts, password `Ilovegridgo-0990`
+(the API's `DEMO_PASSWORD`). The deployed
 portal's accounts are not these, and the sign-in page names none of them — see
 [Auth and role boundary](AGENTS.md#auth-and-role-boundary).
 
@@ -20,7 +21,7 @@ asserts it.
 ## Prerequisites
 
 - Node 20+
-- Demo API at `http://127.0.0.1:8787` (or set `NEXT_PUBLIC_API_URL`)
+- Demo API at `http://127.0.0.1:8787` (or set `NEXT_PUBLIC_API_URL`). `npm run dev` reaches it through same-origin `/api/gridgo` so the browser never CORS-hits the API.
 
 ## Setup
 

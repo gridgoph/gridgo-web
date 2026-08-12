@@ -30,10 +30,10 @@ export type DevAccount = {
 };
 
 /**
- * `demo` is the local demo API's shared password. It is written inline rather
- * than hoisted to a module constant so it sits *inside* the branch the compiler
- * discards — a top-level constant would survive the fold and rely on tree
- * shaking instead.
+ * The password is the local demo API's `DEMO_PASSWORD` (gridgo-api
+ * `src/demo-fixtures.js`). It is written inline rather than hoisted to a
+ * module constant so it sits *inside* the branch the compiler discards — a
+ * top-level constant would survive the fold and rely on tree shaking instead.
  */
 export const DEV_ACCOUNTS: readonly DevAccount[] =
   process.env.NODE_ENV === "production"
@@ -42,8 +42,16 @@ export const DEV_ACCOUNTS: readonly DevAccount[] =
         {
           role: "Supplier partner",
           email: "supplier@gridgo.ph",
-          password: "demo",
+          password: "Ilovegridgo-0990",
         },
-        { role: "Operations", email: "ops@gridgo.ph", password: "demo" },
-        { role: "Super Admin", email: "admin@gridgo.ph", password: "demo" },
+        {
+          role: "Operations",
+          email: "ops@gridgo.ph",
+          password: "Ilovegridgo-0990",
+        },
+        {
+          role: "Super Admin",
+          email: "admin@gridgo.ph",
+          password: "Ilovegridgo-0990",
+        },
       ];

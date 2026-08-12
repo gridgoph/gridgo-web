@@ -23,8 +23,9 @@ npm test
 ```
 
 API base: `NEXT_PUBLIC_API_URL` (default `http://127.0.0.1:8787`).
+`next dev` does **not** let the browser CORS-hit that origin — see Local sign-in.
 
-Demo logins, password `demo`:
+Demo logins, password is the API's `DEMO_PASSWORD` (`Ilovegridgo-0990` in `gridgo-api/src/demo-fixtures.js`):
 
 - `supplier@gridgo.ph`
 - `ops@gridgo.ph`
@@ -34,7 +35,8 @@ Demo logins, password `demo`:
 
 | Path | Owns |
 |---|---|
-| `src/lib/api/client.ts` | Typed HTTP client — **only** place that calls `fetch` for the API |
+| `src/lib/api/client.ts` | Typed HTTP client — **only** place pages call `fetch` for the API |
+| `src/app/api/gridgo/[...path]/route.ts` | Local-dev same-origin proxy to a loopback API (strips `Origin`) |
 | `src/lib/api/types.ts` | Response/request types (no `any`) |
 | `src/lib/api/constraints.ts` | Server rules the UI can explain *before* rejection (payment/milestone gates, holds, issue window) |
 | `src/lib/nav.ts` | **Single** role→nav structure (`ROLE_NAV`); AppShell reads this only |
@@ -253,6 +255,14 @@ Suppliers are external partners. Never serve `/ops/*` or `/admin/*` to them — 
 **Rule:** pages never call `fetch`. Import from `@/lib/api` (or `@/lib/api/client`).
 
 Authoritative API docs live in the separate `gridgo-api` repo (`AGENTS.md`, `README.md`, `PRD.md`). When docs and the running server disagree, **the server wins** — update types here to match observed JSON.
+
+### Local sign-in
+
+The API answers any browser `Origin` that is not in `CORS_ALLOWED_ORIGINS` with `403 origin_not_allowed` and **no** `Access-Control-Allow-Origin`. That is an authorization rule, not a dashboard bug — do not widen production CORS from this repo.
+
+In `next dev`, `getApiBase()` therefore returns `/api/gridgo` in the browser, and `src/app/api/gridgo/[...path]/route.ts` forwards to the configured **loopback** API without `Origin` (the same shape mobile and curl already use). Production builds call `NEXT_PUBLIC_API_URL` directly; the proxy 404s when `NODE_ENV=production` and refuses a non-loopback upstream.
+
+`GET /api/health` still echoes `getConfiguredApiBase()` — the real API origin the bundle was built against — never the proxy prefix.
 
 ### Modules
 
