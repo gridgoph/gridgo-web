@@ -1,4 +1,4 @@
-import { getApiBase } from "@/lib/api/client";
+import { getConfiguredApiBase } from "@/lib/api/client";
 
 /**
  * Liveness for the portal container.
@@ -24,7 +24,7 @@ export function GET() {
     {
       ok: true,
       service: "gridgo-web",
-      apiBase: getApiBase(),
+      apiBase: getConfiguredApiBase(),
       commit: process.env.GRIDGO_BUILD_SHA ?? "unknown",
       builtAt: process.env.GRIDGO_BUILD_TIME ?? "unknown",
     },

@@ -53,7 +53,7 @@ describe("LoginPage", () => {
     // local password together — folds away in a production build; see
     // `account-disclosure.test.ts` and `scripts/assert-no-account-addresses.mjs`.
     expect(screen.getByLabelText("Email")).toHaveValue("admin@gridgo.ph");
-    expect(screen.getByLabelText("Password")).toHaveValue("demo");
+    expect(screen.getByLabelText("Password")).toHaveValue("Ilovegridgo-0990");
   });
 
   it("explains how to continue when credentials are empty", async () => {

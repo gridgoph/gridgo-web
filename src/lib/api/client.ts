@@ -2,7 +2,10 @@
  * Typed GRIDGO demo API client.
  *
  * All network calls go through this module — pages never call `fetch` directly.
- * Base URL comes from NEXT_PUBLIC_API_URL (default http://127.0.0.1:8787).
+ * The configured API origin comes from NEXT_PUBLIC_API_URL (default
+ * http://127.0.0.1:8787). In `next dev`, the browser talks to that loopback
+ * API through same-origin `/api/gridgo` so CORS never applies; production
+ * builds still call the configured origin directly.
  *
  * Types are derived from observed responses on the running API. When docs and
  * server disagree, the server wins.
@@ -48,12 +51,55 @@ import type {
 
 const DEFAULT_API_BASE = "http://127.0.0.1:8787";
 
-export function getApiBase(): string {
+/** Same-origin prefix the browser uses in `next dev`. */
+export const LOCAL_API_PROXY_PREFIX = "/api/gridgo";
+
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/** The API origin this build was configured to call. Never the local proxy. */
+export function getConfiguredApiBase(): string {
   const fromEnv =
     typeof process !== "undefined"
       ? process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/$/, "")
       : undefined;
   return fromEnv || DEFAULT_API_BASE;
+}
+
+export function isLoopbackApiBase(base: string): boolean {
+  try {
+    return LOOPBACK_HOSTS.has(new URL(base).hostname);
+  } catch {
+    return false;
+  }
+}
+
+function nodeEnv(): string {
+  // Indexed access so tests can stub NODE_ENV; Vite/Next replace the
+  // `process.env.NODE_ENV` member expression at compile time.
+  return process.env["NODE_ENV"] ?? "";
+}
+
+/**
+ * `next dev` only: the browser must not CORS-hit a loopback API. The API
+ * answers unlisted origins with `403 origin_not_allowed` and no
+ * `Access-Control-Allow-Origin`, which is exactly the local sign-in break.
+ * Server code, Vitest, and production builds keep the configured origin.
+ */
+export function shouldUseLocalApiProxy(): boolean {
+  if (nodeEnv() !== "development") return false;
+  if (typeof window === "undefined") return false;
+  const configured = getConfiguredApiBase();
+  if (!isLoopbackApiBase(configured)) return false;
+  try {
+    return new URL(configured).origin !== window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+export function getApiBase(): string {
+  if (shouldUseLocalApiProxy()) return LOCAL_API_PROXY_PREFIX;
+  return getConfiguredApiBase();
 }
 
 /**
