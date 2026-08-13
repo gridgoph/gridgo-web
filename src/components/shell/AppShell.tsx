@@ -58,6 +58,7 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarHeader,
+  SidebarInset,
   SidebarMenu,
   SidebarMenuBadge,
   SidebarMenuButton,
@@ -68,6 +69,7 @@ import {
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import type { Role } from "@/lib/api/types";
 import {
@@ -123,11 +125,12 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
     <Sidebar collapsible="icon">
       {/* ── Identity: the mark is the rail's home control, and all that survives
              collapse. There is no second toggle here — the header owns that. ── */}
-      <SidebarHeader className="p-2">
+      <SidebarHeader className="h-16 justify-center border-b border-sidebar-border">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
+              className="[&_svg]:size-6 group-data-[collapsible=icon]:size-11!"
               render={<Link href={homeForRole(role)} />}
               tooltip="GRIDGO home"
               onClick={() => setOpenMobile(false)}
@@ -227,69 +230,86 @@ export function AppShell({ role, children }: Props) {
     >
       <PortalSidebar role={role} />
 
-      <div className="flex min-w-0 flex-1 flex-col bg-canvas">
-        <header className="sticky top-0 z-30 flex min-h-14 items-center gap-3 border-b border-outline bg-surface px-4 py-2 md:px-6 xl:px-8">
+      <SidebarInset className="bg-canvas">
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-stretch gap-3 border-b border-outline bg-surface px-4 md:px-6 xl:px-8">
           {/* The only navigation toggle in the shell. It sits here because it is
               in the same place at every width, and it is what a collapsed rail
               leaves reachable. */}
-          <SidebarTrigger aria-label="Toggle primary navigation" />
-          <Separator
-            orientation="vertical"
-            className="hidden data-[orientation=vertical]:h-6 sm:block"
-          />
+          <div className="flex items-center">
+            <SidebarTrigger aria-label="Toggle primary navigation" />
+          </div>
+          <Separator orientation="vertical" className="hidden sm:block" />
 
-          <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-1 items-center">
             {isNested && parentItem ? (
-              <Breadcrumb className="hidden sm:block">
-                <BreadcrumbList>
-                  <BreadcrumbItem>
-                    <BreadcrumbLink render={<Link href={parentItem.href} />}>
-                      {parentItem.label}
-                    </BreadcrumbLink>
-                  </BreadcrumbItem>
-                  <BreadcrumbSeparator />
-                  <BreadcrumbItem>
-                    <BreadcrumbPage>{title}</BreadcrumbPage>
-                  </BreadcrumbItem>
-                </BreadcrumbList>
-              </Breadcrumb>
-            ) : null}
-            <h1 className="text-h3 text-text-primary m-0 truncate">{title}</h1>
+              <>
+                <h1 className="sr-only">{title}</h1>
+                <Breadcrumb className="min-w-0">
+                  <BreadcrumbList>
+                    <BreadcrumbItem>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <BreadcrumbLink
+                              render={<Link href={parentItem.href} />}
+                              aria-label={`Back to ${parentItem.label}`}
+                            />
+                          }
+                        >
+                          {parentItem.label}
+                        </TooltipTrigger>
+                        <TooltipContent>{`Back to ${parentItem.label}`}</TooltipContent>
+                      </Tooltip>
+                    </BreadcrumbItem>
+                    <BreadcrumbSeparator />
+                    <BreadcrumbItem>
+                      <BreadcrumbPage className="text-h3 text-text-primary truncate">
+                        {title}
+                      </BreadcrumbPage>
+                    </BreadcrumbItem>
+                  </BreadcrumbList>
+                </Breadcrumb>
+              </>
+            ) : (
+              <h1 className="text-h3 text-text-primary m-0 truncate">{title}</h1>
+            )}
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={<Button variant="outline" aria-label="Account menu" />}
-            >
-              <UserRound data-icon="inline-start" aria-hidden />
-              <span className="hidden max-w-[10rem] truncate sm:inline">
-                {user?.name ?? "Account"}
-              </span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-60">
-              <DropdownMenuGroup>
-                <DropdownMenuLabel className="truncate">{user?.email}</DropdownMenuLabel>
-                {user?.supplierName ? (
-                  <DropdownMenuLabel className="truncate">
-                    {user.supplierName}
-                  </DropdownMenuLabel>
-                ) : null}
-                <DropdownMenuItem onClick={() => void signOut()}>
-                  <LogOut aria-hidden />
-                  Sign out
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center">
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button variant="outline" aria-label="Account menu" />}
+              >
+                <UserRound data-icon="inline-start" aria-hidden />
+                <span className="hidden max-w-[10rem] truncate sm:inline">
+                  {user?.name ?? "Account"}
+                </span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-60">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel className="truncate">{user?.email}</DropdownMenuLabel>
+                  {user?.supplierName ? (
+                    <DropdownMenuLabel className="truncate">
+                      {user.supplierName}
+                    </DropdownMenuLabel>
+                  ) : null}
+                  <DropdownMenuItem onClick={() => void signOut()}>
+                    <LogOut aria-hidden />
+                    Sign out
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </header>
 
-        <main
+        <div
           id="main-content"
           className="flex-1 px-4 py-4 md:px-6 md:py-6 xl:px-8 xl:py-8"
         >
           {children}
-        </main>
-      </div>
+        </div>
+      </SidebarInset>
     </SidebarProvider>
   );
 }

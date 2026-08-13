@@ -190,7 +190,7 @@ export default function SupplierJobDetailPage() {
   const previewMinor = pesosToMinor(pricePesos);
 
   return (
-    <div className="flex max-w-3xl flex-col gap-4">
+    <div className="flex w-full flex-col gap-4">
       <header className="gg-card flex flex-col gap-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
@@ -244,6 +244,7 @@ export default function SupplierJobDetailPage() {
         </div>
       </header>
 
+      <div className="grid w-full gap-4 xl:grid-cols-2 xl:items-start">
       <section className="gg-card" aria-labelledby="spec-heading">
         <h3 id="spec-heading" className="text-h3 text-text-primary m-0 mb-3">
           Spec
@@ -263,6 +264,7 @@ export default function SupplierJobDetailPage() {
           <MilestoneList order={job} />
         </section>
       ) : null}
+      </div>
 
       <section className="gg-card" aria-labelledby="timeline-heading">
         <h3 id="timeline-heading" className="text-h3 text-text-primary m-0 mb-3">

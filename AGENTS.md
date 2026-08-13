@@ -364,10 +364,9 @@ Header title: `contextTitleForPath(pathname, role)` (nested job/QA workspaces ha
   established — once, in the orientation column that answers "which GRIDGO site is this",
   not also inside the card — and `SidebarHeader`, where it doubles as the home control. It
   is furniture anywhere else. On collapse the wordmark goes and the mark stays.
-  **Known limitation:** the mark is a wordmark plus a dot, so what survives collapse is a
-  10px dot — legible as a place-holder, weak as identity. A dedicated square glyph would
-  serve a collapsing rail properly; that is the captain's call, and the mark was not
-  redrawn here.
+  The mark is the landing 3×3 grid (`src/components/ui/Logo.tsx`): top-right
+  `--color-brand-logo`, bottom-right `--color-brand-logo-muted`, other seven
+  `currentColor` so they invert with `--foreground`.
 - Every `NavIconKey` maps to a distinct lucide icon. Two screens sharing a glyph teaches
   nothing; if you add a nav entry, give it an icon no sibling already uses.
 
