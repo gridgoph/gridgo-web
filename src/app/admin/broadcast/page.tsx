@@ -1,23 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
+  ANNOUNCEMENT_LIMITS,
   AUDIENCE_CHOICES,
-  BROADCAST_LIMITS,
-  EXAMPLE_DESTINATION,
+  announcementErrorMessage,
+  audienceHitsStrangers,
   audienceLabel,
   audienceReach,
-  broadcastErrorMessage,
   describeAge,
-  describeLinkRule,
   findRecentDuplicate,
-  phrasePhones,
-  presentDelivery,
-  validateDestination,
+  presentAnnouncementReach,
 } from "@/app/admin/_lib/broadcasts";
+import { LastSend } from "@/app/admin/broadcast/LastSend";
 import { LockScreenPreview } from "@/app/admin/broadcast/LockScreenPreview";
-import { RecentSends } from "@/app/admin/broadcast/RecentSends";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,17 +36,10 @@ import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  getBroadcastAudienceSize,
-  listBroadcasts,
-  sendBroadcast,
-} from "@/lib/api/client";
-import type { Broadcast, BroadcastAudience } from "@/lib/api/types";
+import { postAnnouncement } from "@/lib/api/client";
+import type { Announcement, AnnouncementAudience } from "@/lib/api/types";
 
-type CountState = "idle" | "loading" | "ready" | "error";
-type DestinationMode = "link" | "app";
-
-const RECENT_LIMIT = 6;
+const CONFIRM_WORD = "EVERYONE";
 
 /**
  * The megaphone.
@@ -59,35 +49,23 @@ const RECENT_LIMIT = 6;
  * sending fast — it is built so that a mistake takes work:
  *
  * - no audience is pre-selected, and "Everyone" sits last;
- * - the device count is read live from the API and sending is blocked until it
- *   is known, because "Send" and "Send to 1,240 phones" are different presses;
- * - the destination is checked against GRIDGO's own domain before it is offered;
- * - recent sends sit beside the compose fields, and an identical one raises a
- *   warning;
- * - the confirmation restates the audience, the count and the link, and for
- *   "Everyone" it asks for the word to be typed.
+ * - there is no destination URL (a tap opens the app);
+ * - there is no pre-send phone count (the API has no such route);
+ * - confirmation restates the audience and the wording, and for Everyone it
+ *   restates that strangers receive it;
+ * - the last send this session sits beside the compose fields.
  */
 export default function AdminBroadcastPage() {
-  const [audience, setAudience] = useState<BroadcastAudience | null>(null);
+  const [audience, setAudience] = useState<AnnouncementAudience | null>(null);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [destinationMode, setDestinationMode] = useState<DestinationMode>("link");
-  const [link, setLink] = useState("");
-  const [linkTouched, setLinkTouched] = useState(false);
 
-  const [recent, setRecent] = useState<Broadcast[] | null>(null);
-  const [recentLoading, setRecentLoading] = useState(true);
-  const [recentError, setRecentError] = useState<string | null>(null);
-
-  const [deviceCount, setDeviceCount] = useState<number | null>(null);
-  const [countState, setCountState] = useState<CountState>("idle");
-  const [countError, setCountError] = useState<string | null>(null);
-
+  const [lastSend, setLastSend] = useState<Announcement | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [typedConfirm, setTypedConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  const [result, setResult] = useState<Broadcast | null>(null);
+  const [result, setResult] = useState<Announcement | null>(null);
 
   // Relative ages are only meaningful against a clock the whole screen shares,
   // and reading one during render would not survive hydration.
@@ -98,72 +76,15 @@ export default function AdminBroadcastPage() {
     return () => clearInterval(timer);
   }, []);
 
-  const loadRecent = useCallback(async () => {
-    setRecentLoading(true);
-    setRecentError(null);
-    try {
-      setRecent(await listBroadcasts(RECENT_LIMIT));
-      // Re-read the clock with the list, so "4 minutes ago" is measured against
-      // now and not against whenever this screen was opened.
-      setNowMs(Date.now());
-    } catch (err) {
-      setRecent(null);
-      setRecentError(
-        broadcastErrorMessage(
-          err,
-          "Could not read what has already been broadcast.",
-          "read",
-        ),
-      );
-    } finally {
-      setRecentLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadRecent();
-  }, [loadRecent]);
-
-  const loadDeviceCount = useCallback(async (target: BroadcastAudience) => {
-    setCountState("loading");
-    setCountError(null);
-    try {
-      const size = await getBroadcastAudienceSize(target);
-      setDeviceCount(size.deviceCount);
-      setCountState("ready");
-    } catch (err) {
-      setDeviceCount(null);
-      setCountState("error");
-      setCountError(
-        broadcastErrorMessage(
-          err,
-          "Could not read how many phones this audience has.",
-          "read",
-        ),
-      );
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!audience) {
-      setCountState("idle");
-      setDeviceCount(null);
-      return;
-    }
-    void loadDeviceCount(audience);
-  }, [audience, loadDeviceCount]);
-
-  const destination = useMemo(
-    () => (destinationMode === "link" ? validateDestination(link) : null),
-    [destinationMode, link],
+  const sessionSends = useMemo(
+    () => (lastSend ? [lastSend] : []),
+    [lastSend],
   );
-  const destinationRejected =
-    destinationMode === "link" && linkTouched && destination?.ok === false;
 
   const duplicate = useMemo(() => {
-    if (!recent || nowMs === null) return null;
-    return findRecentDuplicate({ title, body, audience }, recent, nowMs);
-  }, [recent, nowMs, title, body, audience]);
+    if (nowMs === null) return null;
+    return findRecentDuplicate({ title, body, audience }, sessionSends, nowMs);
+  }, [sessionSends, nowMs, title, body, audience]);
 
   const trimmedTitle = title.trim();
   const trimmedBody = body.trim();
@@ -172,49 +93,36 @@ export default function AdminBroadcastPage() {
   if (!audience) missing.push("choose who this reaches");
   if (!trimmedTitle) missing.push("write a title");
   if (!trimmedBody) missing.push("write the message");
-  if (destinationMode === "link" && destination?.ok !== true) {
-    missing.push("give a link this can send, or switch it to open the app");
-  }
 
-  const noPhones = countState === "ready" && deviceCount === 0;
-  const canReview =
-    missing.length === 0 &&
-    countState === "ready" &&
-    deviceCount !== null &&
-    deviceCount > 0;
-
-  const needsTypedWord = audience === "all";
-  const confirmWord = "EVERYONE";
+  const canReview = missing.length === 0;
+  const needsTypedWord = audienceHitsStrangers(audience);
   const canSend =
-    canReview && (!needsTypedWord || typedConfirm.trim() === confirmWord);
+    canReview && (!needsTypedWord || typedConfirm.trim() === CONFIRM_WORD);
 
   async function send() {
     if (!audience || !canSend) return;
     setBusy(true);
     setSendError(null);
     try {
-      const sent = await sendBroadcast({
+      const sent = await postAnnouncement({
+        audience,
         title: trimmedTitle,
         body: trimmedBody,
-        audience,
-        ...(destination?.ok ? { url: destination.url } : {}),
       });
       setResult(sent);
+      setLastSend(sent);
       setConfirmOpen(false);
       setTypedConfirm("");
       // Clear the composed message. Leaving it on screen after a send is how
-      // the same broadcast goes out twice.
+      // the same announcement goes out twice.
       setAudience(null);
       setTitle("");
       setBody("");
-      setLink("");
-      setLinkTouched(false);
-      void loadRecent();
     } catch (err) {
       setSendError(
-        broadcastErrorMessage(
+        announcementErrorMessage(
           err,
-          "The broadcast service did not respond. Check recent sends before trying again.",
+          "The announcement service did not respond. Do not send again until you know whether this one left.",
         ),
       );
     } finally {
@@ -222,19 +130,23 @@ export default function AdminBroadcastPage() {
     }
   }
 
-  const resultDelivery = result
-    ? presentDelivery(result.deliveredCount, result.failedCount)
+  const resultReach = result
+    ? presentAnnouncementReach(
+        result.notifiedUsers,
+        result.unclaimedDevices,
+        result.audience,
+      )
     : null;
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-body text-text-secondary m-0 max-w-prose">
-        A broadcast puts a notification on the lock screen of every phone in the
-        audience you pick. It cannot be recalled, edited or deleted once it goes
-        out.
+        An announcement puts a notification on the lock screen of every phone in
+        the audience you pick. It cannot be recalled, edited or deleted once it
+        goes out.
       </p>
 
-      {result && resultDelivery ? (
+      {result && resultReach ? (
         <section
           className="gg-card flex flex-col items-start gap-3"
           aria-labelledby="send-result"
@@ -245,16 +157,19 @@ export default function AdminBroadcastPage() {
               Sent to {audienceLabel(result.audience)}
             </h2>
             <StatusChip
-              tone={resultDelivery.tone}
-              label={resultDelivery.label}
-              icon={resultDelivery.icon}
+              tone={resultReach.tone}
+              label={resultReach.label}
+              icon={resultReach.icon}
             />
           </div>
           <p className="text-body text-text-secondary m-0 max-w-prose">
-            {resultDelivery.detail}
+            {resultReach.detail}
           </p>
           <p className="text-body text-text-primary m-0 max-w-prose">
             “{result.title}”
+          </p>
+          <p className="text-caption text-text-muted m-0">
+            {phraseResultCounts(result.notifiedUsers, result.unclaimedDevices)}
           </p>
           <Button variant="secondary" onClick={() => setResult(null)}>
             Write another
@@ -263,7 +178,6 @@ export default function AdminBroadcastPage() {
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
-        {/* ── Compose ─────────────────────────────────────────────────── */}
         <div className="flex flex-col gap-4 lg:col-start-1 lg:row-start-1">
           <section className="gg-card flex flex-col gap-4" aria-labelledby="who">
             <div>
@@ -280,7 +194,7 @@ export default function AdminBroadcastPage() {
               aria-labelledby="who"
               value={audience ?? ""}
               onValueChange={(value) => {
-                setAudience(String(value) as BroadcastAudience);
+                setAudience(String(value) as AnnouncementAudience);
                 setTypedConfirm("");
               }}
             >
@@ -317,13 +231,13 @@ export default function AdminBroadcastPage() {
                 <Input
                   id="broadcast-title"
                   value={title}
-                  maxLength={BROADCAST_LIMITS.title}
+                  maxLength={ANNOUNCEMENT_LIMITS.title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="GRIDGO 2.0 is here"
+                  placeholder="GRIDGO 1.4 is available"
                   autoComplete="off"
                 />
                 <FieldDescription>
-                  {title.length} of {BROADCAST_LIMITS.title} characters. The
+                  {title.length} of {ANNOUNCEMENT_LIMITS.title} characters. The
                   first line a phone shows.
                 </FieldDescription>
               </Field>
@@ -333,176 +247,54 @@ export default function AdminBroadcastPage() {
                 <Textarea
                   id="broadcast-body"
                   value={body}
-                  maxLength={BROADCAST_LIMITS.body}
+                  maxLength={ANNOUNCEMENT_LIMITS.body}
                   rows={4}
                   onChange={(e) => setBody(e.target.value)}
-                  placeholder="Faster quotes and live delivery tracking. Update from the download page."
+                  placeholder="Update from the store. Open the GRIDGO app to install it."
                   required
                 />
                 <FieldDescription>
-                  {body.length} of {BROADCAST_LIMITS.body} characters. Put what
-                  matters first — a phone cuts the rest.
+                  {body.length} of {ANNOUNCEMENT_LIMITS.body} characters. Put
+                  what matters first — a phone cuts the rest.
                 </FieldDescription>
               </Field>
             </FieldGroup>
           </section>
-
-          <section className="gg-card flex flex-col gap-4" aria-labelledby="destination">
-            <div>
-              <h2 id="destination" className="text-h3 text-text-primary m-0">
-                Where tapping it goes
-              </h2>
-              <p className="text-caption text-text-muted m-0 mt-1">
-                {describeLinkRule()} Anywhere else is refused: people open this
-                because GRIDGO sent it, and an outside address would trade on
-                that.
-              </p>
-            </div>
-
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="destination-mode">Destination</FieldLabel>
-                <RadioGroup
-                  id="destination-mode"
-                  value={destinationMode}
-                  onValueChange={(value) => {
-                    setDestinationMode(String(value) as DestinationMode);
-                    setSendError(null);
-                  }}
-                >
-                  <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-field border border-outline-subtle px-3 py-2.5">
-                    <RadioGroupItem value="link" className="mt-1" />
-                    <span className="min-w-0">
-                      <span className="text-body text-text-primary block">
-                        A GRIDGO web page
-                      </span>
-                      <span className="text-caption text-text-muted block">
-                        Opens in the browser, for example the app download page.
-                      </span>
-                    </span>
-                  </label>
-                  <label className="flex min-h-11 cursor-pointer items-start gap-3 rounded-field border border-outline-subtle px-3 py-2.5">
-                    <RadioGroupItem value="app" className="mt-1" />
-                    <span className="min-w-0">
-                      <span className="text-body text-text-primary block">
-                        Just open the app
-                      </span>
-                      <span className="text-caption text-text-muted block">
-                        No link. Right for news that needs no follow-up.
-                      </span>
-                    </span>
-                  </label>
-                </RadioGroup>
-              </Field>
-
-              {destinationMode === "link" ? (
-                <Field data-invalid={destinationRejected || undefined}>
-                  <FieldLabel htmlFor="broadcast-link">Link</FieldLabel>
-                  <Input
-                    id="broadcast-link"
-                    value={link}
-                    inputMode="url"
-                    spellCheck={false}
-                    autoComplete="off"
-                    aria-invalid={destinationRejected || undefined}
-                    aria-describedby="broadcast-link-note"
-                    onChange={(e) => setLink(e.target.value)}
-                    onBlur={() => setLinkTouched(true)}
-                    placeholder={EXAMPLE_DESTINATION}
-                  />
-                  {/* Quiet until it has something to say. The rule is stated
-                      once above and the example lives in the placeholder —
-                      repeating it a third time here taught nobody anything. */}
-                  {destinationRejected && destination && !destination.ok ? (
-                    <FieldDescription id="broadcast-link-note">
-                      {destination.reason}
-                    </FieldDescription>
-                  ) : destination?.ok ? (
-                    <FieldDescription id="broadcast-link-note">
-                      Tapping the notification opens {destination.url}
-                    </FieldDescription>
-                  ) : null}
-                </Field>
-              ) : null}
-            </FieldGroup>
-          </section>
         </div>
 
-        {/* ── What it looks like, and what already went out ────────────── */}
         <div className="flex flex-col gap-4 lg:col-start-2 lg:row-start-1">
-          <section className="gg-card flex flex-col gap-3" aria-labelledby="preview">
-            <h2 id="preview" className="text-h3 text-text-primary m-0">
+          <section aria-labelledby="preview">
+            <h2 id="preview" className="sr-only">
               On a locked phone
             </h2>
-            <LockScreenPreview title={title} body={body} />
+            <LockScreenPreview
+              title={title}
+              body={body}
+              audience={audience}
+            />
           </section>
 
-          <RecentSends
-            broadcasts={recent}
-            loading={recentLoading}
-            error={recentError}
-            nowMs={nowMs}
-            onRetry={() => void loadRecent()}
-            highlightId={result?.id ?? null}
-          />
+          <LastSend last={lastSend} nowMs={nowMs} />
         </div>
 
-        {/* ── Blast radius and the one press that matters ──────────────── */}
         <div className="flex flex-col gap-3 lg:col-start-1 lg:row-start-2">
-          <section
-            className="gg-card flex flex-col gap-3"
-            aria-labelledby="blast-radius"
-          >
-            <h2 id="blast-radius" className="text-h3 text-text-primary m-0">
-              How far this reaches
-            </h2>
-
-            {!audience ? (
-              <p className="text-body text-text-secondary m-0">
-                Choose who this reaches and GRIDGO will count the phones
-                registered for notifications right now.
+          {audienceHitsStrangers(audience) ? (
+            <div
+              className="flex flex-col items-start gap-2 rounded-card border border-warning bg-surface p-4"
+              role="status"
+            >
+              <StatusChip
+                tone="warning"
+                label="Reaches strangers"
+                icon="triangle-alert"
+              />
+              <p className="text-body text-text-primary m-0 max-w-prose">
+                Everyone also lands on phones that have never signed in, or have
+                signed out. Those words have to be safe for a stranger holding
+                any phone — nothing about an order, a payment, or a person.
               </p>
-            ) : countState === "loading" ? (
-              <p className="text-body text-text-secondary m-0" role="status">
-                Counting the phones this would reach…
-              </p>
-            ) : countState === "error" ? (
-              <div className="flex flex-col items-start gap-2">
-                <p className="text-body text-error m-0" role="alert">
-                  {countError}
-                </p>
-                <p className="text-caption text-text-muted m-0 max-w-prose">
-                  Sending is held until this number is known. A broadcast whose
-                  size nobody can state is not one anybody should press send on.
-                </p>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => void loadDeviceCount(audience)}
-                >
-                  Count again
-                </Button>
-              </div>
-            ) : noPhones ? (
-              <p className="text-body text-text-secondary m-0 max-w-prose">
-                Not one phone among {audienceReach(audience)} is registered for
-                notifications, so this would arrive nowhere. Pick another
-                audience, or check with engineering that devices are
-                registering.
-              </p>
-            ) : deviceCount !== null ? (
-              <>
-                <p className="text-display text-text-primary m-0">
-                  {phrasePhones(deviceCount)}
-                </p>
-                <p className="text-body text-text-secondary m-0 max-w-prose">
-                  Registered for notifications right now among{" "}
-                  {audienceReach(audience)}. Some will be asleep, in a meeting,
-                  or riding.
-                </p>
-              </>
-            ) : null}
-          </section>
+            </div>
+          ) : null}
 
           {duplicate && nowMs !== null ? (
             <div
@@ -517,8 +309,7 @@ export default function AdminBroadcastPage() {
                 />
                 <p className="text-body text-text-primary m-0">
                   This exact message went to {audienceLabel(duplicate.audience)}{" "}
-                  {describeAge(duplicate.sentAt, nowMs)}
-                  {duplicate.sentByName ? `, by ${duplicate.sentByName}` : ""}.
+                  {describeAge(duplicate.at, nowMs)}.
                 </p>
               </div>
               <p className="text-body text-text-secondary m-0 max-w-prose">
@@ -544,44 +335,35 @@ export default function AdminBroadcastPage() {
                 setConfirmOpen(true);
               }}
             >
-              {canReview && deviceCount !== null
-                ? `Review and send to ${phrasePhones(deviceCount)}`
-                : "Review and send"}
+              Review and send
             </Button>
             {missing.length > 0 ? (
               <p className="text-caption text-text-muted m-0">
                 Still to do: {missing.join(", ")}.
-              </p>
-            ) : countState === "loading" ? (
-              <p className="text-caption text-text-muted m-0">
-                Waiting on the phone count.
               </p>
             ) : null}
           </div>
         </div>
       </div>
 
-      {/* ── The last thing between a draft and every lock screen ───────── */}
       <AlertDialog
         open={confirmOpen}
         onOpenChange={(open) => {
           setConfirmOpen(open);
           if (!open) {
             setTypedConfirm("");
-            setSendError(null);
           }
         }}
       >
         <AlertDialogContent className="sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Send to {deviceCount !== null ? phrasePhones(deviceCount) : "these phones"}?
+              Send to {audience ? audienceLabel(audience) : "this audience"}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This goes to {audience ? audienceLabel(audience) : ""} —{" "}
-              {deviceCount !== null ? phrasePhones(deviceCount) : "an unknown number of phones"}{" "}
-              registered for notifications right now. There is no unsend, no
-              edit and no delete once it leaves.
+              {needsTypedWord
+                ? `This reaches ${audience ? audienceReach(audience) : "everyone"}. Those words land on phones nobody has signed in on. There is no unsend, no edit and no delete once it leaves.`
+                : `This goes to ${audience ? audienceReach(audience) : "this audience"} only — signed-in accounts. Phones that never signed in will not see it. There is no unsend, no edit and no delete once it leaves.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -596,28 +378,18 @@ export default function AdminBroadcastPage() {
               <p className="text-body text-text-secondary m-0">{trimmedBody}</p>
             </div>
 
-            <div>
-              <p className="text-caption text-text-muted m-0">
-                Tapping it opens
-              </p>
-              <p className="text-body text-text-primary m-0 mt-0.5 break-all">
-                {destination?.ok ? destination.url : "the GRIDGO app"}
-              </p>
-            </div>
-
             {duplicate && nowMs !== null ? (
               <p className="text-body text-warning m-0">
                 The same message already went to{" "}
                 {audienceLabel(duplicate.audience)}{" "}
-                {describeAge(duplicate.sentAt, nowMs)}.
+                {describeAge(duplicate.at, nowMs)}.
               </p>
             ) : null}
 
             {needsTypedWord ? (
               <Field>
                 <FieldLabel htmlFor="broadcast-confirm">
-                  This reaches every customer, print shop and rider. Type{" "}
-                  {confirmWord} to confirm.
+                  This also reaches strangers. Type {CONFIRM_WORD} to confirm.
                 </FieldLabel>
                 <Input
                   id="broadcast-confirm"
@@ -637,7 +409,7 @@ export default function AdminBroadcastPage() {
           </div>
 
           <AlertDialogFooter>
-            {/* Cancel takes focus, so a stray Return key does not broadcast. */}
+            {/* Cancel takes focus, so a stray Return key does not send. */}
             <AlertDialogCancel variant="secondary" disabled={busy} autoFocus>
               Keep editing
             </AlertDialogCancel>
@@ -648,11 +420,22 @@ export default function AdminBroadcastPage() {
             >
               {busy
                 ? "Sending…"
-                : `Send to ${deviceCount !== null ? phrasePhones(deviceCount) : "these phones"}`}
+                : `Send to ${audience ? audienceLabel(audience) : "this audience"}`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </div>
   );
+}
+
+function phraseResultCounts(
+  notifiedUsers: number,
+  unclaimedDevices: number,
+): string {
+  return `${notifiedUsers.toLocaleString("en-PH")} signed-in account${
+    notifiedUsers === 1 ? "" : "s"
+  } notified · ${unclaimedDevices.toLocaleString("en-PH")} unsigned-in phone${
+    unclaimedDevices === 1 ? "" : "s"
+  }.`;
 }

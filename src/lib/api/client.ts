@@ -12,10 +12,8 @@
  */
 
 import type {
+  Announcement,
   AuditEntry,
-  Broadcast,
-  BroadcastAudience,
-  BroadcastAudienceSize,
   CatalogItem,
   Claim,
   CreateSupplierServiceInput,
@@ -34,7 +32,7 @@ import type {
   PayoutMilestone,
   PayoutMilestoneCode,
   PlatformSettings,
-  SendBroadcastInput,
+  PostAnnouncementInput,
   StoredFile,
   SupplierService,
   Taxonomy,
@@ -500,48 +498,27 @@ export async function grantCredits(input: {
 }
 
 // ---------------------------------------------------------------------------
-// Push broadcasts — Super Admin only, and there is no unsend.
-//
-// ASSUMED CONTRACT, being built in gridgo-api in parallel:
-//   GET  /admin/broadcasts            → { broadcasts: Broadcast[] }  newest first
-//   GET  /admin/broadcasts/audience   → { audience, deviceCount }
-//   POST /admin/broadcasts            → { broadcast: Broadcast }     with counts
-// Until it lands these return 404, which the screen presents as an honest
-// "not available yet" state rather than pretending a send succeeded.
+// Platform announcements — Super Admin only in this portal, and there is no
+// unsend. Live contract: POST /announcements. There is no GET list and no
+// pre-send audience-count route; do not invent either.
 // ---------------------------------------------------------------------------
 
-/** Recent sends, newest first — the portal's guard against an accidental resend. */
-export async function listBroadcasts(limit?: number): Promise<Broadcast[]> {
-  const q = buildQuery({ limit });
-  const result = await request<{ broadcasts: Broadcast[] }>(
-    `/admin/broadcasts${q}`,
+/**
+ * Irreversible. Writes one notification per targeted account and, for
+ * `everyone`, also pushes to unclaimed (never-signed-in / signed-out) phones.
+ * Push `data` is {type:"announcement"} — no destination URL.
+ */
+export async function postAnnouncement(
+  input: PostAnnouncementInput,
+): Promise<Announcement> {
+  const result = await request<{ announcement: Announcement }>(
+    "/announcements",
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
   );
-  return result.broadcasts;
-}
-
-/**
- * Devices registered for push in this audience right now. Read live before the
- * operator commits — a guessed number is worse than no number here.
- */
-export async function getBroadcastAudienceSize(
-  audience: BroadcastAudience,
-): Promise<BroadcastAudienceSize> {
-  return request(`/admin/broadcasts/audience${buildQuery({ audience })}`);
-}
-
-/**
- * Irreversible. Puts a notification on every reachable phone in the audience.
- * The server must re-check the destination rule the UI enforces — the UI only
- * refuses to offer what the API will reject.
- */
-export async function sendBroadcast(
-  input: SendBroadcastInput,
-): Promise<Broadcast> {
-  const result = await request<{ broadcast: Broadcast }>("/admin/broadcasts", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-  return result.broadcast;
+  return result.announcement;
 }
 
 // ---------------------------------------------------------------------------
