@@ -144,7 +144,7 @@ export default function OpsOverviewPage() {
   const activeCount = data.orders.filter((o) => o.state !== "draft").length;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
           {activeCount
@@ -213,7 +213,7 @@ export default function OpsOverviewPage() {
         <h2 id="queues-heading" className="text-h3 text-text-primary m-0 mb-3">
           Queues
         </h2>
-        <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+        <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {buckets.map((bucket) => (
             <BucketCard key={bucket.id} bucket={bucket} />
           ))}

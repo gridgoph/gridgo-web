@@ -221,7 +221,7 @@ export default function AdminCreditsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="max-w-prose">
           <p className="text-body text-text-secondary m-0">
@@ -271,15 +271,15 @@ export default function AdminCreditsPage() {
           body="Client accounts appear here once they exist on the platform. Grants require a client destination."
         />
       ) : (
-        <>
-          <section className="gg-card flex flex-col gap-3" aria-labelledby="client-pick">
+        <div className="grid w-full gap-3 lg:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)] lg:items-start">
+          <section className="gg-card flex flex-col gap-3 p-3" aria-labelledby="client-pick">
             <h2 id="client-pick" className="text-h3 text-text-primary m-0">
               Client ledger
             </h2>
             <Field>
               <FieldLabel>Client</FieldLabel>
               <Select value={selectedId} onValueChange={(v) => setSelectedId(v ?? "")}>
-                <SelectTrigger className="min-h-11 w-full max-w-md">
+                <SelectTrigger className="min-h-11 w-full">
                   <SelectValue placeholder="Choose a client">
                     {(v) => {
                       const c = clients.find((x) => x.id === v);
@@ -337,7 +337,7 @@ export default function AdminCreditsPage() {
               body="Use Grant credits above to seed this client’s pilot balance. Grants are administrative, not purchases — never a wallet top-up."
             />
           ) : null}
-        </>
+        </div>
       )}
 
       <Dialog

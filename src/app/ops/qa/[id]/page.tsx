@@ -123,8 +123,8 @@ export default function OpsQaWorkspacePage() {
   const checklist = order.pickupChecklist;
 
   return (
-    <div className="flex w-full flex-col gap-4">
-      <header className="gg-card flex flex-col gap-3">
+    <div className="flex w-full flex-col gap-3">
+      <header className="gg-card flex flex-col gap-3 p-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-h2 text-text-primary m-0">{order.title}</h2>
@@ -203,8 +203,8 @@ export default function OpsQaWorkspacePage() {
         </div>
       </header>
 
-      <div className="grid w-full gap-4 xl:grid-cols-2 xl:items-start">
-      <section className="gg-card" aria-labelledby="spec-heading">
+      <div className="grid w-full gap-3 lg:grid-cols-2 lg:items-start">
+      <section className="gg-card p-3" aria-labelledby="spec-heading">
         <h3 id="spec-heading" className="text-h3 text-text-primary m-0 mb-3">
           Spec
         </h3>
@@ -230,18 +230,18 @@ export default function OpsQaWorkspacePage() {
         </dl>
       </section>
 
-      <section className="gg-card" aria-labelledby="money-heading">
+      <section className="gg-card p-3" aria-labelledby="money-heading">
         <h3 id="money-heading" className="text-h3 text-text-primary m-0">
           Money
         </h3>
-        <p className="text-body text-text-secondary m-0 mt-1 mb-4 max-w-prose">
+        <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
           Operations and Super Admin only. The client is never shown the
           supplier price or the commission.
         </p>
         <MoneyBreakdown order={order} />
       </section>
 
-      <section className="gg-card" aria-labelledby="payments-heading">
+      <section className="gg-card p-3" aria-labelledby="payments-heading">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 id="payments-heading" className="text-h3 text-text-primary m-0">
             Payments
@@ -257,7 +257,7 @@ export default function OpsQaWorkspacePage() {
         <PaymentSummary order={order} />
       </section>
 
-      <section className="gg-card" aria-labelledby="milestones-heading">
+      <section className="gg-card p-3" aria-labelledby="milestones-heading">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h3 id="milestones-heading" className="text-h3 text-text-primary m-0">
             Supplier payout
@@ -274,7 +274,7 @@ export default function OpsQaWorkspacePage() {
       </section>
 
       {checklist && checklist.status !== "not_started" ? (
-        <section className="gg-card" aria-labelledby="pickup-heading">
+        <section className="gg-card p-3" aria-labelledby="pickup-heading">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <h3 id="pickup-heading" className="text-h3 text-text-primary m-0">
               Rider pickup checks
@@ -310,14 +310,14 @@ export default function OpsQaWorkspacePage() {
           ) : null}
         </section>
       ) : null}
-      </div>
 
-      <section className="gg-card" aria-labelledby="timeline-heading">
+      <section className="gg-card p-3" aria-labelledby="timeline-heading">
         <h3 id="timeline-heading" className="text-h3 text-text-primary m-0 mb-3">
           Audit timeline
         </h3>
         <Timeline entries={order.timeline} />
       </section>
+      </div>
     </div>
   );
 }

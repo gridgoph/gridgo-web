@@ -132,7 +132,7 @@ export default function OpsSchedulePage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
           Deadlines Operations works to — QA, proof, acceptance, production, pickup,
@@ -299,7 +299,7 @@ function AgendaList({
   groups: { dayKey: string; dayLabel: string; events: ScheduleEvent[] }[];
 }) {
   return (
-    <div className="flex flex-col gap-4" aria-label="Schedule agenda">
+    <div className="flex flex-col gap-3" aria-label="Schedule agenda">
       {groups.map((group) => (
         <section key={group.dayKey} aria-labelledby={`day-${group.dayKey}`}>
           <h2 id={`day-${group.dayKey}`} className="text-h3 text-text-primary m-0 mb-2">

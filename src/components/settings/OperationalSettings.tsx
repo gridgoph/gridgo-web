@@ -205,17 +205,17 @@ export function OperationalSettings() {
     JSON.stringify(bands) !== JSON.stringify(toDraft(settings.deliveryFeeBands));
 
   return (
-    <div className="flex w-full flex-col gap-4">
+    <div className="flex w-full flex-col gap-3">
       <p className="text-body text-text-secondary m-0 max-w-prose">
         Two platform-wide numbers, changed here rather than in a release.
       </p>
 
-      <div className="grid w-full gap-4 xl:grid-cols-2 xl:items-start">
-      <section className="gg-card" aria-labelledby="window-heading">
+      <div className="grid w-full gap-3 lg:grid-cols-2 lg:items-start">
+      <section className="gg-card p-3" aria-labelledby="window-heading">
         <h2 id="window-heading" className="text-h3 text-text-primary m-0">
           Issue window
         </h2>
-        <p className="text-body text-text-secondary m-0 mt-1 mb-4 max-w-prose">
+        <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
           How long a client has after delivery to raise a problem. While it is
           open a claim can hold the supplier&rsquo;s payout; when it closes with
           nothing raised, the order completes and the final 10% retention
@@ -240,7 +240,7 @@ export function OperationalSettings() {
         </FieldGroup>
       </section>
 
-      <section className="gg-card" aria-labelledby="bands-heading">
+      <section className="gg-card p-3" aria-labelledby="bands-heading">
         <h2 id="bands-heading" className="text-h3 text-text-primary m-0">
           Delivery distance bands
         </h2>

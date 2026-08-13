@@ -272,7 +272,7 @@ export default function AdminFinancePage() {
   const held = formatFigure(rollup.heldOnOrders);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
           What clients have paid, what GRIDGO has earned, and what suppliers are
@@ -288,7 +288,7 @@ export default function AdminFinancePage() {
         <h2 id="in-heading" className="text-h3 text-text-primary m-0">
           Money in from clients
         </h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <FigureCard
             label="Confirmed"
             value={confirmedIn.value}
@@ -311,7 +311,7 @@ export default function AdminFinancePage() {
         <h2 id="out-heading" className="text-h3 text-text-primary m-0">
           GRIDGO and supplier earnings
         </h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <FigureCard
             label="Commission earned"
             value={commission.value}
