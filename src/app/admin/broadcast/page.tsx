@@ -139,7 +139,7 @@ export default function AdminBroadcastPage() {
     : null;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <p className="text-body text-text-secondary m-0 max-w-prose">
         An announcement puts a notification on the lock screen of every phone in
         the audience you pick. It cannot be recalled, edited or deleted once it
@@ -177,9 +177,9 @@ export default function AdminBroadcastPage() {
         </section>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start">
-        <div className="flex flex-col gap-4 lg:col-start-1 lg:row-start-1">
-          <section className="gg-card flex flex-col gap-4" aria-labelledby="who">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,28rem)] lg:items-start">
+        <div className="flex flex-col gap-3 lg:col-start-1 lg:row-start-1">
+          <section className="gg-card flex flex-col gap-3 p-3" aria-labelledby="who">
             <div>
               <h2 id="who" className="text-h3 text-text-primary m-0">
                 Who this interrupts
@@ -220,7 +220,7 @@ export default function AdminBroadcastPage() {
             </RadioGroup>
           </section>
 
-          <section className="gg-card flex flex-col gap-4" aria-labelledby="message">
+          <section className="gg-card flex flex-col gap-3 p-3" aria-labelledby="message">
             <h2 id="message" className="text-h3 text-text-primary m-0">
               What it says
             </h2>
@@ -262,7 +262,7 @@ export default function AdminBroadcastPage() {
           </section>
         </div>
 
-        <div className="flex flex-col gap-4 lg:col-start-2 lg:row-start-1">
+        <div className="flex flex-col gap-3 lg:col-start-2 lg:row-start-1">
           <section aria-labelledby="preview">
             <h2 id="preview" className="sr-only">
               On a locked phone

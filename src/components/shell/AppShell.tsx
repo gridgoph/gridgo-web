@@ -24,7 +24,6 @@ import {
   ShieldCheck,
   Siren,
   Truck,
-  UserRound,
   UserRoundCheck,
   UserSearch,
   Users,
@@ -40,15 +39,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Logo } from "@/components/ui/Logo";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -79,6 +70,7 @@ import {
   type NavIconKey,
 } from "@/lib/nav";
 import { homeForRole, roleLabel } from "@/lib/routes";
+import { cn } from "@/lib/utils";
 
 const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   jobs: Package,
@@ -110,13 +102,97 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/** First letters of the display name — the footer card has no photo. */
+function displayInitials(name: string | undefined): string {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    const first = parts[0]?.[0];
+    const last = parts[parts.length - 1]?.[0];
+    if (first && last) return `${first}${last}`.toUpperCase();
+  }
+  if (parts[0] && parts[0].length >= 2) return parts[0].slice(0, 2).toUpperCase();
+  if (parts[0]?.[0]) return parts[0][0].toUpperCase();
+  return "?";
+}
+
+/** Operational settings only — suppliers have no settings route. */
+function settingsHrefForRole(role: Role): "/ops/settings" | "/admin/settings" | null {
+  if (role === "ops_admin") return "/ops/settings";
+  if (role === "super_admin") return "/admin/settings";
+  return null;
+}
+
+function AccountCard({ role }: { role: Role }) {
+  const { user, signOut } = useAuth();
+  const settingsHref = settingsHrefForRole(role);
+  const name = user?.name?.trim() || "Account";
+
+  return (
+    <div
+      data-slot="account-card"
+      className="flex items-center gap-2 rounded-xl border border-sidebar-border bg-background p-3 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:border-transparent group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0"
+    >
+      <span
+        aria-hidden
+        className="bg-foreground text-background flex size-11 shrink-0 items-center justify-center rounded-full text-caption"
+        style={{ fontFamily: "var(--font-bold)" }}
+      >
+        {displayInitials(user?.name)}
+      </span>
+      <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+        <p
+          className="text-body text-sidebar-foreground m-0 truncate"
+          style={{ fontFamily: "var(--font-medium)" }}
+        >
+          {name}
+        </p>
+        <p className="text-caption text-text-muted m-0 truncate">
+          {roleLabel(role)}
+        </p>
+      </div>
+      <div className="flex shrink-0 flex-col">
+        {settingsHref ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Link
+                  href={settingsHref}
+                  aria-label="Operational settings"
+                  className={buttonVariants({ variant: "ghost", size: "icon" })}
+                />
+              }
+            >
+              <Settings aria-hidden />
+            </TooltipTrigger>
+            <TooltipContent>Operational settings</TooltipContent>
+          </Tooltip>
+        ) : null}
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Sign out"
+                onClick={() => void signOut()}
+              />
+            }
+          >
+            <LogOut aria-hidden />
+          </TooltipTrigger>
+          <TooltipContent>Sign out</TooltipContent>
+        </Tooltip>
+      </div>
+    </div>
+  );
+}
+
 type Props = {
   role: Role;
   children: ReactNode;
 };
 
 function PortalSidebar({ role }: Pick<Props, "role">) {
-  const { user, signOut } = useAuth();
   const pathname = usePathname();
   const { setOpenMobile } = useSidebar();
   const items = navForRole(role);
@@ -125,7 +201,7 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
     <Sidebar collapsible="icon">
       {/* ── Identity: the mark is the rail's home control, and all that survives
              collapse. There is no second toggle here — the header owns that. ── */}
-      <SidebarHeader className="h-16 justify-center border-b border-sidebar-border">
+      <SidebarHeader className="h-14 justify-center border-b border-sidebar-border">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
@@ -170,13 +246,11 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
                         tooltip={item.label}
                         onClick={() => setOpenMobile(false)}
                         aria-current={active ? "page" : undefined}
+                        className={cn(
+                          active &&
+                            "text-[var(--color-action-yellow)] hover:text-[var(--color-action-yellow)] data-active:bg-transparent data-active:font-medium data-active:text-[var(--color-action-yellow)]",
+                        )}
                       >
-                        {active ? (
-                          <span
-                            className="absolute inset-y-2 left-0 w-1 rounded-r-full bg-[var(--color-action-yellow)]"
-                            aria-hidden
-                          />
-                        ) : null}
                         <Icon strokeWidth={active ? 2.25 : 1.75} aria-hidden />
                         <span className="group-data-[collapsible=icon]:hidden">
                           {item.label}
@@ -193,19 +267,8 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
       </SidebarContent>
 
       <SidebarSeparator />
-      <SidebarFooter className="p-3">
-        <div className="min-w-0 px-2 group-data-[collapsible=icon]:hidden">
-          <p className="text-caption text-text-muted m-0 truncate">{user?.name}</p>
-          <p className="text-caption text-text-muted m-0 truncate">{user?.email}</p>
-        </div>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton tooltip="Sign out" onClick={() => void signOut()}>
-              <LogOut aria-hidden />
-              <span className="group-data-[collapsible=icon]:hidden">Sign out</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+      <SidebarFooter className="p-2 group-data-[collapsible=icon]:p-1.5">
+        <AccountCard role={role} />
       </SidebarFooter>
 
       {/* Drag/click edge — the rail is how a collapsed sidebar comes back
@@ -216,7 +279,6 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
 }
 
 export function AppShell({ role, children }: Props) {
-  const { user, signOut } = useAuth();
   const pathname = usePathname();
   const title = contextTitleForPath(pathname, role);
   const parentItem = navItemForPath(pathname, role);
@@ -231,10 +293,9 @@ export function AppShell({ role, children }: Props) {
       <PortalSidebar role={role} />
 
       <SidebarInset className="bg-canvas">
-        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-stretch gap-3 border-b border-outline bg-surface px-4 md:px-6 xl:px-8">
-          {/* The only navigation toggle in the shell. It sits here because it is
-              in the same place at every width, and it is what a collapsed rail
-              leaves reachable. */}
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-stretch gap-2 border-b border-outline bg-surface pl-1.5 pr-3">
+          {/* The only navigation toggle in the shell. Tight left padding keeps
+              it next to the rail; the header has no second account control. */}
           <div className="flex items-center">
             <SidebarTrigger aria-label="Toggle primary navigation" />
           </div>
@@ -274,39 +335,9 @@ export function AppShell({ role, children }: Props) {
               <h1 className="text-h3 text-text-primary m-0 truncate">{title}</h1>
             )}
           </div>
-
-          <div className="flex items-center">
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={<Button variant="outline" aria-label="Account menu" />}
-              >
-                <UserRound data-icon="inline-start" aria-hidden />
-                <span className="hidden max-w-[10rem] truncate sm:inline">
-                  {user?.name ?? "Account"}
-                </span>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-60">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="truncate">{user?.email}</DropdownMenuLabel>
-                  {user?.supplierName ? (
-                    <DropdownMenuLabel className="truncate">
-                      {user.supplierName}
-                    </DropdownMenuLabel>
-                  ) : null}
-                  <DropdownMenuItem onClick={() => void signOut()}>
-                    <LogOut aria-hidden />
-                    Sign out
-                  </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
         </header>
 
-        <div
-          id="main-content"
-          className="flex-1 px-4 py-4 md:px-6 md:py-6 xl:px-8 xl:py-8"
-        >
+        <div id="main-content" className="flex-1 p-3 md:px-4 md:py-3">
           {children}
         </div>
       </SidebarInset>

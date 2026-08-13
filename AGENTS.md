@@ -346,7 +346,7 @@ Two surfaces are mounted for both Operations and Super Admin from **one** implem
 
 - AppShell renders `navForRole(role)` only. Do **not** maintain separate nav arrays in components.
 - Middleware + `RoleGate` still refuse another role’s URL; nav is not a security boundary.
-- Yellow is **only** the selected rail indicator (and at most one `Button variant="primary"` on a page). The rail must never become a yellow column.
+- Yellow on the rail is the **selected item’s text and icon** only — no left bar, no yellow pill or fill. Elsewhere, yellow is at most one `Button variant="primary"` on a page. The rail must never become a yellow column.
 - `ready: false` → route uses `ComingNext` placeholder (“Coming next” + body from the nav item). Prefer that over a 404.
 - When shipping a real page: replace the placeholder `page.tsx`, set `ready: true` on that nav item, keep the same `href`.
 
@@ -357,7 +357,14 @@ Header title: `contextTitleForPath(pathname, role)` (nested job/QA workspaces ha
 - **One** `SidebarTrigger`, in the page header, left of the title. It is in the same place
   at every width and is what a collapsed rail leaves reachable. `SidebarRail` is the second
   affordance — a drag/click edge, not a duplicate button. Do not add a trigger inside
-  `SidebarHeader`.
+  `SidebarHeader`. Header padding is tight (`pl-1.5 pr-3`, `h-14`) so the trigger sits
+  next to the rail instead of in a wide gutter.
+- Account chrome lives in `SidebarFooter` as a user card (initials, `user.name`,
+  `roleLabel(role)`, settings gear + sign out). The header has no account control.
+  Settings links to `/ops/settings` or `/admin/settings`. Suppliers have no settings
+  route — omit the gear; do not invent a profile page.
+- Signed-in main column uses `p-3 md:px-4 md:py-3`. Do not reintroduce `xl:px-8 xl:py-8`.
+  Workspace/detail pages use a packed `lg:grid-cols-2` (not `xl:` — desktop is 1024px).
 - `--sidebar-width-icon` is `3.75rem`, not shadcn's `3rem`: GRIDGO's 44×44 control floor
   overrides shadcn's `size-8`, and a 3rem rail clips nav labels mid-word. Labels are
   hidden with `group-data-[collapsible=icon]:hidden` rather than left to width clipping.

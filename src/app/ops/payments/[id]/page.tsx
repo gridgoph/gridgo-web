@@ -189,8 +189,8 @@ export default function OpsPaymentReviewPage() {
   const decidable = payment.status === "pending_confirmation";
 
   return (
-    <div className="flex w-full flex-col gap-4">
-      <header className="gg-card flex flex-col gap-4">
+    <div className="flex w-full flex-col gap-3">
+      <header className="gg-card flex flex-col gap-3 p-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-overline text-text-muted m-0 uppercase">
@@ -312,19 +312,19 @@ export default function OpsPaymentReviewPage() {
         </div>
       </header>
 
-      <div className="grid w-full gap-4 xl:grid-cols-2 xl:items-start">
-      <section className="gg-card" aria-labelledby="money-heading">
+      <div className="grid w-full gap-3 lg:grid-cols-2 lg:items-start">
+      <section className="gg-card p-3" aria-labelledby="money-heading">
         <h3 id="money-heading" className="text-h3 text-text-primary m-0">
           What this order is worth
         </h3>
-        <p className="text-body text-text-secondary m-0 mt-1 mb-4 max-w-prose">
+        <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
           Operations and Super Admin only. The client never sees the supplier
           price or the commission.
         </p>
         <MoneyBreakdown order={order} />
       </section>
 
-      <section className="gg-card" aria-labelledby="timeline-heading">
+      <section className="gg-card p-3" aria-labelledby="timeline-heading">
         <h3 id="timeline-heading" className="text-h3 text-text-primary m-0 mb-3">
           Order history
         </h3>

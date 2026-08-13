@@ -131,7 +131,7 @@ export default function SupplierSchedulePage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
           Accepted jobs by promised date. Open any entry for the existing job workspace —
@@ -219,7 +219,7 @@ export default function SupplierSchedulePage() {
       ) : isNarrow || mode === "day" ? (
         // Mobile (<768): chronological agenda is required, not optional.
         // Day mode on wider screens also uses the list for clarity.
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
           {days.map((day) => {
             const key = dayKeyFromDate(day);
             const dayEntries = byDay.get(key) ?? [];

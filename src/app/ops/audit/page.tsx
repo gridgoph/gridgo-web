@@ -261,7 +261,7 @@ export default function OpsAuditPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
           Platform accountability: who did what, when, to which record. Filter
@@ -280,7 +280,7 @@ export default function OpsAuditPage() {
           void load();
         }}
       >
-        <FieldGroup className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <FieldGroup className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field>
             <FieldLabel htmlFor="audit-entity">Record type</FieldLabel>
             <Select

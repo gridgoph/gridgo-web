@@ -236,7 +236,7 @@ export default function SupplierCapacityPage() {
       : null;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
           Shop headroom is derived from capacity you declare on live catalogue lines, set
@@ -257,7 +257,7 @@ export default function SupplierCapacityPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map((card) => (
           <div key={card.label} className="gg-card flex flex-col gap-1">
             <p className="text-caption text-text-muted m-0">{card.label}</p>

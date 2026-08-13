@@ -209,7 +209,7 @@ function ServiceLines() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
           Catalogue lines declared by suppliers. Verifying one makes it live for
