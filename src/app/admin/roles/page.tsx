@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { UserCog } from "lucide-react";
 
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
 import {
@@ -9,7 +10,11 @@ import {
   roleChangeConsequence,
 } from "@/app/admin/_lib/present";
 import { Button } from "@/components/ui/button";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import {
+  DataTable,
+  DataTableRowAction,
+  type DataTableColumn,
+} from "@/components/ui/data-table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -209,8 +214,9 @@ export default function AdminRolesPage() {
           itemLabel="people"
           defaultSortId="role"
           rowActions={(u) => (
-            <Button
-              variant="secondary"
+            <DataTableRowAction
+              label="Change role"
+              icon={UserCog}
               onClick={() => {
                 setTarget(u);
                 setNextRole(u.role);
@@ -218,9 +224,7 @@ export default function AdminRolesPage() {
                 setTypedConfirm("");
                 setActionError(null);
               }}
-            >
-              Change role
-            </Button>
+            />
           )}
         />
       )}

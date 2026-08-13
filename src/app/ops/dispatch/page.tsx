@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ChevronRight, MapPin, RefreshCw } from "lucide-react";
+import { Bike, Eye, MapPin, RefreshCw } from "lucide-react";
 
 import {
   filterDispatchOrders,
@@ -16,6 +15,7 @@ import { presentZone } from "@/app/ops/_lib/present";
 import { Button } from "@/components/ui/button";
 import {
   DataTable,
+  DataTableRowAction,
   type DataTableColumn,
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -325,25 +325,21 @@ export default function OpsDispatchPage() {
           filterPlaceholder="Filter dispatch…"
           defaultSortId="status"
           rowActions={(o) => (
-            <div className="flex flex-wrap gap-2">
+            <>
               {o.state === "ready_for_dispatch" ? (
-                <Button
-                  variant="secondary"
+                <DataTableRowAction
+                  label="Assign rider"
+                  icon={Bike}
                   disabled={acting !== null}
                   onClick={() => void assignRider(o)}
-                >
-                  {acting === o.id ? "Assigning…" : "Assign rider"}
-                </Button>
+                />
               ) : null}
-              <Button
-                variant="secondary"
-                nativeButton={false}
-                render={<Link href={`/ops/qa/${o.id}`} />}
-              >
-                Open
-                <ChevronRight data-icon="inline-end" aria-hidden />
-              </Button>
-            </div>
+              <DataTableRowAction
+                label="Open"
+                icon={Eye}
+                href={`/ops/qa/${o.id}`}
+              />
+            </>
           )}
         />
       )}

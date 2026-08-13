@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { Eye } from "lucide-react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import {
@@ -12,7 +11,11 @@ import {
   type PaymentReviewRow,
 } from "@/app/ops/_lib/payments";
 import { Button } from "@/components/ui/button";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import {
+  DataTable,
+  DataTableRowAction,
+  type DataTableColumn,
+} from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
@@ -193,18 +196,11 @@ export default function OpsPaymentsPage() {
           filterPlaceholder="Filter by order or reference…"
           itemLabel="payments"
           rowActions={(row) => (
-            <Button
-              variant="secondary"
-              nativeButton={false}
-              render={
-                <Link
-                  href={`/ops/payments/${row.order.id}?installment=${row.installment}`}
-                />
-              }
-            >
-              Review
-              <ChevronRight data-icon="inline-end" aria-hidden />
-            </Button>
+            <DataTableRowAction
+              label="Review"
+              icon={Eye}
+              href={`/ops/payments/${row.order.id}?installment=${row.installment}`}
+            />
           )}
         />
       )}
