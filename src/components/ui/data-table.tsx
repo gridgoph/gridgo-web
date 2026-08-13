@@ -44,6 +44,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -401,20 +402,22 @@ function DataTableViewOptions<T>({ table }: { table: TanstackTable<T> }) {
         }
       />
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>Show columns</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {hideable.map((column) => {
-          const meta = column.columnDef.meta as ColumnMeta<T> | undefined;
-          return (
-            <DropdownMenuCheckboxItem
-              key={column.id}
-              checked={column.getIsVisible()}
-              onCheckedChange={(value) => column.toggleVisibility(Boolean(value))}
-            >
-              {meta?.gridgo.header ?? column.id}
-            </DropdownMenuCheckboxItem>
-          );
-        })}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Show columns</DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {hideable.map((column) => {
+            const meta = column.columnDef.meta as ColumnMeta<T> | undefined;
+            return (
+              <DropdownMenuCheckboxItem
+                key={column.id}
+                checked={column.getIsVisible()}
+                onCheckedChange={(value) => column.toggleVisibility(Boolean(value))}
+              >
+                {meta?.gridgo.header ?? column.id}
+              </DropdownMenuCheckboxItem>
+            );
+          })}
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );
