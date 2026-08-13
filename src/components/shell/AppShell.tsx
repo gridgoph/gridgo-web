@@ -9,6 +9,7 @@ import {
   BookOpen,
   CalendarDays,
   CalendarRange,
+  ChevronsUpDown,
   ClipboardCheck,
   ClipboardList,
   Coins,
@@ -39,7 +40,15 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Logo } from "@/components/ui/Logo";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -122,68 +131,103 @@ function settingsHrefForRole(role: Role): "/ops/settings" | "/admin/settings" | 
   return null;
 }
 
-function AccountCard({ role }: { role: Role }) {
+function AccountInitials({ name }: { name: string | undefined }) {
+  return (
+    <span
+      aria-hidden
+      className="bg-foreground text-background flex size-8 shrink-0 items-center justify-center rounded-lg text-caption"
+      style={{ fontFamily: "var(--font-bold)" }}
+    >
+      {displayInitials(name)}
+    </span>
+  );
+}
+
+/** shadcn / UAGC NavUser — footer trigger opens Settings + Log out. */
+function NavUser({ role }: { role: Role }) {
   const { user, signOut } = useAuth();
+  const { state } = useSidebar();
   const settingsHref = settingsHrefForRole(role);
   const name = user?.name?.trim() || "Account";
+  const email = user?.email?.trim() ?? "";
+  const collapsed = state === "collapsed";
 
   return (
-    <div
-      data-slot="account-card"
-      className="flex items-center gap-2 rounded-xl border border-sidebar-border bg-background p-3 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-1 group-data-[collapsible=icon]:border-transparent group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:p-0"
-    >
-      <span
-        aria-hidden
-        className="bg-foreground text-background flex size-11 shrink-0 items-center justify-center rounded-full text-caption"
-        style={{ fontFamily: "var(--font-bold)" }}
-      >
-        {displayInitials(user?.name)}
-      </span>
-      <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
-        <p
-          className="text-body text-sidebar-foreground m-0 truncate"
-          style={{ fontFamily: "var(--font-medium)" }}
-        >
-          {name}
-        </p>
-        <p className="text-caption text-text-muted m-0 truncate">
-          {roleLabel(role)}
-        </p>
-      </div>
-      <div className="flex shrink-0 flex-col">
-        {settingsHref ? (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Link
-                  href={settingsHref}
-                  aria-label="Operational settings"
-                  className={buttonVariants({ variant: "ghost", size: "icon" })}
-                />
-              }
-            >
-              <Settings aria-hidden />
-            </TooltipTrigger>
-            <TooltipContent>Operational settings</TooltipContent>
-          </Tooltip>
-        ) : null}
-        <Tooltip>
-          <TooltipTrigger
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger
             render={
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label="Sign out"
-                onClick={() => void signOut()}
+              <SidebarMenuButton
+                size="lg"
+                data-slot="account-menu"
+                className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-11!"
+                aria-label={name}
               />
             }
           >
-            <LogOut aria-hidden />
-          </TooltipTrigger>
-          <TooltipContent>Sign out</TooltipContent>
-        </Tooltip>
-      </div>
-    </div>
+            <AccountInitials name={user?.name} />
+            <div className="grid min-w-0 flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
+              <span className="truncate" style={{ fontFamily: "var(--font-medium)" }}>
+                {name}
+              </span>
+              <span className="text-muted-foreground truncate text-xs">
+                {roleLabel(role)}
+              </span>
+            </div>
+            <ChevronsUpDown className="ml-auto group-data-[collapsible=icon]:hidden" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="min-w-56"
+            align="end"
+            side={collapsed ? "left" : "bottom"}
+            sideOffset={4}
+          >
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="p-0 font-normal text-foreground">
+                <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                  <AccountInitials name={user?.name} />
+                  <div className="grid min-w-0 flex-1 text-left leading-tight">
+                    <span
+                      className="truncate"
+                      style={{ fontFamily: "var(--font-medium)" }}
+                    >
+                      {name}
+                    </span>
+                    {email ? (
+                      <span className="text-muted-foreground truncate text-xs">
+                        {email}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </DropdownMenuLabel>
+            </DropdownMenuGroup>
+            {settingsHref ? (
+              <DropdownMenuGroup>
+                <DropdownMenuItem
+                  render={<Link href={settingsHref} />}
+                  className="min-h-11"
+                >
+                  <Settings aria-hidden />
+                  Settings
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            ) : null}
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                className="min-h-11"
+                onClick={() => void signOut()}
+              >
+                <LogOut aria-hidden />
+                Log out
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
   );
 }
 
@@ -248,7 +292,7 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
                         aria-current={active ? "page" : undefined}
                         className={cn(
                           active &&
-                            "text-[var(--color-action-yellow)] hover:text-[var(--color-action-yellow)] data-active:bg-transparent data-active:font-medium data-active:text-[var(--color-action-yellow)]",
+                            "text-[var(--color-action-yellow)] hover:text-[var(--color-action-yellow)] data-active:font-medium data-active:text-[var(--color-action-yellow)]",
                         )}
                       >
                         <Icon strokeWidth={active ? 2.25 : 1.75} aria-hidden />
@@ -267,8 +311,8 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
       </SidebarContent>
 
       <SidebarSeparator />
-      <SidebarFooter className="p-2 group-data-[collapsible=icon]:p-1.5">
-        <AccountCard role={role} />
+      <SidebarFooter className="group-data-[collapsible=icon]:p-1.5">
+        <NavUser role={role} />
       </SidebarFooter>
 
       {/* Drag/click edge — the rail is how a collapsed sidebar comes back
