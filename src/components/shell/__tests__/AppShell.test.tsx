@@ -107,61 +107,83 @@ describe("AppShell chrome", () => {
     ).toBe(header?.firstElementChild?.firstElementChild);
   });
 
-  it("puts identity and sign-out in the sidebar footer, not the header", () => {
+  it("puts identity in a footer menu trigger, not the header", () => {
     const { container } = renderShell("/admin/overview");
     const header = container.querySelector("header");
     expect(
-      screen.queryByRole("button", { name: "Account menu" }),
-    ).not.toBeInTheDocument();
+      header && within(header).queryByRole("button", { name: /Ada Admin/ }),
+    ).toBeNull();
     expect(
       header && within(header).queryByRole("button", { name: "Sign out" }),
     ).toBeNull();
 
-    const card = container.querySelector('[data-slot="account-card"]');
-    expect(card).toBeInTheDocument();
-    expect(card).toHaveTextContent("Ada Admin");
-    expect(card).toHaveTextContent("Super Admin");
-    expect(card).toHaveTextContent("AA");
+    const footer = container.querySelector('[data-slot="sidebar-footer"]');
+    expect(footer).toBeInTheDocument();
+    const trigger = within(footer as HTMLElement).getByRole("button", {
+      name: /Ada Admin/,
+    });
+    expect(trigger).toHaveAttribute("data-slot", "account-menu");
+    expect(trigger).toHaveTextContent("Ada Admin");
+    expect(trigger).toHaveTextContent("Super Admin");
+    expect(trigger).toHaveTextContent("AA");
+    expect(trigger.querySelector("svg")).not.toBeNull();
     expect(
-      within(card as HTMLElement).getByRole("button", { name: "Sign out" }),
-    ).toBeInTheDocument();
-    expect(
-      within(card as HTMLElement).getByRole("link", {
-        name: "Operational settings",
-      }),
-    ).toHaveAttribute("href", "/admin/settings");
+      within(footer as HTMLElement).queryByRole("button", { name: "Sign out" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Log out" })).toBeNull();
   });
 
-  it("links the footer gear to Operations settings and hides it for suppliers", () => {
-    const { container: ops } = renderShell("/ops/overview");
-    const opsCard = ops.querySelector('[data-slot="account-card"]');
-    expect(opsCard).toHaveTextContent("Operations");
-    expect(
-      within(opsCard as HTMLElement).getByRole("link", {
-        name: "Operational settings",
+  it("opens Log out and Settings for admin, Settings for ops, and no Settings for suppliers", async () => {
+    const user = userEvent.setup();
+    const { container: admin } = renderShell("/admin/overview");
+    const adminFooter = admin.querySelector('[data-slot="sidebar-footer"]');
+    await user.click(
+      within(adminFooter as HTMLElement).getByRole("button", {
+        name: /Ada Admin/,
       }),
-    ).toHaveAttribute("href", "/ops/settings");
+    );
+    expect(await screen.findByRole("menuitem", { name: "Log out" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Settings" })).toHaveAttribute(
+      "href",
+      "/admin/settings",
+    );
+
+    cleanup();
+    const { container: ops } = renderShell("/ops/overview");
+    const opsFooter = ops.querySelector('[data-slot="sidebar-footer"]');
+    expect(opsFooter).toHaveTextContent("Operations");
+    await user.click(
+      within(opsFooter as HTMLElement).getByRole("button", {
+        name: /Ada Admin/,
+      }),
+    );
+    expect(await screen.findByRole("menuitem", { name: "Log out" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Settings" })).toHaveAttribute(
+      "href",
+      "/ops/settings",
+    );
 
     cleanup();
     const { container: supplier } = renderShell("/supplier/jobs");
-    const supplierCard = supplier.querySelector('[data-slot="account-card"]');
-    expect(supplierCard).toHaveTextContent("Supplier partner");
-    expect(
-      within(supplierCard as HTMLElement).queryByRole("link", {
-        name: "Operational settings",
+    const supplierFooter = supplier.querySelector('[data-slot="sidebar-footer"]');
+    expect(supplierFooter).toHaveTextContent("Supplier partner");
+    await user.click(
+      within(supplierFooter as HTMLElement).getByRole("button", {
+        name: /Ada Admin/,
       }),
-    ).not.toBeInTheDocument();
-    expect(
-      within(supplierCard as HTMLElement).getByRole("button", { name: "Sign out" }),
-    ).toBeInTheDocument();
+    );
+    expect(await screen.findByRole("menuitem", { name: "Log out" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Settings" })).not.toBeInTheDocument();
   });
 
-  it("marks the active nav item with yellow text and no left bar", () => {
+  it("marks the active nav item with yellow text, accent wash, and no left bar", () => {
     const { container } = renderShell("/admin/overview");
     const nav = screen.getByRole("navigation", { name: "Primary navigation" });
     const current = within(nav).getByRole("link", { name: "Overview" });
     expect(current).toHaveAttribute("aria-current", "page");
     expect(current.className).toMatch(/action-yellow/);
+    expect(current.className).toMatch(/data-active:bg-sidebar-accent/);
+    expect(current.className).not.toMatch(/data-active:bg-transparent/);
     expect(current.className).not.toMatch(/border-l/);
     expect(container.querySelector(".w-1.rounded-r-full")).toBeNull();
     expect(
