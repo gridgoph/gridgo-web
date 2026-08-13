@@ -25,16 +25,20 @@ describe("Logo", () => {
     const topRight = [...(dots ?? [])].find(
       (dot) => dot.getAttribute("cx") === "40" && dot.getAttribute("cy") === "8",
     );
+    const centerRight = [...(dots ?? [])].find(
+      (dot) => dot.getAttribute("cx") === "40" && dot.getAttribute("cy") === "24",
+    );
     const bottomRight = [...(dots ?? [])].find(
       (dot) => dot.getAttribute("cx") === "40" && dot.getAttribute("cy") === "40",
     );
     expect(topRight?.getAttribute("fill")).toBe("var(--color-brand-logo)");
+    expect(centerRight?.getAttribute("fill")).toBe("var(--color-brand-logo-muted)");
     expect(bottomRight?.getAttribute("fill")).toBe("var(--color-brand-logo-muted)");
 
     const others = [...(dots ?? [])].filter(
-      (dot) => dot !== topRight && dot !== bottomRight,
+      (dot) => dot !== topRight && dot !== centerRight && dot !== bottomRight,
     );
-    expect(others).toHaveLength(7);
+    expect(others).toHaveLength(6);
     expect(others.every((dot) => dot.getAttribute("fill") === "currentColor")).toBe(
       true,
     );

@@ -9,8 +9,9 @@ type Props = {
 /**
  * Canonical GRIDGO lockup — 3×3 grid from the landing favicon, Satoshi wordmark.
  *
- * Top-right is brand yellow (the only yellow in the mark). Bottom-right is the
- * mark gray. The other seven follow the foreground so they stay visible in dark.
+ * Top-right is brand yellow (the only yellow in the mark). Center-right and
+ * bottom-right are the mark gray. The other six follow the foreground so they
+ * stay visible in dark.
  */
 export function Logo({ compact = false, className }: Props) {
   return (
@@ -41,7 +42,7 @@ function GridMark({ className }: { className?: string }) {
       <circle cx="40" cy="8" r="5" fill="var(--color-brand-logo)" />
       <circle cx="8" cy="24" r="5" fill="currentColor" />
       <circle cx="24" cy="24" r="5" fill="currentColor" />
-      <circle cx="40" cy="24" r="5" fill="currentColor" />
+      <circle cx="40" cy="24" r="5" fill="var(--color-brand-logo-muted)" />
       <circle cx="8" cy="40" r="5" fill="currentColor" />
       <circle cx="24" cy="40" r="5" fill="currentColor" />
       <circle cx="40" cy="40" r="5" fill="var(--color-brand-logo-muted)" />
