@@ -376,8 +376,8 @@ Header title: `contextTitleForPath(pathname, role)` (nested job/QA workspaces ha
   not also inside the card — and `SidebarHeader`, where it doubles as the home control. It
   is furniture anywhere else. On collapse the wordmark goes and the mark stays.
   The mark is the landing 3×3 grid (`src/components/ui/Logo.tsx`): top-right
-  `--color-brand-logo`, bottom-right `--color-brand-logo-muted`, other seven
-  `currentColor` so they invert with `--foreground`.
+  `--color-brand-logo`, center-right and bottom-right `--color-brand-logo-muted`,
+  other six `currentColor` so they invert with `--foreground`.
 - Every `NavIconKey` maps to a distinct lucide icon. Two screens sharing a glyph teaches
   nothing; if you add a nav entry, give it an icon no sibling already uses.
 
