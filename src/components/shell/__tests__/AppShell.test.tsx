@@ -82,6 +82,26 @@ describe("AppShell chrome", () => {
     expect(mark?.querySelectorAll("circle")).toHaveLength(9);
   });
 
+  it("centers the collapsed-rail header mark on the nav icon column", () => {
+    const { container } = renderShell("/admin/overview");
+    const header = container.querySelector('[data-slot="sidebar-header"]');
+    const home = header?.querySelector("a");
+    expect(home).toBeTruthy();
+    // Icon-rail: 44×44 cell like the nav rows; 4px inset puts the 24px mark
+    // on the same x-center as the 16px Overview / QA icons (p-2 + size-4).
+    expect(home?.className).toMatch(/group-data-\[collapsible=icon\]:size-11/);
+    expect(home?.className).toMatch(/group-data-\[collapsible=icon\]:pl-1/);
+    expect(home?.className).not.toMatch(/group-data-\[collapsible=icon\]:justify-center/);
+    // Expanded lockup stays a left-aligned text row; the wordmark only hides on collapse.
+    expect(home).toHaveTextContent("GRIDGO");
+    expect(home).toHaveTextContent("Super Admin");
+    const wordmark = [...(home?.querySelectorAll("div") ?? [])].find((el) =>
+      el.className.includes("group-data-[collapsible=icon]:hidden"),
+    );
+    expect(wordmark).toBeTruthy();
+    expect(wordmark?.className).not.toMatch(/justify-center/);
+  });
+
   it("stretches the header divider to the header, not a short tick", () => {
     const { container } = renderShell("/admin/overview");
     const header = container.querySelector("header");
