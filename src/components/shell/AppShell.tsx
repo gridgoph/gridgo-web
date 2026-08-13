@@ -366,7 +366,7 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              className="[&_svg]:size-6 group-data-[collapsible=icon]:size-11!"
+              className="[&_svg]:size-6 group-data-[collapsible=icon]:size-11! group-data-[collapsible=icon]:pl-1!"
               render={<Link href={homeForRole(role)} />}
               tooltip="GRIDGO home"
               onClick={() => setOpenMobile(false)}
