@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import {
   contextTitleForPath,
   navForRole,
+  navGroupsForRole,
   navItemForPath,
   ROLE_NAV,
+  ROLE_NAV_GROUPS,
 } from "@/lib/nav";
 
 describe("ROLE_NAV", () => {
@@ -29,10 +31,10 @@ describe("ROLE_NAV", () => {
       "/ops/approvals",
       "/ops/dispatch",
       "/ops/escalations",
+      "/ops/schedule",
       "/ops/payouts",
       "/ops/claims",
       "/ops/recovery",
-      "/ops/schedule",
       "/ops/settings",
       "/ops/audit",
     ]);
@@ -46,9 +48,9 @@ describe("ROLE_NAV", () => {
       "/admin/roles",
       "/admin/catalogue",
       "/admin/zones",
-      "/admin/settings",
       "/admin/credits",
       "/admin/finance",
+      "/admin/settings",
       "/admin/audit",
       "/admin/planning",
       "/admin/broadcast",
@@ -111,6 +113,88 @@ describe("ROLE_NAV", () => {
       true,
     );
     expect(navForRole("client")).toEqual([]);
+    expect(navGroupsForRole("client")).toEqual([]);
+  });
+
+  it("keeps group membership as the rail source of truth", () => {
+    expect(ROLE_NAV_GROUPS.ops_admin.map((g) => g.label ?? g.id)).toEqual([
+      "ops-top",
+      "Queue",
+      "Field",
+      "Money",
+      "System",
+    ]);
+    expect(ROLE_NAV_GROUPS.super_admin.map((g) => g.label ?? g.id)).toEqual([
+      "admin-top",
+      "People",
+      "Catalog",
+      "Money",
+      "System",
+    ]);
+    expect(ROLE_NAV_GROUPS.supplier.map((g) => g.label ?? g.id)).toEqual([
+      "supplier-top",
+      "Shop",
+      "Money",
+    ]);
+
+    expect(ROLE_NAV_GROUPS.ops_admin[0]?.collapsible).toBe(false);
+    expect(ROLE_NAV_GROUPS.ops_admin[0]?.items.map((n) => n.href)).toEqual([
+      "/ops/overview",
+    ]);
+    expect(
+      ROLE_NAV_GROUPS.ops_admin.find((g) => g.id === "ops-queue")?.items.map((n) => n.href),
+    ).toEqual(["/ops/qa", "/ops/payments", "/ops/matching", "/ops/approvals"]);
+    expect(
+      ROLE_NAV_GROUPS.ops_admin.find((g) => g.id === "ops-field")?.items.map((n) => n.href),
+    ).toEqual(["/ops/dispatch", "/ops/escalations", "/ops/schedule"]);
+    expect(
+      ROLE_NAV_GROUPS.ops_admin.find((g) => g.id === "ops-money")?.items.map((n) => n.href),
+    ).toEqual(["/ops/payouts", "/ops/claims", "/ops/recovery"]);
+    expect(
+      ROLE_NAV_GROUPS.ops_admin.find((g) => g.id === "ops-system")?.items.map((n) => n.href),
+    ).toEqual(["/ops/settings", "/ops/audit"]);
+
+    expect(
+      ROLE_NAV_GROUPS.super_admin.find((g) => g.id === "admin-people")?.items.map(
+        (n) => n.href,
+      ),
+    ).toEqual(["/admin/verification", "/admin/roles"]);
+    expect(
+      ROLE_NAV_GROUPS.super_admin.find((g) => g.id === "admin-catalog")?.items.map(
+        (n) => n.href,
+      ),
+    ).toEqual(["/admin/catalogue", "/admin/zones"]);
+    expect(
+      ROLE_NAV_GROUPS.super_admin.find((g) => g.id === "admin-money")?.items.map(
+        (n) => n.href,
+      ),
+    ).toEqual(["/admin/credits", "/admin/finance"]);
+    expect(
+      ROLE_NAV_GROUPS.super_admin.find((g) => g.id === "admin-system")?.items.map(
+        (n) => n.href,
+      ),
+    ).toEqual([
+      "/admin/settings",
+      "/admin/audit",
+      "/admin/planning",
+      "/admin/broadcast",
+    ]);
+
+    expect(
+      ROLE_NAV_GROUPS.supplier.find((g) => g.id === "supplier-shop")?.items.map((n) => n.href),
+    ).toEqual(["/supplier/catalogue", "/supplier/schedule", "/supplier/capacity"]);
+    expect(
+      ROLE_NAV_GROUPS.supplier.find((g) => g.id === "supplier-money")?.items.map(
+        (n) => n.href,
+      ),
+    ).toEqual(["/supplier/payouts"]);
+
+    const grouped = Object.values(ROLE_NAV_GROUPS).flatMap((groups) =>
+      groups.flatMap((group) => group.items.map((item) => item.href)),
+    );
+    const flat = Object.values(ROLE_NAV).flatMap((items) => items.map((item) => item.href));
+    expect(grouped).toEqual(flat);
+    expect(new Set(flat).size).toBe(flat.length);
   });
 });
 
