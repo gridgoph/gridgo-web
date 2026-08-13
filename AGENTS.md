@@ -175,7 +175,9 @@ need raw TanStack columns.
 - `empty` — the page's own empty state, used only when there is genuinely no data. A
   filtered-to-nothing table says so separately and offers to clear the filters.
 - Row actions are pinned to the trailing edge on desktop, so wide rows never scroll them
-  out of reach; on mobile they sit on the card.
+  out of reach; on mobile they sit on the card. Author them with `DataTableRowAction`
+  (icon + tooltip, `aria-label` is the verb). The Actions column is centered; desktop
+  is icon-only, mobile cards show the verb so the control is never a mystery glyph.
 - Toolbar controls obey the GRIDGO 44×44 floor rather than shadcn's 32px density.
 
 ### Primitive audit (2026-08-09)

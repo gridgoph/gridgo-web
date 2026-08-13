@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ChevronRight } from "lucide-react";
+import { Check, ChevronRight, CircleDot } from "lucide-react";
 
 import {
   explainCandidates,
@@ -20,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   DataTable,
+  DataTableRowAction,
   type DataTableColumn,
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -259,13 +260,13 @@ export default function OpsMatchingPage() {
               caption="Orders ready for supplier matching"
               filterPlaceholder="Filter matching queue…"
               rowActions={(o) => (
-                <Button
-                  variant={o.id === selectedId ? "default" : "secondary"}
+                <DataTableRowAction
+                  label={o.id === selectedId ? "Selected" : "Select"}
+                  icon={o.id === selectedId ? Check : CircleDot}
+                  variant={o.id === selectedId ? "default" : "outline"}
                   aria-pressed={o.id === selectedId}
                   onClick={() => setSelectedId(o.id)}
-                >
-                  {o.id === selectedId ? "Selected" : "Select"}
-                </Button>
+                />
               )}
             />
           </section>

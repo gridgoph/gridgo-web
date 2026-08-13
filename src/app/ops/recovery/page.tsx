@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { CheckCircle, Eye, Unlock, type LucideIcon } from "lucide-react";
 
 import {
   buildRecoveryItems,
@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   DataTable,
+  DataTableRowAction,
   type DataTableColumn,
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -339,8 +340,9 @@ export default function OpsRecoveryPage() {
               if (r.kind === "open_issue" && r.issueId) {
                 const issue = issues.find((i) => i.id === r.issueId);
                 return (
-                  <Button
-                    variant="secondary"
+                  <DataTableRowAction
+                    label="Resolve"
+                    icon={CheckCircle}
                     onClick={() => {
                       if (issue) {
                         setResolveTarget(issue);
@@ -348,20 +350,15 @@ export default function OpsRecoveryPage() {
                         setActionError(null);
                       }
                     }}
-                  >
-                    Resolve
-                  </Button>
+                  />
                 );
               }
               return (
-                <Button
-                  variant="secondary"
-                  nativeButton={false}
-                  render={<Link href={r.nextHref} />}
-                >
-                  {r.nextLabel}
-                  <ChevronRight data-icon="inline-end" aria-hidden />
-                </Button>
+                <DataTableRowAction
+                  label={r.nextLabel}
+                  icon={recoveryActionIcon(r)}
+                  href={r.nextHref}
+                />
               );
             }}
           />
@@ -428,4 +425,15 @@ export default function OpsRecoveryPage() {
       </Dialog>
     </div>
   );
+}
+
+function recoveryActionIcon(item: RecoveryItem): LucideIcon {
+  switch (item.kind) {
+    case "payout_hold":
+      return Unlock;
+    case "issue_window":
+      return item.nextLabel === "Close as completed" ? CheckCircle : Eye;
+    default:
+      return Eye;
+  }
 }

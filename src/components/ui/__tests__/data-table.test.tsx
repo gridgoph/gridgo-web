@@ -4,10 +4,16 @@ import "@testing-library/jest-dom/vitest";
 
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Ban } from "lucide-react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import {
+  DataTable,
+  DataTableRowAction,
+  type DataTableColumn,
+} from "@/components/ui/data-table";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 vi.stubGlobal("React", React);
 
@@ -156,5 +162,49 @@ describe("DataTable", () => {
     );
     // One in the table row, one on the card rendered for narrow viewports.
     expect(screen.getAllByRole("button", { name: "Review Banner run" })).toHaveLength(2);
+  });
+
+  it("centers the Actions header and cells", () => {
+    render(
+      <DataTable
+        columns={COLUMNS}
+        data={[ROWS[0]]}
+        getRowId={(r) => r.id}
+        rowActions={() => <button type="button">Review</button>}
+      />,
+    );
+    const header = screen.getByRole("columnheader", { name: "Actions" });
+    expect(header).toHaveClass("text-center");
+    expect(header.className).not.toMatch(/text-right/);
+    const actionCell = within(screen.getByRole("table"))
+      .getAllByRole("cell")
+      .at(-1);
+    expect(actionCell).toHaveClass("text-center");
+    expect(actionCell?.className).not.toMatch(/text-right/);
+  });
+
+  it("names icon row actions and wires a tooltip trigger on each", () => {
+    render(
+      <TooltipProvider>
+        <DataTable
+          columns={COLUMNS}
+          data={[ROWS[0]]}
+          getRowId={(r) => r.id}
+          rowActions={() => (
+            <DataTableRowAction label="Suspend" icon={Ban} variant="danger" />
+          )}
+        />
+      </TooltipProvider>,
+    );
+
+    const buttons = screen.getAllByRole("button", { name: "Suspend" });
+    expect(buttons).toHaveLength(2);
+    // Mobile card is labeled; desktop is icon-only. Both keep the danger treatment.
+    expect(buttons[0]).toHaveTextContent("Suspend");
+    expect(buttons[1]).not.toHaveTextContent("Suspend");
+    expect(buttons[1].className).toMatch(/border-destructive/);
+    for (const button of buttons) {
+      expect(button).toHaveAttribute("data-slot", "tooltip-trigger");
+    }
   });
 });

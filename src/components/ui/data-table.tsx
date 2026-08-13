@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import {
   type Column,
   type ColumnDef,
@@ -34,6 +35,11 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -113,6 +119,96 @@ export type DataTableFacet = {
 type ColumnMeta<T> = {
   gridgo: DataTableColumn<T>;
 };
+
+// ---------------------------------------------------------------------------
+// DataTableRowAction — icon + tooltip. Desktop is icon-only; mobile cards
+// show the verb so a tap target is never a mystery glyph.
+// ---------------------------------------------------------------------------
+
+type RowActionsDensity = "icon" | "labeled";
+
+const RowActionsDensityContext =
+  React.createContext<RowActionsDensity>("icon");
+
+export type DataTableRowActionProps = {
+  /** Visible tooltip and accessible name — the old verb ("Suspend", "Open"). */
+  label: string;
+  icon: LucideIcon;
+  variant?: "outline" | "secondary" | "danger" | "destructive" | "default" | "ghost";
+  disabled?: boolean;
+  onClick?: React.MouseEventHandler<HTMLElement>;
+  /** When set, the control is a same-app link (still a 44×44 icon button). */
+  href?: string;
+  "aria-pressed"?: boolean;
+};
+
+export function DataTableRowAction({
+  label,
+  icon: Icon,
+  variant = "outline",
+  disabled,
+  onClick,
+  href,
+  "aria-pressed": ariaPressed,
+}: DataTableRowActionProps) {
+  const density = React.useContext(RowActionsDensityContext);
+  const labeled = density === "labeled";
+
+  const icon = labeled ? (
+    <Icon aria-hidden data-icon="inline-start" />
+  ) : (
+    <Icon aria-hidden />
+  );
+
+  const contents = (
+    <>
+      {icon}
+      {labeled ? label : null}
+    </>
+  );
+
+  const button = (
+    <Button
+      variant={variant}
+      size={labeled ? "sm" : "icon"}
+      disabled={disabled}
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={ariaPressed}
+      nativeButton={href ? false : undefined}
+      render={href ? <Link href={href} /> : undefined}
+    >
+      {contents}
+    </Button>
+  );
+
+  return (
+    <Tooltip>
+      {disabled ? (
+        <TooltipTrigger render={<span className="inline-flex" />}>
+          {button}
+        </TooltipTrigger>
+      ) : (
+        <TooltipTrigger
+          render={
+            <Button
+              variant={variant}
+              size={labeled ? "sm" : "icon"}
+              onClick={onClick}
+              aria-label={label}
+              aria-pressed={ariaPressed}
+              nativeButton={href ? false : undefined}
+              render={href ? <Link href={href} /> : undefined}
+            />
+          }
+        >
+          {contents}
+        </TooltipTrigger>
+      )}
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Descriptor → ColumnDef
@@ -638,7 +734,9 @@ export function DataTable<T>({
                       </div>
                       {rowActions ? (
                         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-                          {rowActions(row.original)}
+                          <RowActionsDensityContext.Provider value="labeled">
+                            {rowActions(row.original)}
+                          </RowActionsDensityContext.Provider>
                         </div>
                       ) : null}
                     </div>
@@ -696,7 +794,7 @@ export function DataTable<T>({
                     );
                   })}
                   {rowActions ? (
-                    <TableHead className="text-caption text-text-muted bg-surface border-outline-subtle sticky right-0 border-l text-right">
+                    <TableHead className="text-caption text-text-muted bg-surface border-outline-subtle sticky right-0 border-l text-center">
                       Actions
                     </TableHead>
                   ) : null}
@@ -739,9 +837,11 @@ export function DataTable<T>({
                       </TableCell>
                     ))}
                     {rowActions ? (
-                      <TableCell className="bg-surface border-outline-subtle sticky right-0 border-l text-right">
-                        <div className="inline-flex flex-wrap items-center justify-end gap-2">
-                          {rowActions(row.original)}
+                      <TableCell className="bg-surface border-outline-subtle sticky right-0 border-l text-center">
+                        <div className="flex flex-wrap items-center justify-center gap-2">
+                          <RowActionsDensityContext.Provider value="icon">
+                            {rowActions(row.original)}
+                          </RowActionsDensityContext.Provider>
                         </div>
                       </TableCell>
                     ) : null}

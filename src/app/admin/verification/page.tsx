@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Ban, Check, Play } from "lucide-react";
 
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
 import { presentServiceState } from "@/app/admin/_lib/present";
@@ -17,7 +18,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { presentZone } from "@/lib/order-state";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import {
+  DataTable,
+  DataTableRowAction,
+  type DataTableColumn,
+} from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -242,44 +247,42 @@ function ServiceLines() {
           filterPlaceholder="Filter services…"
           defaultSortId="state"
           rowActions={(s) => (
-            <div className="flex flex-wrap gap-2">
+            <>
               {s.state === "pending_verification" || s.state === "draft" ? (
-                <Button
-                  variant="secondary"
+                <DataTableRowAction
+                  label="Make live"
+                  icon={Play}
                   onClick={() => {
                     setActionError(null);
                     setReason("");
                     setConfirm({ kind: "verify", service: s });
                   }}
-                >
-                  Make live
-                </Button>
+                />
               ) : null}
               {s.state === "live" ? (
-                <Button
+                <DataTableRowAction
+                  label="Suspend"
+                  icon={Ban}
                   variant="danger"
                   onClick={() => {
                     setActionError(null);
                     setReason("");
                     setConfirm({ kind: "suspend", service: s });
                   }}
-                >
-                  Suspend
-                </Button>
+                />
               ) : null}
               {s.state === "suspended" ? (
-                <Button
-                  variant="secondary"
+                <DataTableRowAction
+                  label="Restore"
+                  icon={Check}
                   onClick={() => {
                     setActionError(null);
                     setReason("");
                     setConfirm({ kind: "verify", service: s });
                   }}
-                >
-                  Restore
-                </Button>
+                />
               ) : null}
-            </div>
+            </>
           )}
         />
       )}

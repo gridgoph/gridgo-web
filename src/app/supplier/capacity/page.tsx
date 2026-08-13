@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { Eye } from "lucide-react";
 
 import {
   buildCapacitySnapshot,
@@ -10,7 +11,11 @@ import {
 import { presentServiceState } from "@/app/supplier/_lib/service-state";
 import { categoryName } from "@/app/supplier/_lib/taxonomy-labels";
 import { Button } from "@/components/ui/button";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import {
+  DataTable,
+  DataTableRowAction,
+  type DataTableColumn,
+} from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
@@ -345,13 +350,11 @@ export default function SupplierCapacityPage() {
             getRowId={(j) => j.id}
             caption="Committed jobs"
             rowActions={(j) => (
-              <Button
-                variant="secondary"
-                nativeButton={false}
-                render={<Link href={`/supplier/jobs/${j.id}`} />}
-              >
-                Open
-              </Button>
+              <DataTableRowAction
+                label="Open"
+                icon={Eye}
+                href={`/supplier/jobs/${j.id}`}
+              />
             )}
           />
         )}

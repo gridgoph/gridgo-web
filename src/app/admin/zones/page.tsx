@@ -2,11 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { Pencil } from "lucide-react";
 
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
 import { Button } from "@/components/ui/button";
 import {
   DataTable,
+  DataTableRowAction,
   type DataTableColumn,
 } from "@/components/ui/data-table";
 import {
@@ -214,9 +216,11 @@ export default function AdminZonesPage() {
           filterPlaceholder="Filter zones…"
           defaultSortId="name"
           rowActions={(z) => (
-            <Button variant="secondary" onClick={() => openEdit(z)}>
-              Edit
-            </Button>
+            <DataTableRowAction
+              label="Edit"
+              icon={Pencil}
+              onClick={() => openEdit(z)}
+            />
           )}
         />
       )}

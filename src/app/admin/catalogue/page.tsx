@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Pencil } from "lucide-react";
 
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
 import {
@@ -13,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   DataTable,
+  DataTableRowAction,
   type DataTableColumn,
 } from "@/components/ui/data-table";
 import {
@@ -445,12 +447,11 @@ export default function AdminCataloguePage() {
               caption="Taxonomy categories"
               filterPlaceholder="Filter categories…"
               rowActions={(c) => (
-                <Button
-                  variant="secondary"
+                <DataTableRowAction
+                  label="Edit"
+                  icon={Pencil}
                   onClick={() => openEdit({ kind: "category", item: c })}
-                >
-                  Edit
-                </Button>
+                />
               )}
             />
           )}
@@ -470,12 +471,11 @@ export default function AdminCataloguePage() {
               caption="Taxonomy materials"
               filterPlaceholder="Filter materials…"
               rowActions={(m) => (
-                <Button
-                  variant="secondary"
+                <DataTableRowAction
+                  label="Edit"
+                  icon={Pencil}
                   onClick={() => openEdit({ kind: "material", item: m })}
-                >
-                  Edit
-                </Button>
+                />
               )}
             />
           )}
@@ -495,12 +495,11 @@ export default function AdminCataloguePage() {
               caption="Taxonomy finishes"
               filterPlaceholder="Filter finishes…"
               rowActions={(f) => (
-                <Button
-                  variant="secondary"
+                <DataTableRowAction
+                  label="Edit"
+                  icon={Pencil}
                   onClick={() => openEdit({ kind: "finish", item: f })}
-                >
-                  Edit
-                </Button>
+                />
               )}
             />
           )}

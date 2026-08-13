@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { Eye } from "lucide-react";
 
 import { presentZone } from "@/app/ops/_lib/present";
 import { Button } from "@/components/ui/button";
 import {
   DataTable,
+  DataTableRowAction,
   type DataTableColumn,
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -210,14 +210,11 @@ export default function OpsQaQueuePage() {
           facets={statusFacet.options.length > 1 ? [statusFacet] : undefined}
           itemLabel="orders"
           rowActions={(order) => (
-            <Button
-              variant="secondary"
-              nativeButton={false}
-              render={<Link href={`/ops/qa/${order.id}`} />}
-            >
-              Open
-              <ChevronRight data-icon="inline-end" aria-hidden />
-            </Button>
+            <DataTableRowAction
+              label="Open"
+              icon={Eye}
+              href={`/ops/qa/${order.id}`}
+            />
           )}
         />
       )}

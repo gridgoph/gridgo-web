@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, CirclePause, Eye, Unlock } from "lucide-react";
 
 import {
   presentClaimAction,
@@ -28,7 +27,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import {
+  DataTable,
+  DataTableRowAction,
+  type DataTableColumn,
+} from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -319,35 +322,32 @@ export default function OpsClaimsPage() {
           caption="Claims and payout holds"
           filterPlaceholder="Filter claims…"
           rowActions={(c) => (
-            <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={() => setDetailId(c.id)}>
-                Details
-              </Button>
+            <>
+              <DataTableRowAction
+                label="Details"
+                icon={Eye}
+                onClick={() => setDetailId(c.id)}
+              />
               {c.status === "open" ? (
-                <Button
-                  variant="secondary"
+                <DataTableRowAction
+                  label="Hold payout"
+                  icon={CirclePause}
                   onClick={() => openDialog({ type: "hold", claim: c })}
-                >
-                  Hold payout
-                </Button>
+                />
               ) : null}
               {c.status === "open" || c.status === "payout_held" ? (
-                <Button
-                  variant="secondary"
+                <DataTableRowAction
+                  label="Release"
+                  icon={Unlock}
                   onClick={() => openDialog({ type: "release", claim: c })}
-                >
-                  Release
-                </Button>
+                />
               ) : null}
-              <Button
-                variant="secondary"
-                nativeButton={false}
-                render={<Link href={`/ops/qa/${c.orderId}`} />}
-              >
-                Order
-                <ChevronRight data-icon="inline-end" aria-hidden />
-              </Button>
-            </div>
+              <DataTableRowAction
+                label="Order"
+                icon={ChevronRight}
+                href={`/ops/qa/${c.orderId}`}
+              />
+            </>
           )}
         />
       )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Ban, Pencil, Send } from "lucide-react";
 
 import { ServiceFormDialog } from "@/app/supplier/_components/ServiceFormDialog";
 import {
@@ -25,9 +26,12 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import {
+  DataTable,
+  DataTableRowAction,
+  type DataTableColumn,
+} from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
@@ -398,13 +402,14 @@ export default function SupplierCataloguePage() {
               rowActions={(s) => {
                 const actions = actionsForService(s.state);
                 return (
-                  <div className="flex flex-wrap gap-2">
+                  <>
                     {actions.map((action) => {
                       if (action.kind === "edit") {
                         return (
-                          <Button
+                          <DataTableRowAction
                             key={action.kind}
-                            variant="secondary"
+                            label={action.label}
+                            icon={Pencil}
                             disabled={actionBusy === s.id}
                             onClick={() => {
                               setFormMode("edit");
@@ -412,36 +417,32 @@ export default function SupplierCataloguePage() {
                               setFormError(null);
                               setFormOpen(true);
                             }}
-                          >
-                            {action.label}
-                          </Button>
+                          />
                         );
                       }
                       if (action.kind === "submit") {
                         return (
-                          <Button
+                          <DataTableRowAction
                             key={action.kind}
-                            variant="secondary"
+                            label={action.label}
+                            icon={Send}
                             disabled={actionBusy === s.id}
                             onClick={() => void handleSubmit(s)}
-                          >
-                            {actionBusy === s.id ? "Submitting…" : action.label}
-                          </Button>
+                          />
                         );
                       }
                       return (
-                        <AlertDialogTrigger
+                        <DataTableRowAction
                           key={action.kind}
-                          render={
-                            <Button variant="danger" disabled={actionBusy === s.id} />
-                          }
+                          label={action.label}
+                          icon={Ban}
+                          variant="danger"
+                          disabled={actionBusy === s.id}
                           onClick={() => setWithdrawTarget(s)}
-                        >
-                          {action.label}
-                        </AlertDialogTrigger>
+                        />
                       );
                     })}
-                  </div>
+                  </>
                 );
               }}
             />
