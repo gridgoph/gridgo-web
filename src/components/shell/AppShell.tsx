@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -9,6 +9,7 @@ import {
   BookOpen,
   CalendarDays,
   CalendarRange,
+  ChevronDown,
   ChevronsUpDown,
   ClipboardCheck,
   ClipboardList,
@@ -52,11 +53,17 @@ import {
 import { Logo } from "@/components/ui/Logo";
 import { Separator } from "@/components/ui/separator";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
@@ -74,9 +81,11 @@ import { useAuth } from "@/lib/auth/AuthProvider";
 import type { Role } from "@/lib/api/types";
 import {
   contextTitleForPath,
-  navForRole,
+  navGroupsForRole,
   navItemForPath,
+  type NavGroup,
   type NavIconKey,
+  type NavItem,
 } from "@/lib/nav";
 import { homeForRole, roleLabel } from "@/lib/routes";
 import { cn } from "@/lib/utils";
@@ -236,10 +245,117 @@ type Props = {
   children: ReactNode;
 };
 
+function RailNavItem({
+  item,
+  pathname,
+  onNavigate,
+}: {
+  item: NavItem;
+  pathname: string;
+  onNavigate: () => void;
+}) {
+  const active = isActive(pathname, item.href);
+  const Icon = NAV_ICONS[item.icon];
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        render={<Link href={item.href} />}
+        isActive={active}
+        tooltip={item.label}
+        onClick={onNavigate}
+        aria-current={active ? "page" : undefined}
+        className={cn(
+          active &&
+            "text-[var(--color-action-yellow)] hover:text-[var(--color-action-yellow)] data-active:font-medium data-active:text-[var(--color-action-yellow)]",
+        )}
+      >
+        <Icon strokeWidth={active ? 2.25 : 1.75} aria-hidden />
+        <span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
+      </SidebarMenuButton>
+      {!item.ready ? <SidebarMenuBadge>Soon</SidebarMenuBadge> : null}
+    </SidebarMenuItem>
+  );
+}
+
+function RailNavMenu({
+  items,
+  pathname,
+  onNavigate,
+}: {
+  items: readonly NavItem[];
+  pathname: string;
+  onNavigate: () => void;
+}) {
+  return (
+    <SidebarMenu>
+      {items.map((item) => (
+        <RailNavItem
+          key={item.id}
+          item={item}
+          pathname={pathname}
+          onNavigate={onNavigate}
+        />
+      ))}
+    </SidebarMenu>
+  );
+}
+
+function RailNavGroup({
+  group,
+  pathname,
+  iconCollapsed,
+  onNavigate,
+}: {
+  group: NavGroup;
+  pathname: string;
+  iconCollapsed: boolean;
+  onNavigate: () => void;
+}) {
+  const containsCurrent = group.items.some((item) => isActive(pathname, item.href));
+  const [open, setOpen] = useState(containsCurrent);
+
+  useEffect(() => {
+    if (containsCurrent) setOpen(true);
+  }, [containsCurrent]);
+
+  const content = (
+    <SidebarGroupContent>
+      <RailNavMenu items={group.items} pathname={pathname} onNavigate={onNavigate} />
+    </SidebarGroupContent>
+  );
+
+  if (!group.collapsible || !group.label) {
+    return <SidebarGroup>{content}</SidebarGroup>;
+  }
+
+  return (
+    <Collapsible
+      defaultOpen={containsCurrent}
+      open={iconCollapsed || open}
+      onOpenChange={(next) => {
+        if (!iconCollapsed) setOpen(next);
+      }}
+      className="group/collapsible"
+    >
+      <SidebarGroup>
+        <SidebarGroupLabel render={<CollapsibleTrigger />}>
+          {group.label}
+          <ChevronDown
+            aria-hidden
+            className="ml-auto transition-transform group-data-open/collapsible:rotate-180"
+          />
+        </SidebarGroupLabel>
+        <CollapsibleContent>{content}</CollapsibleContent>
+      </SidebarGroup>
+    </Collapsible>
+  );
+}
+
 function PortalSidebar({ role }: Pick<Props, "role">) {
   const pathname = usePathname();
-  const { setOpenMobile } = useSidebar();
-  const items = navForRole(role);
+  const { setOpenMobile, state } = useSidebar();
+  const groups = navGroupsForRole(role);
+  const iconCollapsed = state === "collapsed";
 
   return (
     <Sidebar collapsible="icon">
@@ -274,40 +390,18 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
         </SidebarMenu>
       </SidebarHeader>
 
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <nav aria-label="Primary navigation">
-              <SidebarMenu>
-                {items.map((item) => {
-                  const active = isActive(pathname, item.href);
-                  const Icon = NAV_ICONS[item.icon];
-                  return (
-                    <SidebarMenuItem key={item.id}>
-                      <SidebarMenuButton
-                        render={<Link href={item.href} />}
-                        isActive={active}
-                        tooltip={item.label}
-                        onClick={() => setOpenMobile(false)}
-                        aria-current={active ? "page" : undefined}
-                        className={cn(
-                          active &&
-                            "text-[var(--color-action-yellow)] hover:text-[var(--color-action-yellow)] data-active:font-medium data-active:text-[var(--color-action-yellow)]",
-                        )}
-                      >
-                        <Icon strokeWidth={active ? 2.25 : 1.75} aria-hidden />
-                        <span className="group-data-[collapsible=icon]:hidden">
-                          {item.label}
-                        </span>
-                      </SidebarMenuButton>
-                      {!item.ready ? <SidebarMenuBadge>Soon</SidebarMenuBadge> : null}
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
-            </nav>
-          </SidebarGroupContent>
-        </SidebarGroup>
+      <SidebarContent className="pt-1">
+        <nav aria-label="Primary navigation" className="flex min-h-0 flex-col gap-1">
+          {groups.map((group) => (
+            <RailNavGroup
+              key={group.id}
+              group={group}
+              pathname={pathname}
+              iconCollapsed={iconCollapsed}
+              onNavigate={() => setOpenMobile(false)}
+            />
+          ))}
+        </nav>
       </SidebarContent>
 
       <SidebarSeparator />

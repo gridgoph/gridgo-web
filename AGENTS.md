@@ -39,7 +39,7 @@ Demo logins, password is the API's `DEMO_PASSWORD` (`Ilovegridgo-0990` in `gridg
 | `src/app/api/gridgo/[...path]/route.ts` | Local-dev same-origin proxy to a loopback API (strips `Origin`) |
 | `src/lib/api/types.ts` | Response/request types (no `any`) |
 | `src/lib/api/constraints.ts` | Server rules the UI can explain *before* rejection (payment/milestone gates, holds, issue window) |
-| `src/lib/nav.ts` | **Single** role→nav structure (`ROLE_NAV`); AppShell reads this only |
+| `src/lib/nav.ts` | **Single** role→nav structure (`ROLE_NAV_GROUPS` + flattened `ROLE_NAV`); AppShell reads this only |
 | `src/lib/auth/` | Session cookies, AuthProvider, sign-in/out |
 | `src/middleware.ts` | Role-path gate (supplier / ops / admin prefixes) |
 | `src/lib/order-state.ts` | Plain-language state labels (no snake_case on screen) |
@@ -187,11 +187,12 @@ Only add a registry primitive when a real screen uses it in the same change.
 | Decision | Primitive | Current call site / reason |
 |---|---|---|
 | Added | `alert-dialog` | Destructive or irreversible confirmations in role changes, verification/suspension, claims and payout release, supplier withdrawal, and job decline. Keep `Dialog` for input tasks such as create/edit forms. |
-| Added | `sidebar` | `AppShell` desktop rail and mobile Sheet; it still renders only `navForRole(role)`. |
+| Added | `sidebar` | `AppShell` desktop rail and mobile Sheet; it still renders only `navGroupsForRole(role)`. |
 | Added | `progress` | Supplier capacity shows committed units against declared daily capacity. |
 | Added | `chart` | Admin Finance splits each order's client total into supplier earnings, commission and delivery — the reconciliation only Operations and Super Admin may see. (Its original call site, a payment-method mix, died with cash on delivery.) |
 | Added | `breadcrumb` | AppShell identifies the parent queue on nested supplier job and Operations QA workspaces. |
 | Added | `toggle-group` | Day/week schedule modes and the two-option claim hold choice. |
+| Added | `collapsible` | Rail sections in `AppShell` — official `SidebarGroup` + `Collapsible` wrap. Do not hand-roll an accordion. |
 | Rejected | `avatar` | The portal has no user photos or identity surface; the named account control is sufficient. |
 | Rejected | `accordion` / `collapsible` | No current screen has a disclosure hierarchy; Sidebar owns its own collapse behavior. |
 | Rejected | `slider` | Capacity and money inputs require exact API values, so a slider would reduce precision. |
@@ -329,13 +330,13 @@ If a screen still needs a capability the demo API does not expose, show an hones
 
 ## Navigation contract
 
-**Single source:** `src/lib/nav.ts` → `ROLE_NAV` keyed by portal role.
+**Single source:** `src/lib/nav.ts` → `ROLE_NAV_GROUPS` (rail sections) and flattened `ROLE_NAV` (items). Overview / Jobs stay top-level; other items sit in official shadcn `SidebarGroup` + `Collapsible` sections (Queue / Field / Money / System for ops; People / Catalog / Money / System for admin; Shop / Money for suppliers).
 
 | Role | Surface (hrefs) |
 |---|---|
 | supplier | `/supplier/jobs`, `catalogue`, `schedule`, `capacity`, `payouts` |
-| ops_admin | `/ops/overview`, `qa`, `payments`, `matching`, `approvals`, `dispatch`, `escalations`, `payouts`, `claims`, `recovery`, `schedule`, `settings`, `audit` |
-| super_admin | `/admin/overview`, `verification`, `roles`, `catalogue`, `zones`, `settings`, `credits`, `finance`, `audit`, `planning`, `broadcast` |
+| ops_admin | `/ops/overview`, `qa`, `payments`, `matching`, `approvals`, `dispatch`, `escalations`, `schedule`, `payouts`, `claims`, `recovery`, `settings`, `audit` |
+| super_admin | `/admin/overview`, `verification`, `roles`, `catalogue`, `zones`, `credits`, `finance`, `settings`, `audit`, `planning`, `broadcast` |
 
 Two surfaces are mounted for both Operations and Super Admin from **one** implementation, so they can never drift:
 
@@ -344,7 +345,7 @@ Two surfaces are mounted for both Operations and Super Admin from **one** implem
 | `src/components/approvals/SignupApprovals.tsx` | `/ops/approvals`, and the Sign-ups tab of `/admin/verification` |
 | `src/components/settings/OperationalSettings.tsx` | `/ops/settings`, `/admin/settings` |
 
-- AppShell renders `navForRole(role)` only. Do **not** maintain separate nav arrays in components.
+- AppShell renders `navGroupsForRole(role)` only. Do **not** maintain separate nav arrays in components.
 - Middleware + `RoleGate` still refuse another role’s URL; nav is not a security boundary.
 - Yellow on the rail is the **selected item’s text and icon** only — no left bar, no yellow pill or yellow fill. The active row also keeps the default sidebar-accent wash (same quiet highlight hover uses). Do not force `data-active:bg-transparent`. Elsewhere, yellow is at most one `Button variant="primary"` on a page. The rail must never become a yellow column.
 - `ready: false` → route uses `ComingNext` placeholder (“Coming next” + body from the nav item). Prefer that over a 404.

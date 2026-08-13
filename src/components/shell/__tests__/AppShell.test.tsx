@@ -191,6 +191,59 @@ describe("AppShell chrome", () => {
     ).toBeNull();
   });
 
+  it("groups ops, admin, and supplier rails with Overview/Jobs kept top-level", () => {
+    renderShell("/ops/overview");
+    const opsNav = screen.getByRole("navigation", { name: "Primary navigation" });
+    expect(within(opsNav).getByRole("link", { name: "Overview" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(within(opsNav).getByRole("button", { name: "Queue" })).toBeInTheDocument();
+    expect(within(opsNav).getByRole("button", { name: "Field" })).toBeInTheDocument();
+    expect(within(opsNav).getByRole("button", { name: "Money" })).toBeInTheDocument();
+    expect(within(opsNav).getByRole("button", { name: "System" })).toBeInTheDocument();
+    expect(within(opsNav).queryByRole("link", { name: "Dispatch" })).toBeNull();
+
+    cleanup();
+    renderShell("/admin/overview");
+    const adminNav = screen.getByRole("navigation", { name: "Primary navigation" });
+    expect(within(adminNav).getByRole("link", { name: "Overview" })).toBeInTheDocument();
+    expect(within(adminNav).getByRole("button", { name: "People" })).toBeInTheDocument();
+    expect(within(adminNav).getByRole("button", { name: "Catalog" })).toBeInTheDocument();
+    expect(within(adminNav).getByRole("button", { name: "Money" })).toBeInTheDocument();
+    expect(within(adminNav).getByRole("button", { name: "System" })).toBeInTheDocument();
+
+    cleanup();
+    renderShell("/supplier/jobs");
+    const supplierNav = screen.getByRole("navigation", { name: "Primary navigation" });
+    expect(within(supplierNav).getByRole("link", { name: "Jobs" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(within(supplierNav).getByRole("button", { name: "Shop" })).toBeInTheDocument();
+    expect(within(supplierNav).getByRole("button", { name: "Money" })).toBeInTheDocument();
+    expect(within(supplierNav).queryByRole("link", { name: "Payouts" })).toBeNull();
+  });
+
+  it("opens the group that owns the current page and lets other groups expand", async () => {
+    const user = userEvent.setup();
+    renderShell("/ops/payments");
+    const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+    const payments = within(nav).getByRole("link", { name: "Payments" });
+    expect(payments).toHaveAttribute("aria-current", "page");
+    expect(payments.className).toMatch(/action-yellow/);
+    expect(within(nav).getByRole("link", { name: "QA queue" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Dispatch" })).toBeNull();
+
+    await user.click(within(nav).getByRole("button", { name: "Field" }));
+    expect(await within(nav).findByRole("link", { name: "Dispatch" })).toHaveAttribute(
+      "href",
+      "/ops/dispatch",
+    );
+    expect(within(nav).getByRole("link", { name: "Escalations" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Schedule" })).toBeInTheDocument();
+  });
+
   it("keeps a nested parent crumb as a same-tab link with a destination tooltip", async () => {
     const user = userEvent.setup();
     renderShell("/ops/qa/ord_demo");
