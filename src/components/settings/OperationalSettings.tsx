@@ -205,11 +205,12 @@ export function OperationalSettings() {
     JSON.stringify(bands) !== JSON.stringify(toDraft(settings.deliveryFeeBands));
 
   return (
-    <div className="flex max-w-3xl flex-col gap-4">
+    <div className="flex w-full flex-col gap-4">
       <p className="text-body text-text-secondary m-0 max-w-prose">
         Two platform-wide numbers, changed here rather than in a release.
       </p>
 
+      <div className="grid w-full gap-4 xl:grid-cols-2 xl:items-start">
       <section className="gg-card" aria-labelledby="window-heading">
         <h2 id="window-heading" className="text-h3 text-text-primary m-0">
           Issue window
@@ -358,6 +359,7 @@ export function OperationalSettings() {
           </ul>
         </div>
       </section>
+      </div>
 
       {saveOk ? (
         <p className="text-body text-success m-0" role="status">

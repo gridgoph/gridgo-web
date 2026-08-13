@@ -83,6 +83,8 @@
   /* Brand — small links and badges only, never a fill */
   --color-brand: #d4a017;
   --color-brand-logo: #ffde58;
+  /* Bottom-right dot of the 3×3 mark — landing favicon, not a UI fill */
+  --color-brand-logo-muted: #5b5b5b;
 
   /* Action yellow — finite budget */
   --color-action-yellow: #ffde58;
