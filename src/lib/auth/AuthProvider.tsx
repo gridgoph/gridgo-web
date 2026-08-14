@@ -22,6 +22,7 @@ import {
   clearSession,
   getStoredToken,
   getStoredUser,
+  persistClerkSession,
   persistSession,
 } from "@/lib/auth/session";
 import { homeForRole } from "@/lib/routes";
@@ -37,7 +38,20 @@ type AuthState = {
 
 const AuthContext = createContext<AuthState | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export type ClerkSessionAdapter = {
+  getToken: () => Promise<string | null>;
+  isLoaded: boolean;
+  isSignedIn: boolean;
+  signOut: () => Promise<unknown>;
+};
+
+export function AuthProvider({
+  children,
+  clerkSession,
+}: {
+  children: ReactNode;
+  clerkSession?: ClerkSessionAdapter;
+}) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,10 +59,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    setTokenProvider(() => getStoredToken());
-  }, []);
+    setTokenProvider(clerkSession ? clerkSession.getToken : () => getStoredToken());
+  }, [clerkSession]);
 
   const refresh = useCallback(async (): Promise<User | null> => {
+    if (clerkSession) {
+      if (!clerkSession.isLoaded) return null;
+      if (!clerkSession.isSignedIn) {
+        clearSession();
+        setUser(null);
+        setToken(null);
+        return null;
+      }
+
+      try {
+        setTokenProvider(clerkSession.getToken);
+        const nextToken = await clerkSession.getToken();
+        if (!nextToken) throw new Error("missing_clerk_session_token");
+        const next = await me();
+        persistClerkSession(next);
+        setUser(next);
+        setToken(nextToken);
+        return next;
+      } catch {
+        clearSession();
+        setUser(null);
+        setToken(null);
+        return null;
+      }
+    }
+
     const stored = getStoredToken();
     if (!stored) {
       setUser(null);
@@ -68,17 +108,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(null);
       return null;
     }
-  }, []);
+  }, [clerkSession]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      if (clerkSession && !clerkSession.isLoaded) return;
       const cached = getStoredUser();
-      const storedToken = getStoredToken();
-      if (cached && storedToken) {
+      const storedToken = clerkSession ? null : getStoredToken();
+      if (cached && (clerkSession?.isSignedIn || storedToken)) {
         setUser(cached);
-        setToken(storedToken);
-        setTokenProvider(() => storedToken);
+        if (storedToken) {
+          setToken(storedToken);
+          setTokenProvider(() => storedToken);
+        }
       }
       await refresh();
       if (!cancelled) setLoading(false);
@@ -86,7 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [refresh]);
+  }, [clerkSession, refresh]);
 
   const signIn = useCallback(
     async (email: string, password: string): Promise<User> => {
@@ -106,6 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await apiLogout();
     } finally {
+      if (clerkSession) await clerkSession.signOut();
       clearSession();
       setTokenProvider(() => null);
       setUser(null);
@@ -113,7 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // replace — critical: back button must not re-enter the shell
       router.replace("/login");
     }
-  }, [router]);
+  }, [clerkSession, router]);
 
   // If we land on a protected tree without a session after load, bounce to login.
   useEffect(() => {

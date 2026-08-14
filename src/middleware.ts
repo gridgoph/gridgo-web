@@ -1,4 +1,7 @@
+import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest } from "next/server";
+
+import { isClerkAuthEnabled } from "@/lib/auth/clerk-config";
 
 const TOKEN_COOKIE = "gridgo_token";
 const ROLE_COOKIE = "gridgo_role";
@@ -30,7 +33,7 @@ function roleForPath(pathname: string): string | null {
  * Pages re-validate with GET /auth/me; middleware only blocks wrong-role URLs
  * and bounces signed-out visitors off protected trees.
  */
-export function middleware(request: NextRequest) {
+function legacyMiddleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(TOKEN_COOKIE)?.value;
   const role = request.cookies.get(ROLE_COOKIE)?.value;
@@ -77,6 +80,62 @@ export function middleware(request: NextRequest) {
   return NextResponse.next();
 }
 
+function portalRoleFromClaims(claims: unknown): string | null {
+  if (!claims || typeof claims !== "object") return null;
+  const role = (claims as Record<string, unknown>).gridgo_role;
+  return typeof role === "string" && PORTAL_ROLES.has(role) ? role : null;
+}
+
+const clerkPortalMiddleware = clerkMiddleware(async (auth, request) => {
+  const { pathname } = request.nextUrl;
+  const requiredRole = roleForPath(pathname);
+  const { userId, sessionClaims } = await auth();
+  const role = portalRoleFromClaims(sessionClaims);
+
+  if (pathname === "/login") {
+    if (userId && role) {
+      return NextResponse.redirect(new URL(homeForRole(role), request.url));
+    }
+    const response = NextResponse.next();
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  }
+
+  if (pathname === "/") {
+    return NextResponse.redirect(
+      new URL(userId && role ? homeForRole(role) : "/login", request.url),
+    );
+  }
+
+  if (requiredRole) {
+    if (!userId || !role) {
+      const login = new URL("/login", request.url);
+      login.searchParams.set("next", pathname);
+      return NextResponse.redirect(login);
+    }
+    if (role !== requiredRole) {
+      return NextResponse.redirect(new URL(homeForRole(role), request.url));
+    }
+    const response = NextResponse.next();
+    response.headers.set("Cache-Control", "no-store");
+    return response;
+  }
+
+  return NextResponse.next();
+});
+
+export const middleware = isClerkAuthEnabled()
+  ? clerkPortalMiddleware
+  : legacyMiddleware;
+
 export const config = {
-  matcher: ["/", "/login", "/supplier/:path*", "/ops/:path*", "/admin/:path*"],
+  matcher: [
+    "/",
+    "/login",
+    "/supplier/:path*",
+    "/ops/:path*",
+    "/admin/:path*",
+    "/(api|trpc)(.*)",
+    "/__clerk/:path*",
+  ],
 };

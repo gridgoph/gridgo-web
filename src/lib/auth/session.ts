@@ -76,6 +76,18 @@ export function persistSession(token: string, user: User): void {
 }
 
 /**
+ * Clerk owns its rotating session token. The portal only mirrors the API role
+ * for its existing shell and never copies the Clerk JWT into a GRIDGO cookie.
+ */
+export function persistClerkSession(user: User): void {
+  clearCookie(TOKEN_COOKIE);
+  writeCookie(ROLE_COOKIE, user.role);
+  if (isBrowser()) {
+    sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+  }
+}
+
+/**
  * Clear session thoroughly so the back button cannot re-enter a protected
  * area with a stale token (the mobile apps had this bug).
  */

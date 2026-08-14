@@ -16,10 +16,46 @@ const { replaceMock, signInMock } = vi.hoisted(() => ({
   signInMock: vi.fn(),
 }));
 
+const { clerkPasswordMock, clerkSsoMock, clerkSignUpMock } = vi.hoisted(() => ({
+  clerkPasswordMock: vi.fn(),
+  clerkSsoMock: vi.fn(),
+  clerkSignUpMock: vi.fn(),
+}));
+
 vi.stubGlobal("React", React);
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: replaceMock }),
+}));
+
+vi.mock("@clerk/nextjs", () => ({
+  useSignIn: () => ({
+    signIn: {
+      status: null,
+      password: clerkPasswordMock,
+      sso: clerkSsoMock,
+      resetPasswordEmailCode: {
+        sendCode: vi.fn(),
+        verifyCode: vi.fn(),
+        submitPassword: vi.fn(),
+      },
+      finalize: vi.fn(),
+      reset: vi.fn(),
+    },
+    errors: { fields: {}, global: null },
+    fetchStatus: "idle",
+  }),
+  useSignUp: () => ({
+    signUp: {
+      status: null,
+      password: clerkSignUpMock,
+      verifications: { sendEmailCode: vi.fn(), verifyEmailCode: vi.fn() },
+      finalize: vi.fn(),
+      reset: vi.fn(),
+    },
+    errors: { fields: {}, global: null },
+    fetchStatus: "idle",
+  }),
 }));
 
 vi.mock("@/lib/auth/AuthProvider", () => ({
@@ -33,6 +69,7 @@ vi.mock("@/lib/auth/AuthProvider", () => ({
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe("LoginPage", () => {
@@ -125,5 +162,58 @@ describe("LoginPage", () => {
     expect(markup).not.toMatch(/Local development/);
     vi.doUnmock("@/app/login/dev-accounts");
     vi.resetModules();
+  });
+});
+
+describe("Clerk onboarding", () => {
+  it("opens with the illustration-led portal welcome screen", () => {
+    vi.stubEnv("NEXT_PUBLIC_GRIDGO_AUTH_MODE", "clerk");
+    vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "pk_test_public");
+    render(<LoginPage />);
+
+    expect(
+      screen.getByRole("heading", { name: "Keep every handoff moving." }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign in to portal" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Create a client account" })).toBeVisible();
+    const illustration = screen.getByRole("img", { name: /operations team/i });
+    expect(illustration).toBeVisible();
+    expect(illustration).toHaveClass("max-h-[15rem]", "lg:max-h-[26rem]");
+  });
+
+  it("shows password recovery and Google on the Clerk sign-in screen", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GRIDGO_AUTH_MODE", "clerk");
+    vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "pk_test_public");
+    const user = userEvent.setup();
+    render(<LoginPage />);
+
+    await user.click(screen.getByRole("button", { name: "Sign in to portal" }));
+
+    expect(
+      screen.getByRole("img", { name: /operations team/i }).closest("section"),
+    ).toHaveClass("hidden", "lg:flex");
+    expect(screen.getByRole("heading", { name: "Welcome back." })).toBeVisible();
+    expect(screen.getByLabelText("Email")).toBeVisible();
+    expect(screen.getByLabelText("Password")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Recover password" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Continue with Google" })).toBeVisible();
+    expect(screen.queryByText(/Facebook/i)).not.toBeInTheDocument();
+  });
+
+  it("offers client-only public sign-up without a role selector", async () => {
+    vi.stubEnv("NEXT_PUBLIC_GRIDGO_AUTH_MODE", "clerk");
+    vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "pk_test_public");
+    const user = userEvent.setup();
+    render(<LoginPage />);
+
+    await user.click(screen.getByRole("button", { name: "Create a client account" }));
+
+    expect(screen.getByRole("heading", { name: "Create your client account." })).toBeVisible();
+    expect(screen.getByLabelText("Full name")).toBeVisible();
+    expect(screen.getByLabelText("Email")).toBeVisible();
+    expect(screen.getByLabelText("Password", { selector: "input" })).toBeVisible();
+    expect(screen.getByLabelText("Confirm password")).toBeVisible();
+    expect(screen.queryByLabelText(/role/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/supplier sign-up/i)).not.toBeInTheDocument();
   });
 });
