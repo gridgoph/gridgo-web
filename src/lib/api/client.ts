@@ -167,7 +167,7 @@ export function isApiError(err: unknown): err is ApiError {
   return err instanceof ApiError;
 }
 
-type TokenProvider = () => string | null;
+type TokenProvider = () => string | null | Promise<string | null>;
 
 let tokenProvider: TokenProvider = () => null;
 
@@ -196,7 +196,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
-  const token = tokenProvider();
+  const token = await tokenProvider();
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });

@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, isApiError } from "@/lib/api/client";
+import { ApiError, isApiError, me, setTokenProvider } from "@/lib/api/client";
 import {
   allMilestonesReleased,
   canReportIssue,
@@ -13,6 +13,11 @@ import {
   paymentIsSettled,
   PLATFORM_CONSTRAINT_COPY,
 } from "@/lib/api/constraints";
+
+afterEach(() => {
+  setTokenProvider(() => null);
+  vi.unstubAllGlobals();
+});
 
 describe("ApiError", () => {
   it("exposes snake_case code and kind without string-matching messages", () => {
@@ -43,6 +48,33 @@ describe("ApiError", () => {
     });
     expect(err.detail<number>("maxMinor")).toBe(150000);
     expect(err.details).toEqual({ maxMinor: 150000 });
+  });
+});
+
+describe("API bearer tokens", () => {
+  it("awaits a Clerk session token before sending the API request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          user: {
+            id: "usr_ops",
+            email: "person@example.com",
+            name: "Operations user",
+            role: "ops_admin",
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    setTokenProvider(async () => "clerk-session-token");
+
+    await me();
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(new Headers(init.headers).get("authorization")).toBe(
+      "Bearer clerk-session-token",
+    );
   });
 });
 
