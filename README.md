@@ -4,7 +4,7 @@ One Next.js application serving three role-gated experiences against the GRIDGO 
 
 | Role | Local account | Home |
 |---|---|---|
-| Supplier partner | `supplier@gridgo.ph` | `/supplier/jobs` |
+| Supplier partner | `markdavidprado@gmail.com` | `/supplier/jobs` |
 | Operations | `ops@gridgo.ph` | `/ops/qa` |
 | Super Admin | `admin@gridgo.ph` | `/admin/overview` |
 

@@ -79,8 +79,9 @@ address rendered there — or merely present in a chunk behind a runtime flag �
 account list to anyone who opens it.
 
 `scripts/assert-no-account-addresses.mjs` greps the client chunks and the server bundle for
-`…@gridgo.ph` / `…@gridgo.local`. It runs as part of `npm run build`, so both the workflow's
-verify job and the Docker `builder` stage get it for free — no separate step to forget.
+`…@gridgo.ph` / `…@gridgo.local` and the official Clerk supplier Gmail. It runs as part of
+`npm run build`, so both the workflow's verify job and the Docker `builder` stage get it
+for free — no separate step to forget.
 
 The local-development convenience that fills the email field lives behind a build-time
 constant in `src/app/login/dev-accounts.ts`. See **Auth and role boundary** in `AGENTS.md`.

@@ -93,6 +93,16 @@ describe("LoginPage", () => {
     expect(screen.getByLabelText("Password")).toHaveValue("Ilovegridgo-0990");
   });
 
+  it("fills the official Clerk supplier, not the @gridgo.ph shop fixture", async () => {
+    const user = userEvent.setup();
+    render(<LoginPage />);
+
+    await user.click(screen.getByRole("button", { name: "Supplier partner" }));
+
+    expect(screen.getByLabelText("Email")).toHaveValue("markdavidprado@gmail.com");
+    expect(screen.getByLabelText("Password")).toHaveValue("Ilovegridgo-0990");
+  });
+
   it("explains how to continue when credentials are empty", async () => {
     const user = userEvent.setup();
     render(<LoginPage />);
@@ -121,6 +131,7 @@ describe("LoginPage", () => {
       "Email or password is wrong. Check both and try again.",
     );
     expect(alert.textContent).not.toMatch(/@gridgo\./);
+    expect(alert.textContent).not.toMatch(/markdavidprado@gmail\.com/);
     expect(alert.textContent).not.toMatch(/invalid_credentials/);
   });
 
@@ -159,6 +170,7 @@ describe("LoginPage", () => {
     const markup = renderToStaticMarkup(<ProductionLoginPage />);
 
     expect(markup).not.toMatch(/@gridgo\./);
+    expect(markup).not.toMatch(/markdavidprado@gmail\.com/);
     expect(markup).not.toMatch(/Local development/);
     vi.doUnmock("@/app/login/dev-accounts");
     vi.resetModules();

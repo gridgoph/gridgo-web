@@ -28,10 +28,14 @@ import { join, relative, resolve } from "node:path";
 
 /**
  * Any address on a GRIDGO account domain — the live `gridgo.ph` and the
- * retired `gridgo.local` placeholder. Deliberately not a list of the three
- * known local names: a fourth one added later must fail this too.
+ * retired `gridgo.local` placeholder — plus the official Clerk supplier
+ * Gmail that the local picker advertises. The domain half is deliberately
+ * not a list of the known local names: a fourth `@gridgo.ph` added later
+ * must fail this too. The Gmail is the one named address that is not on
+ * those domains, so it is hunted by exact match.
  */
-const ACCOUNT_ADDRESS = /[A-Za-z0-9._%+-]+@gridgo\.(?:ph|local)\b/g;
+const ACCOUNT_ADDRESS =
+  /(?:[A-Za-z0-9._%+-]+@gridgo\.(?:ph|local)|markdavidprado@gmail\.com)\b/g;
 
 /** Emitted output that can reach a browser, directly or as rendered HTML. */
 const SCANNED_EXTENSIONS = [".js", ".mjs", ".cjs", ".json", ".html", ".rsc", ".txt"];

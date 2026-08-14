@@ -20,7 +20,8 @@ import { DEV_ACCOUNTS } from "@/app/login/dev-accounts";
 const SRC = resolve(__dirname, "../../..");
 const GUARDED_MODULE = resolve(SRC, "app/login/dev-accounts.ts");
 /** No `g` flag — this is reused with `.test()`, which is stateful when global. */
-const ACCOUNT_ADDRESS = /[A-Za-z0-9._%+-]+@gridgo\.(?:ph|local)\b/;
+const ACCOUNT_ADDRESS =
+  /(?:[A-Za-z0-9._%+-]+@gridgo\.(?:ph|local)|markdavidprado@gmail\.com)\b/;
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((entry) => {
@@ -54,6 +55,15 @@ describe("account address disclosure", () => {
 
   it("has retired the @gridgo.local placeholder domain", () => {
     for (const account of DEV_ACCOUNTS) {
+      expect(account.email).not.toMatch(/@gridgo\.local$/);
+    }
+  });
+
+  it("advertises the official Clerk supplier, not the @gridgo.ph shop fixture", () => {
+    const supplier = DEV_ACCOUNTS.find((account) => account.role === "Supplier partner");
+    expect(supplier?.email).toBe("markdavidprado@gmail.com");
+    for (const account of DEV_ACCOUNTS) {
+      if (account.role === "Supplier partner") continue;
       expect(account.email).toMatch(/@gridgo\.ph$/);
     }
   });
