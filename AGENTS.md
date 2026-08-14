@@ -27,7 +27,7 @@ API base: `NEXT_PUBLIC_API_URL` (default `http://127.0.0.1:8787`).
 
 Demo logins, password is the API's `DEMO_PASSWORD` (`Ilovegridgo-0990` in `gridgo-api/src/demo-fixtures.js`):
 
-- `supplier@gridgo.ph`
+- `markdavidprado@gmail.com` (official Clerk supplier — do not advertise `supplier@gridgo.ph`)
 - `ops@gridgo.ph`
 - `admin@gridgo.ph`
 
@@ -239,12 +239,15 @@ Three rules follow, and all three are asserted:
   and survives on tree shaking rather than on the guard. Never put a real credential here
   — the guard keeps values out of the bundle, not out of the repository.
 - `scripts/assert-no-account-addresses.mjs` greps the emitted client chunks *and* server
-  bundle for any `…@gridgo.ph` / `…@gridgo.local` address. It runs as part of
-  `npm run build`, so a reintroduction fails the build rather than the deploy.
+  bundle for any `…@gridgo.ph` / `…@gridgo.local` address and the official Clerk
+  supplier Gmail. It runs as part of `npm run build`, so a reintroduction fails
+  the build rather than the deploy.
 - `src/app/login/__tests__/account-disclosure.test.ts` holds the same line at review time,
   and `page.test.tsx` asserts the failure copy names no account and no `ApiError.code`.
 
-`@gridgo.local` was the placeholder domain; accounts are `@gridgo.ph` fleet-wide.
+`@gridgo.local` was the placeholder domain. Operations and Super Admin stay
+`@gridgo.ph` (no Clerk ops/admin user exists). The advertised shop login is the
+official Clerk supplier, not `supplier@gridgo.ph`.
 
 The sign-in submit control stays `disabled` until the client has mounted. Before React
 attaches `onSubmit`, a click submits the form natively — a GET to `/login` that writes the

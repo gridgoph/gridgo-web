@@ -41,7 +41,7 @@ export const DEV_ACCOUNTS: readonly DevAccount[] =
     : [
         {
           role: "Supplier partner",
-          email: "supplier@gridgo.ph",
+          email: "markdavidprado@gmail.com",
           password: "Ilovegridgo-0990",
         },
         {
