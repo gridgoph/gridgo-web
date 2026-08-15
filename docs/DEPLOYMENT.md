@@ -129,7 +129,7 @@ forwards it as HTTP again, forever.
 ## First-time server installation
 
 **Already done on the current host** — `~/gridgo/web/docker-compose.yml` is installed and
-resolves to `ghcr.io/rqms40/gridgo-web:latest`. This section is for a rebuilt or replacement
+resolves to `ghcr.io/gridgoph/gridgo-web:latest`. This section is for a rebuilt or replacement
 server.
 
 `deploy.sh` refuses with exit 65 (`web is not provisioned yet`) while that file is missing.
@@ -139,7 +139,7 @@ Once, as the deploy user:
 mkdir -p ~/gridgo/web
 # copy deploy/docker-compose.yml from this repository to ~/gridgo/web/docker-compose.yml
 cd ~/gridgo/web
-docker compose config --images        # must print ghcr.io/rqms40/gridgo-web:latest
+docker compose config --images        # must print ghcr.io/gridgoph/gridgo-web:latest
 ```
 
 Then merge to `main` and let the pipeline do the first deploy. Do not `docker compose up`

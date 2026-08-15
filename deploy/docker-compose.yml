@@ -10,7 +10,7 @@ name: gridgo-web
 
 services:
   web:
-    image: ghcr.io/rqms40/gridgo-web:${GRIDGO_WEB_TAG:-latest}
+    image: ghcr.io/gridgoph/gridgo-web:${GRIDGO_WEB_TAG:-latest}
 
     # The edge proxy resolves this exact name on the gridgo-edge network:
     #   gridgo-dash.talasora.com  ->  reverse_proxy gridgo-web:3000
