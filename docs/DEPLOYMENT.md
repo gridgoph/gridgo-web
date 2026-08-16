@@ -129,7 +129,9 @@ Never prefix the secret with `NEXT_PUBLIC_`, print it, or place it in Compose so
   `~/gridgo-proxy`. Our compose file joins it as `external`, so `docker compose down` here
   can never delete the network the API and the landing site also sit on.
 - Caddy routing `gridgo-dash.talasora.com` → `gridgo-web:3000`. The container **must** be
-  named `gridgo-web`; renaming it takes the portal off the internet.
+  named `gridgo-web`; renaming it takes the portal off the internet. The Cloudflare/Caddy
+  chain must also preserve the browser-facing host and protocol in `X-Forwarded-Host` and
+  `X-Forwarded-Proto`.
 
 **In this repository** (already present; do not recreate):
 
@@ -159,6 +161,13 @@ Cloudflare terminates TLS **in front of** the server, in Flexible mode. Caddy an
 container both serve plain HTTP. Do not add certificates, TLS, or an HTTPS redirect inside
 the container — behind Flexible mode a redirect to HTTPS returns to Cloudflare, which
 forwards it as HTTP again, forever.
+
+Next standalone sees its internal bind URL behind that proxy. For signed-out protected
+requests, `src/lib/auth/public-request-url.ts` reconstructs the Clerk login return from the
+forwarded host and protocol while preserving the requested path and query. If those headers
+are absent or unusable in production, it falls back to
+`https://gridgo-dash.talasora.com`; it must never send a browser to `0.0.0.0`, loopback, or
+an internal `:3000` origin. Local `next dev` continues to use the request host.
 
 ## First-time server installation
 
@@ -218,6 +227,10 @@ Check, in order:
    `http://127.0.0.1:8787` — means the image was built without the build argument.
 3. The portal itself answers: `curl -s -o /dev/null -w '%{http_code}\n'
 https://gridgo-dash.talasora.com/login` → `200`.
+4. A signed-out protected request returns a public-host login bounce:
+   `curl -sSI https://gridgo-dash.talasora.com/ops/payments | grep -i '^location:'` must
+   show a `https://gridgo-dash.talasora.com/login?redirect_url=...` location whose decoded
+   return URL is `https://gridgo-dash.talasora.com/ops/payments`.
 
 On the server:
 

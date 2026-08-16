@@ -28,6 +28,23 @@ describe("Clerk session middleware", () => {
     expect(requiresPortalSession("/login")).toBe(false);
   });
 
+  it("rebuilds the public login bounce from forwarded host when the container bind address is visible", async () => {
+    const auth = vi.fn().mockResolvedValue({ userId: null });
+    const request = new NextRequest("http://0.0.0.0:3000/ops/payments", {
+      headers: {
+        "X-Forwarded-Host": "gridgo-dash.talasora.com",
+        "X-Forwarded-Proto": "https",
+      },
+    });
+
+    const response = await portalSessionMiddleware(auth, request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://gridgo-dash.talasora.com/login?redirect_url=https%3A%2F%2Fgridgo-dash.talasora.com%2Fops%2Fpayments",
+    );
+  });
+
   it("admits any signed-in identity to the layout that performs DB authorization", async () => {
     const auth = vi.fn().mockResolvedValue({ userId: "clerk_user" });
 
