@@ -16,12 +16,13 @@ hand and nothing is built on the server.
 | Baked public config       | API URL + Clerk publishable key passed as Docker build arguments             |
 | API URL assertion         | `scripts/assert-api-url.mjs`                                                 |
 | Account-address assertion | `scripts/assert-no-account-addresses.mjs` (runs inside `npm run build`)      |
+| Clerk-secret assertion    | `scripts/assert-no-clerk-secrets.mjs` (runs inside `npm run build`)          |
 
 ## How a change reaches users
 
 ```
 merge to main
-  └─ verify      typecheck · lint · test · next build · assert API URL in bundle
+  └─ verify      typecheck · lint · test · next build + security assertions · assert API URL
      └─ image    docker build → smoke test the built image → push sha-<12> and latest
         └─ deploy  ssh <deploy key> "web"  (token piped on stdin)
            └─ server: docker compose pull && up -d --remove-orphans

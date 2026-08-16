@@ -31,7 +31,9 @@ const MAX_UNAUTHORIZED_REFRESHES = 1;
  * The projection is re-checked on every in-tree navigation so suspension or
  * demotion takes effect without a reload, but after the first allowed result
  * the current tree keeps rendering while that revalidation is in flight;
- * access is removed only on a settled denial.
+ * access is removed only on a settled denial. A 401 gets one fresh-token
+ * retry, and effect cleanup prevents an older overlapping check from changing
+ * the latest authorization state.
  */
 export function RoleGate({ allow, children }: Props) {
   const auth = useAuth();

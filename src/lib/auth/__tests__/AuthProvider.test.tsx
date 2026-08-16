@@ -45,6 +45,9 @@ afterEach(() => {
   getAuthMeMock.mockReset();
   replaceMock.mockReset();
   setTokenProviderMock.mockReset();
+  window.localStorage.clear();
+  window.sessionStorage.clear();
+  document.cookie = "gridgo_session=; Max-Age=0; Path=/";
 });
 
 function deferred<T>() {
@@ -163,6 +166,26 @@ describe("AuthProvider refresh ownership", () => {
     expect(screen.getByTestId("status")).toHaveTextContent("signed_out");
     expect(screen.getByTestId("user")).toHaveTextContent("none");
     expect(getAuthMeMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("cannot restore access from forged browser state without a Clerk session", () => {
+    window.localStorage.setItem(
+      "gridgo_user",
+      JSON.stringify({ id: "forged", role: "super_admin" }),
+    );
+    window.sessionStorage.setItem("gridgo_role", "super_admin");
+    document.cookie = "gridgo_session=forged-super-admin; Path=/";
+
+    render(
+      <AuthProvider clerkSession={signedOutClerkSession()}>
+        <AuthProbe />
+      </AuthProvider>,
+    );
+
+    expect(screen.getByTestId("status")).toHaveTextContent("signed_out");
+    expect(screen.getByTestId("user")).toHaveTextContent("none");
+    expect(screen.queryByText("Authorized workspace")).not.toBeInTheDocument();
+    expect(getAuthMeMock).not.toHaveBeenCalled();
   });
 
   it("cannot restore a prior account after sign-out and a new Clerk session", async () => {

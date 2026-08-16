@@ -4,7 +4,7 @@ Guidance for any agent or human picking up this codebase.
 
 ## What this is
 
-A single Next.js (App Router) portal for three roles: `supplier`, `ops_admin`, `super_admin`. Shared design system, API client, and auth. The signed-in role decides which route tree exists.
+A single Next.js (App Router) portal for three roles: `supplier`, `ops_admin`, `super_admin`. Shared design system, API client, and auth. Database memberships decide which route trees a signed-in identity may use, including multiple trees for a multi-membership identity.
 
 Mobile apps (client / supplier / rider) are separate repos. Do not invent a parallel product identity here.
 
@@ -23,7 +23,7 @@ npm test
 ```
 
 API base: `NEXT_PUBLIC_API_URL` (default `http://127.0.0.1:8787`).
-`next dev` does **not** let the browser CORS-hit that origin — see Local sign-in.
+`next dev` does **not** let the browser CORS-hit that origin — see Local API proxy.
 
 Authentication is Clerk-only. Local and production portal identities must already have a
 database `supplier`, `ops_admin`, or `super_admin` membership; the portal never creates a
@@ -219,8 +219,12 @@ Both were evaluated here and deliberately not adopted:
 4. Every role layout calls its fixed projection through `RoleGate`:
    `/auth/me/supplier`, `/auth/me/ops`, or `/auth/me/admin`. Only a successful projection
    mounts the page tree. Clerk claims/metadata, the legacy `user.role`, app state, and route
-   parameters never grant access.
-5. An authenticated but unmapped identity, or one with no portal membership, gets the
+   parameters never grant access. A multi-membership identity may use every projection it
+   has.
+5. `RoleGate` revalidates its fixed projection on every in-tree navigation. It keeps an
+   already-authorized tree visible while refreshing, then removes access on a definitive
+   denial so membership changes take effect without a reload.
+6. An authenticated but unmapped identity, or one with no portal membership, gets the
    access-not-assigned screen and can sign out to use another account.
 
 `/login` is sign-in only: `SignIn` uses `withSignUp={false}` and
@@ -229,9 +233,10 @@ page still never names an account; `scripts/assert-no-account-addresses.mjs` che
 emitted client and server output, and the login tests enforce sign-in-only behavior.
 
 Clerk's rotating JWT is attached as `Authorization: Bearer …` by the API client. Never copy
-it into a GRIDGO cookie or session storage. `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is public
-and baked into the client build; `CLERK_SECRET_KEY` is server-only runtime configuration.
-`scripts/assert-no-clerk-secrets.mjs` scans the complete `.next` build output.
+it into a GRIDGO cookie or session storage. `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is public;
+`CLERK_SECRET_KEY` is server-only and must never use a `NEXT_PUBLIC_` prefix.
+`scripts/assert-no-clerk-secrets.mjs` scans the complete `.next` build output. Exact build
+and runtime placement belongs to `docs/DEPLOYMENT.md`.
 
 Suppliers are external partners. Never serve `/ops/*` or `/admin/*` to them — not even as soft-hidden UI.
 

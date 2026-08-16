@@ -25,7 +25,7 @@ const {
       // Deliberately irrelevant to route authorization.
       role: "client",
     },
-    memberships: [{ role: "supplier" }, { role: "ops_admin" }],
+    memberships: [{ role: "supplier" }, { role: "ops_admin" }, { role: "super_admin" }],
     status: "mapped",
     loading: false,
     signOut: vi.fn(),
@@ -74,7 +74,11 @@ afterEach(() => {
   pathnameRef.current = "/test-route";
   authState.status = "mapped";
   authState.user.role = "client";
-  authState.memberships = [{ role: "supplier" }, { role: "ops_admin" }];
+  authState.memberships = [
+    { role: "supplier" },
+    { role: "ops_admin" },
+    { role: "super_admin" },
+  ];
   authState.signOut = signOutMock;
   authState.refresh = refreshMock;
 });
@@ -102,7 +106,7 @@ function projection(role: "supplier" | "ops_admin" | "super_admin") {
 }
 
 describe("RoleGate fixed projections", () => {
-  it.each(["supplier", "ops_admin"] as const)(
+  it.each(["supplier", "ops_admin", "super_admin"] as const)(
     "allows a multi-member identity into its %s route through that fixed projection",
     async (role) => {
       getPortalRoleProjectionMock.mockResolvedValueOnce(projection(role));
