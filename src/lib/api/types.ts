@@ -1,4 +1,4 @@
-/** Shared API types for the GRIDGO demo backend — derived from observed responses. */
+/** Shared GRIDGO API types derived from observed responses. */
 
 export type Role = "client" | "supplier" | "rider" | "ops_admin" | "super_admin";
 export type PortalRole = Extract<Role, "supplier" | "ops_admin" | "super_admin">;
@@ -688,7 +688,7 @@ export type HealthResult = {
   at?: string;
 };
 
-/** Structured error body returned by the demo API. */
+/** Structured error body returned by the GRIDGO API. */
 export type ApiErrorBody = {
   error: string;
   [key: string]: unknown;

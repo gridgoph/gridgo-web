@@ -151,14 +151,12 @@ describe("API bearer tokens", () => {
     ["ops_admin", "/auth/me/ops", opsProjectionFixture],
     ["super_admin", "/auth/me/admin", adminProjectionFixture],
   ] as const)("loads the fixed %s projection from %s", async (role, path, fixture) => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(JSON.stringify(fixture), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
-      );
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(fixture), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
     vi.stubGlobal("fetch", fetchMock);
     setTokenProvider(() => "clerk-session-token");
 

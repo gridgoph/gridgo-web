@@ -2,14 +2,14 @@
 
 One Next.js application serving three role-gated experiences against the GRIDGO API:
 
-| Role | Home |
-|---|---|
-| Supplier partner | `/supplier/jobs` |
-| Operations | `/ops/qa` |
-| Super Admin | `/admin/overview` |
+| Role             | Home              |
+| ---------------- | ----------------- |
+| Supplier partner | `/supplier/jobs`  |
+| Operations       | `/ops/qa`         |
+| Super Admin      | `/admin/overview` |
 
 Clerk authenticates the person; Postgres memberships returned by the GRIDGO API authorize
-each role tree. The public sign-in screen names no account and offers no privileged signup.
+each role tree. The public sign-in screen names no account and offers no sign-up.
 
 ## Prerequisites
 
@@ -30,15 +30,15 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Scripts
 
-| Command | Purpose |
-|---|---|
-| `npm run dev` | Dev server (Turbopack) |
-| `npm run build` | Production build |
-| `npm start` | Serve production build |
+| Command             | Purpose                 |
+| ------------------- | ----------------------- |
+| `npm run dev`       | Dev server (Turbopack)  |
+| `npm run build`     | Production build        |
+| `npm start`         | Serve production build  |
 | `npm run typecheck` | TypeScript strict check |
-| `npm run lint` | ESLint |
-| `npm test` | Vitest unit tests |
-| `npm run format` | Prettier write |
+| `npm run lint`      | ESLint                  |
+| `npm test`          | Vitest unit tests       |
+| `npm run format`    | Prettier write          |
 
 ## Deployment
 
@@ -63,15 +63,6 @@ explains why and what asserts it.
   - Supplier: job inbox + order workspace (`GET /jobs`, `POST /orders/:id/transition`)
   - Operations: QA / action queue + workspace
   - Super Admin: platform overview from live orders + credit balances
-
-## Known API gaps (not faked)
-
-These have no demo endpoints — screens for them are omitted or called out as unavailable:
-
-- Supplier verification, role management, zones/fees config
-- Pilot Credit granting
-- Supplier service catalogue (blueprint in progress)
-- Platform user directories (supplier/rider lists) — overview derives IDs from orders
 
 ## Design rules (binding)
 
