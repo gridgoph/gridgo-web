@@ -38,8 +38,8 @@ privileged account.
 | `src/lib/api/types.ts`                  | Response/request types (no `any`)                                                                                                                                                                |
 | `src/lib/api/constraints.ts`            | Server rules the UI can explain _before_ rejection (payment/milestone gates, holds, issue window)                                                                                                |
 | `src/lib/nav.ts`                        | **Single** role→nav structure (`ROLE_NAV_GROUPS` + flattened `ROLE_NAV`); AppShell reads this only                                                                                               |
-| `src/lib/auth/`                         | Clerk token bridge, `/auth/me` identity context, portal-membership landing, public login-return origin                                                                                           |
-| `src/middleware.ts`                     | Clerk-session check only; never role authorization. Login bounce uses `publicRequestUrl` so `redirect_url` is never the container bind address.                                                  |
+| `src/lib/auth/`                         | Clerk token bridge, `/auth/me` identity context, portal-membership landing, public login-return URL                                                                                              |
+| `src/middleware.ts`                     | Clerk-session check only; never role authorization; delegates public-origin reconstruction to `publicRequestUrl`                                                                                 |
 | `src/lib/order-state.ts`                | Plain-language state labels (no snake_case on screen)                                                                                                                                            |
 | `src/lib/supplier-actions.ts`           | Valid supplier transitions for current state                                                                                                                                                     |
 | `src/lib/ops-actions.ts`                | Valid ops transitions + queue membership                                                                                                                                                         |
@@ -213,11 +213,9 @@ Both were evaluated here and deliberately not adopted:
 
 1. Clerk owns sign-in, Google/password recovery, session cookies, JWT refresh, and logout.
 2. Middleware requires only a signed Clerk session for `/`, `/supplier/*`, `/ops/*`, and
-   `/admin/*`; it never reads a role or authorization claim. A signed-out bounce to
-   `/login` rebuilds `redirect_url` with `publicRequestUrl` from `X-Forwarded-Host` /
-   `X-Forwarded-Proto` (production fallback `https://gridgo-dash.talasora.com`). Never
-   emit the container bind address (`0.0.0.0`, loopback, or internal `:3000`). Local
-   `next dev` keeps the request host.
+   `/admin/*`; it never reads a role or authorization claim. A signed-out bounce uses
+   `publicRequestUrl` so its login return cannot expose a container-only origin. The
+   reverse-proxy and production-fallback contract is owned by `docs/DEPLOYMENT.md`.
 3. `AuthProvider` loads `GET /auth/me` for identity and the complete database membership
    list. The root uses that list only to choose a stable initial portal workspace.
 4. Every role layout calls its fixed projection through `RoleGate`:
