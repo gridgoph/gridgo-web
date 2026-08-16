@@ -1,6 +1,8 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { publicRequestUrl } from "@/lib/auth/public-request-url";
+
 type SessionAuth = () => Promise<{ userId: string | null }>;
 
 export function requiresPortalSession(pathname: string): boolean {
@@ -29,8 +31,9 @@ export async function portalSessionMiddleware(auth: SessionAuth, request: NextRe
     return response;
   }
 
-  const login = new URL("/login", request.url);
-  login.searchParams.set("redirect_url", request.url);
+  const destination = publicRequestUrl(request);
+  const login = new URL("/login", destination.origin);
+  login.searchParams.set("redirect_url", destination.href);
   const response = NextResponse.redirect(login);
   response.headers.set("Cache-Control", "no-store");
   return response;
