@@ -109,10 +109,11 @@ sign-in, and the emitted-build assertion is the backstop against account disclos
 The portal needs the production Clerk keys from the same Clerk instance used by
 `gridgo-api`:
 
-| Variable | Where | Purpose |
-| --- | --- | --- |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | GitHub repository secret for trusted builds; Docker build argument | Public production ClerkJS configuration baked into the browser bundle |
-| `CLERK_SECRET_KEY` | GitHub repository secret for trusted build/smoke; server `~/gridgo/web/.env` for runtime | Server-only production Clerk middleware token verification |
+| Variable                               | Where                                                                                    | Purpose                                                                                              |
+| -------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`    | GitHub repository secret for trusted builds; Docker build argument                       | Public production ClerkJS configuration baked into the browser bundle                                |
+| `CLERK_SECRET_KEY`                     | GitHub repository secret for trusted build/smoke; server `~/gridgo/web/.env` for runtime | Server-only production Clerk middleware token verification                                           |
+| `GRIDGO_WEB_CLERK_RUNTIME_PROVISIONED` | GitHub `production` environment variable                                                 | Fail-closed operator attestation that the host has the current Compose file and runtime Clerk secret |
 
 Never prefix the secret with `NEXT_PUBLIC_`, print it, or place it in Compose source.
 
@@ -131,13 +132,18 @@ Never prefix the secret with `NEXT_PUBLIC_`, print it, or place it in Compose so
 
 **In this repository** (already present; do not recreate):
 
-| Secret                       | Used for                                                            |
-| ---------------------------- | ------------------------------------------------------------------- |
-| `DEPLOY_SSH_KEY`             | private key pinned to `deploy.sh` in the server's `authorized_keys` |
-| `DEPLOY_HOST`, `DEPLOY_USER` | where to connect                                                    |
-| `DEPLOY_KNOWN_HOSTS`         | the server's host key                                               |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | production Clerk publishable key used at build time         |
-| `CLERK_SECRET_KEY`           | production Clerk secret used transiently for build/smoke            |
+| Secret                              | Used for                                                            |
+| ----------------------------------- | ------------------------------------------------------------------- |
+| `DEPLOY_SSH_KEY`                    | private key pinned to `deploy.sh` in the server's `authorized_keys` |
+| `DEPLOY_HOST`, `DEPLOY_USER`        | where to connect                                                    |
+| `DEPLOY_KNOWN_HOSTS`                | the server's host key                                               |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | production Clerk publishable key used at build time                 |
+| `CLERK_SECRET_KEY`                  | production Clerk secret used transiently for build/smoke            |
+
+The `production` environment also has a non-secret
+`GRIDGO_WEB_CLERK_RUNTIME_PROVISIONED` variable. The deploy job accepts only the exact value
+`true`; an absent or different value stops before SSH. Set it only after the host checks in
+the next section pass.
 
 Host key checking stays **on** (`StrictHostKeyChecking=yes` against `DEPLOY_KNOWN_HOSTS`).
 Accepting an unknown key would let anyone able to intercept the connection collect the deploy
@@ -155,9 +161,10 @@ forwards it as HTTP again, forever.
 
 ## First-time server installation
 
-**Already done on the current host** — `~/gridgo/web/docker-compose.yml` is installed and
-resolves to `ghcr.io/gridgoph/gridgo-web:latest`. This section is for a rebuilt or replacement
-server.
+The current host must be upgraded before the first Clerk-only deployment. Until that is
+complete, leave `GRIDGO_WEB_CLERK_RUNTIME_PROVISIONED` absent from the GitHub `production`
+environment so the workflow cannot replace the working container with an image that lacks
+its required runtime secret.
 
 `deploy.sh` refuses with exit 65 (`web is not provisioned yet`) while that file is missing.
 Once, as the deploy user:
@@ -168,13 +175,22 @@ mkdir -p ~/gridgo/web
 cd ~/gridgo/web
 umask 077
 printf 'CLERK_SECRET_KEY=%s\n' '<production Clerk secret>' > .env
+docker compose config --quiet
 docker compose config --images        # must print ghcr.io/gridgoph/gridgo-web:latest
 ```
 
-Then merge to `main` and let the pipeline do the first deploy. Do not `docker compose up`
-by hand first: the image is private, and CI is what supplies the pull credential — by
-design, nothing durable authenticates this host to the registry. A manual pull failing with
-`unauthorized` before the first CI publish is the expected, correct state, not a fault.
+After both checks succeed against the installed file, set the GitHub `production`
+environment variable `GRIDGO_WEB_CLERK_RUNTIME_PROVISIONED=true`, then merge to `main` and
+let the pipeline do the first deploy. The variable is only an attestation and never contains
+the Clerk secret. Remove it before any future Compose or Clerk-runtime migration, then
+restore it only after the installed host configuration has been verified again.
+
+Do not `docker compose up` by hand first: the image is private, and CI is what supplies the
+pull credential — by design, nothing durable authenticates this host to the registry. A
+manual pull failing with `unauthorized` before the first CI publish is the expected, correct
+state, not a fault. The image entry command and Compose interpolation both reject a missing
+`CLERK_SECRET_KEY`, while the workflow attestation prevents an unprovisioned host from
+reaching that crash instead of taking the portal offline.
 
 **Keep the installed copy in step with `deploy/docker-compose.yml`.** Nothing synchronises
 them; CI never writes to the server. After changing the compose file in this repository, an

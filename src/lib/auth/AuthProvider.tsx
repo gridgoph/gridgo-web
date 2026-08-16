@@ -29,6 +29,7 @@ type AuthState = {
 };
 
 const AuthContext = createContext<AuthState | null>(null);
+const MAX_UNAUTHORIZED_REFRESHES = 1;
 
 export type ClerkSessionAdapter = {
   getToken: () => Promise<string | null>;
@@ -179,7 +180,30 @@ function SessionAuthProvider({
         return;
       }
       setTokenProvider(clerkSession.getToken);
-      const next = await getAuthMe({ signal: controller.signal });
+      let unauthorizedRefreshes = 0;
+      let refreshToken = false;
+      let next: Awaited<ReturnType<typeof getAuthMe>>;
+      while (true) {
+        try {
+          next = await getAuthMe({
+            signal: controller.signal,
+            ...(refreshToken ? { refreshToken: true } : {}),
+          });
+          break;
+        } catch (error) {
+          if (!isCurrent()) return;
+          if (
+            isApiError(error) &&
+            error.kind === "unauthorized" &&
+            unauthorizedRefreshes < MAX_UNAUTHORIZED_REFRESHES
+          ) {
+            unauthorizedRefreshes += 1;
+            refreshToken = true;
+            continue;
+          }
+          throw error;
+        }
+      }
       if (!isCurrent()) return;
       setUser(next.user);
       setMemberships(next.memberships);

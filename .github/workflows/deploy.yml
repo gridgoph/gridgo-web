@@ -254,6 +254,16 @@ jobs:
       name: production
       url: https://gridgo-dash.talasora.com
     steps:
+      - name: Require Clerk runtime provisioning
+        run: |
+          set -euo pipefail
+          if [ "$GRIDGO_WEB_CLERK_RUNTIME_PROVISIONED" != "true" ]; then
+            echo "::error::The production host has not been attested as provisioned with the Clerk runtime secret and current Compose definition."
+            exit 1
+          fi
+        env:
+          GRIDGO_WEB_CLERK_RUNTIME_PROVISIONED: ${{ vars.GRIDGO_WEB_CLERK_RUNTIME_PROVISIONED }}
+
       - name: Trigger the restricted deploy command
         run: |
           set -euo pipefail

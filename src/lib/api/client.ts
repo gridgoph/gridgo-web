@@ -226,8 +226,15 @@ async function request<T>(
 // Clerk identity + Postgres authorization
 // ---------------------------------------------------------------------------
 
-export async function getAuthMe(options?: { signal?: AbortSignal }): Promise<AuthMe> {
-  return request<AuthMe>("/auth/me", { signal: options?.signal });
+export async function getAuthMe(options?: {
+  signal?: AbortSignal;
+  refreshToken?: boolean;
+}): Promise<AuthMe> {
+  return request<AuthMe>(
+    "/auth/me",
+    { signal: options?.signal },
+    options?.refreshToken ? { skipCache: true } : undefined,
+  );
 }
 
 const PORTAL_PROJECTION_PATH: Record<PortalRole, string> = {
@@ -240,11 +247,11 @@ const PORTAL_PROJECTION_PATH: Record<PortalRole, string> = {
  * Authorize one portal surface from its fixed API projection. The requested
  * role is converted to a path locally and never sent as client-controlled JSON.
  */
-export async function getPortalRoleProjection(
-  role: PortalRole,
+export async function getPortalRoleProjection<R extends PortalRole>(
+  role: R,
   options?: { refreshToken?: boolean },
-): Promise<PortalRoleProjection> {
-  return request<PortalRoleProjection>(
+): Promise<PortalRoleProjection<R>> {
+  return request<PortalRoleProjection<R>>(
     PORTAL_PROJECTION_PATH[role],
     {},
     options?.refreshToken ? { skipCache: true } : undefined,

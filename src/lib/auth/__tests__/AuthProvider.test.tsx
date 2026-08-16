@@ -7,6 +7,7 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AuthProvider, type ClerkSessionAdapter, useAuth } from "@/lib/auth/AuthProvider";
+import { ApiError } from "@/lib/api/client";
 import type { AuthMe, Role } from "@/lib/api/types";
 
 vi.stubGlobal("React", React);
@@ -15,7 +16,10 @@ const { getAuthMeMock, replaceMock, routerMock, setTokenProviderMock } = vi.hois
   () => {
     const replace = vi.fn();
     return {
-      getAuthMeMock: vi.fn<(options?: { signal?: AbortSignal }) => Promise<AuthMe>>(),
+      getAuthMeMock:
+        vi.fn<
+          (options?: { signal?: AbortSignal; refreshToken?: boolean }) => Promise<AuthMe>
+        >(),
       replaceMock: replace,
       routerMock: { replace },
       setTokenProviderMock: vi.fn(),
@@ -230,5 +234,45 @@ describe("AuthProvider refresh ownership", () => {
       pendingIdentity.resolve(authMe("user_first", "ops_admin"));
       await pendingIdentity.promise;
     });
+  });
+
+  it("retries an unauthorized identity lookup once with a fresh Clerk token", async () => {
+    getAuthMeMock
+      .mockRejectedValueOnce(new ApiError(401, { error: "unauthorized" }))
+      .mockResolvedValueOnce(authMe("user_first", "ops_admin"));
+
+    render(
+      <AuthProvider clerkSession={clerkSession("clerk_first", "session_first")}>
+        <AuthProbe />
+      </AuthProvider>,
+    );
+
+    expect(await screen.findByText("Authorized workspace")).toBeVisible();
+    expect(getAuthMeMock).toHaveBeenCalledTimes(2);
+    expect(getAuthMeMock.mock.calls[0][0]).toEqual({
+      signal: expect.any(AbortSignal),
+    });
+    expect(getAuthMeMock.mock.calls[1][0]).toEqual({
+      signal: expect.any(AbortSignal),
+      refreshToken: true,
+    });
+    expect(screen.getByTestId("status")).toHaveTextContent("mapped");
+  });
+
+  it("settles a repeatedly unauthorized identity as unmapped", async () => {
+    getAuthMeMock.mockRejectedValue(new ApiError(401, { error: "unauthorized" }));
+
+    render(
+      <AuthProvider clerkSession={clerkSession("clerk_first", "session_first")}>
+        <AuthProbe />
+      </AuthProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent("unmapped"),
+    );
+    expect(getAuthMeMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("user")).toHaveTextContent("none");
+    expect(screen.queryByText("Authorized workspace")).not.toBeInTheDocument();
   });
 });

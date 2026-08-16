@@ -97,4 +97,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 
 # Plain HTTP on purpose. Cloudflare terminates TLS in front of the server in
 # Flexible mode, so an in-container HTTPS redirect would loop forever.
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "test -n \"$CLERK_SECRET_KEY\" || { echo 'CLERK_SECRET_KEY is required.' >&2; exit 78; }; exec node server.js"]
