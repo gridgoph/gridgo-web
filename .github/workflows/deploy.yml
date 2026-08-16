@@ -52,6 +52,9 @@ jobs:
   verify:
     name: Checks
     runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
+      CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
     # A pull request whose branch lives in this repository has already been run
     # by the `push` event on the very same commit, and its result is attached to
     # that commit. Running it twice buys nothing. A fork PR has no such run —
@@ -139,8 +142,11 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
             NEXT_PUBLIC_API_URL=${{ env.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             GRIDGO_BUILD_SHA=${{ github.sha }}
             GRIDGO_BUILD_TIME=${{ steps.meta.outputs.built_at }}
+          secrets: |
+            clerk_secret_key=${{ secrets.CLERK_SECRET_KEY }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -160,7 +166,10 @@ jobs:
       - name: Smoke test the container
         run: |
           set -euo pipefail
-          cid="$(docker run -d -p "127.0.0.1:${SMOKE_PORT}:3000" "$IMAGE")"
+          cid="$(docker run -d \
+            -e CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
+            -p "127.0.0.1:${SMOKE_PORT}:3000" \
+            "$IMAGE")"
           echo "container=$cid" >> "$GITHUB_ENV"
 
           for _ in $(seq 1 30); do
@@ -202,6 +211,7 @@ jobs:
           [ "$user" != "root" ] || { echo "::error::container runs as root"; exit 1; }
         env:
           IMAGE: ${{ steps.meta.outputs.primary }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
 
       - name: Stop smoke container
         if: always() && env.container != ''

@@ -25,11 +25,9 @@ npm test
 API base: `NEXT_PUBLIC_API_URL` (default `http://127.0.0.1:8787`).
 `next dev` does **not** let the browser CORS-hit that origin — see Local sign-in.
 
-Demo logins, password is the API's `DEMO_PASSWORD` (`Ilovegridgo-0990` in `gridgo-api/src/demo-fixtures.js`):
-
-- `markdavidprado@gmail.com` (official Clerk supplier — do not advertise `supplier@gridgo.ph`)
-- `ops@gridgo.ph`
-- `admin@gridgo.ph`
+Authentication is Clerk-only. Local and production portal identities must already have a
+database `supplier`, `ops_admin`, or `super_admin` membership; the portal never creates a
+privileged account.
 
 ## Layout of the code
 
@@ -40,8 +38,8 @@ Demo logins, password is the API's `DEMO_PASSWORD` (`Ilovegridgo-0990` in `gridg
 | `src/lib/api/types.ts` | Response/request types (no `any`) |
 | `src/lib/api/constraints.ts` | Server rules the UI can explain *before* rejection (payment/milestone gates, holds, issue window) |
 | `src/lib/nav.ts` | **Single** role→nav structure (`ROLE_NAV_GROUPS` + flattened `ROLE_NAV`); AppShell reads this only |
-| `src/lib/auth/` | Session cookies, AuthProvider, sign-in/out |
-| `src/middleware.ts` | Role-path gate (supplier / ops / admin prefixes) |
+| `src/lib/auth/` | Clerk token bridge, `/auth/me` identity context, portal-membership landing |
+| `src/middleware.ts` | Clerk-session check only; never role authorization |
 | `src/lib/order-state.ts` | Plain-language state labels (no snake_case on screen) |
 | `src/lib/supplier-actions.ts` | Valid supplier transitions for current state |
 | `src/lib/ops-actions.ts` | Valid ops transitions + queue membership |
@@ -213,46 +211,27 @@ Both were evaluated here and deliberately not adopted:
 
 ## Auth and role boundary
 
-1. Login → `POST /auth/login` → cookies `gridgo_token` + `gridgo_role` + sessionStorage user
-2. Middleware: wrong role path → redirect to that role's home; no token → `/login`
-3. `RoleGate` re-checks live session via context
-4. Logout → clear cookies + storage → `router.replace("/login")` (no back-button re-entry)
+1. Clerk owns sign-in, Google/password recovery, session cookies, JWT refresh, and logout.
+2. Middleware requires only a signed Clerk session for `/`, `/supplier/*`, `/ops/*`, and
+   `/admin/*`; it never reads a role or authorization claim.
+3. `AuthProvider` loads `GET /auth/me` for identity and the complete database membership
+   list. The root uses that list only to choose a stable initial portal workspace.
+4. Every role layout calls its fixed projection through `RoleGate`:
+   `/auth/me/supplier`, `/auth/me/ops`, or `/auth/me/admin`. Only a successful projection
+   mounts the page tree. Clerk claims/metadata, the legacy `user.role`, app state, and route
+   parameters never grant access.
+5. An authenticated but unmapped identity, or one with no portal membership, gets the
+   access-not-assigned screen and can sign out to use another account.
 
-Client-rendered credential inputs must initialize empty. Populate demo credentials only through explicit account controls so hydration cannot overwrite typing with a privileged or role-specific default.
+`/login` is sign-in only: `SignIn` uses `withSignUp={false}` and
+`transferable={false}`. There is no privileged signup route or role selector. The public
+page still never names an account; `scripts/assert-no-account-addresses.mjs` checks the
+emitted client and server output, and the login tests enforce sign-in-only behavior.
 
-**The sign-in page never names an account.** It is public at
-`https://gridgo-dash.talasora.com/login`, so a list of addresses there hands anyone who
-opens it the account list — super admin included — before they have guessed a password.
-Rotating the passwords does not make it safe: the addresses are the disclosure. This holds
-for error copy too; "use a demo account ending in @…" is the same leak in a different
-place. A failed sign-in says the credentials are wrong, and no more.
-
-Three rules follow, and all three are asserted:
-
-- Account addresses live in exactly one module, `src/app/login/dev-accounts.ts`, behind
-  `process.env.NODE_ENV === "production" ? [] : […]`. The compiler substitutes `NODE_ENV`,
-  so the list folds to a constant and the literals leave the bundle. A runtime flag or an
-  environment variable would not — both still ship the strings to the browser.
-  The local password rides in the same object literals, so local sign-in is one tap and
-  the credential folds away with the address it belongs to. Write such values **inline**,
-  not as a hoisted module constant: a top-level `const` sits outside the discarded branch
-  and survives on tree shaking rather than on the guard. Never put a real credential here
-  — the guard keeps values out of the bundle, not out of the repository.
-- `scripts/assert-no-account-addresses.mjs` greps the emitted client chunks *and* server
-  bundle for any `…@gridgo.ph` / `…@gridgo.local` address and the official Clerk
-  supplier Gmail. It runs as part of `npm run build`, so a reintroduction fails
-  the build rather than the deploy.
-- `src/app/login/__tests__/account-disclosure.test.ts` holds the same line at review time,
-  and `page.test.tsx` asserts the failure copy names no account and no `ApiError.code`.
-
-`@gridgo.local` was the placeholder domain. Operations and Super Admin stay
-`@gridgo.ph` (no Clerk ops/admin user exists). The advertised shop login is the
-official Clerk supplier, not `supplier@gridgo.ph`.
-
-The sign-in submit control stays `disabled` until the client has mounted. Before React
-attaches `onSubmit`, a click submits the form natively — a GET to `/login` that writes the
-password into the address bar and browser history. `src/app/login/__tests__/page.test.tsx`
-asserts the server markup renders it disabled.
+Clerk's rotating JWT is attached as `Authorization: Bearer …` by the API client. Never copy
+it into a GRIDGO cookie or session storage. `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is public
+and baked into the client build; `CLERK_SECRET_KEY` is server-only runtime configuration.
+`scripts/assert-no-clerk-secrets.mjs` scans the complete `.next` build output.
 
 Suppliers are external partners. Never serve `/ops/*` or `/admin/*` to them — not even as soft-hidden UI.
 
@@ -262,7 +241,7 @@ Suppliers are external partners. Never serve `/ops/*` or `/admin/*` to them — 
 
 Authoritative API docs live in the separate `gridgo-api` repo (`AGENTS.md`, `README.md`, `PRD.md`). When docs and the running server disagree, **the server wins** — update types here to match observed JSON.
 
-### Local sign-in
+### Local API proxy
 
 The API answers any browser `Origin` that is not in `CORS_ALLOWED_ORIGINS` with `403 origin_not_allowed` and **no** `Access-Control-Allow-Origin`. That is an authorization rule, not a dashboard bug — do not widen production CORS from this repo.
 
@@ -281,7 +260,7 @@ In `next dev`, `getApiBase()` therefore returns `/api/gridgo` in the browser, an
 
 ### Client coverage (spine)
 
-Auth: `login`, `logout`, `me`.  
+Auth: `getAuthMe`, `getPortalRoleProjection`.
 Orders/jobs: `listOrders`, `listJobs`, `getOrder`, `createOrder`, `transitionOrder`.  
 Credits: `creditBalance`, `grantCredits` (super). Credits are a **grant ledger only** — never a way to pay for an order.  
 Payments: `submitPayment` (client), `confirmPayment`, `rejectPayment` (ops/super).  
@@ -349,7 +328,8 @@ Two surfaces are mounted for both Operations and Super Admin from **one** implem
 | `src/components/settings/OperationalSettings.tsx` | `/ops/settings`, `/admin/settings` |
 
 - AppShell renders `navGroupsForRole(role)` only. Do **not** maintain separate nav arrays in components.
-- Middleware + `RoleGate` still refuse another role’s URL; nav is not a security boundary.
+- Middleware authenticates only; `RoleGate` refuses a role URL through its fixed database
+  projection. Nav is not a security boundary.
 - Yellow on the rail is the **selected item’s text and icon** only — no left bar, no yellow pill or yellow fill. The active row also keeps the default sidebar-accent wash (same quiet highlight hover uses). Do not force `data-active:bg-transparent`. Elsewhere, yellow is at most one `Button variant="primary"` on a page. The rail must never become a yellow column.
 - `ready: false` → route uses `ComingNext` placeholder (“Coming next” + body from the nav item). Prefer that over a 404.
 - When shipping a real page: replace the placeholder `page.tsx`, set `ready: true` on that nav item, keep the same `href`.

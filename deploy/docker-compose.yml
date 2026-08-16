@@ -33,6 +33,10 @@ services:
       # suggest, falsely, that it could be changed without a rebuild.
       PORT: "3000"
       HOSTNAME: "0.0.0.0"
+      # Clerk middleware verifies every portal request server-side. Provision
+      # this in the compose directory's gitignored `.env`; never bake it into
+      # the image or expose it through NEXT_PUBLIC_*.
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:?CLERK_SECRET_KEY is required}
 
     # Inherited from the image's HEALTHCHECK (see Dockerfile) — declared here so
     # an operator reading only this file knows the container has one and where

@@ -1,6 +1,24 @@
 /** Shared API types for the GRIDGO demo backend — derived from observed responses. */
 
 export type Role = "client" | "supplier" | "rider" | "ops_admin" | "super_admin";
+export type PortalRole = Extract<Role, "supplier" | "ops_admin" | "super_admin">;
+
+export type RoleMembership = {
+  role: Role;
+};
+
+export type ApprovalCaseSummary = {
+  id: string;
+  kind: "business_client" | "supplier" | "rider";
+  status: "pending" | "approved" | "rejected" | "suspended";
+  version: number;
+  applicationRevision: number;
+  submittedAt: string | null;
+  decidedAt: string | null;
+  rejectionReason: string | null;
+  suspensionReason: string | null;
+  updatedAt: string;
+};
 
 export type VerificationStatus =
   | "unverified"
@@ -51,6 +69,28 @@ export type User = {
   verifiedAt?: string | null;
   verifiedBy?: string | null;
   createdAt?: string;
+};
+
+/** Identity fields shared by every fixed `/auth/me/*` projection. */
+export type PortalIdentity = {
+  id: string;
+  email: string;
+  name: string;
+  phone?: string;
+  createdAt: string;
+};
+
+/** Exact merged `GET /auth/me` envelope. Authorization reads memberships, not `user.role`. */
+export type AuthMe = {
+  user: User;
+  memberships: RoleMembership[];
+  approvalCases: ApprovalCaseSummary[];
+};
+
+export type PortalRoleProjection = {
+  user: PortalIdentity;
+  membership: RoleMembership;
+  capabilities: Record<string, boolean>;
 };
 
 export type TimelineEntry = {
@@ -608,11 +648,6 @@ export type PostAnnouncementInput = {
 };
 
 // ---- Auth / health ----
-
-export type LoginResult = {
-  token: string;
-  user: User;
-};
 
 export type HealthResult = {
   ok: boolean;

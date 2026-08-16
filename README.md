@@ -1,33 +1,28 @@
 # GRIDGO Web Portal
 
-One Next.js application serving three role-gated experiences against the GRIDGO demo API:
+One Next.js application serving three role-gated experiences against the GRIDGO API:
 
-| Role | Local account | Home |
-|---|---|---|
-| Supplier partner | `markdavidprado@gmail.com` | `/supplier/jobs` |
-| Operations | `ops@gridgo.ph` | `/ops/qa` |
-| Super Admin | `admin@gridgo.ph` | `/admin/overview` |
+| Role | Home |
+|---|---|
+| Supplier partner | `/supplier/jobs` |
+| Operations | `/ops/qa` |
+| Super Admin | `/admin/overview` |
 
-Those are the **local demo API's** accounts, password `Ilovegridgo-0990`
-(the API's `DEMO_PASSWORD`). The deployed
-portal's accounts are not these, and the sign-in page names none of them — see
-[Auth and role boundary](AGENTS.md#auth-and-role-boundary).
-
-Running `npm run dev`, the sign-in card offers a row of buttons that fill both
-fields, so signing in locally is one tap. That whole list — addresses and local
-password together — is compiled out of a production build; `npm run build`
-asserts it.
+Clerk authenticates the person; Postgres memberships returned by the GRIDGO API authorize
+each role tree. The public sign-in screen names no account and offers no privileged signup.
 
 ## Prerequisites
 
-- Node 20+
-- Demo API at `http://127.0.0.1:8787` (or set `NEXT_PUBLIC_API_URL`). `npm run dev` reaches it through same-origin `/api/gridgo` so the browser never CORS-hits the API.
+- Node 20.9+
+- GRIDGO API at `http://127.0.0.1:8787` (or set `NEXT_PUBLIC_API_URL`). `npm run dev` reaches it through same-origin `/api/gridgo` so the browser never CORS-hits the API.
+- Clerk publishable and secret keys for the same Clerk instance used by the API
 
 ## Setup
 
 ```bash
 npm install
-cp .env.example .env.local   # optional; default is already 127.0.0.1:8787
+cp .env.example .env.local
+# Fill NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY and server-only CLERK_SECRET_KEY.
 npm run dev
 ```
 
@@ -61,8 +56,9 @@ explains why and what asserts it.
 - **App Router** with TypeScript strict and Tailwind v4
 - **Design tokens** ported from `gridgo-client` (`theme.ts` / `global.css`) — same hex values, no inventions
 - **Typed API client** in `src/lib/api` — pages never call `fetch` directly
-- **Auth** via `POST /auth/login` → bearer token cookies + `GET /auth/me`
-- **Role gate** in middleware + `RoleGate` layout — one place decides which tree is reachable
+- **Auth** via Clerk Google/email-password sessions; Clerk JWTs are sent as API bearer tokens
+- **Role gate** via fixed `/auth/me/supplier|ops|admin` projections in `RoleGate`; Postgres
+  memberships, never Clerk claims, decide which tree is reachable
 - **Screens in this foundation**
   - Supplier: job inbox + order workspace (`GET /jobs`, `POST /orders/:id/transition`)
   - Operations: QA / action queue + workspace
@@ -89,4 +85,5 @@ See `AGENTS.md` and the design requirements document. Critical web rules:
 
 ## Auth notes
 
-Sign-out uses `router.replace("/login")` and clears session cookies so the browser back button cannot re-enter a protected shell with a live token.
+Sign-out ends the Clerk session and uses `router.replace("/login")`, so the browser back
+button cannot re-enter a protected shell with a live session.

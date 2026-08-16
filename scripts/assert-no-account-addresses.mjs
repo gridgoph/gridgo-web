@@ -7,12 +7,9 @@
  * handed to anyone who opened `https://gridgo-dash.talasora.com/login`. Rotating
  * the passwords did not fix that; the addresses were the disclosure.
  *
- * The local-development convenience that replaced it lives behind
- * `process.env.NODE_ENV === "production" ? [] : […]` in
- * `src/app/login/dev-accounts.ts`, which the compiler folds to a constant empty
- * list. That is an argument about what the compiler *should* do. This asserts
- * against what it actually emitted — both the client chunks a browser
- * downloads and the server bundle that renders the HTML.
+ * The Clerk-only portal now carries no credential picker at all. This asserts
+ * against what the compiler actually emitted — both the client chunks a
+ * browser downloads and the server bundle that renders the HTML.
  *
  * Runs as part of `npm run build`, so a reintroduction fails the build rather
  * than the deploy.
@@ -29,7 +26,7 @@ import { join, relative, resolve } from "node:path";
 /**
  * Any address on a GRIDGO account domain — the live `gridgo.ph` and the
  * retired `gridgo.local` placeholder — plus the official Clerk supplier
- * Gmail that the local picker advertises. The domain half is deliberately
+ * Gmail previously advertised by the local picker. The domain half is deliberately
  * not a list of the known local names: a fourth `@gridgo.ph` added later
  * must fail this too. The Gmail is the one named address that is not on
  * those domains, so it is hunted by exact match.
@@ -95,7 +92,7 @@ if (hits.length > 0) {
     `${hits.length} build artefact(s) contain GRIDGO account addresses.`,
     "The sign-in page is public — shipping these publishes the account list.",
     ...hits.map(({ file, found }) => `${file}: ${found.join(", ")}`),
-    "Keep addresses behind the build-time guard in src/app/login/dev-accounts.ts.",
+    "Remove account addresses from application code and public copy.",
   );
 }
 

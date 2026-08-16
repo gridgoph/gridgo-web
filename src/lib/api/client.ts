@@ -13,6 +13,7 @@
 
 import type {
   Announcement,
+  AuthMe,
   AuditEntry,
   CatalogItem,
   Claim,
@@ -25,13 +26,14 @@ import type {
   HealthResult,
   Issue,
   LocationPing,
-  LoginResult,
   Notification,
   Order,
   PaymentInstallment,
   PayoutMilestone,
   PayoutMilestoneCode,
   PlatformSettings,
+  PortalRole,
+  PortalRoleProjection,
   PostAnnouncementInput,
   StoredFile,
   SupplierService,
@@ -171,7 +173,7 @@ type TokenProvider = () => string | null | Promise<string | null>;
 
 let tokenProvider: TokenProvider = () => null;
 
-/** Wire the client to the session store (called once from AuthProvider). */
+/** Wire the client to Clerk's rotating session token (called once from AuthProvider). */
 export function setTokenProvider(provider: TokenProvider): void {
   tokenProvider = provider;
 }
@@ -214,30 +216,27 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 // ---------------------------------------------------------------------------
-// Auth & session
+// Clerk identity + Postgres authorization
 // ---------------------------------------------------------------------------
 
-export async function login(
-  email: string,
-  password: string,
-): Promise<LoginResult> {
-  return request("/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
+export async function getAuthMe(): Promise<AuthMe> {
+  return request<AuthMe>("/auth/me");
 }
 
-export async function logout(): Promise<void> {
-  try {
-    await request("/auth/logout", { method: "POST" });
-  } catch {
-    // Session may already be gone; local clear still happens in AuthProvider.
-  }
-}
+const PORTAL_PROJECTION_PATH: Record<PortalRole, string> = {
+  supplier: "/auth/me/supplier",
+  ops_admin: "/auth/me/ops",
+  super_admin: "/auth/me/admin",
+};
 
-export async function me(): Promise<User> {
-  const result = await request<{ user: User }>("/auth/me");
-  return result.user;
+/**
+ * Authorize one portal surface from its fixed API projection. The requested
+ * role is converted to a path locally and never sent as client-controlled JSON.
+ */
+export async function getPortalRoleProjection(
+  role: PortalRole,
+): Promise<PortalRoleProjection> {
+  return request<PortalRoleProjection>(PORTAL_PROJECTION_PATH[role]);
 }
 
 // ---------------------------------------------------------------------------
