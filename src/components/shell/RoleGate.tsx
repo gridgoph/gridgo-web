@@ -31,8 +31,7 @@ const MAX_UNAUTHORIZED_REFRESHES = 1;
  * The projection is re-checked on every in-tree navigation so suspension or
  * demotion takes effect without a reload, but after the first allowed result
  * the current tree keeps rendering while that revalidation is in flight;
- * access is removed only on a settled denial (or a persistently unauthorized
- * projection, which becomes the retryable unavailable state).
+ * access is removed only on a settled denial.
  */
 export function RoleGate({ allow, children }: Props) {
   const auth = useAuth();
@@ -53,9 +52,7 @@ export function RoleGate({ allow, children }: Props) {
     const checkProjection = async () => {
       let unauthorizedRefreshes = 0;
       let refreshToken = false;
-      setProjectionStatus((current) =>
-        current === "allowed" ? current : "checking",
-      );
+      setProjectionStatus((current) => (current === "allowed" ? current : "checking"));
 
       while (active) {
         try {
@@ -79,7 +76,9 @@ export function RoleGate({ allow, children }: Props) {
               refreshToken = true;
               continue;
             }
-            setProjectionStatus("unavailable");
+            setProjectionStatus((current) =>
+              current === "allowed" ? current : "unavailable",
+            );
             return;
           }
           setProjectionStatus((current) =>

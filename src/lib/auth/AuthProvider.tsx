@@ -68,9 +68,31 @@ export function AuthProvider({
   children: ReactNode;
   clerkSession: ClerkSessionAdapter;
 }) {
+  const sessionBoundary = JSON.stringify([
+    clerkSession.isSignedIn,
+    clerkSession.sessionId,
+    clerkSession.userId,
+  ]);
+
+  return (
+    <SessionAuthProvider key={sessionBoundary} clerkSession={clerkSession}>
+      {children}
+    </SessionAuthProvider>
+  );
+}
+
+function SessionAuthProvider({
+  children,
+  clerkSession,
+}: {
+  children: ReactNode;
+  clerkSession: ClerkSessionAdapter;
+}) {
   const [user, setUser] = useState<User | null>(null);
   const [memberships, setMemberships] = useState<RoleMembership[]>([]);
-  const [status, setStatus] = useState<PortalIdentityStatus>("checking");
+  const [status, setStatus] = useState<PortalIdentityStatus>(() =>
+    clerkSession.isLoaded && !clerkSession.isSignedIn ? "signed_out" : "checking",
+  );
   const router = useRouter();
   const refreshGeneration = useRef(0);
   const activeRefresh = useRef<AbortController | null>(null);

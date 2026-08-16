@@ -77,12 +77,24 @@ function clerkSession(userId: string, sessionId: string): ClerkSessionAdapter {
   };
 }
 
+function signedOutClerkSession(): ClerkSessionAdapter {
+  return {
+    getToken: vi.fn().mockResolvedValue(null),
+    isLoaded: true,
+    isSignedIn: false,
+    sessionId: null,
+    signOut: vi.fn().mockResolvedValue(undefined),
+    userId: null,
+  };
+}
+
 function AuthProbe() {
   const auth = useAuth();
   return (
     <>
       <output data-testid="status">{auth.status}</output>
       <output data-testid="user">{auth.user?.id ?? "none"}</output>
+      {auth.status === "mapped" && auth.user ? <p>Authorized workspace</p> : null}
       <button type="button" onClick={() => void auth.refresh()}>
         Refresh
       </button>
@@ -94,6 +106,61 @@ function AuthProbe() {
 }
 
 describe("AuthProvider refresh ownership", () => {
+  it("removes the authorized workspace immediately on a direct account switch", async () => {
+    const firstIdentity = authMe("user_first", "ops_admin");
+    const secondIdentity = authMe("user_second", "super_admin");
+    const pendingSecondIdentity = deferred<AuthMe>();
+    getAuthMeMock
+      .mockResolvedValueOnce(firstIdentity)
+      .mockImplementationOnce(() => pendingSecondIdentity.promise);
+
+    const view = render(
+      <AuthProvider clerkSession={clerkSession("clerk_first", "session_first")}>
+        <AuthProbe />
+      </AuthProvider>,
+    );
+    expect(await screen.findByText("Authorized workspace")).toBeVisible();
+
+    view.rerender(
+      <AuthProvider clerkSession={clerkSession("clerk_second", "session_second")}>
+        <AuthProbe />
+      </AuthProvider>,
+    );
+
+    expect(screen.queryByText("Authorized workspace")).not.toBeInTheDocument();
+    expect(screen.getByTestId("status")).toHaveTextContent("checking");
+    expect(screen.getByTestId("user")).toHaveTextContent("none");
+    await waitFor(() => expect(getAuthMeMock).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      pendingSecondIdentity.resolve(secondIdentity);
+      await pendingSecondIdentity.promise;
+    });
+    expect(await screen.findByText("Authorized workspace")).toBeVisible();
+    expect(screen.getByTestId("user")).toHaveTextContent("user_second");
+  });
+
+  it("removes the authorized workspace immediately when Clerk signs out", async () => {
+    getAuthMeMock.mockResolvedValueOnce(authMe("user_first", "ops_admin"));
+    const view = render(
+      <AuthProvider clerkSession={clerkSession("clerk_first", "session_first")}>
+        <AuthProbe />
+      </AuthProvider>,
+    );
+    expect(await screen.findByText("Authorized workspace")).toBeVisible();
+
+    view.rerender(
+      <AuthProvider clerkSession={signedOutClerkSession()}>
+        <AuthProbe />
+      </AuthProvider>,
+    );
+
+    expect(screen.queryByText("Authorized workspace")).not.toBeInTheDocument();
+    expect(screen.getByTestId("status")).toHaveTextContent("signed_out");
+    expect(screen.getByTestId("user")).toHaveTextContent("none");
+    expect(getAuthMeMock).toHaveBeenCalledTimes(1);
+  });
+
   it("cannot restore a prior account after sign-out and a new Clerk session", async () => {
     const firstIdentity = authMe("user_first", "ops_admin");
     const secondIdentity = authMe("user_second", "super_admin");

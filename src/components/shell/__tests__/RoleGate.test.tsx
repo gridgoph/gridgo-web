@@ -190,9 +190,7 @@ describe("RoleGate navigation revalidation", () => {
     expect(screen.queryByText("Checking portal access…")).not.toBeInTheDocument();
 
     resolveRevalidation(projection("ops_admin"));
-    await waitFor(() =>
-      expect(screen.getByText("Operations workspace")).toBeVisible(),
-    );
+    await waitFor(() => expect(screen.getByText("Operations workspace")).toBeVisible());
   });
 
   it("removes access when a navigation revalidation returns a settled denial", async () => {
@@ -263,9 +261,7 @@ describe("RoleGate navigation revalidation", () => {
 
   it("cannot refresh shared auth from a stale projection after switching gates", async () => {
     const staleOpsProjection = deferred();
-    getPortalRoleProjectionMock.mockImplementationOnce(
-      () => staleOpsProjection.promise,
-    );
+    getPortalRoleProjectionMock.mockImplementationOnce(() => staleOpsProjection.promise);
 
     const { rerender } = render(
       <RoleGate key="ops" allow="ops_admin">
@@ -417,5 +413,34 @@ describe("RoleGate navigation revalidation", () => {
       refreshToken: true,
     });
     expect(screen.queryByText("Operations workspace")).not.toBeInTheDocument();
+  });
+
+  it("keeps an allowed tree mounted after the bounded 401 retry is exhausted", async () => {
+    getPortalRoleProjectionMock.mockResolvedValueOnce(projection("ops_admin"));
+    const { rerender } = render(
+      <RoleGate allow="ops_admin">
+        <p>Operations workspace</p>
+      </RoleGate>,
+    );
+    expect(await screen.findByText("Operations workspace")).toBeVisible();
+
+    getPortalRoleProjectionMock.mockRejectedValue(
+      new ApiError(401, { error: "unauthorized" }),
+    );
+    pathnameRef.current = "/test-route/detail";
+    rerender(
+      <RoleGate allow="ops_admin">
+        <p>Operations workspace</p>
+      </RoleGate>,
+    );
+
+    await waitFor(() => expect(getPortalRoleProjectionMock).toHaveBeenCalledTimes(3));
+    expect(screen.getByText("Operations workspace")).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "Could not check portal access" }),
+    ).not.toBeInTheDocument();
+    expect(getPortalRoleProjectionMock).toHaveBeenLastCalledWith("ops_admin", {
+      refreshToken: true,
+    });
   });
 });
