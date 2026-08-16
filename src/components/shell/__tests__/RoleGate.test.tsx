@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -77,6 +77,16 @@ afterEach(() => {
   authState.signOut = signOutMock;
   authState.refresh = refreshMock;
 });
+
+function deferred() {
+  let resolve!: (value: unknown) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 function projection(role: "supplier" | "ops_admin" | "super_admin") {
   return {
@@ -213,6 +223,114 @@ describe("RoleGate navigation revalidation", () => {
       }),
     ).toBeVisible();
     expect(screen.queryByText("Operations workspace")).not.toBeInTheDocument();
+  });
+
+  it("ignores a stale projection success that resolves after a newer denial", async () => {
+    getPortalRoleProjectionMock.mockResolvedValueOnce(projection("ops_admin"));
+
+    const { rerender } = render(
+      <RoleGate allow="ops_admin">
+        <p>Operations workspace</p>
+      </RoleGate>,
+    );
+    expect(await screen.findByText("Operations workspace")).toBeVisible();
+
+    const stale = deferred();
+    const newest = deferred();
+    getPortalRoleProjectionMock
+      .mockImplementationOnce(() => stale.promise)
+      .mockImplementationOnce(() => newest.promise);
+
+    pathnameRef.current = "/test-route/first";
+    rerender(
+      <RoleGate allow="ops_admin">
+        <p>Operations workspace</p>
+      </RoleGate>,
+    );
+    await waitFor(() => expect(getPortalRoleProjectionMock).toHaveBeenCalledTimes(2));
+
+    pathnameRef.current = "/test-route/second";
+    rerender(
+      <RoleGate allow="ops_admin">
+        <p>Operations workspace</p>
+      </RoleGate>,
+    );
+    await waitFor(() => expect(getPortalRoleProjectionMock).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      newest.reject(
+        new ApiError(403, {
+          error: "membership_required",
+          requiredRole: "ops_admin",
+        }),
+      );
+    });
+    expect(
+      await screen.findByRole("heading", {
+        name: "This account cannot open Operations",
+      }),
+    ).toBeVisible();
+
+    await act(async () => {
+      stale.resolve(projection("ops_admin"));
+    });
+    expect(
+      screen.getByRole("heading", { name: "This account cannot open Operations" }),
+    ).toBeVisible();
+    expect(screen.queryByText("Operations workspace")).not.toBeInTheDocument();
+  });
+
+  it("ignores a stale projection denial that rejects after a newer allowed result", async () => {
+    getPortalRoleProjectionMock.mockResolvedValueOnce(projection("ops_admin"));
+
+    const { rerender } = render(
+      <RoleGate allow="ops_admin">
+        <p>Operations workspace</p>
+      </RoleGate>,
+    );
+    expect(await screen.findByText("Operations workspace")).toBeVisible();
+
+    const stale = deferred();
+    const newest = deferred();
+    getPortalRoleProjectionMock
+      .mockImplementationOnce(() => stale.promise)
+      .mockImplementationOnce(() => newest.promise);
+
+    pathnameRef.current = "/test-route/first";
+    rerender(
+      <RoleGate allow="ops_admin">
+        <p>Operations workspace</p>
+      </RoleGate>,
+    );
+    await waitFor(() => expect(getPortalRoleProjectionMock).toHaveBeenCalledTimes(2));
+
+    pathnameRef.current = "/test-route/second";
+    rerender(
+      <RoleGate allow="ops_admin">
+        <p>Operations workspace</p>
+      </RoleGate>,
+    );
+    await waitFor(() => expect(getPortalRoleProjectionMock).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      newest.resolve(projection("ops_admin"));
+    });
+    expect(screen.getByText("Operations workspace")).toBeVisible();
+
+    await act(async () => {
+      stale.reject(
+        new ApiError(403, {
+          error: "membership_required",
+          requiredRole: "ops_admin",
+        }),
+      );
+    });
+    expect(screen.getByText("Operations workspace")).toBeVisible();
+    expect(
+      screen.queryByRole("heading", {
+        name: "This account cannot open Operations",
+      }),
+    ).not.toBeInTheDocument();
   });
 
   it("settles a persistently unauthorized projection to the retryable unavailable state", async () => {

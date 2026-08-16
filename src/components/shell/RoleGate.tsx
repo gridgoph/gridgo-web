@@ -41,14 +41,19 @@ export function RoleGate({ allow, children }: Props) {
   const [projectionStatus, setProjectionStatus] = useState<ProjectionStatus>("idle");
   const [attempt, setAttempt] = useState(0);
   const unauthorizedRefreshes = useRef(0);
+  const projectionRequestSeq = useRef(0);
 
   const checkProjection = useCallback(async () => {
+    const seq = ++projectionRequestSeq.current;
+    const isLatest = () => seq === projectionRequestSeq.current;
     setProjectionStatus((current) => (current === "allowed" ? current : "checking"));
     try {
       await getPortalRoleProjection(allow);
+      if (!isLatest()) return;
       unauthorizedRefreshes.current = 0;
       setProjectionStatus("allowed");
     } catch (error) {
+      if (!isLatest()) return;
       if (isApiError(error) && error.kind === "forbidden") {
         setProjectionStatus("denied");
         return;
