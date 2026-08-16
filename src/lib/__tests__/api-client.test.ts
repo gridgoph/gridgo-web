@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiError,
+  getApiBase,
   getAuthMe,
   getPortalRoleProjection,
   isApiError,
@@ -139,7 +140,7 @@ describe("API bearer tokens", () => {
     const result = await getAuthMe();
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("http://127.0.0.1:8787/auth/me");
+    expect(url).toBe(`${getApiBase()}/auth/me`);
     expect(new Headers(init.headers).get("authorization")).toBe(
       "Bearer clerk-session-token",
     );
@@ -163,7 +164,7 @@ describe("API bearer tokens", () => {
     const projection = await getPortalRoleProjection(role);
 
     const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe(`http://127.0.0.1:8787${path}`);
+    expect(url).toBe(`${getApiBase()}${path}`);
     expect(projection.membership).toEqual({ role });
     expect(projection).toEqual(fixture);
   });
