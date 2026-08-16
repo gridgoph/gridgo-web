@@ -5,7 +5,9 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -32,8 +34,27 @@ export type ClerkSessionAdapter = {
   getToken: () => Promise<string | null>;
   isLoaded: boolean;
   isSignedIn: boolean;
+  sessionId: string | null;
   signOut: () => Promise<unknown>;
+  userId: string | null;
 };
+
+type ClerkSessionSnapshot = Pick<
+  ClerkSessionAdapter,
+  "isLoaded" | "isSignedIn" | "sessionId" | "userId"
+>;
+
+function sameClerkSession(
+  left: ClerkSessionSnapshot,
+  right: ClerkSessionSnapshot,
+): boolean {
+  return (
+    left.isLoaded === right.isLoaded &&
+    left.isSignedIn === right.isSignedIn &&
+    left.sessionId === right.sessionId &&
+    left.userId === right.userId
+  );
+}
 
 /**
  * Clerk owns authentication and token refresh. `/auth/me` supplies display
@@ -51,26 +72,84 @@ export function AuthProvider({
   const [memberships, setMemberships] = useState<RoleMembership[]>([]);
   const [status, setStatus] = useState<PortalIdentityStatus>("checking");
   const router = useRouter();
+  const refreshGeneration = useRef(0);
+  const activeRefresh = useRef<AbortController | null>(null);
+  const mounted = useRef(false);
+  const latestClerkSession = useRef<ClerkSessionSnapshot>({
+    isLoaded: clerkSession.isLoaded,
+    isSignedIn: clerkSession.isSignedIn,
+    sessionId: clerkSession.sessionId,
+    userId: clerkSession.userId,
+  });
 
-  useEffect(() => {
+  const invalidateRefresh = useCallback(() => {
+    refreshGeneration.current += 1;
+    activeRefresh.current?.abort();
+    activeRefresh.current = null;
+  }, []);
+
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      invalidateRefresh();
+    };
+  }, [invalidateRefresh]);
+
+  useLayoutEffect(() => {
+    latestClerkSession.current = {
+      isLoaded: clerkSession.isLoaded,
+      isSignedIn: clerkSession.isSignedIn,
+      sessionId: clerkSession.sessionId,
+      userId: clerkSession.userId,
+    };
+    invalidateRefresh();
+  }, [
+    clerkSession.isLoaded,
+    clerkSession.isSignedIn,
+    clerkSession.sessionId,
+    clerkSession.userId,
+    invalidateRefresh,
+  ]);
+
+  useLayoutEffect(() => {
     setTokenProvider(clerkSession.getToken);
+    return () => setTokenProvider(() => null);
   }, [clerkSession.getToken]);
 
   const refresh = useCallback(async (): Promise<void> => {
-    if (!clerkSession.isLoaded) {
-      setStatus("checking");
-      return;
-    }
-    if (!clerkSession.isSignedIn) {
-      setUser(null);
-      setMemberships([]);
-      setStatus("signed_out");
-      return;
-    }
+    invalidateRefresh();
+    const generation = refreshGeneration.current;
+    const controller = new AbortController();
+    activeRefresh.current = controller;
+    const originatingSession: ClerkSessionSnapshot = {
+      isLoaded: clerkSession.isLoaded,
+      isSignedIn: clerkSession.isSignedIn,
+      sessionId: clerkSession.sessionId,
+      userId: clerkSession.userId,
+    };
+    const isCurrent = () =>
+      mounted.current &&
+      !controller.signal.aborted &&
+      generation === refreshGeneration.current &&
+      sameClerkSession(originatingSession, latestClerkSession.current);
 
-    setStatus("checking");
     try {
+      if (!clerkSession.isLoaded) {
+        if (isCurrent()) setStatus("checking");
+        return;
+      }
+      if (!clerkSession.isSignedIn) {
+        if (!isCurrent()) return;
+        setUser(null);
+        setMemberships([]);
+        setStatus("signed_out");
+        return;
+      }
+
+      if (isCurrent()) setStatus("checking");
       const token = await clerkSession.getToken();
+      if (!isCurrent()) return;
       if (!token) {
         setUser(null);
         setMemberships([]);
@@ -78,34 +157,36 @@ export function AuthProvider({
         return;
       }
       setTokenProvider(clerkSession.getToken);
-      const next = await getAuthMe();
+      const next = await getAuthMe({ signal: controller.signal });
+      if (!isCurrent()) return;
       setUser(next.user);
       setMemberships(next.memberships);
       setStatus("mapped");
     } catch (error) {
+      if (!isCurrent()) return;
       setUser(null);
       setMemberships([]);
       setStatus(
         isApiError(error) && error.kind === "unauthorized" ? "unmapped" : "unavailable",
       );
+    } finally {
+      if (activeRefresh.current === controller) activeRefresh.current = null;
     }
-  }, [clerkSession]);
+  }, [clerkSession, invalidateRefresh]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   const signOut = useCallback(async () => {
-    try {
-      await clerkSession.signOut();
-    } finally {
-      setTokenProvider(() => null);
-      setUser(null);
-      setMemberships([]);
-      setStatus("signed_out");
-      router.replace("/login");
-    }
-  }, [clerkSession, router]);
+    invalidateRefresh();
+    setTokenProvider(() => null);
+    setUser(null);
+    setMemberships([]);
+    setStatus("signed_out");
+    router.replace("/login");
+    await clerkSession.signOut();
+  }, [clerkSession, invalidateRefresh, router]);
 
   const value = useMemo<AuthState>(
     () => ({

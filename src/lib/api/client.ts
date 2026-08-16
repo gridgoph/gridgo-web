@@ -226,8 +226,8 @@ async function request<T>(
 // Clerk identity + Postgres authorization
 // ---------------------------------------------------------------------------
 
-export async function getAuthMe(): Promise<AuthMe> {
-  return request<AuthMe>("/auth/me");
+export async function getAuthMe(options?: { signal?: AbortSignal }): Promise<AuthMe> {
+  return request<AuthMe>("/auth/me", { signal: options?.signal });
 }
 
 const PORTAL_PROJECTION_PATH: Record<PortalRole, string> = {
@@ -313,13 +313,10 @@ export async function transitionOrder(
   state: string,
   extra: TransitionExtra = {},
 ): Promise<Order> {
-  const result = await request<{ order: Order }>(
-    `/orders/${orderId}/transition`,
-    {
-      method: "POST",
-      body: JSON.stringify({ state, ...extra }),
-    },
-  );
+  const result = await request<{ order: Order }>(`/orders/${orderId}/transition`, {
+    method: "POST",
+    body: JSON.stringify({ state, ...extra }),
+  });
   return result.order;
 }
 
@@ -405,9 +402,7 @@ export async function releaseMilestone(
 // ---------------------------------------------------------------------------
 
 export async function listNotifications(): Promise<Notification[]> {
-  const result = await request<{ notifications: Notification[] }>(
-    "/notifications",
-  );
+  const result = await request<{ notifications: Notification[] }>("/notifications");
   return result.notifications;
 }
 
@@ -452,9 +447,7 @@ export async function listEscalations(filters?: {
     status: filters?.status,
     orderId: filters?.orderId,
   });
-  const result = await request<{ escalations: Escalation[] }>(
-    `/escalations${q}`,
-  );
+  const result = await request<{ escalations: Escalation[] }>(`/escalations${q}`);
   return result.escalations;
 }
 
@@ -481,9 +474,7 @@ export async function getFile(fileId: string): Promise<StoredFile> {
 
 /** Five-minute signed GET for the stored object. */
 export async function getFileDownloadUrl(fileId: string): Promise<string> {
-  const result = await request<{ url: string }>(
-    `/files/${fileId}/download-url`,
-  );
+  const result = await request<{ url: string }>(`/files/${fileId}/download-url`);
   return result.url;
 }
 
@@ -522,13 +513,10 @@ export async function grantCredits(input: {
 export async function postAnnouncement(
   input: PostAnnouncementInput,
 ): Promise<Announcement> {
-  const result = await request<{ announcement: Announcement }>(
-    "/announcements",
-    {
-      method: "POST",
-      body: JSON.stringify(input),
-    },
-  );
+  const result = await request<{ announcement: Announcement }>("/announcements", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
   return result.announcement;
 }
 
@@ -564,13 +552,10 @@ export async function setUserVerification(
   userId: string,
   input: { status: VerificationStatus; reason?: string; note?: string },
 ): Promise<User> {
-  const result = await request<{ user: User }>(
-    `/users/${userId}/verification`,
-    {
-      method: "POST",
-      body: JSON.stringify(input),
-    },
-  );
+  const result = await request<{ user: User }>(`/users/${userId}/verification`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
   return result.user;
 }
 
@@ -595,10 +580,7 @@ export async function createZone(input: CreateZoneInput): Promise<Zone> {
 }
 
 /** Super Admin only. `zoneId` may be id or code. */
-export async function updateZone(
-  zoneId: string,
-  input: UpdateZoneInput,
-): Promise<Zone> {
+export async function updateZone(zoneId: string, input: UpdateZoneInput): Promise<Zone> {
   const result = await request<{ zone: Zone }>(`/zones/${zoneId}`, {
     method: "PATCH",
     body: JSON.stringify(input),
@@ -621,10 +603,10 @@ export async function createTaxonomyCategory(input: {
   productFamilyIds?: string[];
   active?: boolean;
 }): Promise<TaxonomyCategory> {
-  const result = await request<{ category: TaxonomyCategory }>(
-    "/taxonomy/categories",
-    { method: "POST", body: JSON.stringify(input) },
-  );
+  const result = await request<{ category: TaxonomyCategory }>("/taxonomy/categories", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
   return result.category;
 }
 
@@ -649,10 +631,10 @@ export async function createTaxonomyMaterial(input: {
   categoryCodes?: string[];
   active?: boolean;
 }): Promise<TaxonomyMaterial> {
-  const result = await request<{ material: TaxonomyMaterial }>(
-    "/taxonomy/materials",
-    { method: "POST", body: JSON.stringify(input) },
-  );
+  const result = await request<{ material: TaxonomyMaterial }>("/taxonomy/materials", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
   return result.material;
 }
 
@@ -677,10 +659,10 @@ export async function createTaxonomyFinish(input: {
   categoryCodes?: string[];
   active?: boolean;
 }): Promise<TaxonomyFinish> {
-  const result = await request<{ finish: TaxonomyFinish }>(
-    "/taxonomy/finishes",
-    { method: "POST", body: JSON.stringify(input) },
-  );
+  const result = await request<{ finish: TaxonomyFinish }>("/taxonomy/finishes", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
   return result.finish;
 }
 
@@ -711,15 +693,11 @@ export async function listSupplierServices(filters?: {
     supplierId: filters?.supplierId,
     state: filters?.state,
   });
-  const result = await request<{ services: SupplierService[] }>(
-    `/supplier-services${q}`,
-  );
+  const result = await request<{ services: SupplierService[] }>(`/supplier-services${q}`);
   return result.services;
 }
 
-export async function getSupplierService(
-  serviceId: string,
-): Promise<SupplierService> {
+export async function getSupplierService(serviceId: string): Promise<SupplierService> {
   const result = await request<{ service: SupplierService }>(
     `/supplier-services/${serviceId}`,
   );
@@ -729,10 +707,10 @@ export async function getSupplierService(
 export async function createSupplierService(
   input: CreateSupplierServiceInput,
 ): Promise<SupplierService> {
-  const result = await request<{ service: SupplierService }>(
-    "/supplier-services",
-    { method: "POST", body: JSON.stringify(input) },
-  );
+  const result = await request<{ service: SupplierService }>("/supplier-services", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
   return result.service;
 }
 
@@ -747,9 +725,7 @@ export async function updateSupplierService(
   return result.service;
 }
 
-export async function submitSupplierService(
-  serviceId: string,
-): Promise<SupplierService> {
+export async function submitSupplierService(serviceId: string): Promise<SupplierService> {
   const result = await request<{ service: SupplierService }>(
     `/supplier-services/${serviceId}/submit`,
     { method: "POST" },
@@ -936,9 +912,7 @@ export async function listDispatchOffers(): Promise<Order[]> {
   return result.offers;
 }
 
-export async function getDispatchLocation(
-  orderId: string,
-): Promise<LocationPing | null> {
+export async function getDispatchLocation(orderId: string): Promise<LocationPing | null> {
   const result = await request<{ ping: LocationPing | null }>(
     `/dispatch/${orderId}/location`,
   );
@@ -947,10 +921,9 @@ export async function getDispatchLocation(
 
 /** Rider only — included so the client surface is complete. */
 export async function acceptDispatchOffer(orderId: string): Promise<Order> {
-  const result = await request<{ order: Order }>(
-    `/dispatch/${orderId}/accept`,
-    { method: "POST" },
-  );
+  const result = await request<{ order: Order }>(`/dispatch/${orderId}/accept`, {
+    method: "POST",
+  });
   return result.order;
 }
 
@@ -959,10 +932,10 @@ export async function postDispatchLocation(
   orderId: string,
   input: { lat: number; lng: number; accuracy?: number | null },
 ): Promise<LocationPing> {
-  const result = await request<{ ping: LocationPing }>(
-    `/dispatch/${orderId}/location`,
-    { method: "POST", body: JSON.stringify(input) },
-  );
+  const result = await request<{ ping: LocationPing }>(`/dispatch/${orderId}/location`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
   return result.ping;
 }
 
@@ -974,12 +947,9 @@ export async function recordDelivery(
   orderId: string,
   input: { evidenceFileId: string; evidenceType?: "photo" | "signature" },
 ): Promise<Order> {
-  const result = await request<{ order: Order }>(
-    `/dispatch/${orderId}/delivery`,
-    {
-      method: "POST",
-      body: JSON.stringify({ evidenceType: "photo", ...input }),
-    },
-  );
+  const result = await request<{ order: Order }>(`/dispatch/${orderId}/delivery`, {
+    method: "POST",
+    body: JSON.stringify({ evidenceType: "photo", ...input }),
+  });
   return result.order;
 }
