@@ -111,6 +111,34 @@ describe("API bearer tokens", () => {
     expect(url).toBe(`http://127.0.0.1:8787${path}`);
     expect(projection.membership).toEqual({ role });
   });
+
+  it("requests an uncached Clerk token for a projection retry", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          user: {
+            id: "usr_ops",
+            email: "person@example.com",
+            name: "Operations user",
+          },
+          membership: { role: "ops_admin" },
+          capabilities: {},
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const tokenProvider = vi.fn().mockResolvedValue("fresh-clerk-session-token");
+    vi.stubGlobal("fetch", fetchMock);
+    setTokenProvider(tokenProvider);
+
+    await getPortalRoleProjection("ops_admin", { refreshToken: true });
+
+    expect(tokenProvider).toHaveBeenCalledWith({ skipCache: true });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(new Headers(init.headers).get("authorization")).toBe(
+      "Bearer fresh-clerk-session-token",
+    );
+  });
 });
 
 describe("platform constraints", () => {

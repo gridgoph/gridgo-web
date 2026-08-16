@@ -58,9 +58,15 @@ downloads**. It is not read when the container starts. Setting it in `docker-com
 would change nothing.
 
 `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` follows the same build-time rule. It is expected to be
-public and connects ClerkJS to the production Clerk instance. The workflow reads it from
-the repository secret of the same name and passes it as a Docker build argument. Changing
+public and connects ClerkJS to the production Clerk instance. Trusted branch builds read it
+from the repository secret of the same name and pass it as a Docker build argument. Changing
 either public value requires a rebuild.
+
+Untrusted fork pull requests cannot read repository secrets. Their verify-only jobs use a
+synthetic `pk_test_…` value and a plainly non-secret `sk_test_…` placeholder so Next.js and
+the Dockerfile can exercise the complete build. Those jobs cannot publish or deploy.
+Branch pushes, `main`, and manual trusted builds have no fallback: the real
+`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` repository secrets are required.
 
 Get this wrong and the portal builds green, boots green, passes its health check — and then
 every signed-in browser calls `http://127.0.0.1:8787`, the user's own machine. So the value
@@ -105,8 +111,8 @@ The portal needs the production Clerk keys from the same Clerk instance used by
 
 | Variable | Where | Purpose |
 | --- | --- | --- |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | GitHub repository secret; Docker build argument | Public ClerkJS configuration baked into the browser bundle |
-| `CLERK_SECRET_KEY` | GitHub repository secret for build/smoke; server `~/gridgo/web/.env` for runtime | Server-only Clerk middleware token verification |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | GitHub repository secret for trusted builds; Docker build argument | Public production ClerkJS configuration baked into the browser bundle |
+| `CLERK_SECRET_KEY` | GitHub repository secret for trusted build/smoke; server `~/gridgo/web/.env` for runtime | Server-only production Clerk middleware token verification |
 
 Never prefix the secret with `NEXT_PUBLIC_`, print it, or place it in Compose source.
 

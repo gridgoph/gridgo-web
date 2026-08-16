@@ -169,7 +169,10 @@ export function isApiError(err: unknown): err is ApiError {
   return err instanceof ApiError;
 }
 
-type TokenProvider = () => string | null | Promise<string | null>;
+type TokenProviderOptions = { skipCache?: boolean };
+type TokenProvider = (
+  options?: TokenProviderOptions,
+) => string | null | Promise<string | null>;
 
 let tokenProvider: TokenProvider = () => null;
 
@@ -190,7 +193,11 @@ function buildQuery(
   return s ? `?${s}` : "";
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  tokenOptions?: TokenProviderOptions,
+): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...(init.headers as Record<string, string> | undefined),
@@ -198,7 +205,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
-  const token = await tokenProvider();
+  const token = await tokenProvider(tokenOptions);
   if (token) headers.Authorization = `Bearer ${token}`;
 
   const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
@@ -235,8 +242,13 @@ const PORTAL_PROJECTION_PATH: Record<PortalRole, string> = {
  */
 export async function getPortalRoleProjection(
   role: PortalRole,
+  options?: { refreshToken?: boolean },
 ): Promise<PortalRoleProjection> {
-  return request<PortalRoleProjection>(PORTAL_PROJECTION_PATH[role]);
+  return request<PortalRoleProjection>(
+    PORTAL_PROJECTION_PATH[role],
+    {},
+    options?.refreshToken ? { skipCache: true } : undefined,
+  );
 }
 
 // ---------------------------------------------------------------------------

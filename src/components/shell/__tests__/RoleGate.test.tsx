@@ -70,6 +70,7 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
   getPortalRoleProjectionMock.mockReset();
+  refreshMock.mockReset();
   pathnameRef.current = "/test-route";
   authState.status = "mapped";
   authState.user.role = "client";
@@ -225,6 +226,71 @@ describe("RoleGate navigation revalidation", () => {
     expect(screen.queryByText("Operations workspace")).not.toBeInTheDocument();
   });
 
+  it("keeps the allowed tree mounted through a 401 token refresh and projection retry", async () => {
+    getPortalRoleProjectionMock.mockResolvedValueOnce(projection("ops_admin"));
+
+    const { rerender } = render(
+      <RoleGate allow="ops_admin">
+        <p>Operations workspace</p>
+      </RoleGate>,
+    );
+    expect(await screen.findByText("Operations workspace")).toBeVisible();
+
+    const projectionRetry = deferred();
+    getPortalRoleProjectionMock
+      .mockRejectedValueOnce(new ApiError(401, { error: "unauthorized" }))
+      .mockImplementationOnce(() => projectionRetry.promise);
+
+    pathnameRef.current = "/test-route/detail";
+    rerender(
+      <RoleGate allow="ops_admin">
+        <p>Operations workspace</p>
+      </RoleGate>,
+    );
+
+    await waitFor(() => expect(getPortalRoleProjectionMock).toHaveBeenCalledTimes(3));
+    expect(screen.getByText("Operations workspace")).toBeVisible();
+    expect(screen.queryByText("Checking portal access…")).not.toBeInTheDocument();
+    expect(getPortalRoleProjectionMock).toHaveBeenLastCalledWith("ops_admin", {
+      refreshToken: true,
+    });
+
+    await act(async () => {
+      projectionRetry.resolve(projection("ops_admin"));
+    });
+    expect(screen.getByText("Operations workspace")).toBeVisible();
+  });
+
+  it("cannot refresh shared auth from a stale projection after switching gates", async () => {
+    const staleOpsProjection = deferred();
+    getPortalRoleProjectionMock.mockImplementationOnce(
+      () => staleOpsProjection.promise,
+    );
+
+    const { rerender } = render(
+      <RoleGate key="ops" allow="ops_admin">
+        <p>Operations workspace</p>
+      </RoleGate>,
+    );
+    await waitFor(() => expect(getPortalRoleProjectionMock).toHaveBeenCalledTimes(1));
+
+    getPortalRoleProjectionMock.mockResolvedValueOnce(projection("super_admin"));
+    rerender(
+      <RoleGate key="admin" allow="super_admin">
+        <p>Admin workspace</p>
+      </RoleGate>,
+    );
+    expect(await screen.findByText("Admin workspace")).toBeVisible();
+
+    await act(async () => {
+      staleOpsProjection.reject(new ApiError(401, { error: "unauthorized" }));
+    });
+
+    expect(screen.getByText("Admin workspace")).toBeVisible();
+    expect(getPortalRoleProjectionMock).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText("Operations workspace")).not.toBeInTheDocument();
+  });
+
   it("ignores a stale projection success that resolves after a newer denial", async () => {
     getPortalRoleProjectionMock.mockResolvedValueOnce(projection("ops_admin"));
 
@@ -337,24 +403,7 @@ describe("RoleGate navigation revalidation", () => {
     getPortalRoleProjectionMock.mockRejectedValue(
       new ApiError(401, { error: "unauthorized" }),
     );
-    refreshMock.mockResolvedValue(undefined);
-
-    const { rerender } = render(
-      <RoleGate allow="ops_admin">
-        <p>Operations workspace</p>
-      </RoleGate>,
-    );
-
-    await waitFor(() => expect(refreshMock).toHaveBeenCalledTimes(1));
-
-    authState.status = "checking";
-    rerender(
-      <RoleGate allow="ops_admin">
-        <p>Operations workspace</p>
-      </RoleGate>,
-    );
-    authState.status = "mapped";
-    rerender(
+    render(
       <RoleGate allow="ops_admin">
         <p>Operations workspace</p>
       </RoleGate>,
@@ -364,7 +413,9 @@ describe("RoleGate navigation revalidation", () => {
       await screen.findByRole("heading", { name: "Could not check portal access" }),
     ).toBeVisible();
     expect(getPortalRoleProjectionMock).toHaveBeenCalledTimes(2);
-    expect(refreshMock).toHaveBeenCalledTimes(1);
+    expect(getPortalRoleProjectionMock).toHaveBeenLastCalledWith("ops_admin", {
+      refreshToken: true,
+    });
     expect(screen.queryByText("Operations workspace")).not.toBeInTheDocument();
   });
 });

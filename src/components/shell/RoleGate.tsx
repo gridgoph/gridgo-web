@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import {
@@ -40,44 +40,61 @@ export function RoleGate({ allow, children }: Props) {
   const pathname = usePathname();
   const [projectionStatus, setProjectionStatus] = useState<ProjectionStatus>("idle");
   const [attempt, setAttempt] = useState(0);
-  const unauthorizedRefreshes = useRef(0);
-  const projectionRequestSeq = useRef(0);
-
-  const checkProjection = useCallback(async () => {
-    const seq = ++projectionRequestSeq.current;
-    const isLatest = () => seq === projectionRequestSeq.current;
-    setProjectionStatus((current) => (current === "allowed" ? current : "checking"));
-    try {
-      await getPortalRoleProjection(allow);
-      if (!isLatest()) return;
-      unauthorizedRefreshes.current = 0;
-      setProjectionStatus("allowed");
-    } catch (error) {
-      if (!isLatest()) return;
-      if (isApiError(error) && error.kind === "forbidden") {
-        setProjectionStatus("denied");
-        return;
-      }
-      if (isApiError(error) && error.kind === "unauthorized") {
-        if (unauthorizedRefreshes.current < MAX_UNAUTHORIZED_REFRESHES) {
-          unauthorizedRefreshes.current += 1;
-          await auth.refresh();
-          return;
-        }
-        setProjectionStatus("unavailable");
-        return;
-      }
-      setProjectionStatus((current) => (current === "allowed" ? current : "unavailable"));
-    }
-  }, [allow, auth]);
 
   useEffect(() => {
     if (auth.status === "signed_out") {
       router.replace("/login");
       return;
     }
-    if (auth.status === "mapped") void checkProjection();
-  }, [auth.status, checkProjection, attempt, pathname, router]);
+    if (auth.status !== "mapped") return;
+
+    let active = true;
+
+    const checkProjection = async () => {
+      let unauthorizedRefreshes = 0;
+      let refreshToken = false;
+      setProjectionStatus((current) =>
+        current === "allowed" ? current : "checking",
+      );
+
+      while (active) {
+        try {
+          if (refreshToken) {
+            await getPortalRoleProjection(allow, { refreshToken: true });
+          } else {
+            await getPortalRoleProjection(allow);
+          }
+          if (!active) return;
+          setProjectionStatus("allowed");
+          return;
+        } catch (error) {
+          if (!active) return;
+          if (isApiError(error) && error.kind === "forbidden") {
+            setProjectionStatus("denied");
+            return;
+          }
+          if (isApiError(error) && error.kind === "unauthorized") {
+            if (unauthorizedRefreshes < MAX_UNAUTHORIZED_REFRESHES) {
+              unauthorizedRefreshes += 1;
+              refreshToken = true;
+              continue;
+            }
+            setProjectionStatus("unavailable");
+            return;
+          }
+          setProjectionStatus((current) =>
+            current === "allowed" ? current : "unavailable",
+          );
+          return;
+        }
+      }
+    };
+
+    void checkProjection();
+    return () => {
+      active = false;
+    };
+  }, [allow, attempt, auth.status, pathname, router]);
 
   if (auth.status === "unmapped") {
     return (
@@ -111,7 +128,6 @@ export function RoleGate({ allow, children }: Props) {
     return (
       <PortalAccessUnavailable
         onRetry={() => {
-          unauthorizedRefreshes.current = 0;
           setAttempt((current) => current + 1);
         }}
         onSignOut={() => void auth.signOut()}
