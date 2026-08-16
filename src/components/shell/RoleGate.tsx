@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import {
@@ -21,10 +21,18 @@ type Props = {
 
 type ProjectionStatus = "idle" | "checking" | "allowed" | "denied" | "unavailable";
 
+const MAX_UNAUTHORIZED_REFRESHES = 1;
+
 /**
  * Each role tree authorizes from its fixed Postgres-backed API projection.
  * Clerk claims, legacy `user.role`, and the membership list used for landing
  * never make this decision.
+ *
+ * The projection is re-checked on every in-tree navigation so suspension or
+ * demotion takes effect without a reload, but after the first allowed result
+ * the current tree keeps rendering while that revalidation is in flight;
+ * access is removed only on a settled denial (or a persistently unauthorized
+ * projection, which becomes the retryable unavailable state).
  */
 export function RoleGate({ allow, children }: Props) {
   const auth = useAuth();
@@ -32,11 +40,13 @@ export function RoleGate({ allow, children }: Props) {
   const pathname = usePathname();
   const [projectionStatus, setProjectionStatus] = useState<ProjectionStatus>("idle");
   const [attempt, setAttempt] = useState(0);
+  const unauthorizedRefreshes = useRef(0);
 
   const checkProjection = useCallback(async () => {
-    setProjectionStatus("checking");
+    setProjectionStatus((current) => (current === "allowed" ? current : "checking"));
     try {
       await getPortalRoleProjection(allow);
+      unauthorizedRefreshes.current = 0;
       setProjectionStatus("allowed");
     } catch (error) {
       if (isApiError(error) && error.kind === "forbidden") {
@@ -44,10 +54,15 @@ export function RoleGate({ allow, children }: Props) {
         return;
       }
       if (isApiError(error) && error.kind === "unauthorized") {
-        await auth.refresh();
+        if (unauthorizedRefreshes.current < MAX_UNAUTHORIZED_REFRESHES) {
+          unauthorizedRefreshes.current += 1;
+          await auth.refresh();
+          return;
+        }
+        setProjectionStatus("unavailable");
         return;
       }
-      setProjectionStatus("unavailable");
+      setProjectionStatus((current) => (current === "allowed" ? current : "unavailable"));
     }
   }, [allow, auth]);
 
@@ -90,7 +105,10 @@ export function RoleGate({ allow, children }: Props) {
   if (projectionStatus === "unavailable") {
     return (
       <PortalAccessUnavailable
-        onRetry={() => setAttempt((current) => current + 1)}
+        onRetry={() => {
+          unauthorizedRefreshes.current = 0;
+          setAttempt((current) => current + 1);
+        }}
         onSignOut={() => void auth.signOut()}
       />
     );
