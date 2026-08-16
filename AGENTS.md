@@ -4,7 +4,7 @@ Guidance for any agent or human picking up this codebase.
 
 ## What this is
 
-A single Next.js (App Router) portal for three roles: `supplier`, `ops_admin`, `super_admin`. Shared design system, API client, and auth. The signed-in role decides which route tree exists.
+A single Next.js (App Router) portal for three roles: `supplier`, `ops_admin`, `super_admin`. Shared design system, API client, and auth. Database memberships decide which route trees a signed-in identity may use, including multiple trees for a multi-membership identity.
 
 Mobile apps (client / supplier / rider) are separate repos. Do not invent a parallel product identity here.
 
@@ -23,39 +23,37 @@ npm test
 ```
 
 API base: `NEXT_PUBLIC_API_URL` (default `http://127.0.0.1:8787`).
-`next dev` does **not** let the browser CORS-hit that origin — see Local sign-in.
+`next dev` does **not** let the browser CORS-hit that origin — see Local API proxy.
 
-Demo logins, password is the API's `DEMO_PASSWORD` (`Ilovegridgo-0990` in `gridgo-api/src/demo-fixtures.js`):
-
-- `markdavidprado@gmail.com` (official Clerk supplier — do not advertise `supplier@gridgo.ph`)
-- `ops@gridgo.ph`
-- `admin@gridgo.ph`
+Authentication is Clerk-only. Local and production portal identities must already have a
+database `supplier`, `ops_admin`, or `super_admin` membership; the portal never creates a
+privileged account.
 
 ## Layout of the code
 
-| Path | Owns |
-|---|---|
-| `src/lib/api/client.ts` | Typed HTTP client — **only** place pages call `fetch` for the API |
-| `src/app/api/gridgo/[...path]/route.ts` | Local-dev same-origin proxy to a loopback API (strips `Origin`) |
-| `src/lib/api/types.ts` | Response/request types (no `any`) |
-| `src/lib/api/constraints.ts` | Server rules the UI can explain *before* rejection (payment/milestone gates, holds, issue window) |
-| `src/lib/nav.ts` | **Single** role→nav structure (`ROLE_NAV_GROUPS` + flattened `ROLE_NAV`); AppShell reads this only |
-| `src/lib/auth/` | Session cookies, AuthProvider, sign-in/out |
-| `src/middleware.ts` | Role-path gate (supplier / ops / admin prefixes) |
-| `src/lib/order-state.ts` | Plain-language state labels (no snake_case on screen) |
-| `src/lib/supplier-actions.ts` | Valid supplier transitions for current state |
-| `src/lib/ops-actions.ts` | Valid ops transitions + queue membership |
-| `src/components/ui/` | shadcn/ui primitives + GRIDGO-specific components |
-| `src/components/shell/` | App shell, nav rail, RoleGate, `ComingNext` placeholders |
-| `src/app/supplier/` | Supplier partner surfaces |
-| `src/app/ops/` | Operations surfaces — overview, QA, **payment confirmations**, matching, sign-up approvals, dispatch, **pickup escalations**, **milestone payouts**, claims, recovery, schedule, settings, audit |
-| `src/app/ops/_lib/` | Ops-only pure helpers (payment queue, overview buckets, matching explainers, location freshness, schedule events, error copy) — tests under `_lib/__tests__` |
-| `src/components/orders/` | Order-shaped views: `MoneyBreakdown` (ops/super **only**), `PaymentSummary`, `MilestoneList`, `OrderMeta`, `Timeline` |
-| `src/app/admin/` | Super Admin surfaces — including `broadcast`, the push megaphone |
-| `src/app/admin/_lib/broadcasts.ts` | Announcement rules: audience order/copy, lock-screen budget, session resend check, reach reading |
-| `src/app/globals.css` | Design tokens + shadcn semantic CSS variables |
-| `components.json` | shadcn CLI config (style: `base-nova`, Base UI) |
-| `.agents/skills/shadcn/` | Committed shadcn agent skill — use it for UI work |
+| Path                                    | Owns                                                                                                                                                                                             |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `src/lib/api/client.ts`                 | Typed HTTP client — **only** place pages call `fetch` for the API                                                                                                                                |
+| `src/app/api/gridgo/[...path]/route.ts` | Local-dev same-origin proxy to a loopback API (strips `Origin`)                                                                                                                                  |
+| `src/lib/api/types.ts`                  | Response/request types (no `any`)                                                                                                                                                                |
+| `src/lib/api/constraints.ts`            | Server rules the UI can explain _before_ rejection (payment/milestone gates, holds, issue window)                                                                                                |
+| `src/lib/nav.ts`                        | **Single** role→nav structure (`ROLE_NAV_GROUPS` + flattened `ROLE_NAV`); AppShell reads this only                                                                                               |
+| `src/lib/auth/`                         | Clerk token bridge, `/auth/me` identity context, portal-membership landing                                                                                                                       |
+| `src/middleware.ts`                     | Clerk-session check only; never role authorization                                                                                                                                               |
+| `src/lib/order-state.ts`                | Plain-language state labels (no snake_case on screen)                                                                                                                                            |
+| `src/lib/supplier-actions.ts`           | Valid supplier transitions for current state                                                                                                                                                     |
+| `src/lib/ops-actions.ts`                | Valid ops transitions + queue membership                                                                                                                                                         |
+| `src/components/ui/`                    | shadcn/ui primitives + GRIDGO-specific components                                                                                                                                                |
+| `src/components/shell/`                 | App shell, nav rail, RoleGate, `ComingNext` placeholders                                                                                                                                         |
+| `src/app/supplier/`                     | Supplier partner surfaces                                                                                                                                                                        |
+| `src/app/ops/`                          | Operations surfaces — overview, QA, **payment confirmations**, matching, sign-up approvals, dispatch, **pickup escalations**, **milestone payouts**, claims, recovery, schedule, settings, audit |
+| `src/app/ops/_lib/`                     | Ops-only pure helpers (payment queue, overview buckets, matching explainers, location freshness, schedule events, error copy) — tests under `_lib/__tests__`                                     |
+| `src/components/orders/`                | Order-shaped views: `MoneyBreakdown` (ops/super **only**), `PaymentSummary`, `MilestoneList`, `OrderMeta`, `Timeline`                                                                            |
+| `src/app/admin/`                        | Super Admin surfaces — including `broadcast`, the push megaphone                                                                                                                                 |
+| `src/app/admin/_lib/broadcasts.ts`      | Announcement rules: audience order/copy, lock-screen budget, session resend check, reach reading                                                                                                 |
+| `src/app/globals.css`                   | Design tokens + shadcn semantic CSS variables                                                                                                                                                    |
+| `components.json`                       | shadcn CLI config (style: `base-nova`, Base UI)                                                                                                                                                  |
+| `.agents/skills/shadcn/`                | Committed shadcn agent skill — use it for UI work                                                                                                                                                |
 
 ## Design tokens
 
@@ -102,31 +100,31 @@ npx shadcn@latest add <name>
 
 Defined once in `src/app/globals.css`. Stock components consume these with no local overrides.
 
-| shadcn variable | GRIDGO meaning |
-|---|---|
-| `--background` | canvas |
-| `--foreground` | text-primary |
-| `--card` / `--popover` | surface |
+| shadcn variable                      | GRIDGO meaning                                           |
+| ------------------------------------ | -------------------------------------------------------- |
+| `--background`                       | canvas                                                   |
+| `--foreground`                       | text-primary                                             |
+| `--card` / `--popover`               | surface                                                  |
 | `--primary` / `--primary-foreground` | **monochrome accent** (structural fill) — **not yellow** |
-| `--secondary` / `--muted` | surface-variant |
-| `--muted-foreground` | text-muted |
-| `--accent` (shadcn hover surface) | surface-variant |
-| `--destructive` | error |
-| `--border` / `--input` | outline |
-| `--ring` | text-primary (fallback only; focus uses outline) |
-| `--radius` | 12px (field); fixed sm/md/lg/xl = 8/12/16/24 |
+| `--secondary` / `--muted`            | surface-variant                                          |
+| `--muted-foreground`                 | text-muted                                               |
+| `--accent` (shadcn hover surface)    | surface-variant                                          |
+| `--destructive`                      | error                                                    |
+| `--border` / `--input`               | outline                                                  |
+| `--ring`                             | text-primary (fallback only; focus uses outline)         |
+| `--radius`                           | 12px (field); fixed sm/md/lg/xl = 8/12/16/24             |
 
 Light + dark pairs match mobile. System dark uses `prefers-color-scheme`; class `.dark` is also defined for shadcn tooling.
 
 ### Button variant → GRIDGO role
 
-| Variant | Role | Yellow? |
-|---|---|---|
-| **(default) / `outline` / `secondary`** | Neutral outlined control | **No** |
-| `primary` | Sole page/panel CTA | **Yes — action-yellow only here** |
-| `default` (shadcn filled) | Monochrome structural fill | No |
-| `destructive` / `danger` | Error / decline path | No |
-| `ghost` / `link` | Quiet / text actions | No (`link` may use brand gold for text links) |
+| Variant                                 | Role                       | Yellow?                                       |
+| --------------------------------------- | -------------------------- | --------------------------------------------- |
+| **(default) / `outline` / `secondary`** | Neutral outlined control   | **No**                                        |
+| `primary`                               | Sole page/panel CTA        | **Yes — action-yellow only here**             |
+| `default` (shadcn filled)               | Monochrome structural fill | No                                            |
+| `destructive` / `danger`                | Error / decline path       | No                                            |
+| `ghost` / `link`                        | Quiet / text actions       | No (`link` may use brand gold for text links) |
 
 Rules:
 
@@ -144,15 +142,15 @@ Rules:
 
 ### Forms, tables, overlays (kit for remaining screens)
 
-| Need | Use |
-|---|---|
-| Form layout + errors | `Field` / `FieldGroup` / `FieldLabel` + `Input` / `Textarea` / `Select` / `Combobox` (`data-invalid` + `aria-invalid`) |
-| Dense queues | `DataTable` (`src/components/ui/data-table.tsx`) — TanStack Table; cards below 768px |
-| Modal | `Dialog` |
-| Tablet secondary detail | `Sheet` or `Drawer` |
-| Tabs / tooltips / toast | `Tabs`, `Tooltip`, `toast` + root `Toaster` |
-| Pagination / schedule / search | `Pagination`, `Calendar`, `Command` |
-| Loading / empty | `LoadingBlock` / `Skeleton`, `EmptyState` |
+| Need                           | Use                                                                                                                    |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| Form layout + errors           | `Field` / `FieldGroup` / `FieldLabel` + `Input` / `Textarea` / `Select` / `Combobox` (`data-invalid` + `aria-invalid`) |
+| Dense queues                   | `DataTable` (`src/components/ui/data-table.tsx`) — TanStack Table; cards below 768px                                   |
+| Modal                          | `Dialog`                                                                                                               |
+| Tablet secondary detail        | `Sheet` or `Drawer`                                                                                                    |
+| Tabs / tooltips / toast        | `Tabs`, `Tooltip`, `toast` + root `Toaster`                                                                            |
+| Pagination / schedule / search | `Pagination`, `Calendar`, `Command`                                                                                    |
+| Loading / empty                | `LoadingBlock` / `Skeleton`, `EmptyState`                                                                              |
 
 Root layout already wraps `TooltipProvider` and `Toaster`.
 
@@ -184,19 +182,19 @@ need raw TanStack columns.
 
 Only add a registry primitive when a real screen uses it in the same change.
 
-| Decision | Primitive | Current call site / reason |
-|---|---|---|
-| Added | `alert-dialog` | Destructive or irreversible confirmations in role changes, verification/suspension, claims and payout release, supplier withdrawal, and job decline. Keep `Dialog` for input tasks such as create/edit forms. |
-| Added | `sidebar` | `AppShell` desktop rail and mobile Sheet; it still renders only `navGroupsForRole(role)`. |
-| Added | `progress` | Supplier capacity shows committed units against declared daily capacity. |
-| Added | `chart` | Admin Finance splits each order's client total into supplier earnings, commission and delivery — the reconciliation only Operations and Super Admin may see. (Its original call site, a payment-method mix, died with cash on delivery.) |
-| Added | `breadcrumb` | AppShell identifies the parent queue on nested supplier job and Operations QA workspaces. |
-| Added | `toggle-group` | Day/week schedule modes and the two-option claim hold choice. |
-| Added | `collapsible` | Rail sections in `AppShell` — official `SidebarGroup` + `Collapsible` wrap. Do not hand-roll an accordion. |
-| Rejected | `avatar` | The portal has no user photos or identity surface; the named account control is sufficient. |
-| Rejected | `accordion` / `collapsible` | No current screen has a disclosure hierarchy; Sidebar owns its own collapse behavior. |
-| Rejected | `slider` | Capacity and money inputs require exact API values, so a slider would reduce precision. |
-| Rejected | `sonner` | This is a Base UI project and already uses the Base `toast` manager and root `Toaster`. |
+| Decision | Primitive                   | Current call site / reason                                                                                                                                                                                                               |
+| -------- | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Added    | `alert-dialog`              | Destructive or irreversible confirmations in role changes, verification/suspension, claims and payout release, supplier withdrawal, and job decline. Keep `Dialog` for input tasks such as create/edit forms.                            |
+| Added    | `sidebar`                   | `AppShell` desktop rail and mobile Sheet; it still renders only `navGroupsForRole(role)`.                                                                                                                                                |
+| Added    | `progress`                  | Supplier capacity shows committed units against declared daily capacity.                                                                                                                                                                 |
+| Added    | `chart`                     | Admin Finance splits each order's client total into supplier earnings, commission and delivery — the reconciliation only Operations and Super Admin may see. (Its original call site, a payment-method mix, died with cash on delivery.) |
+| Added    | `breadcrumb`                | AppShell identifies the parent queue on nested supplier job and Operations QA workspaces.                                                                                                                                                |
+| Added    | `toggle-group`              | Day/week schedule modes and the two-option claim hold choice.                                                                                                                                                                            |
+| Added    | `collapsible`               | Rail sections in `AppShell` — official `SidebarGroup` + `Collapsible` wrap. Do not hand-roll an accordion.                                                                                                                               |
+| Rejected | `avatar`                    | The portal has no user photos or identity surface; the named account control is sufficient.                                                                                                                                              |
+| Rejected | `accordion` / `collapsible` | No current screen has a disclosure hierarchy; Sidebar owns its own collapse behavior.                                                                                                                                                    |
+| Rejected | `slider`                    | Capacity and money inputs require exact API values, so a slider would reduce precision.                                                                                                                                                  |
+| Rejected | `sonner`                    | This is a Base UI project and already uses the Base `toast` manager and root `Toaster`.                                                                                                                                                  |
 
 Do not revisit a rejected primitive unless a new screen supplies a concrete call site.
 
@@ -205,54 +203,40 @@ Do not revisit a rejected primitive unless a new screen supplies a concrete call
 The captain's `yanolint/web` and `rxguard` also carry `@tanstack/react-query` and `sonner`.
 Both were evaluated here and deliberately not adopted:
 
-| Decision | Package | Reason |
-|---|---|---|
-| Adopted | `@tanstack/react-table` | The captain names DataTables specifically and uses this everywhere. Powers `src/components/ui/data-table.tsx`. |
+| Decision | Package                 | Reason                                                                                                                                                                                                                                                                                                                                                                                      |
+| -------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Adopted  | `@tanstack/react-table` | The captain names DataTables specifically and uses this everywhere. Powers `src/components/ui/data-table.tsx`.                                                                                                                                                                                                                                                                              |
 | Declined | `@tanstack/react-query` | Every screen here is one `load()` per mount with an explicit `LoadingBlock` / `ErrorState` / `EmptyState` triad and `ApiError.kind` → recovery-copy mapping. Swapping the data layer touches ~28 pages and the error-copy contract for no user-visible gain while there is no polling, cache invalidation, or shared-query story. Revisit when live refresh or optimistic transitions land. |
-| Declined | `sonner` | Already rejected in the primitive audit above and still correct: this is a Base UI project with the Base `toast` manager and a root `Toaster`. Adding sonner means two toast roots. |
+| Declined | `sonner`                | Already rejected in the primitive audit above and still correct: this is a Base UI project with the Base `toast` manager and a root `Toaster`. Adding sonner means two toast roots.                                                                                                                                                                                                         |
 
 ## Auth and role boundary
 
-1. Login → `POST /auth/login` → cookies `gridgo_token` + `gridgo_role` + sessionStorage user
-2. Middleware: wrong role path → redirect to that role's home; no token → `/login`
-3. `RoleGate` re-checks live session via context
-4. Logout → clear cookies + storage → `router.replace("/login")` (no back-button re-entry)
+1. Clerk owns sign-in, Google/password recovery, session cookies, JWT refresh, and logout.
+2. Middleware requires only a signed Clerk session for `/`, `/supplier/*`, `/ops/*`, and
+   `/admin/*`; it never reads a role or authorization claim.
+3. `AuthProvider` loads `GET /auth/me` for identity and the complete database membership
+   list. The root uses that list only to choose a stable initial portal workspace.
+4. Every role layout calls its fixed projection through `RoleGate`:
+   `/auth/me/supplier`, `/auth/me/ops`, or `/auth/me/admin`. Only a successful projection
+   mounts the page tree. Clerk claims/metadata, the legacy `user.role`, app state, and route
+   parameters never grant access. A multi-membership identity may use every projection it
+   has.
+5. `RoleGate` revalidates its fixed projection on every in-tree navigation. It keeps an
+   already-authorized tree visible while refreshing, then removes access on a definitive
+   denial so membership changes take effect without a reload.
+6. An authenticated but unmapped identity, or one with no portal membership, gets the
+   access-not-assigned screen and can sign out to use another account.
 
-Client-rendered credential inputs must initialize empty. Populate demo credentials only through explicit account controls so hydration cannot overwrite typing with a privileged or role-specific default.
+`/login` is sign-in only: `SignIn` uses `withSignUp={false}` and
+`transferable={false}`. There is no sign-up route or role selector. The public
+page still never names an account; `scripts/assert-no-account-addresses.mjs` checks the
+emitted client and server output, and the login tests enforce sign-in-only behavior.
 
-**The sign-in page never names an account.** It is public at
-`https://gridgo-dash.talasora.com/login`, so a list of addresses there hands anyone who
-opens it the account list — super admin included — before they have guessed a password.
-Rotating the passwords does not make it safe: the addresses are the disclosure. This holds
-for error copy too; "use a demo account ending in @…" is the same leak in a different
-place. A failed sign-in says the credentials are wrong, and no more.
-
-Three rules follow, and all three are asserted:
-
-- Account addresses live in exactly one module, `src/app/login/dev-accounts.ts`, behind
-  `process.env.NODE_ENV === "production" ? [] : […]`. The compiler substitutes `NODE_ENV`,
-  so the list folds to a constant and the literals leave the bundle. A runtime flag or an
-  environment variable would not — both still ship the strings to the browser.
-  The local password rides in the same object literals, so local sign-in is one tap and
-  the credential folds away with the address it belongs to. Write such values **inline**,
-  not as a hoisted module constant: a top-level `const` sits outside the discarded branch
-  and survives on tree shaking rather than on the guard. Never put a real credential here
-  — the guard keeps values out of the bundle, not out of the repository.
-- `scripts/assert-no-account-addresses.mjs` greps the emitted client chunks *and* server
-  bundle for any `…@gridgo.ph` / `…@gridgo.local` address and the official Clerk
-  supplier Gmail. It runs as part of `npm run build`, so a reintroduction fails
-  the build rather than the deploy.
-- `src/app/login/__tests__/account-disclosure.test.ts` holds the same line at review time,
-  and `page.test.tsx` asserts the failure copy names no account and no `ApiError.code`.
-
-`@gridgo.local` was the placeholder domain. Operations and Super Admin stay
-`@gridgo.ph` (no Clerk ops/admin user exists). The advertised shop login is the
-official Clerk supplier, not `supplier@gridgo.ph`.
-
-The sign-in submit control stays `disabled` until the client has mounted. Before React
-attaches `onSubmit`, a click submits the form natively — a GET to `/login` that writes the
-password into the address bar and browser history. `src/app/login/__tests__/page.test.tsx`
-asserts the server markup renders it disabled.
+Clerk's rotating JWT is attached as `Authorization: Bearer …` by the API client. Never copy
+it into a GRIDGO cookie or session storage. `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is public;
+`CLERK_SECRET_KEY` is server-only and must never use a `NEXT_PUBLIC_` prefix.
+`scripts/assert-no-clerk-secrets.mjs` scans the complete `.next` build output. Exact build
+and runtime placement belongs to `docs/DEPLOYMENT.md`.
 
 Suppliers are external partners. Never serve `/ops/*` or `/admin/*` to them — not even as soft-hidden UI.
 
@@ -262,7 +246,7 @@ Suppliers are external partners. Never serve `/ops/*` or `/admin/*` to them — 
 
 Authoritative API docs live in the separate `gridgo-api` repo (`AGENTS.md`, `README.md`, `PRD.md`). When docs and the running server disagree, **the server wins** — update types here to match observed JSON.
 
-### Local sign-in
+### Local API proxy
 
 The API answers any browser `Origin` that is not in `CORS_ALLOWED_ORIGINS` with `403 origin_not_allowed` and **no** `Access-Control-Allow-Origin`. That is an authorization rule, not a dashboard bug — do not widen production CORS from this repo.
 
@@ -272,16 +256,16 @@ In `next dev`, `getApiBase()` therefore returns `/api/gridgo` in the browser, an
 
 ### Modules
 
-| Module | Use for |
-|---|---|
-| `src/lib/api/client.ts` | One typed function per endpoint |
-| `src/lib/api/types.ts` | Shared shapes (Order, User, Claim, …) |
+| Module                       | Use for                                                                                              |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `src/lib/api/client.ts`      | One typed function per endpoint                                                                      |
+| `src/lib/api/types.ts`       | Shared shapes (Order, User, Claim, …)                                                                |
 | `src/lib/api/constraints.ts` | Split-payment and milestone gates, payout-hold helpers, issue-window bounds, plain-language guidance |
-| `src/lib/format.ts` | `formatPhp` / dates — money stays in **PHP minor units** through the client; format only at the edge |
+| `src/lib/format.ts`          | `formatPhp` / dates — money stays in **PHP minor units** through the client; format only at the edge |
 
 ### Client coverage (spine)
 
-Auth: `login`, `logout`, `me`.  
+Auth: `getAuthMe`, `getPortalRoleProjection`.
 Orders/jobs: `listOrders`, `listJobs`, `getOrder`, `createOrder`, `transitionOrder`.  
 Credits: `creditBalance`, `grantCredits` (super). Credits are a **grant ledger only** — never a way to pay for an order.  
 Payments: `submitPayment` (client), `confirmPayment`, `rejectPayment` (ops/super).  
@@ -304,18 +288,18 @@ Also: `listNotifications`, `listCatalog`, `health`.
 
 API returns `{ error: "snake_case" }` with meaningful HTTP status. The client throws `ApiError`:
 
-| Field | Meaning |
-|---|---|
-| `status` | HTTP status |
-| `code` | `error` string (e.g. `forbidden`, `payout_held`, `pof_required`) |
-| `kind` | `unauthorized` · `forbidden` · `not_found` · `conflict` · `validation` · `server` · `unknown` |
-| `details` / `detail(key)` | Extra body fields (`maxMinor`, `from`, …) |
+| Field                     | Meaning                                                                                       |
+| ------------------------- | --------------------------------------------------------------------------------------------- |
+| `status`                  | HTTP status                                                                                   |
+| `code`                    | `error` string (e.g. `forbidden`, `payout_held`, `pof_required`)                              |
+| `kind`                    | `unauthorized` · `forbidden` · `not_found` · `conflict` · `validation` · `server` · `unknown` |
+| `details` / `detail(key)` | Extra body fields (`maxMinor`, `from`, …)                                                     |
 
 Use `isApiError(err)` and branch on `kind` / `code` — **never** string-match human messages. Map codes to plain recovery copy in the page (design addendum).
 
 ### Constraints before rejection
 
-Explain these *before* the user hits submit when the screen can know:
+Explain these _before_ the user hits submit when the screen can know:
 
 - A milestone needs a Proof of Fulfilment, and releases in order → `milestoneReleaseBlocker` (mirrors `409 pof_required` / `milestone_not_reached`)
 - An active claim hold blocks every remaining milestone → `order.payoutHold`, `claimBlocksPayout`, `409 payout_held`
@@ -329,27 +313,28 @@ Copy helpers: `PLATFORM_CONSTRAINT_COPY` in `constraints.ts`; Operations error c
 
 Do **not** mock data behind a real-looking screen. Do **not** edit `gridgo-api`.
 
-If a screen still needs a capability the demo API does not expose, show an honest unavailable state and note `needs-decision: missing endpoint …` — do not invent a second client.
+If a screen still needs a capability the GRIDGO API does not expose, show an honest unavailable state and note `needs-decision: missing endpoint …` — do not invent a second client.
 
 ## Navigation contract
 
 **Single source:** `src/lib/nav.ts` → `ROLE_NAV_GROUPS` (rail sections) and flattened `ROLE_NAV` (items). Overview / Jobs stay top-level; other items sit in official shadcn `SidebarGroup` + `Collapsible` sections (Queue / Field / Money / System for ops; People / Catalog / Money / System for admin; Shop / Money for suppliers).
 
-| Role | Surface (hrefs) |
-|---|---|
-| supplier | `/supplier/jobs`, `catalogue`, `schedule`, `capacity`, `payouts` |
-| ops_admin | `/ops/overview`, `qa`, `payments`, `matching`, `approvals`, `dispatch`, `escalations`, `schedule`, `payouts`, `claims`, `recovery`, `settings`, `audit` |
-| super_admin | `/admin/overview`, `verification`, `roles`, `catalogue`, `zones`, `credits`, `finance`, `settings`, `audit`, `planning`, `broadcast` |
+| Role        | Surface (hrefs)                                                                                                                                         |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| supplier    | `/supplier/jobs`, `catalogue`, `schedule`, `capacity`, `payouts`                                                                                        |
+| ops_admin   | `/ops/overview`, `qa`, `payments`, `matching`, `approvals`, `dispatch`, `escalations`, `schedule`, `payouts`, `claims`, `recovery`, `settings`, `audit` |
+| super_admin | `/admin/overview`, `verification`, `roles`, `catalogue`, `zones`, `credits`, `finance`, `settings`, `audit`, `planning`, `broadcast`                    |
 
 Two surfaces are mounted for both Operations and Super Admin from **one** implementation, so they can never drift:
 
-| Component | Mounted at |
-|---|---|
-| `src/components/approvals/SignupApprovals.tsx` | `/ops/approvals`, and the Sign-ups tab of `/admin/verification` |
-| `src/components/settings/OperationalSettings.tsx` | `/ops/settings`, `/admin/settings` |
+| Component                                         | Mounted at                                                      |
+| ------------------------------------------------- | --------------------------------------------------------------- |
+| `src/components/approvals/SignupApprovals.tsx`    | `/ops/approvals`, and the Sign-ups tab of `/admin/verification` |
+| `src/components/settings/OperationalSettings.tsx` | `/ops/settings`, `/admin/settings`                              |
 
 - AppShell renders `navGroupsForRole(role)` only. Do **not** maintain separate nav arrays in components.
-- Middleware + `RoleGate` still refuse another role’s URL; nav is not a security boundary.
+- Middleware authenticates only; `RoleGate` refuses a role URL through its fixed database
+  projection. Nav is not a security boundary.
 - Yellow on the rail is the **selected item’s text and icon** only — no left bar, no yellow pill or yellow fill. The active row also keeps the default sidebar-accent wash (same quiet highlight hover uses). Do not force `data-active:bg-transparent`. Elsewhere, yellow is at most one `Button variant="primary"` on a page. The rail must never become a yellow column.
 - `ready: false` → route uses `ComingNext` placeholder (“Coming next” + body from the nav item). Prefer that over a 404.
 - When shipping a real page: replace the placeholder `page.tsx`, set `ready: true` on that nav item, keep the same `href`.
@@ -391,11 +376,11 @@ Header title: `contextTitleForPath(pathname, role)` (nested job/QA workspaces ha
 
 Commission secrecy is an **authorization rule**, not a layout preference. The server strips fields per role; the portal must not undo that.
 
-| Figure | Who sees it |
-|---|---|
-| `supplierPriceMinor` | Operations, Super Admin, and the assigned supplier (its own) |
-| `commissionRatePercent` / `commissionMinor` | **Operations and Super Admin only** |
-| `subtotalMinor`, `deliveryFeeMinor`, `totalMinor`, `downpaymentMinor`, `balanceMinor` | everyone on the order |
+| Figure                                                                                | Who sees it                                                  |
+| ------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `supplierPriceMinor`                                                                  | Operations, Super Admin, and the assigned supplier (its own) |
+| `commissionRatePercent` / `commissionMinor`                                           | **Operations and Super Admin only**                          |
+| `subtotalMinor`, `deliveryFeeMinor`, `totalMinor`, `downpaymentMinor`, `balanceMinor` | everyone on the order                                        |
 
 `MoneyBreakdown` is the Operations/Super Admin view and must never be imported into `src/app/supplier/**`. `src/components/orders/__tests__/money-visibility.test.ts` walks the supplier route tree and fails the build if it is, if a commission field is read there, or if cash on delivery reappears.
 
@@ -496,7 +481,7 @@ Three facts that are easy to break and expensive to discover:
 - **Cloudflare terminates TLS in front of the server in Flexible mode.** The container
   serves plain HTTP. An HTTPS redirect inside the container loops forever.
 
-`/api/health` is liveness for *this process only* and deliberately does not call the GRIDGO
+`/api/health` is liveness for _this process only_ and deliberately does not call the GRIDGO
 API — otherwise an API outage would mark a healthy portal unhealthy and block shipping the
 fix. It echoes the build commit and the baked `apiBase`, which is how a deploy is confirmed.
 

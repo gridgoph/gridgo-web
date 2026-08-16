@@ -1,13 +1,27 @@
-/** Shared API types for the GRIDGO demo backend — derived from observed responses. */
+/** Shared GRIDGO API types derived from observed responses. */
 
 export type Role = "client" | "supplier" | "rider" | "ops_admin" | "super_admin";
+export type PortalRole = Extract<Role, "supplier" | "ops_admin" | "super_admin">;
+
+export type RoleMembership = {
+  role: Role;
+};
+
+export type ApprovalCaseSummary = {
+  id: string;
+  kind: "business_client" | "supplier" | "rider";
+  status: "pending" | "approved" | "rejected" | "suspended";
+  version: number;
+  applicationRevision: number;
+  submittedAt: string | null;
+  decidedAt: string | null;
+  rejectionReason: string | null;
+  suspensionReason: string | null;
+  updatedAt: string;
+};
 
 export type VerificationStatus =
-  | "unverified"
-  | "pending"
-  | "approved"
-  | "suspended"
-  | "rejected";
+  "unverified" | "pending" | "approved" | "suspended" | "rejected";
 
 export type MapPoint = {
   lat: number;
@@ -53,6 +67,79 @@ export type User = {
   createdAt?: string;
 };
 
+/** Identity fields shared by every fixed `/auth/me/*` projection. */
+export type PortalIdentity = {
+  id: string;
+  email: string;
+  name: string;
+  phone?: string;
+  createdAt: string;
+};
+
+/** Exact merged `GET /auth/me` envelope. Authorization reads memberships, not `user.role`. */
+export type AuthMe = {
+  user: User;
+  memberships: RoleMembership[];
+  approvalCases: ApprovalCaseSummary[];
+};
+
+type PortalMembership<R extends PortalRole> = {
+  role: R;
+};
+
+type PortalRoleProjectionBase<R extends PortalRole> = {
+  user: PortalIdentity;
+  membership: PortalMembership<R>;
+};
+
+export type SupplierPortalProfile = {
+  shopName: string;
+  contactName: string;
+  shop: MapPoint;
+  pickupAvailable: boolean;
+  updatedAt: string;
+};
+
+export type SupplierPortalRoleProjection = PortalRoleProjectionBase<"supplier"> & {
+  supplierProfile: SupplierPortalProfile | null;
+  approvalCase: (ApprovalCaseSummary & { kind: "supplier" }) | null;
+  readiness: {
+    readyForApproval: boolean;
+    missing: Array<"supplier_profile" | "supplier_service">;
+  };
+  capabilities: {
+    editCatalogue: boolean;
+    editSettings: boolean;
+    receiveJobOffers: boolean;
+    acceptJobs: boolean;
+  };
+};
+
+export type OpsPortalRoleProjection = PortalRoleProjectionBase<"ops_admin"> & {
+  capabilities: {
+    manageApprovalCases: boolean;
+    manageOperations: boolean;
+  };
+};
+
+export type AdminPortalRoleProjection = PortalRoleProjectionBase<"super_admin"> & {
+  capabilities: {
+    manageApprovalCases: boolean;
+    manageOperations: boolean;
+    manageRoleMemberships: boolean;
+    managePlatformSettings: boolean;
+  };
+};
+
+type PortalRoleProjectionByRole = {
+  supplier: SupplierPortalRoleProjection;
+  ops_admin: OpsPortalRoleProjection;
+  super_admin: AdminPortalRoleProjection;
+};
+
+export type PortalRoleProjection<R extends PortalRole = PortalRole> =
+  PortalRoleProjectionByRole[R];
+
 export type TimelineEntry = {
   at: string;
   state: string;
@@ -95,11 +182,7 @@ export type OrderPayments = Record<PaymentInstallment, PaymentRecord>;
 
 // ---- Milestone payouts (v2) ----
 
-export type PayoutMilestoneCode =
-  | "printing"
-  | "packaging_qc"
-  | "delivered"
-  | "retention";
+export type PayoutMilestoneCode = "printing" | "packaging_qc" | "delivered" | "retention";
 
 export type PayoutMilestoneStatus = "pending_pof" | "pof_attached" | "released";
 
@@ -132,10 +215,7 @@ export type PickupCheck = {
   passed: boolean;
 };
 
-export type PickupChecklistStatus =
-  | "not_started"
-  | "passed"
-  | "failed_escalated";
+export type PickupChecklistStatus = "not_started" | "passed" | "failed_escalated";
 
 export type PickupChecklist = {
   status: PickupChecklistStatus | string;
@@ -385,11 +465,7 @@ export type Taxonomy = {
 // ---- Supplier services ----
 
 export type SupplierServiceState =
-  | "draft"
-  | "pending_verification"
-  | "live"
-  | "suspended"
-  | "withdrawn";
+  "draft" | "pending_verification" | "live" | "suspended" | "withdrawn";
 
 export type SupplierService = {
   id: string;
@@ -580,11 +656,7 @@ export type LocationPing = {
 
 /** Who an announcement interrupts. `everyone` also reaches unclaimed phones. */
 export type AnnouncementAudience =
-  | "everyone"
-  | "clients"
-  | "suppliers"
-  | "riders"
-  | "ops";
+  "everyone" | "clients" | "suppliers" | "riders" | "ops";
 
 export type Announcement = {
   id: string;
@@ -609,11 +681,6 @@ export type PostAnnouncementInput = {
 
 // ---- Auth / health ----
 
-export type LoginResult = {
-  token: string;
-  user: User;
-};
-
 export type HealthResult = {
   ok: boolean;
   service?: string;
@@ -621,7 +688,7 @@ export type HealthResult = {
   at?: string;
 };
 
-/** Structured error body returned by the demo API. */
+/** Structured error body returned by the GRIDGO API. */
 export type ApiErrorBody = {
   error: string;
   [key: string]: unknown;

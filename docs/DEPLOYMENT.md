@@ -13,14 +13,16 @@ hand and nothing is built on the server.
 | Server service definition | `deploy/docker-compose.yml` → installed as `~/gridgo/web/docker-compose.yml` |
 | Pipeline                  | `.github/workflows/deploy.yml`                                               |
 | Health check              | `GET /api/health` (`src/app/api/health/route.ts`)                            |
+| Baked public config       | API URL + Clerk publishable key passed as Docker build arguments             |
 | API URL assertion         | `scripts/assert-api-url.mjs`                                                 |
 | Account-address assertion | `scripts/assert-no-account-addresses.mjs` (runs inside `npm run build`)      |
+| Clerk-secret assertion    | `scripts/assert-no-clerk-secrets.mjs` (runs inside `npm run build`)          |
 
 ## How a change reaches users
 
 ```
 merge to main
-  └─ verify      typecheck · lint · test · next build · assert API URL in bundle
+  └─ verify      typecheck · lint · test · next build + security assertions · assert API URL
      └─ image    docker build → smoke test the built image → push sha-<12> and latest
         └─ deploy  ssh <deploy key> "web"  (token piped on stdin)
            └─ server: docker compose pull && up -d --remove-orphans
@@ -50,11 +52,22 @@ under immutable `sha-` / `branch-` tags; it never moves `latest`, which is the o
 `~/gridgo/web/docker-compose.yml` names. That is what makes it possible to prove the whole
 pipeline before trusting it with the live portal.
 
-## The API URL is baked in, not configured
+## Public browser configuration is baked in
 
 `NEXT_PUBLIC_API_URL` is **inlined by the compiler into the JavaScript the browser
 downloads**. It is not read when the container starts. Setting it in `docker-compose.yml`
 would change nothing.
+
+`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` follows the same build-time rule. It is expected to be
+public and connects ClerkJS to the production Clerk instance. Trusted branch builds read it
+from the repository secret of the same name and pass it as a Docker build argument. Changing
+either public value requires a rebuild.
+
+Untrusted fork pull requests cannot read repository secrets. Their verify-only jobs use a
+synthetic `pk_test_…` value and a plainly non-secret `sk_test_…` placeholder so Next.js and
+the Dockerfile can exercise the complete build. Those jobs cannot publish or deploy.
+Branch pushes, `main`, and manual trusted builds have no fallback: the real
+`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` repository secrets are required.
 
 Get this wrong and the portal builds green, boots green, passes its health check — and then
 every signed-in browser calls `http://127.0.0.1:8787`, the user's own machine. So the value
@@ -71,6 +84,11 @@ built output rather than against the environment that was meant to supply it:
 `.github/workflows/deploy.yml` and merge. A rebuild is mandatory; there is no server-side
 knob, deliberately, because a knob that appears to work but does nothing is worse than none.
 
+`CLERK_SECRET_KEY` is different: it is server-only and must never be in a build argument,
+image layer, browser variable, or repository file. BuildKit mounts it transiently while
+Next builds, and `scripts/assert-no-clerk-secrets.mjs` scans the complete `.next` output.
+At runtime Compose reads it from the server's gitignored `~/gridgo/web/.env`.
+
 ## The sign-in page must ship no account addresses
 
 The same "assert against the built output" reasoning applies to a second thing that is
@@ -83,13 +101,22 @@ account list to anyone who opens it.
 `npm run build`, so both the workflow's verify job and the Docker `builder` stage get it
 for free — no separate step to forget.
 
-The local-development convenience that fills the email field lives behind a build-time
-constant in `src/app/login/dev-accounts.ts`. See **Auth and role boundary** in `AGENTS.md`.
+The portal no longer carries local credential pickers. Clerk owns Google and email/password
+sign-in, and the emitted-build assertion is the backstop against account disclosure. See
+**Auth and role boundary** in `AGENTS.md`.
 
 ## What the environment needs
 
-Nothing new. Everything below already exists — this is the inventory to check against when
-something breaks.
+The portal needs the production Clerk keys from the same Clerk instance used by
+`gridgo-api`:
+
+| Variable                               | Where                                                                                    | Purpose                                                                                              |
+| -------------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`    | GitHub repository secret for trusted builds; Docker build argument                       | Public production ClerkJS configuration baked into the browser bundle                                |
+| `CLERK_SECRET_KEY`                     | GitHub repository secret for trusted build/smoke; server `~/gridgo/web/.env` for runtime | Server-only production Clerk middleware token verification                                           |
+| `GRIDGO_WEB_CLERK_RUNTIME_PROVISIONED` | GitHub `production` environment variable                                                 | Fail-closed operator attestation that the host has the current Compose file and runtime Clerk secret |
+
+Never prefix the secret with `NEXT_PUBLIC_`, print it, or place it in Compose source.
 
 **On the server** (`~` is the deploy user's home):
 
@@ -106,11 +133,18 @@ something breaks.
 
 **In this repository** (already present; do not recreate):
 
-| Secret                       | Used for                                                            |
-| ---------------------------- | ------------------------------------------------------------------- |
-| `DEPLOY_SSH_KEY`             | private key pinned to `deploy.sh` in the server's `authorized_keys` |
-| `DEPLOY_HOST`, `DEPLOY_USER` | where to connect                                                    |
-| `DEPLOY_KNOWN_HOSTS`         | the server's host key                                               |
+| Secret                              | Used for                                                            |
+| ----------------------------------- | ------------------------------------------------------------------- |
+| `DEPLOY_SSH_KEY`                    | private key pinned to `deploy.sh` in the server's `authorized_keys` |
+| `DEPLOY_HOST`, `DEPLOY_USER`        | where to connect                                                    |
+| `DEPLOY_KNOWN_HOSTS`                | the server's host key                                               |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | production Clerk publishable key used at build time                 |
+| `CLERK_SECRET_KEY`                  | production Clerk secret used transiently for build/smoke            |
+
+The `production` environment also has a non-secret
+`GRIDGO_WEB_CLERK_RUNTIME_PROVISIONED` variable. The deploy job accepts only the exact value
+`true`; an absent or different value stops before SSH. Set it only after the host checks in
+the next section pass.
 
 Host key checking stays **on** (`StrictHostKeyChecking=yes` against `DEPLOY_KNOWN_HOSTS`).
 Accepting an unknown key would let anyone able to intercept the connection collect the deploy
@@ -128,9 +162,10 @@ forwards it as HTTP again, forever.
 
 ## First-time server installation
 
-**Already done on the current host** — `~/gridgo/web/docker-compose.yml` is installed and
-resolves to `ghcr.io/gridgoph/gridgo-web:latest`. This section is for a rebuilt or replacement
-server.
+The current host must be upgraded before the first Clerk-only deployment. Until that is
+complete, leave `GRIDGO_WEB_CLERK_RUNTIME_PROVISIONED` absent from the GitHub `production`
+environment so the workflow cannot replace the working container with an image that lacks
+its required runtime secret.
 
 `deploy.sh` refuses with exit 65 (`web is not provisioned yet`) while that file is missing.
 Once, as the deploy user:
@@ -139,13 +174,24 @@ Once, as the deploy user:
 mkdir -p ~/gridgo/web
 # copy deploy/docker-compose.yml from this repository to ~/gridgo/web/docker-compose.yml
 cd ~/gridgo/web
+umask 077
+printf 'CLERK_SECRET_KEY=%s\n' '<production Clerk secret>' > .env
+docker compose config --quiet
 docker compose config --images        # must print ghcr.io/gridgoph/gridgo-web:latest
 ```
 
-Then merge to `main` and let the pipeline do the first deploy. Do not `docker compose up`
-by hand first: the image is private, and CI is what supplies the pull credential — by
-design, nothing durable authenticates this host to the registry. A manual pull failing with
-`unauthorized` before the first CI publish is the expected, correct state, not a fault.
+After both checks succeed against the installed file, set the GitHub `production`
+environment variable `GRIDGO_WEB_CLERK_RUNTIME_PROVISIONED=true`, then merge to `main` and
+let the pipeline do the first deploy. The variable is only an attestation and never contains
+the Clerk secret. Remove it before any future Compose or Clerk-runtime migration, then
+restore it only after the installed host configuration has been verified again.
+
+Do not `docker compose up` by hand first: the image is private, and CI is what supplies the
+pull credential — by design, nothing durable authenticates this host to the registry. A
+manual pull failing with `unauthorized` before the first CI publish is the expected, correct
+state, not a fault. The image entry command and Compose interpolation both reject a missing
+`CLERK_SECRET_KEY`, while the workflow attestation prevents an unprovisioned host from
+reaching that crash instead of taking the portal offline.
 
 **Keep the installed copy in step with `deploy/docker-compose.yml`.** Nothing synchronises
 them; CI never writes to the server. After changing the compose file in this repository, an
@@ -196,7 +242,8 @@ On the server, as the deploy user:
 
 ```bash
 cd ~/gridgo/web
-echo 'GRIDGO_WEB_TAG=sha-0123456789ab' > .env     # a known-good tag
+sed -i '/^GRIDGO_WEB_TAG=/d' .env
+echo 'GRIDGO_WEB_TAG=sha-0123456789ab' >> .env     # a known-good tag
 docker compose pull && docker compose up -d --wait
 curl -s https://gridgo-dash.talasora.com/api/health   # commit must be the older one
 ```
@@ -209,7 +256,9 @@ restarts, but the pinned tag never moves. That is the point during an incident, 
 afterwards. To hand control back:
 
 ```bash
-cd ~/gridgo/web && rm .env && docker compose pull && docker compose up -d --wait
+cd ~/gridgo/web
+sed -i '/^GRIDGO_WEB_TAG=/d' .env
+docker compose pull && docker compose up -d --wait
 ```
 
 If the registry pull itself fails (`no basic auth credentials`), the server is not logged

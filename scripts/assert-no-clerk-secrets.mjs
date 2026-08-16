@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
 
-const root = resolve(process.argv[2] || ".next/static");
+const root = resolve(process.argv[2] || ".next");
 const textExtensions = new Set([".css", ".html", ".js", ".json", ".map", ".txt"]);
 const secretKey = /sk_(?:test|live)_[A-Za-z0-9_-]+/;
 
@@ -13,12 +13,13 @@ function filesUnder(path) {
 }
 
 const offender = filesUnder(root).find(
-  (file) => textExtensions.has(extname(file)) && secretKey.test(readFileSync(file, "utf8")),
+  (file) =>
+    textExtensions.has(extname(file)) && secretKey.test(readFileSync(file, "utf8")),
 );
 
 if (offender) {
-  console.error(`Clerk secret key detected in client output: ${offender}`);
+  console.error(`Clerk secret key detected in build output: ${offender}`);
   process.exit(1);
 }
 
-console.log("Clerk client output contains no secret keys.");
+console.log("Clerk build output contains no secret keys.");

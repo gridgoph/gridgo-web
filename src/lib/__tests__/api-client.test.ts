@@ -1,6 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, isApiError, me, setTokenProvider } from "@/lib/api/client";
+import {
+  ApiError,
+  getApiBase,
+  getAuthMe,
+  getPortalRoleProjection,
+  isApiError,
+  setTokenProvider,
+} from "@/lib/api/client";
 import {
   allMilestonesReleased,
   canReportIssue,
@@ -13,6 +20,69 @@ import {
   paymentIsSettled,
   PLATFORM_CONSTRAINT_COPY,
 } from "@/lib/api/constraints";
+import type {
+  AdminPortalRoleProjection,
+  OpsPortalRoleProjection,
+  SupplierPortalRoleProjection,
+} from "@/lib/api/types";
+
+const portalIdentity = {
+  id: "usr_multi",
+  email: "person@example.com",
+  name: "Multi Member",
+  createdAt: "2026-08-16T00:00:00.000Z",
+};
+
+const supplierProjectionFixture = {
+  user: portalIdentity,
+  membership: { role: "supplier" },
+  supplierProfile: {
+    shopName: "Print Shop",
+    contactName: "Multi Member",
+    shop: { lat: 7.064, lng: 125.6085, label: "Davao Shop" },
+    pickupAvailable: false,
+    updatedAt: "2026-08-16T00:00:00.000Z",
+  },
+  approvalCase: {
+    id: "case_supplier",
+    kind: "supplier",
+    status: "approved",
+    version: 1,
+    applicationRevision: 1,
+    submittedAt: "2026-08-16T00:00:00.000Z",
+    decidedAt: "2026-08-16T00:00:00.000Z",
+    rejectionReason: null,
+    suspensionReason: null,
+    updatedAt: "2026-08-16T00:00:00.000Z",
+  },
+  readiness: { readyForApproval: true, missing: [] },
+  capabilities: {
+    editCatalogue: true,
+    editSettings: true,
+    receiveJobOffers: true,
+    acceptJobs: true,
+  },
+} satisfies SupplierPortalRoleProjection;
+
+const opsProjectionFixture = {
+  user: portalIdentity,
+  membership: { role: "ops_admin" },
+  capabilities: {
+    manageApprovalCases: true,
+    manageOperations: true,
+  },
+} satisfies OpsPortalRoleProjection;
+
+const adminProjectionFixture = {
+  user: portalIdentity,
+  membership: { role: "super_admin" },
+  capabilities: {
+    manageApprovalCases: true,
+    manageOperations: true,
+    manageRoleMemberships: true,
+    managePlatformSettings: true,
+  },
+} satisfies AdminPortalRoleProjection;
 
 afterEach(() => {
   setTokenProvider(() => null);
@@ -29,12 +99,8 @@ describe("ApiError", () => {
   });
 
   it("classifies common status codes", () => {
-    expect(new ApiError(401, { error: "unauthorized" }).kind).toBe(
-      "unauthorized",
-    );
-    expect(new ApiError(404, { error: "claim_not_found" }).kind).toBe(
-      "not_found",
-    );
+    expect(new ApiError(401, { error: "unauthorized" }).kind).toBe("unauthorized");
+    expect(new ApiError(404, { error: "claim_not_found" }).kind).toBe("not_found");
     expect(new ApiError(409, { error: "payout_held" }).kind).toBe("conflict");
     expect(new ApiError(400, { error: "cod_limit", maxMinor: 150000 }).kind).toBe(
       "validation",
@@ -62,6 +128,8 @@ describe("API bearer tokens", () => {
             name: "Operations user",
             role: "ops_admin",
           },
+          memberships: [{ role: "ops_admin" }, { role: "supplier" }],
+          approvalCases: [],
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       ),
@@ -69,11 +137,88 @@ describe("API bearer tokens", () => {
     vi.stubGlobal("fetch", fetchMock);
     setTokenProvider(async () => "clerk-session-token");
 
-    await me();
+    const result = await getAuthMe();
 
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${getApiBase()}/auth/me`);
     expect(new Headers(init.headers).get("authorization")).toBe(
       "Bearer clerk-session-token",
+    );
+    expect(result.memberships).toEqual([{ role: "ops_admin" }, { role: "supplier" }]);
+  });
+
+  it.each([
+    ["supplier", "/auth/me/supplier", supplierProjectionFixture],
+    ["ops_admin", "/auth/me/ops", opsProjectionFixture],
+    ["super_admin", "/auth/me/admin", adminProjectionFixture],
+  ] as const)("loads the fixed %s projection from %s", async (role, path, fixture) => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(fixture), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    setTokenProvider(() => "clerk-session-token");
+
+    const projection = await getPortalRoleProjection(role);
+
+    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${getApiBase()}${path}`);
+    expect(projection.membership).toEqual({ role });
+    expect(projection).toEqual(fixture);
+  });
+
+  it("requests an uncached Clerk token for an identity retry", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          user: {
+            id: "usr_ops",
+            email: "person@example.com",
+            name: "Operations user",
+            role: "ops_admin",
+          },
+          memberships: [{ role: "ops_admin" }],
+          approvalCases: [],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const tokenProvider = vi.fn().mockResolvedValue("fresh-clerk-session-token");
+    vi.stubGlobal("fetch", fetchMock);
+    setTokenProvider(tokenProvider);
+
+    await getAuthMe({ refreshToken: true });
+
+    expect(tokenProvider).toHaveBeenCalledWith({ skipCache: true });
+  });
+
+  it("requests an uncached Clerk token for a projection retry", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          user: {
+            id: "usr_ops",
+            email: "person@example.com",
+            name: "Operations user",
+          },
+          membership: { role: "ops_admin" },
+          capabilities: {},
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const tokenProvider = vi.fn().mockResolvedValue("fresh-clerk-session-token");
+    vi.stubGlobal("fetch", fetchMock);
+    setTokenProvider(tokenProvider);
+
+    await getPortalRoleProjection("ops_admin", { refreshToken: true });
+
+    expect(tokenProvider).toHaveBeenCalledWith({ skipCache: true });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(new Headers(init.headers).get("authorization")).toBe(
+      "Bearer fresh-clerk-session-token",
     );
   });
 });
@@ -85,9 +230,7 @@ describe("platform constraints", () => {
   });
 
   it("reads an installment by where it stands, not by its wording", () => {
-    expect(paymentAwaitsConfirmation({ status: "pending_confirmation" })).toBe(
-      true,
-    );
+    expect(paymentAwaitsConfirmation({ status: "pending_confirmation" })).toBe(true);
     expect(paymentAwaitsConfirmation({ status: "not_submitted" })).toBe(false);
     expect(paymentIsSettled({ status: "confirmed" })).toBe(true);
     // Orders migrated from the pre-v2 model are just as paid.
@@ -129,9 +272,9 @@ describe("platform constraints", () => {
   });
 
   it("only clears payout close-out when every milestone has released", () => {
-    expect(
-      allMilestonesReleased([{ status: "released" }, { status: "released" }]),
-    ).toBe(true);
+    expect(allMilestonesReleased([{ status: "released" }, { status: "released" }])).toBe(
+      true,
+    );
     expect(
       allMilestonesReleased([{ status: "released" }, { status: "pof_attached" }]),
     ).toBe(false);

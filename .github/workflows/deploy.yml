@@ -52,6 +52,8 @@ jobs:
   verify:
     name: Checks
     runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ github.event_name == 'pull_request' && 'pk_test_dGVzdC5jbGVyay5hY2NvdW50cy5kZXYk' || secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
     # A pull request whose branch lives in this repository has already been run
     # by the `push` event on the very same commit, and its result is attached to
     # that commit. Running it twice buys nothing. A fork PR has no such run —
@@ -76,6 +78,8 @@ jobs:
       # Builds with the production API URL so this check exercises exactly what
       # the image build compiles, then proves the URL reached the bundle.
       - run: npm run build
+        env:
+          CLERK_SECRET_KEY: ${{ github.event_name == 'pull_request' && 'sk_test_gridgo_fork_pr_ci_only_not_a_secret' || secrets.CLERK_SECRET_KEY }}
       - run: node scripts/assert-api-url.mjs
 
   image:
@@ -84,6 +88,8 @@ jobs:
     # request from rebuilding a commit the push run already built.
     needs: verify
     runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ github.event_name == 'pull_request' && 'pk_test_dGVzdC5jbGVyay5hY2NvdW50cy5kZXYk' || secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
     permissions:
       contents: read
       packages: write
@@ -139,8 +145,11 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
             NEXT_PUBLIC_API_URL=${{ env.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
             GRIDGO_BUILD_SHA=${{ github.sha }}
             GRIDGO_BUILD_TIME=${{ steps.meta.outputs.built_at }}
+          secrets: |
+            clerk_secret_key=${{ github.event_name == 'pull_request' && 'sk_test_gridgo_fork_pr_ci_only_not_a_secret' || secrets.CLERK_SECRET_KEY }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -160,7 +169,10 @@ jobs:
       - name: Smoke test the container
         run: |
           set -euo pipefail
-          cid="$(docker run -d -p "127.0.0.1:${SMOKE_PORT}:3000" "$IMAGE")"
+          cid="$(docker run -d \
+            -e CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
+            -p "127.0.0.1:${SMOKE_PORT}:3000" \
+            "$IMAGE")"
           echo "container=$cid" >> "$GITHUB_ENV"
 
           for _ in $(seq 1 30); do
@@ -202,6 +214,7 @@ jobs:
           [ "$user" != "root" ] || { echo "::error::container runs as root"; exit 1; }
         env:
           IMAGE: ${{ steps.meta.outputs.primary }}
+          CLERK_SECRET_KEY: ${{ github.event_name == 'pull_request' && 'sk_test_gridgo_fork_pr_ci_only_not_a_secret' || secrets.CLERK_SECRET_KEY }}
 
       - name: Stop smoke container
         if: always() && env.container != ''
@@ -241,6 +254,16 @@ jobs:
       name: production
       url: https://gridgo-dash.talasora.com
     steps:
+      - name: Require Clerk runtime provisioning
+        run: |
+          set -euo pipefail
+          if [ "$GRIDGO_WEB_CLERK_RUNTIME_PROVISIONED" != "true" ]; then
+            echo "::error::The production host has not been attested as provisioned with the Clerk runtime secret and current Compose definition."
+            exit 1
+          fi
+        env:
+          GRIDGO_WEB_CLERK_RUNTIME_PROVISIONED: ${{ vars.GRIDGO_WEB_CLERK_RUNTIME_PROVISIONED }}
+
       - name: Trigger the restricted deploy command
         run: |
           set -euo pipefail

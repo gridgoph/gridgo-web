@@ -5,171 +5,245 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 
-import {
-  login as apiLogin,
-  logout as apiLogout,
-  me,
-  setTokenProvider,
-} from "@/lib/api/client";
-import type { User } from "@/lib/api/types";
-import {
-  clearSession,
-  getStoredToken,
-  getStoredUser,
-  persistClerkSession,
-  persistSession,
-} from "@/lib/auth/session";
-import { homeForRole } from "@/lib/routes";
+import { getAuthMe, isApiError, setTokenProvider } from "@/lib/api/client";
+import type { RoleMembership, User } from "@/lib/api/types";
+
+export type PortalIdentityStatus =
+  "checking" | "mapped" | "unmapped" | "unavailable" | "signed_out";
 
 type AuthState = {
   user: User | null;
-  token: string | null;
+  memberships: RoleMembership[];
+  status: PortalIdentityStatus;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<User>;
   signOut: () => Promise<void>;
-  refresh: () => Promise<User | null>;
+  refresh: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
+const MAX_UNAUTHORIZED_REFRESHES = 1;
 
 export type ClerkSessionAdapter = {
   getToken: () => Promise<string | null>;
   isLoaded: boolean;
   isSignedIn: boolean;
+  sessionId: string | null;
   signOut: () => Promise<unknown>;
+  userId: string | null;
 };
 
+type ClerkSessionSnapshot = Pick<
+  ClerkSessionAdapter,
+  "isLoaded" | "isSignedIn" | "sessionId" | "userId"
+>;
+
+function sameClerkSession(
+  left: ClerkSessionSnapshot,
+  right: ClerkSessionSnapshot,
+): boolean {
+  return (
+    left.isLoaded === right.isLoaded &&
+    left.isSignedIn === right.isSignedIn &&
+    left.sessionId === right.sessionId &&
+    left.userId === right.userId
+  );
+}
+
+/**
+ * Clerk owns authentication and token refresh. `/auth/me` supplies display
+ * identity plus every Postgres membership; route authorization is deliberately
+ * left to each fixed `/auth/me/*` projection in `RoleGate`.
+ */
 export function AuthProvider({
   children,
   clerkSession,
 }: {
   children: ReactNode;
-  clerkSession?: ClerkSessionAdapter;
+  clerkSession: ClerkSessionAdapter;
+}) {
+  const sessionBoundary = JSON.stringify([
+    clerkSession.isSignedIn,
+    clerkSession.sessionId,
+    clerkSession.userId,
+  ]);
+
+  return (
+    <SessionAuthProvider key={sessionBoundary} clerkSession={clerkSession}>
+      {children}
+    </SessionAuthProvider>
+  );
+}
+
+function SessionAuthProvider({
+  children,
+  clerkSession,
+}: {
+  children: ReactNode;
+  clerkSession: ClerkSessionAdapter;
 }) {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [memberships, setMemberships] = useState<RoleMembership[]>([]);
+  const [status, setStatus] = useState<PortalIdentityStatus>(() =>
+    clerkSession.isLoaded && !clerkSession.isSignedIn ? "signed_out" : "checking",
+  );
   const router = useRouter();
-  const pathname = usePathname();
+  const refreshGeneration = useRef(0);
+  const activeRefresh = useRef<AbortController | null>(null);
+  const mounted = useRef(false);
+  const latestClerkSession = useRef<ClerkSessionSnapshot>({
+    isLoaded: clerkSession.isLoaded,
+    isSignedIn: clerkSession.isSignedIn,
+    sessionId: clerkSession.sessionId,
+    userId: clerkSession.userId,
+  });
 
-  useEffect(() => {
-    setTokenProvider(clerkSession ? clerkSession.getToken : () => getStoredToken());
-  }, [clerkSession]);
+  const invalidateRefresh = useCallback(() => {
+    refreshGeneration.current += 1;
+    activeRefresh.current?.abort();
+    activeRefresh.current = null;
+  }, []);
 
-  const refresh = useCallback(async (): Promise<User | null> => {
-    if (clerkSession) {
-      if (!clerkSession.isLoaded) return null;
-      if (!clerkSession.isSignedIn) {
-        clearSession();
-        setUser(null);
-        setToken(null);
-        return null;
-      }
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      invalidateRefresh();
+    };
+  }, [invalidateRefresh]);
 
-      try {
-        setTokenProvider(clerkSession.getToken);
-        const nextToken = await clerkSession.getToken();
-        if (!nextToken) throw new Error("missing_clerk_session_token");
-        const next = await me();
-        persistClerkSession(next);
-        setUser(next);
-        setToken(nextToken);
-        return next;
-      } catch {
-        clearSession();
-        setUser(null);
-        setToken(null);
-        return null;
-      }
-    }
+  useLayoutEffect(() => {
+    latestClerkSession.current = {
+      isLoaded: clerkSession.isLoaded,
+      isSignedIn: clerkSession.isSignedIn,
+      sessionId: clerkSession.sessionId,
+      userId: clerkSession.userId,
+    };
+    invalidateRefresh();
+  }, [
+    clerkSession.isLoaded,
+    clerkSession.isSignedIn,
+    clerkSession.sessionId,
+    clerkSession.userId,
+    invalidateRefresh,
+  ]);
 
-    const stored = getStoredToken();
-    if (!stored) {
-      setUser(null);
-      setToken(null);
-      return null;
-    }
+  useLayoutEffect(() => {
+    setTokenProvider(clerkSession.getToken);
+    return () => setTokenProvider(() => null);
+  }, [clerkSession.getToken]);
+
+  const refresh = useCallback(async (): Promise<void> => {
+    invalidateRefresh();
+    const generation = refreshGeneration.current;
+    const controller = new AbortController();
+    activeRefresh.current = controller;
+    const originatingSession: ClerkSessionSnapshot = {
+      isLoaded: clerkSession.isLoaded,
+      isSignedIn: clerkSession.isSignedIn,
+      sessionId: clerkSession.sessionId,
+      userId: clerkSession.userId,
+    };
+    const isCurrent = () =>
+      mounted.current &&
+      !controller.signal.aborted &&
+      generation === refreshGeneration.current &&
+      sameClerkSession(originatingSession, latestClerkSession.current);
+
     try {
-      setTokenProvider(() => stored);
-      const next = await me();
-      persistSession(stored, next);
-      setUser(next);
-      setToken(stored);
-      return next;
-    } catch {
-      clearSession();
-      setUser(null);
-      setToken(null);
-      return null;
-    }
-  }, [clerkSession]);
+      if (!clerkSession.isLoaded) {
+        if (isCurrent()) setStatus("checking");
+        return;
+      }
+      if (!clerkSession.isSignedIn) {
+        if (!isCurrent()) return;
+        setUser(null);
+        setMemberships([]);
+        setStatus("signed_out");
+        return;
+      }
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (clerkSession && !clerkSession.isLoaded) return;
-      const cached = getStoredUser();
-      const storedToken = clerkSession ? null : getStoredToken();
-      if (cached && (clerkSession?.isSignedIn || storedToken)) {
-        setUser(cached);
-        if (storedToken) {
-          setToken(storedToken);
-          setTokenProvider(() => storedToken);
+      if (isCurrent()) setStatus("checking");
+      const token = await clerkSession.getToken();
+      if (!isCurrent()) return;
+      if (!token) {
+        setUser(null);
+        setMemberships([]);
+        setStatus("signed_out");
+        return;
+      }
+      setTokenProvider(clerkSession.getToken);
+      let unauthorizedRefreshes = 0;
+      let refreshToken = false;
+      let next: Awaited<ReturnType<typeof getAuthMe>>;
+      while (true) {
+        try {
+          next = await getAuthMe({
+            signal: controller.signal,
+            ...(refreshToken ? { refreshToken: true } : {}),
+          });
+          break;
+        } catch (error) {
+          if (!isCurrent()) return;
+          if (
+            isApiError(error) &&
+            error.kind === "unauthorized" &&
+            unauthorizedRefreshes < MAX_UNAUTHORIZED_REFRESHES
+          ) {
+            unauthorizedRefreshes += 1;
+            refreshToken = true;
+            continue;
+          }
+          throw error;
         }
       }
-      await refresh();
-      if (!cancelled) setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [clerkSession, refresh]);
+      if (!isCurrent()) return;
+      setUser(next.user);
+      setMemberships(next.memberships);
+      setStatus("mapped");
+    } catch (error) {
+      if (!isCurrent()) return;
+      setUser(null);
+      setMemberships([]);
+      setStatus(
+        isApiError(error) && error.kind === "unauthorized" ? "unmapped" : "unavailable",
+      );
+    } finally {
+      if (activeRefresh.current === controller) activeRefresh.current = null;
+    }
+  }, [clerkSession, invalidateRefresh]);
 
-  const signIn = useCallback(
-    async (email: string, password: string): Promise<User> => {
-      const result = await apiLogin(email, password);
-      persistSession(result.token, result.user);
-      setTokenProvider(() => result.token);
-      setToken(result.token);
-      setUser(result.user);
-      // replace so back does not return to a post-login intermediate
-      router.replace(homeForRole(result.user.role));
-      return result.user;
-    },
-    [router],
-  );
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   const signOut = useCallback(async () => {
-    try {
-      await apiLogout();
-    } finally {
-      if (clerkSession) await clerkSession.signOut();
-      clearSession();
-      setTokenProvider(() => null);
-      setUser(null);
-      setToken(null);
-      // replace — critical: back button must not re-enter the shell
-      router.replace("/login");
-    }
-  }, [clerkSession, router]);
+    invalidateRefresh();
+    setTokenProvider(() => null);
+    setUser(null);
+    setMemberships([]);
+    setStatus("signed_out");
+    router.replace("/login");
+    await clerkSession.signOut();
+  }, [clerkSession, invalidateRefresh, router]);
 
-  // If we land on a protected tree without a session after load, bounce to login.
-  useEffect(() => {
-    if (loading) return;
-    if (!user && pathname !== "/login" && pathname !== "/") {
-      router.replace("/login");
-    }
-  }, [loading, user, pathname, router]);
-
-  const value = useMemo(
-    () => ({ user, token, loading, signIn, signOut, refresh }),
-    [user, token, loading, signIn, signOut, refresh],
+  const value = useMemo<AuthState>(
+    () => ({
+      user,
+      memberships,
+      status,
+      loading: status === "checking",
+      signOut,
+      refresh,
+    }),
+    [user, memberships, status, signOut, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

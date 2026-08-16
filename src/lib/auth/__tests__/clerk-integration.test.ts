@@ -1,48 +1,50 @@
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { NextRequest } from "next/server";
+import { describe, expect, it, vi } from "vitest";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { config, portalSessionMiddleware, requiresPortalSession } from "@/middleware";
 
-import { config } from "@/middleware";
+describe("Clerk session middleware", () => {
+  it.each(["/", "/supplier/jobs", "/ops/payments", "/admin/roles"])(
+    "requires a signed-in session for %s",
+    (pathname) => {
+      expect(requiresPortalSession(pathname)).toBe(true);
+    },
+  );
 
-describe("Clerk integration contract", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
+  it("keeps login public and redirects signed-out role routes without consulting claims", async () => {
+    const auth = vi.fn().mockResolvedValue({
+      userId: null,
+      sessionClaims: { gridgo_role: "super_admin" },
+    });
+    const request = new NextRequest("https://portal.example/ops/payments");
+
+    const response = await portalSessionMiddleware(auth, request);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://portal.example/login?redirect_url=https%3A%2F%2Fportal.example%2Fops%2Fpayments",
+    );
+    expect(auth).toHaveBeenCalledTimes(1);
+    expect(requiresPortalSession("/login")).toBe(false);
   });
 
-  it("keeps Clerk auth opt-in until the API dual-auth rollout is enabled", async () => {
-    vi.stubEnv("NEXT_PUBLIC_GRIDGO_AUTH_MODE", "legacy");
-    vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "pk_test_public");
-    vi.resetModules();
+  it("admits any signed-in identity to the layout that performs DB authorization", async () => {
+    const auth = vi.fn().mockResolvedValue({ userId: "clerk_user" });
 
-    const { isClerkAuthEnabled } = await import("@/lib/auth/clerk-config");
-    expect(isClerkAuthEnabled()).toBe(false);
+    const response = await portalSessionMiddleware(
+      auth,
+      new NextRequest("https://portal.example/admin/overview"),
+    );
 
-    vi.stubEnv("NEXT_PUBLIC_GRIDGO_AUTH_MODE", "clerk");
-    expect(isClerkAuthEnabled()).toBe(true);
-
-    vi.stubEnv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", "");
-    expect(isClerkAuthEnabled()).toBe(false);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("x-middleware-next")).toBe("1");
   });
 
-  it("runs Clerk middleware on API routes and the Clerk handshake path", () => {
+  it("runs Clerk on API and handshake paths after portal routes", () => {
     const apiIndex = config.matcher.indexOf("/(api|trpc)(.*)");
     const handshakeIndex = config.matcher.indexOf("/__clerk/:path*");
 
     expect(apiIndex).toBeGreaterThanOrEqual(0);
     expect(handshakeIndex).toBe(apiIndex + 1);
-  });
-
-  it("places the optional Clerk provider below the document body", () => {
-    const layout = readFileSync(resolve(process.cwd(), "src/app/layout.tsx"), "utf8");
-    const providersPath = resolve(
-      process.cwd(),
-      "src/components/providers/AppProviders.tsx",
-    );
-
-    expect(existsSync(providersPath)).toBe(true);
-    const providers = existsSync(providersPath) ? readFileSync(providersPath, "utf8") : "";
-    expect(layout.indexOf("<body")).toBeLessThan(layout.indexOf("<AppProviders"));
-    expect(providers).toContain("<ClerkProvider");
   });
 });

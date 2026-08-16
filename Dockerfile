@@ -31,9 +31,11 @@ WORKDIR /app
 # The API URL is compiled *into* the JavaScript the browser downloads. It has to
 # be known here, at build time — a runtime environment variable is too late.
 ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 ARG GRIDGO_BUILD_SHA=unknown
 ARG GRIDGO_BUILD_TIME=unknown
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN test -n "$NEXT_PUBLIC_API_URL" || { \
@@ -42,11 +44,16 @@ RUN test -n "$NEXT_PUBLIC_API_URL" || { \
       echo "  deployed portal calls http://127.0.0.1:8787 from users' browsers." >&2; \
       exit 1; \
     }
+RUN test -n "$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY" || { \
+      echo "Dockerfile: --build-arg NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is required." >&2; \
+      exit 1; \
+    }
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-RUN npm run build
+RUN --mount=type=secret,id=clerk_secret_key,required=true \
+    CLERK_SECRET_KEY="$(cat /run/secrets/clerk_secret_key)" npm run build
 
 # Assert against the real built output, not against the environment we intended.
 RUN node scripts/assert-api-url.mjs
@@ -55,6 +62,7 @@ RUN node scripts/assert-api-url.mjs
 FROM node:22-alpine AS runner
 WORKDIR /app
 
+ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 ARG GRIDGO_BUILD_SHA=unknown
 ARG GRIDGO_BUILD_TIME=unknown
 
@@ -62,6 +70,7 @@ ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
     HOSTNAME=0.0.0.0 \
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY} \
     GRIDGO_BUILD_SHA=${GRIDGO_BUILD_SHA} \
     GRIDGO_BUILD_TIME=${GRIDGO_BUILD_TIME}
 
@@ -88,4 +97,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
 
 # Plain HTTP on purpose. Cloudflare terminates TLS in front of the server in
 # Flexible mode, so an in-container HTTPS redirect would loop forever.
-CMD ["node", "server.js"]
+CMD ["sh", "-c", "test -n \"$CLERK_SECRET_KEY\" || { echo 'CLERK_SECRET_KEY is required.' >&2; exit 78; }; exec node server.js"]
