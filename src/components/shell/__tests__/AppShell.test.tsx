@@ -10,8 +10,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "@/components/shell/AppShell";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-const { pathnameRef } = vi.hoisted(() => ({
+const { pathnameRef, signOutMock } = vi.hoisted(() => ({
   pathnameRef: { current: "/admin/overview" },
+  signOutMock: vi.fn(),
 }));
 
 vi.stubGlobal("React", React);
@@ -29,7 +30,7 @@ vi.mock("@/lib/auth/AuthProvider", () => ({
       name: "Ada Admin",
       role: "super_admin",
     },
-    signOut: vi.fn(),
+    signOut: signOutMock,
     loading: false,
   }),
 }));
@@ -127,7 +128,6 @@ describe("AppShell chrome", () => {
     expect(header?.querySelector('[data-slot="sidebar-trigger"]')).toBe(
       header?.firstElementChild?.firstElementChild,
     );
-
     const rail = container.querySelector('[data-slot="sidebar"]');
     expect(rail).toHaveAttribute("data-state", "expanded");
     await user.click(toggle);
@@ -202,6 +202,19 @@ describe("AppShell chrome", () => {
     );
     expect(await screen.findByRole("menuitem", { name: "Log out" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Settings" })).not.toBeInTheDocument();
+  });
+
+  it("invokes portal sign-out from the account menu Log out item", async () => {
+    const user = userEvent.setup();
+    const { container } = renderShell("/admin/overview");
+    const footer = container.querySelector('[data-slot="sidebar-footer"]');
+    await user.click(
+      within(footer as HTMLElement).getByRole("button", {
+        name: /Ada Admin/,
+      }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Log out" }));
+    expect(signOutMock).toHaveBeenCalledTimes(1);
   });
 
   it("marks the active nav item with yellow text, accent wash, and no left bar", () => {

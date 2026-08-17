@@ -215,7 +215,9 @@ describe("AuthProvider refresh ownership", () => {
     expect(screen.getByTestId("status")).toHaveTextContent("checking");
 
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
-    expect(screen.getByTestId("status")).toHaveTextContent("signed_out");
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent("signed_out"),
+    );
 
     view.rerender(
       <AuthProvider clerkSession={secondSession}>
@@ -234,6 +236,39 @@ describe("AuthProvider refresh ownership", () => {
 
     expect(screen.getByTestId("user")).toHaveTextContent("user_second");
     expect(screen.getByTestId("status")).toHaveTextContent("mapped");
+  });
+
+  it("ends the Clerk session before navigating to login", async () => {
+    getAuthMeMock.mockResolvedValueOnce(authMe("user_first", "ops_admin"));
+    const pendingSignOut = deferred<void>();
+    const session = clerkSession("clerk_first", "session_first");
+    session.signOut = vi.fn().mockImplementation(() => pendingSignOut.promise);
+
+    render(
+      <AuthProvider clerkSession={session}>
+        <AuthProbe />
+      </AuthProvider>,
+    );
+    expect(await screen.findByText("Authorized workspace")).toBeVisible();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
+
+    await waitFor(() => expect(session.signOut).toHaveBeenCalledTimes(1));
+    expect(session.signOut).toHaveBeenCalledWith({ redirectUrl: "/login" });
+    expect(replaceMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId("status")).toHaveTextContent("mapped");
+    expect(screen.getByTestId("user")).toHaveTextContent("user_first");
+
+    await act(async () => {
+      pendingSignOut.resolve();
+      await pendingSignOut.promise;
+    });
+
+    await waitFor(() =>
+      expect(screen.getByTestId("status")).toHaveTextContent("signed_out"),
+    );
+    expect(screen.getByTestId("user")).toHaveTextContent("none");
+    expect(replaceMock).toHaveBeenCalledWith("/login");
   });
 
   it("aborts the pending identity request when the provider unmounts", async () => {

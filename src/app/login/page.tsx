@@ -1,6 +1,6 @@
-import { SignIn } from "@clerk/nextjs";
 import Image from "next/image";
 
+import { LoginAuthPanel } from "@/app/login/LoginAuthPanel";
 import { Logo } from "@/components/ui/Logo";
 
 /** Privileged dashboard entry: sign-in only, with no public sign-up transfer. */
@@ -47,12 +47,7 @@ export default function LoginPage() {
                 cannot be created here.
               </p>
             </div>
-            <SignIn
-              routing="hash"
-              fallbackRedirectUrl="/"
-              transferable={false}
-              withSignUp={false}
-            />
+            <LoginAuthPanel />
           </div>
         </section>
       </main>

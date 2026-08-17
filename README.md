@@ -79,5 +79,7 @@ See `AGENTS.md` and the design requirements document. Critical web rules:
 Opening a protected path while signed out sends the visitor through Clerk sign-in, then
 returns them to that same path and query on the public portal host.
 
-Sign-out ends the Clerk session and uses `router.replace("/login")`, so the browser back
-button cannot re-enter a protected shell with a live session.
+Sign-out waits for Clerk to end the session before clearing the portal identity, then keeps
+the browser on `/login`. If `/login` ever sees a leftover signed-in session, it offers Log
+out instead of sending that session home; protected routes require a new sign-in after a
+successful logout.
