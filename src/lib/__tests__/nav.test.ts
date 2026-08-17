@@ -142,57 +142,64 @@ describe("ROLE_NAV", () => {
       "/ops/overview",
     ]);
     expect(
-      ROLE_NAV_GROUPS.ops_admin.find((g) => g.id === "ops-queue")?.items.map((n) => n.href),
+      ROLE_NAV_GROUPS.ops_admin
+        .find((g) => g.id === "ops-queue")
+        ?.items.map((n) => n.href),
     ).toEqual(["/ops/qa", "/ops/payments", "/ops/matching", "/ops/approvals"]);
     expect(
-      ROLE_NAV_GROUPS.ops_admin.find((g) => g.id === "ops-field")?.items.map((n) => n.href),
+      ROLE_NAV_GROUPS.ops_admin
+        .find((g) => g.id === "ops-field")
+        ?.items.map((n) => n.href),
     ).toEqual(["/ops/dispatch", "/ops/escalations", "/ops/schedule"]);
     expect(
-      ROLE_NAV_GROUPS.ops_admin.find((g) => g.id === "ops-money")?.items.map((n) => n.href),
+      ROLE_NAV_GROUPS.ops_admin
+        .find((g) => g.id === "ops-money")
+        ?.items.map((n) => n.href),
     ).toEqual(["/ops/payouts", "/ops/claims", "/ops/recovery"]);
     expect(
-      ROLE_NAV_GROUPS.ops_admin.find((g) => g.id === "ops-system")?.items.map((n) => n.href),
+      ROLE_NAV_GROUPS.ops_admin
+        .find((g) => g.id === "ops-system")
+        ?.items.map((n) => n.href),
     ).toEqual(["/ops/settings", "/ops/audit"]);
 
     expect(
-      ROLE_NAV_GROUPS.super_admin.find((g) => g.id === "admin-people")?.items.map(
-        (n) => n.href,
-      ),
+      ROLE_NAV_GROUPS.super_admin
+        .find((g) => g.id === "admin-people")
+        ?.items.map((n) => n.href),
     ).toEqual(["/admin/verification", "/admin/roles"]);
     expect(
-      ROLE_NAV_GROUPS.super_admin.find((g) => g.id === "admin-catalog")?.items.map(
-        (n) => n.href,
-      ),
+      ROLE_NAV_GROUPS.super_admin
+        .find((g) => g.id === "admin-catalog")
+        ?.items.map((n) => n.href),
     ).toEqual(["/admin/catalogue", "/admin/zones"]);
     expect(
-      ROLE_NAV_GROUPS.super_admin.find((g) => g.id === "admin-money")?.items.map(
-        (n) => n.href,
-      ),
+      ROLE_NAV_GROUPS.super_admin
+        .find((g) => g.id === "admin-money")
+        ?.items.map((n) => n.href),
     ).toEqual(["/admin/credits", "/admin/finance"]);
     expect(
-      ROLE_NAV_GROUPS.super_admin.find((g) => g.id === "admin-system")?.items.map(
-        (n) => n.href,
-      ),
-    ).toEqual([
-      "/admin/settings",
-      "/admin/audit",
-      "/admin/planning",
-      "/admin/broadcast",
-    ]);
+      ROLE_NAV_GROUPS.super_admin
+        .find((g) => g.id === "admin-system")
+        ?.items.map((n) => n.href),
+    ).toEqual(["/admin/settings", "/admin/audit", "/admin/planning", "/admin/broadcast"]);
 
     expect(
-      ROLE_NAV_GROUPS.supplier.find((g) => g.id === "supplier-shop")?.items.map((n) => n.href),
+      ROLE_NAV_GROUPS.supplier
+        .find((g) => g.id === "supplier-shop")
+        ?.items.map((n) => n.href),
     ).toEqual(["/supplier/catalogue", "/supplier/schedule", "/supplier/capacity"]);
     expect(
-      ROLE_NAV_GROUPS.supplier.find((g) => g.id === "supplier-money")?.items.map(
-        (n) => n.href,
-      ),
+      ROLE_NAV_GROUPS.supplier
+        .find((g) => g.id === "supplier-money")
+        ?.items.map((n) => n.href),
     ).toEqual(["/supplier/payouts"]);
 
     const grouped = Object.values(ROLE_NAV_GROUPS).flatMap((groups) =>
       groups.flatMap((group) => group.items.map((item) => item.href)),
     );
-    const flat = Object.values(ROLE_NAV).flatMap((items) => items.map((item) => item.href));
+    const flat = Object.values(ROLE_NAV).flatMap((items) =>
+      items.map((item) => item.href),
+    );
     expect(grouped).toEqual(flat);
     expect(new Set(flat).size).toBe(flat.length);
   });
@@ -203,12 +210,8 @@ describe("nav helpers", () => {
     expect(contextTitleForPath("/supplier/jobs/ord_1", "supplier")).toBe(
       "Order workspace",
     );
-    expect(contextTitleForPath("/ops/qa/ord_1", "ops_admin")).toBe(
-      "QA workspace",
-    );
-    expect(contextTitleForPath("/admin/zones", "super_admin")).toBe(
-      "Delivery zones",
-    );
+    expect(contextTitleForPath("/ops/qa/ord_1", "ops_admin")).toBe("QA workspace");
+    expect(contextTitleForPath("/admin/zones", "super_admin")).toBe("Delivery zones");
     expect(contextTitleForPath("/ops/payments/ord_1", "ops_admin")).toBe(
       "Payment review",
     );

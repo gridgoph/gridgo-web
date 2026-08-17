@@ -36,17 +36,16 @@ vi.mock("@/lib/auth/AuthProvider", () => ({
 
 function mockMatchMedia(width = 1280) {
   Object.defineProperty(window, "innerWidth", { writable: true, value: width });
-  window.matchMedia = ((query: string) =>
-    ({
-      matches: false,
-      media: query,
-      onchange: null,
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
-      dispatchEvent: () => false,
-    })) as typeof window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as typeof window.matchMedia;
 }
 
 function roleForPath(pathname: string) {
@@ -111,20 +110,29 @@ describe("AppShell chrome", () => {
     expect(header?.className).toMatch(/\bh-14\b/);
   });
 
-  it("keeps the nav toggle in the header and parks it next to the rail", () => {
+  it("keeps one whole-rail toggle in the header and collapses the icon rail", async () => {
+    const user = userEvent.setup();
     const { container } = renderShell("/admin/overview");
     const header = container.querySelector("header");
     expect(header).toBeTruthy();
+    const toggle = within(header as HTMLElement).getByRole("button", {
+      name: "Toggle primary navigation",
+    });
+    expect(toggle).toBeInTheDocument();
     expect(
-      within(header as HTMLElement).getByRole("button", {
-        name: "Toggle primary navigation",
-      }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("button", { name: "Toggle primary navigation" }),
+    ).toHaveLength(1);
     expect(header?.className).toMatch(/\bpl-1\.5\b/);
     expect(header?.className).not.toMatch(/xl:px-8/);
-    expect(
-      header?.querySelector('[data-slot="sidebar-trigger"]'),
-    ).toBe(header?.firstElementChild?.firstElementChild);
+    expect(header?.querySelector('[data-slot="sidebar-trigger"]')).toBe(
+      header?.firstElementChild?.firstElementChild,
+    );
+
+    const rail = container.querySelector('[data-slot="sidebar"]');
+    expect(rail).toHaveAttribute("data-state", "expanded");
+    await user.click(toggle);
+    expect(rail).toHaveAttribute("data-state", "collapsed");
+    expect(rail).toHaveAttribute("data-collapsible", "icon");
   });
 
   it("puts identity in a footer menu trigger, not the header", () => {
@@ -206,9 +214,7 @@ describe("AppShell chrome", () => {
     expect(current.className).not.toMatch(/data-active:bg-transparent/);
     expect(current.className).not.toMatch(/border-l/);
     expect(container.querySelector(".w-1.rounded-r-full")).toBeNull();
-    expect(
-      nav.querySelector('[class*="inset-y-2"][class*="left-0"]'),
-    ).toBeNull();
+    expect(nav.querySelector('[class*="inset-y-2"][class*="left-0"]')).toBeNull();
   });
 
   it("groups ops, admin, and supplier rails with Overview/Jobs kept top-level", () => {
@@ -278,7 +284,9 @@ describe("AppShell chrome", () => {
     );
     expect(within(nav).getByRole("link", { name: "Escalations" })).toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: "Schedule" })).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: "Supplier payouts" })).toBeInTheDocument();
+    expect(
+      within(nav).getByRole("link", { name: "Supplier payouts" }),
+    ).toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: "Audit" })).toBeInTheDocument();
     expect(within(nav).queryByRole("button", { name: "Field" })).toBeNull();
   });
@@ -296,7 +304,9 @@ describe("AppShell chrome", () => {
 
     await user.hover(parent);
     expect(
-      await screen.findByText("Back to QA queue", { selector: "[data-slot='tooltip-content']" }),
+      await screen.findByText("Back to QA queue", {
+        selector: "[data-slot='tooltip-content']",
+      }),
     ).toBeInTheDocument();
 
     const current = within(crumb).getByText("QA workspace");

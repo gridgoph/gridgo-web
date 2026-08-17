@@ -219,10 +219,7 @@ function NavUser({ role }: { role: Role }) {
             ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem
-                className="min-h-11"
-                onClick={() => void signOut()}
-              >
+              <DropdownMenuItem className="min-h-11" onClick={() => void signOut()}>
                 <LogOut aria-hidden />
                 Log out
               </DropdownMenuItem>
