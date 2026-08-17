@@ -16,14 +16,14 @@ const { signInPropsMock, clerkSignedIn } = vi.hoisted(() => ({
 vi.stubGlobal("React", React);
 
 vi.mock("@clerk/nextjs", () => ({
+  useAuth: () => ({
+    isLoaded: true,
+    isSignedIn: clerkSignedIn.current,
+  }),
   SignIn: (props: Record<string, unknown>) => {
     signInPropsMock(props);
     return <div data-testid="clerk-sign-in">Clerk sign in</div>;
   },
-  SignedOut: ({ children }: { children: React.ReactNode }) =>
-    clerkSignedIn.current ? null : <>{children}</>,
-  SignedIn: ({ children }: { children: React.ReactNode }) =>
-    clerkSignedIn.current ? <>{children}</> : null,
   SignOutButton: ({
     children,
     redirectUrl,
