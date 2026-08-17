@@ -218,20 +218,34 @@ describe("AppShell chrome", () => {
       "aria-current",
       "page",
     );
-    expect(within(opsNav).getByRole("button", { name: "Queue" })).toBeInTheDocument();
-    expect(within(opsNav).getByRole("button", { name: "Field" })).toBeInTheDocument();
-    expect(within(opsNav).getByRole("button", { name: "Money" })).toBeInTheDocument();
-    expect(within(opsNav).getByRole("button", { name: "System" })).toBeInTheDocument();
-    expect(within(opsNav).queryByRole("link", { name: "Dispatch" })).toBeNull();
+    // Group labels are static text — never buttons or disclosure triggers.
+    expect(within(opsNav).queryByRole("button", { name: "Queue" })).toBeNull();
+    expect(within(opsNav).queryByRole("button", { name: "Field" })).toBeNull();
+    expect(within(opsNav).queryByRole("button", { name: "Money" })).toBeNull();
+    expect(within(opsNav).queryByRole("button", { name: "System" })).toBeNull();
+    expect(within(opsNav).getByText("Queue")).toBeInTheDocument();
+    expect(within(opsNav).getByText("Field")).toBeInTheDocument();
+    expect(within(opsNav).getByText("Money")).toBeInTheDocument();
+    expect(within(opsNav).getByText("System")).toBeInTheDocument();
+    // Items in every group stay visible without expanding.
+    expect(within(opsNav).getByRole("link", { name: "Dispatch" })).toHaveAttribute(
+      "href",
+      "/ops/dispatch",
+    );
 
     cleanup();
     renderShell("/admin/overview");
     const adminNav = screen.getByRole("navigation", { name: "Primary navigation" });
     expect(within(adminNav).getByRole("link", { name: "Overview" })).toBeInTheDocument();
-    expect(within(adminNav).getByRole("button", { name: "People" })).toBeInTheDocument();
-    expect(within(adminNav).getByRole("button", { name: "Catalog" })).toBeInTheDocument();
-    expect(within(adminNav).getByRole("button", { name: "Money" })).toBeInTheDocument();
-    expect(within(adminNav).getByRole("button", { name: "System" })).toBeInTheDocument();
+    expect(within(adminNav).queryByRole("button", { name: "People" })).toBeNull();
+    expect(within(adminNav).queryByRole("button", { name: "Catalog" })).toBeNull();
+    expect(within(adminNav).queryByRole("button", { name: "Money" })).toBeNull();
+    expect(within(adminNav).queryByRole("button", { name: "System" })).toBeNull();
+    expect(within(adminNav).getByText("People")).toBeInTheDocument();
+    expect(within(adminNav).getByText("Catalog")).toBeInTheDocument();
+    expect(within(adminNav).getByText("Money")).toBeInTheDocument();
+    expect(within(adminNav).getByText("System")).toBeInTheDocument();
+    expect(within(adminNav).getByRole("link", { name: "Roles" })).toBeInTheDocument();
 
     cleanup();
     renderShell("/supplier/jobs");
@@ -240,28 +254,33 @@ describe("AppShell chrome", () => {
       "aria-current",
       "page",
     );
-    expect(within(supplierNav).getByRole("button", { name: "Shop" })).toBeInTheDocument();
-    expect(within(supplierNav).getByRole("button", { name: "Money" })).toBeInTheDocument();
-    expect(within(supplierNav).queryByRole("link", { name: "Payouts" })).toBeNull();
+    expect(within(supplierNav).queryByRole("button", { name: "Shop" })).toBeNull();
+    expect(within(supplierNav).queryByRole("button", { name: "Money" })).toBeNull();
+    expect(within(supplierNav).getByText("Shop")).toBeInTheDocument();
+    expect(within(supplierNav).getByText("Money")).toBeInTheDocument();
+    expect(within(supplierNav).getByRole("link", { name: "Payouts" })).toHaveAttribute(
+      "href",
+      "/supplier/payouts",
+    );
   });
 
-  it("opens the group that owns the current page and lets other groups expand", async () => {
-    const user = userEvent.setup();
+  it("keeps every nav group open so items stay reachable without expanding", () => {
     renderShell("/ops/payments");
     const nav = screen.getByRole("navigation", { name: "Primary navigation" });
     const payments = within(nav).getByRole("link", { name: "Payments" });
     expect(payments).toHaveAttribute("aria-current", "page");
     expect(payments.className).toMatch(/action-yellow/);
     expect(within(nav).getByRole("link", { name: "QA queue" })).toBeInTheDocument();
-    expect(within(nav).queryByRole("link", { name: "Dispatch" })).toBeNull();
-
-    await user.click(within(nav).getByRole("button", { name: "Field" }));
-    expect(await within(nav).findByRole("link", { name: "Dispatch" })).toHaveAttribute(
+    // Other groups stay expanded — no click required.
+    expect(within(nav).getByRole("link", { name: "Dispatch" })).toHaveAttribute(
       "href",
       "/ops/dispatch",
     );
     expect(within(nav).getByRole("link", { name: "Escalations" })).toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: "Schedule" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Supplier payouts" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Audit" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: "Field" })).toBeNull();
   });
 
   it("keeps a nested parent crumb as a same-tab link with a destination tooltip", async () => {

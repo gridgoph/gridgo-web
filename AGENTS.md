@@ -190,9 +190,9 @@ Only add a registry primitive when a real screen uses it in the same change.
 | Added    | `chart`                     | Admin Finance splits each order's client total into supplier earnings, commission and delivery — the reconciliation only Operations and Super Admin may see. (Its original call site, a payment-method mix, died with cash on delivery.) |
 | Added    | `breadcrumb`                | AppShell identifies the parent queue on nested supplier job and Operations QA workspaces.                                                                                                                                                |
 | Added    | `toggle-group`              | Day/week schedule modes and the two-option claim hold choice.                                                                                                                                                                            |
-| Added    | `collapsible`               | Rail sections in `AppShell` — official `SidebarGroup` + `Collapsible` wrap. Do not hand-roll an accordion.                                                                                                                               |
+| Added    | `collapsible`               | Available primitive; rail no longer uses it. Labeled nav groups are static `SidebarGroup` + `SidebarGroupLabel` + always-open items. Whole-rail icon collapse (`Sidebar collapsible="icon"`) stays.                                      |
 | Rejected | `avatar`                    | The portal has no user photos or identity surface; the named account control is sufficient.                                                                                                                                              |
-| Rejected | `accordion` / `collapsible` | No current screen has a disclosure hierarchy; Sidebar owns its own collapse behavior.                                                                                                                                                    |
+| Rejected | `accordion` / `collapsible` | No current screen has a disclosure hierarchy; Sidebar owns whole-rail collapse only — nav groups never collapse.                                                                                                                         |
 | Rejected | `slider`                    | Capacity and money inputs require exact API values, so a slider would reduce precision.                                                                                                                                                  |
 | Rejected | `sonner`                    | This is a Base UI project and already uses the Base `toast` manager and root `Toaster`.                                                                                                                                                  |
 
@@ -319,7 +319,7 @@ If a screen still needs a capability the GRIDGO API does not expose, show an hon
 
 ## Navigation contract
 
-**Single source:** `src/lib/nav.ts` → `ROLE_NAV_GROUPS` (rail sections) and flattened `ROLE_NAV` (items). Overview / Jobs stay top-level; other items sit in official shadcn `SidebarGroup` + `Collapsible` sections (Queue / Field / Money / System for ops; People / Catalog / Money / System for admin; Shop / Money for suppliers).
+**Single source:** `src/lib/nav.ts` → `ROLE_NAV_GROUPS` (rail sections) and flattened `ROLE_NAV` (items). Overview / Jobs stay top-level; other items sit in static shadcn `SidebarGroup` + `SidebarGroupLabel` sections — always open, no chevron (Queue / Field / Money / System for ops; People / Catalog / Money / System for admin; Shop / Money for suppliers).
 
 | Role        | Surface (hrefs)                                                                                                                                         |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -67,13 +67,12 @@ export type NavItem = {
 };
 
 /**
- * One rail section. A missing `label` is a top-level cluster (Overview / Jobs)
- * — not a collapsible group.
+ * One rail section. A missing `label` is a top-level cluster (Overview / Jobs).
+ * Labeled groups are always open: quiet static label + items, no per-group collapse.
  */
 export type NavGroup = {
   id: string;
   label?: string;
-  collapsible: boolean;
   items: readonly NavItem[];
 };
 
@@ -81,7 +80,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
   supplier: [
     {
       id: "supplier-top",
-      collapsible: false,
       items: [
         {
           id: "supplier-jobs",
@@ -97,7 +95,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "supplier-shop",
       label: "Shop",
-      collapsible: true,
       items: [
         {
           id: "supplier-catalogue",
@@ -134,7 +131,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "supplier-money",
       label: "Money",
-      collapsible: true,
       items: [
         {
           id: "supplier-payouts",
@@ -153,7 +149,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
   ops_admin: [
     {
       id: "ops-top",
-      collapsible: false,
       items: [
         {
           id: "ops-overview",
@@ -169,7 +164,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "ops-queue",
       label: "Queue",
-      collapsible: true,
       items: [
         {
           id: "ops-qa",
@@ -212,7 +206,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "ops-field",
       label: "Field",
-      collapsible: true,
       items: [
         {
           id: "ops-dispatch",
@@ -246,7 +239,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "ops-money",
       label: "Money",
-      collapsible: true,
       items: [
         {
           id: "ops-payouts",
@@ -280,7 +272,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "ops-system",
       label: "System",
-      collapsible: true,
       items: [
         {
           id: "ops-settings",
@@ -307,7 +298,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
   super_admin: [
     {
       id: "admin-top",
-      collapsible: false,
       items: [
         {
           id: "admin-overview",
@@ -323,7 +313,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "admin-people",
       label: "People",
-      collapsible: true,
       items: [
         {
           id: "admin-verification",
@@ -348,7 +337,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "admin-catalog",
       label: "Catalog",
-      collapsible: true,
       items: [
         {
           id: "admin-catalogue",
@@ -373,7 +361,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "admin-money",
       label: "Money",
-      collapsible: true,
       items: [
         {
           id: "admin-credits",
@@ -398,7 +385,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "admin-system",
       label: "System",
-      collapsible: true,
       items: [
         {
           id: "admin-settings",

@@ -137,7 +137,7 @@ describe("ROLE_NAV", () => {
       "Money",
     ]);
 
-    expect(ROLE_NAV_GROUPS.ops_admin[0]?.collapsible).toBe(false);
+    expect(ROLE_NAV_GROUPS.ops_admin[0]?.label).toBeUndefined();
     expect(ROLE_NAV_GROUPS.ops_admin[0]?.items.map((n) => n.href)).toEqual([
       "/ops/overview",
     ]);
