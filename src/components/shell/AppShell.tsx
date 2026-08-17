@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -9,7 +9,6 @@ import {
   BookOpen,
   CalendarDays,
   CalendarRange,
-  ChevronDown,
   ChevronsUpDown,
   ClipboardCheck,
   ClipboardList,
@@ -52,11 +51,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Logo } from "@/components/ui/Logo";
 import { Separator } from "@/components/ui/separator";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import {
   Sidebar,
   SidebarContent,
@@ -225,10 +219,7 @@ function NavUser({ role }: { role: Role }) {
             ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
-              <DropdownMenuItem
-                className="min-h-11"
-                onClick={() => void signOut()}
-              >
+              <DropdownMenuItem className="min-h-11" onClick={() => void signOut()}>
                 <LogOut aria-hidden />
                 Log out
               </DropdownMenuItem>
@@ -303,59 +294,28 @@ function RailNavMenu({
 function RailNavGroup({
   group,
   pathname,
-  iconCollapsed,
   onNavigate,
 }: {
   group: NavGroup;
   pathname: string;
-  iconCollapsed: boolean;
   onNavigate: () => void;
 }) {
-  const containsCurrent = group.items.some((item) => isActive(pathname, item.href));
-  const [open, setOpen] = useState(containsCurrent);
-
-  useEffect(() => {
-    if (containsCurrent) setOpen(true);
-  }, [containsCurrent]);
-
-  const content = (
-    <SidebarGroupContent>
-      <RailNavMenu items={group.items} pathname={pathname} onNavigate={onNavigate} />
-    </SidebarGroupContent>
-  );
-
-  if (!group.collapsible || !group.label) {
-    return <SidebarGroup>{content}</SidebarGroup>;
-  }
-
+  // Groups are sections, not disclosures: quiet label (when present) + items always open.
+  // Compact py keeps section rhythm tight without dividers or per-group collapse.
   return (
-    <Collapsible
-      defaultOpen={containsCurrent}
-      open={iconCollapsed || open}
-      onOpenChange={(next) => {
-        if (!iconCollapsed) setOpen(next);
-      }}
-      className="group/collapsible"
-    >
-      <SidebarGroup>
-        <SidebarGroupLabel render={<CollapsibleTrigger />}>
-          {group.label}
-          <ChevronDown
-            aria-hidden
-            className="ml-auto transition-transform group-data-open/collapsible:rotate-180"
-          />
-        </SidebarGroupLabel>
-        <CollapsibleContent>{content}</CollapsibleContent>
-      </SidebarGroup>
-    </Collapsible>
+    <SidebarGroup className="px-2 py-1">
+      {group.label ? <SidebarGroupLabel>{group.label}</SidebarGroupLabel> : null}
+      <SidebarGroupContent>
+        <RailNavMenu items={group.items} pathname={pathname} onNavigate={onNavigate} />
+      </SidebarGroupContent>
+    </SidebarGroup>
   );
 }
 
 function PortalSidebar({ role }: Pick<Props, "role">) {
   const pathname = usePathname();
-  const { setOpenMobile, state } = useSidebar();
+  const { setOpenMobile } = useSidebar();
   const groups = navGroupsForRole(role);
-  const iconCollapsed = state === "collapsed";
 
   return (
     <Sidebar collapsible="icon">
@@ -391,13 +351,12 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
       </SidebarHeader>
 
       <SidebarContent className="pt-1">
-        <nav aria-label="Primary navigation" className="flex min-h-0 flex-col gap-1">
+        <nav aria-label="Primary navigation" className="flex min-h-0 flex-col gap-0">
           {groups.map((group) => (
             <RailNavGroup
               key={group.id}
               group={group}
               pathname={pathname}
-              iconCollapsed={iconCollapsed}
               onNavigate={() => setOpenMobile(false)}
             />
           ))}
