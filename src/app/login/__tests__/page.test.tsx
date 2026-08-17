@@ -8,7 +8,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import LoginPage from "@/app/login/page";
 
-const { signInPropsMock } = vi.hoisted(() => ({ signInPropsMock: vi.fn() }));
+const { signInPropsMock, clerkSignedIn } = vi.hoisted(() => ({
+  signInPropsMock: vi.fn(),
+  clerkSignedIn: { current: false },
+}));
 
 vi.stubGlobal("React", React);
 
@@ -17,10 +20,26 @@ vi.mock("@clerk/nextjs", () => ({
     signInPropsMock(props);
     return <div data-testid="clerk-sign-in">Clerk sign in</div>;
   },
+  SignedOut: ({ children }: { children: React.ReactNode }) =>
+    clerkSignedIn.current ? null : <>{children}</>,
+  SignedIn: ({ children }: { children: React.ReactNode }) =>
+    clerkSignedIn.current ? <>{children}</> : null,
+  SignOutButton: ({
+    children,
+    redirectUrl,
+  }: {
+    children: React.ReactNode;
+    redirectUrl?: string;
+  }) => (
+    <div data-testid="clerk-sign-out" data-redirect-url={redirectUrl ?? ""}>
+      {children}
+    </div>
+  ),
 }));
 
 afterEach(() => {
   cleanup();
+  clerkSignedIn.current = false;
   vi.clearAllMocks();
 });
 
@@ -54,5 +73,19 @@ describe("LoginPage", () => {
     ).toBeVisible();
     expect(screen.queryByRole("link", { name: /sign up/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /sign up/i })).not.toBeInTheDocument();
+  });
+
+  it("does not restore a leftover Clerk session via the home fallback", () => {
+    clerkSignedIn.current = true;
+    render(<LoginPage />);
+
+    expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
+    expect(signInPropsMock).not.toHaveBeenCalled();
+    expect(screen.getByText(/previous session is still active/i)).toBeVisible();
+    expect(screen.getByTestId("clerk-sign-out")).toHaveAttribute(
+      "data-redirect-url",
+      "/login",
+    );
+    expect(screen.getByRole("button", { name: "Log out" })).toBeVisible();
   });
 });

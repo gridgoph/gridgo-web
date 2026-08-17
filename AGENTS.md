@@ -234,6 +234,12 @@ Both were evaluated here and deliberately not adopted:
 page still never names an account; `scripts/assert-no-account-addresses.mjs` checks the
 emitted client and server output, and the login tests enforce sign-in-only behavior.
 
+Log out must end the Clerk session first
+(`await clerk.signOut({ redirectUrl: "/login" })`) and only then clear portal
+identity. `ClerkProvider` sets `afterSignOutUrl="/login"`. `/login` mounts
+`<SignIn fallbackRedirectUrl="/" />` only while signed out — a leftover session
+must stay on `/login`, not bounce home.
+
 Clerk's rotating JWT is attached as `Authorization: Bearer …` by the API client. Never copy
 it into a GRIDGO cookie or session storage. `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is public;
 `CLERK_SECRET_KEY` is server-only and must never use a `NEXT_PUBLIC_` prefix.

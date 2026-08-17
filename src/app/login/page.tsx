@@ -1,6 +1,7 @@
-import { SignIn } from "@clerk/nextjs";
+import { SignIn, SignedIn, SignedOut, SignOutButton } from "@clerk/nextjs";
 import Image from "next/image";
 
+import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/ui/Logo";
 
 /** Privileged dashboard entry: sign-in only, with no public sign-up transfer. */
@@ -47,12 +48,24 @@ export default function LoginPage() {
                 cannot be created here.
               </p>
             </div>
-            <SignIn
-              routing="hash"
-              fallbackRedirectUrl="/"
-              transferable={false}
-              withSignUp={false}
-            />
+            <SignedOut>
+              <SignIn
+                routing="hash"
+                fallbackRedirectUrl="/"
+                transferable={false}
+                withSignUp={false}
+              />
+            </SignedOut>
+            <SignedIn>
+              <div className="flex flex-col gap-4">
+                <p className="text-body m-0 text-text-secondary">
+                  The previous session is still active. End it before signing in again.
+                </p>
+                <SignOutButton redirectUrl="/login">
+                  <Button variant="primary">Log out</Button>
+                </SignOutButton>
+              </div>
+            </SignedIn>
           </div>
         </section>
       </main>

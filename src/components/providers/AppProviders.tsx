@@ -11,6 +11,7 @@ export function AppProviders({ children }: { children: ReactNode }) {
       dynamic
       signInUrl="/login"
       signInFallbackRedirectUrl="/"
+      afterSignOutUrl="/login"
     >
       <ClerkSessionAuthProvider>{children}</ClerkSessionAuthProvider>
     </ClerkProvider>

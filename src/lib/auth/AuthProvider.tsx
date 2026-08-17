@@ -31,12 +31,16 @@ type AuthState = {
 const AuthContext = createContext<AuthState | null>(null);
 const MAX_UNAUTHORIZED_REFRESHES = 1;
 
+export type ClerkSignOutOptions = {
+  redirectUrl?: string;
+};
+
 export type ClerkSessionAdapter = {
   getToken: () => Promise<string | null>;
   isLoaded: boolean;
   isSignedIn: boolean;
   sessionId: string | null;
-  signOut: () => Promise<unknown>;
+  signOut: (options?: ClerkSignOutOptions) => Promise<unknown>;
   userId: string | null;
 };
 
@@ -226,12 +230,13 @@ function SessionAuthProvider({
 
   const signOut = useCallback(async () => {
     invalidateRefresh();
+    await clerkSession.signOut({ redirectUrl: "/login" });
+    if (!mounted.current) return;
     setTokenProvider(() => null);
     setUser(null);
     setMemberships([]);
     setStatus("signed_out");
     router.replace("/login");
-    await clerkSession.signOut();
   }, [clerkSession, invalidateRefresh, router]);
 
   const value = useMemo<AuthState>(
