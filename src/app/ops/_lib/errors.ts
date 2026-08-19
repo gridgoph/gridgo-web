@@ -27,6 +27,14 @@ const CODE_COPY: Record<string, string> = {
   supplier_not_approved:
     PLATFORM_CONSTRAINT_COPY.verification_not_approved.guidance,
   rider_not_approved: PLATFORM_CONSTRAINT_COPY.verification_not_approved.guidance,
+  rider_documents_incomplete:
+    "This rider still needs a current driver's licence on file before they can be approved.",
+  document_expired:
+    "This rider's driver's licence has expired. They need to replace it before you can approve.",
+  approval_state_conflict:
+    "This rider has not finished sending their application. Ask them to submit it from the rider app, then try again.",
+  approval_case_stale:
+    "This approval was updated. Refresh and review it again.",
   escalation_already_resolved:
     "Someone has already given an instruction on this escalation. Refresh to see it.",
   transition_not_allowed:
