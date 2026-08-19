@@ -92,8 +92,7 @@ export function LockScreenPreview({ title, body, audience, imageSrc }: Props) {
       </p>
       <p className="text-caption text-text-muted m-0 max-w-[22.5rem]">
         A tap opens the app. There is no link on the lock screen — if they need
-        the download page, tell them that in the wording. A picture on the
-        lock screen has to be a public HTTPS link Google can fetch.
+        the download page, tell them that in the wording.
       </p>
     </div>
   );

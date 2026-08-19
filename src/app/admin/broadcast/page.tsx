@@ -338,9 +338,9 @@ export default function AdminBroadcastPage() {
                   aria-label="Public picture link"
                 />
                 <FieldDescription>
-                  Optional. A JPEG, PNG or WebP under 1 MB, or a public HTTPS
-                  link. The lock screen only shows a picture Google can fetch;
-                  a picture you attach still shows inside the app.
+                  Optional. A JPEG, PNG or WebP under 1 MB, or an http(s)
+                  picture link. The phone downloads that picture onto the
+                  notification.
                 </FieldDescription>
                 {imageBusy ? (
                   <p className="text-caption text-text-muted m-0">
