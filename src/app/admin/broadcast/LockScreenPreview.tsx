@@ -10,6 +10,8 @@ type Props = {
   title: string;
   body: string;
   audience: AnnouncementAudience | null;
+  /** Resolved URL for the press-check plate. Empty means text only. */
+  imageSrc?: string | null;
 };
 
 /**
@@ -21,7 +23,7 @@ type Props = {
  * no wallpaper, clock or app icon: they would be decoration that changes
  * nothing about where the cut lands.
  */
-export function LockScreenPreview({ title, body, audience }: Props) {
+export function LockScreenPreview({ title, body, audience, imageSrc }: Props) {
   const shownTitle = title.trim();
   const shownBody = body.trim();
 
@@ -52,6 +54,14 @@ export function LockScreenPreview({ title, body, audience }: Props) {
             {shownBody ||
               "Your message lands here. Two lines of it, before the phone stops."}
           </p>
+          {imageSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element -- arbitrary operator URL, not a known remote host
+            <img
+              src={imageSrc}
+              alt=""
+              className="mt-2 h-28 w-full rounded-md object-cover"
+            />
+          ) : null}
         </div>
 
         <div className="flex flex-col gap-1">
@@ -82,7 +92,8 @@ export function LockScreenPreview({ title, body, audience }: Props) {
       </p>
       <p className="text-caption text-text-muted m-0 max-w-[22.5rem]">
         A tap opens the app. There is no link on the lock screen — if they need
-        the download page, tell them that in the wording.
+        the download page, tell them that in the wording. A picture on the
+        lock screen has to be a public HTTPS link Google can fetch.
       </p>
     </div>
   );

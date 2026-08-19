@@ -325,6 +325,8 @@ export type Notification = {
   orderId?: string | null;
   title: string;
   body: string;
+  /** Broadcast picture. Public HTTPS link or `/public/announcement-images/<fileId>`. */
+  imageUrl?: string | null;
   read: boolean;
   at: string;
 };
@@ -663,6 +665,8 @@ export type Announcement = {
   audience: AnnouncementAudience;
   title: string;
   body: string;
+  /** Present when the send included a picture. */
+  imageUrl?: string | null;
   at: string;
   /** Signed-in accounts that received a notification record. */
   notifiedUsers: number;
@@ -677,6 +681,7 @@ export type PostAnnouncementInput = {
   audience: AnnouncementAudience;
   title: string;
   body: string;
+  imageUrl?: string;
 };
 
 // ---- Auth / health ----

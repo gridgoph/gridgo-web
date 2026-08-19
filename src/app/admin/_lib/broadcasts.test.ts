@@ -224,6 +224,13 @@ describe("announcementErrorMessage", () => {
     );
     expect(body).toMatch(/500/);
     expect(body).not.toMatch(/invalid_announcement/);
+
+    const image = announcementErrorMessage(
+      new ApiError(400, { error: "invalid_announcement_image" }),
+      "fallback",
+    );
+    expect(image).toMatch(/picture/i);
+    expect(image).not.toMatch(/invalid_announcement/);
   });
 
   it("does not claim nothing was sent when the server broke mid-send", () => {
