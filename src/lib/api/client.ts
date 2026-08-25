@@ -443,6 +443,33 @@ export async function updateSettings(
   return result.settings;
 }
 
+/** Hosted payment-QR path checkout and this portal fetch without a signed URL. */
+export function paymentQrPublicPath(fileId?: string): string {
+  return fileId ? `/public/payment-qr?v=${encodeURIComponent(fileId)}` : "/public/payment-qr";
+}
+
+/**
+ * Ops / Super Admin. JPEG, PNG or WebP, 5 MiB. Uploads `purpose=payment_qr`
+ * then activates that file as the platform receiving plate.
+ */
+export async function uploadPaymentQr(file: File): Promise<PlatformSettings> {
+  const body = new FormData();
+  body.append("purpose", "payment_qr");
+  body.append("file", file);
+  const uploaded = await request<{ file: StoredFile }>("/files", {
+    method: "POST",
+    body,
+  });
+  const result = await request<{ settings: PlatformSettings }>("/settings/payment-qr", {
+    method: "POST",
+    body: JSON.stringify({
+      fileId: uploaded.file.fileId,
+      reason: "Replaced the payment QR from the portal",
+    }),
+  });
+  return result.settings;
+}
+
 // ---------------------------------------------------------------------------
 // Escalations — a rider failed a pickup check and must not transport
 // ---------------------------------------------------------------------------

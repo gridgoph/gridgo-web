@@ -342,10 +342,22 @@ export type DeliveryFeeBand = {
   feeMinor: number;
 };
 
+export type PaymentQr = {
+  method: "qr_manual" | string;
+  caption: string;
+  /**
+   * Public path or URL for the current GCash plate. Absent until Operations
+   * uploads one; clients then use their bundled fallback.
+   */
+  imageUrl?: string;
+};
+
 export type PlatformSettings = {
   /** Whole hours, 1–720. One global value — never per order. */
   issueWindowHours: number;
   deliveryFeeBands: DeliveryFeeBand[];
+  /** Manual QR checkout. `imageUrl` is the replaceable plate. */
+  paymentQr?: PaymentQr;
 };
 
 export type UpdateSettingsInput = {
