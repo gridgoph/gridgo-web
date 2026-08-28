@@ -133,6 +133,36 @@ describe("AdminBroadcastPage", () => {
     expect(screen.getByText(/4 signed-in accounts notified/)).toBeInTheDocument();
   });
 
+  it("sends an optional public picture with the announcement", async () => {
+    postAnnouncementMock.mockResolvedValueOnce(
+      sent({ imageUrl: "https://cdn.gridgo.example/update.png" }),
+    );
+    const user = userEvent.setup();
+    render(<AdminBroadcastPage />);
+
+    await user.click(screen.getByRole("radio", { name: /Print shops/ }));
+    await user.type(screen.getByLabelText("Title"), "Pickup window changes tomorrow");
+    await user.type(
+      screen.getByLabelText("Message"),
+      "Jobs after 4pm pickup the next morning.",
+    );
+    await user.type(
+      screen.getByLabelText("Public picture link"),
+      "https://cdn.gridgo.example/update.png",
+    );
+    await user.click(screen.getByRole("button", { name: "Review and send" }));
+    await user.click(
+      screen.getByRole("button", { name: "Send to Print shops" }),
+    );
+
+    expect(postAnnouncementMock).toHaveBeenCalledWith({
+      audience: "suppliers",
+      title: "Pickup window changes tomorrow",
+      body: "Jobs after 4pm pickup the next morning.",
+      imageUrl: "https://cdn.gridgo.example/update.png",
+    });
+  });
+
   it("makes Everyone name the stranger reach before send", async () => {
     const user = userEvent.setup();
     render(<AdminBroadcastPage />);

@@ -60,6 +60,9 @@ export function LastSend({ last, nowMs }: Props) {
           >
             {last.title}
           </p>
+          {last.imageUrl ? (
+            <p className="text-caption text-text-muted m-0">With picture</p>
+          ) : null}
 
           <div>
             <StatusChip

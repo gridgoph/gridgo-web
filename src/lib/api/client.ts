@@ -202,7 +202,8 @@ async function request<T>(
     Accept: "application/json",
     ...(init.headers as Record<string, string> | undefined),
   };
-  if (init.body && !headers["Content-Type"]) {
+  const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
+  if (init.body && !headers["Content-Type"] && !isFormData) {
     headers["Content-Type"] = "application/json";
   }
   const token = await tokenProvider(tokenOptions);
@@ -442,6 +443,33 @@ export async function updateSettings(
   return result.settings;
 }
 
+/** Hosted payment-QR path checkout and this portal fetch without a signed URL. */
+export function paymentQrPublicPath(fileId?: string): string {
+  return fileId ? `/public/payment-qr?v=${encodeURIComponent(fileId)}` : "/public/payment-qr";
+}
+
+/**
+ * Ops / Super Admin. JPEG, PNG or WebP, 5 MiB. Uploads `purpose=payment_qr`
+ * then activates that file as the platform receiving plate.
+ */
+export async function uploadPaymentQr(file: File): Promise<PlatformSettings> {
+  const body = new FormData();
+  body.append("purpose", "payment_qr");
+  body.append("file", file);
+  const uploaded = await request<{ file: StoredFile }>("/files", {
+    method: "POST",
+    body,
+  });
+  const result = await request<{ settings: PlatformSettings }>("/settings/payment-qr", {
+    method: "POST",
+    body: JSON.stringify({
+      fileId: uploaded.file.fileId,
+      reason: "Replaced the payment QR from the portal",
+    }),
+  });
+  return result.settings;
+}
+
 // ---------------------------------------------------------------------------
 // Escalations — a rider failed a pickup check and must not transport
 // ---------------------------------------------------------------------------
@@ -520,11 +548,37 @@ export async function grantCredits(input: {
 export async function postAnnouncement(
   input: PostAnnouncementInput,
 ): Promise<Announcement> {
+  const payload: PostAnnouncementInput = {
+    audience: input.audience,
+    title: input.title,
+    body: input.body,
+  };
+  if (input.imageUrl) payload.imageUrl = input.imageUrl;
   const result = await request<{ announcement: Announcement }>("/announcements", {
     method: "POST",
-    body: JSON.stringify(input),
+    body: JSON.stringify(payload),
   });
   return result.announcement;
+}
+
+/** Hosted broadcast picture path FCM and the apps fetch without a signed URL. */
+export function announcementImagePublicPath(fileId: string): string {
+  return `/public/announcement-images/${fileId}`;
+}
+
+/**
+ * Super Admin / Operations. JPEG, PNG or WebP, 1 MiB. Returns the path to send
+ * as `imageUrl` on POST /announcements.
+ */
+export async function uploadAnnouncementImage(file: File): Promise<string> {
+  const body = new FormData();
+  body.append("purpose", "announcement_image");
+  body.append("file", file);
+  const result = await request<{ file: StoredFile }>("/files", {
+    method: "POST",
+    body,
+  });
+  return announcementImagePublicPath(result.file.fileId);
 }
 
 // ---------------------------------------------------------------------------

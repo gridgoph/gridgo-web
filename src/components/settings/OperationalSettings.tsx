@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * The two settings the platform now holds in configuration rather than code:
- * how long a client has to raise an issue after delivery, and what delivery
- * costs at each distance.
+ * Platform settings held in configuration rather than code: how long a
+ * client has to raise an issue after delivery, what delivery costs at each
+ * distance, and the GCash plate checkout scans.
  *
  * The band figures shipped as Firstmate's suggestion, not the captain's — the
  * screen says so, because someone has to decide the real ones. One
@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
-import { getSettings, updateSettings } from "@/lib/api/client";
+import { getApiBase, getSettings, updateSettings, uploadPaymentQr } from "@/lib/api/client";
 import {
   ISSUE_WINDOW_MAX_HOURS,
   ISSUE_WINDOW_MIN_HOURS,
@@ -70,6 +70,9 @@ export function OperationalSettings() {
 
   const [hours, setHours] = useState("");
   const [bands, setBands] = useState<BandDraft[]>([]);
+  const [qrBusy, setQrBusy] = useState(false);
+  const [qrError, setQrError] = useState<string | null>(null);
+  const [qrOk, setQrOk] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -186,6 +189,34 @@ export function OperationalSettings() {
     }
   }
 
+  async function onPickPaymentQr(file: File | undefined) {
+    if (!file) return;
+    setQrBusy(true);
+    setQrError(null);
+    setQrOk(null);
+    try {
+      const next = await uploadPaymentQr(file);
+      setSettings(next);
+      setQrOk("Saved. Checkout will show this plate the next time it loads settings.");
+    } catch (err) {
+      setQrError(
+        opsErrorMessage(
+          err,
+          "Could not store that QR. Use a JPEG, PNG or WebP under 5 MB and try again.",
+        ),
+      );
+    } finally {
+      setQrBusy(false);
+    }
+  }
+
+  function paymentQrPreviewSrc(): string | null {
+    const value = settings?.paymentQr?.imageUrl?.trim() ?? "";
+    if (!value) return null;
+    if (value.startsWith("/")) return `${getApiBase().replace(/\/$/, "")}${value}`;
+    return value;
+  }
+
   if (loading && !settings) return <LoadingBlock label="Loading settings…" />;
   if (error || !settings) {
     return (
@@ -207,7 +238,8 @@ export function OperationalSettings() {
   return (
     <div className="flex w-full flex-col gap-3">
       <p className="text-body text-text-secondary m-0 max-w-prose">
-        Two platform-wide numbers, changed here rather than in a release.
+        Platform-wide numbers and the GCash plate checkout scans, changed here
+        rather than in a release.
       </p>
 
       <div className="grid w-full gap-3 lg:grid-cols-2 lg:items-start">
@@ -360,6 +392,70 @@ export function OperationalSettings() {
         </div>
       </section>
       </div>
+
+      <section className="gg-card p-3" aria-labelledby="payment-qr-heading">
+        <h2 id="payment-qr-heading" className="text-h3 text-text-primary m-0">
+          Payment QR
+        </h2>
+        <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
+          The GCash InstaPay plate clients scan at checkout. One receiving
+          wallet for the platform. Replacing it here is live — phones pick it
+          up the next time checkout loads settings, without an app rebuild.
+        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+          <div className="w-40 max-w-full overflow-hidden rounded-card border border-outline bg-surface-variant">
+            {paymentQrPreviewSrc() ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={paymentQrPreviewSrc() ?? undefined}
+                alt="Current GRIDGO payment QR"
+                className="block h-auto w-full"
+              />
+            ) : (
+              <p className="text-caption text-text-muted m-0 p-3">
+                No plate uploaded yet. Checkout uses the bundled GCash
+                screenshot until you add one here.
+              </p>
+            )}
+          </div>
+          <FieldGroup className="min-w-0 flex-1">
+            <Field>
+              <FieldLabel htmlFor="payment-qr-file">Replace the plate</FieldLabel>
+              <input
+                id="payment-qr-file"
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                disabled={qrBusy}
+                className="text-caption text-text-secondary file:mr-3 file:rounded-field file:border file:border-outline file:bg-surface file:px-3 file:py-1.5 file:text-caption file:text-text-primary"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  void onPickPaymentQr(file);
+                }}
+              />
+              <FieldDescription>
+                JPEG, PNG or WebP, up to 5 MB. A phone screenshot of the GCash
+                InstaPay plate is the right shape — do not square-crop it.
+              </FieldDescription>
+            </Field>
+            {qrBusy ? (
+              <p className="text-body text-text-secondary m-0" role="status">
+                Uploading…
+              </p>
+            ) : null}
+            {qrOk ? (
+              <p className="text-body text-success m-0" role="status">
+                {qrOk}
+              </p>
+            ) : null}
+            {qrError ? (
+              <p className="text-body text-error m-0" role="alert">
+                {qrError}
+              </p>
+            ) : null}
+          </FieldGroup>
+        </div>
+      </section>
 
       {saveOk ? (
         <p className="text-body text-success m-0" role="status">

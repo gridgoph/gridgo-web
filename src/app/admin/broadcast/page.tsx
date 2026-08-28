@@ -6,6 +6,7 @@ import {
   ANNOUNCEMENT_LIMITS,
   AUDIENCE_CHOICES,
   announcementErrorMessage,
+  announcementImageSrc,
   audienceHitsStrangers,
   audienceLabel,
   audienceReach,
@@ -36,7 +37,11 @@ import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Textarea } from "@/components/ui/textarea";
-import { postAnnouncement } from "@/lib/api/client";
+import {
+  getApiBase,
+  postAnnouncement,
+  uploadAnnouncementImage,
+} from "@/lib/api/client";
 import type { Announcement, AnnouncementAudience } from "@/lib/api/types";
 
 const CONFIRM_WORD = "EVERYONE";
@@ -59,6 +64,10 @@ export default function AdminBroadcastPage() {
   const [audience, setAudience] = useState<AnnouncementAudience | null>(null);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageBusy, setImageBusy] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
 
   const [lastSend, setLastSend] = useState<Announcement | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -88,13 +97,17 @@ export default function AdminBroadcastPage() {
 
   const trimmedTitle = title.trim();
   const trimmedBody = body.trim();
+  const trimmedImageUrl = imageUrl.trim();
+  const previewSrc =
+    imagePreview
+    || announcementImageSrc(trimmedImageUrl, getApiBase());
 
   const missing: string[] = [];
   if (!audience) missing.push("choose who this reaches");
   if (!trimmedTitle) missing.push("write a title");
   if (!trimmedBody) missing.push("write the message");
 
-  const canReview = missing.length === 0;
+  const canReview = missing.length === 0 && !imageBusy;
   const needsTypedWord = audienceHitsStrangers(audience);
   const canSend =
     canReview && (!needsTypedWord || typedConfirm.trim() === CONFIRM_WORD);
@@ -108,6 +121,7 @@ export default function AdminBroadcastPage() {
         audience,
         title: trimmedTitle,
         body: trimmedBody,
+        ...(trimmedImageUrl ? { imageUrl: trimmedImageUrl } : {}),
       });
       setResult(sent);
       setLastSend(sent);
@@ -118,6 +132,7 @@ export default function AdminBroadcastPage() {
       setAudience(null);
       setTitle("");
       setBody("");
+      clearPicture();
     } catch (err) {
       setSendError(
         announcementErrorMessage(
@@ -127,6 +142,36 @@ export default function AdminBroadcastPage() {
       );
     } finally {
       setBusy(false);
+    }
+  }
+
+  function clearPicture() {
+    if (imagePreview?.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
+    setImageUrl("");
+    setImagePreview(null);
+    setImageError(null);
+    setImageBusy(false);
+  }
+
+  async function onPickPicture(file: File | undefined) {
+    if (!file) return;
+    setImageError(null);
+    if (imagePreview?.startsWith("blob:")) URL.revokeObjectURL(imagePreview);
+    setImagePreview(URL.createObjectURL(file));
+    setImageBusy(true);
+    try {
+      const hosted = await uploadAnnouncementImage(file);
+      setImageUrl(hosted);
+    } catch (err) {
+      setImageUrl("");
+      setImageError(
+        announcementErrorMessage(
+          err,
+          "The picture could not be stored. Paste a public HTTPS link instead, or send without a picture.",
+        ),
+      );
+    } finally {
+      setImageBusy(false);
     }
   }
 
@@ -258,6 +303,65 @@ export default function AdminBroadcastPage() {
                   what matters first — a phone cuts the rest.
                 </FieldDescription>
               </Field>
+
+              <Field>
+                <FieldLabel htmlFor="broadcast-picture">Picture</FieldLabel>
+                <input
+                  id="broadcast-picture"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="text-caption text-text-secondary file:mr-3 file:rounded-field file:border file:border-outline file:bg-surface file:px-3 file:py-1.5 file:text-caption file:text-text-primary"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    void onPickPicture(file);
+                  }}
+                />
+                <Input
+                  id="broadcast-picture-url"
+                  value={
+                    trimmedImageUrl.startsWith("/public/announcement-images/")
+                      ? ""
+                      : imageUrl
+                  }
+                  maxLength={ANNOUNCEMENT_LIMITS.imageUrl}
+                  onChange={(e) => {
+                    if (imagePreview?.startsWith("blob:")) {
+                      URL.revokeObjectURL(imagePreview);
+                    }
+                    setImagePreview(null);
+                    setImageError(null);
+                    setImageUrl(e.target.value);
+                  }}
+                  placeholder="https://…  public picture link"
+                  autoComplete="off"
+                  aria-label="Public picture link"
+                />
+                <FieldDescription>
+                  Optional. A JPEG, PNG or WebP under 1 MB, or an http(s)
+                  picture link. The phone downloads that picture onto the
+                  notification.
+                </FieldDescription>
+                {imageBusy ? (
+                  <p className="text-caption text-text-muted m-0">
+                    Storing the picture…
+                  </p>
+                ) : null}
+                {imageError ? (
+                  <p className="text-caption text-error m-0" role="alert">
+                    {imageError}
+                  </p>
+                ) : null}
+                {previewSrc ? (
+                  <button
+                    type="button"
+                    className="text-caption text-text-primary underline-offset-2 hover:underline"
+                    onClick={clearPicture}
+                  >
+                    Remove picture
+                  </button>
+                ) : null}
+              </Field>
             </FieldGroup>
           </section>
         </div>
@@ -271,6 +375,7 @@ export default function AdminBroadcastPage() {
               title={title}
               body={body}
               audience={audience}
+              imageSrc={previewSrc}
             />
           </section>
 
@@ -376,6 +481,14 @@ export default function AdminBroadcastPage() {
                 {trimmedTitle}
               </p>
               <p className="text-body text-text-secondary m-0">{trimmedBody}</p>
+              {previewSrc ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={previewSrc}
+                  alt=""
+                  className="mt-2 h-24 w-full rounded-md object-cover"
+                />
+              ) : null}
             </div>
 
             {duplicate && nowMs !== null ? (

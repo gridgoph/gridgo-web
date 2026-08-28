@@ -101,7 +101,17 @@ export function audienceHitsStrangers(
 // ---------------------------------------------------------------------------
 
 /** Hard limits the API will accept. */
-export const ANNOUNCEMENT_LIMITS = { title: 120, body: 500 } as const;
+export const ANNOUNCEMENT_LIMITS = { title: 120, body: 500, imageUrl: 2048 } as const;
+
+export function announcementImageSrc(
+  imageUrl: string | null | undefined,
+  apiBase: string,
+): string | null {
+  const value = imageUrl?.trim() ?? "";
+  if (!value) return null;
+  if (value.startsWith("/")) return `${apiBase.replace(/\/$/, "")}${value}`;
+  return value;
+}
 
 /**
  * Roughly what survives on a collapsed lock screen at a common handset width.
@@ -280,6 +290,9 @@ export function announcementErrorMessage(err: unknown, fallback: string): string
       }
       if (err.code === "invalid_announcement_audience") {
         return "Choose who this reaches, then send again. Nothing was sent.";
+      }
+      if (err.code === "invalid_announcement_image") {
+        return "The picture was refused. Use a JPEG, PNG or WebP under 1 MB, or paste an http(s) picture link. Nothing was sent.";
       }
       return "The announcement was refused. Check who it reaches and the wording, then try again. Nothing was sent.";
     case "conflict":
