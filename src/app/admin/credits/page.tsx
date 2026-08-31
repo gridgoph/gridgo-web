@@ -21,7 +21,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { SkeletonValue } from "@/components/ui/loading";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Select,
   SelectContent,
@@ -204,10 +205,9 @@ export default function AdminCreditsPage() {
     }
   }
 
-  if (loading && !clients) {
-    return <LoadingBlock label="Loading Pilot Credit controls…" />;
-  }
-  if (error || !clients) {
+  const pending = loading && !clients;
+
+  if (!pending && (error || !clients)) {
     return (
       <ErrorState
         body={error ?? "No data."}
@@ -237,6 +237,7 @@ export default function AdminCreditsPage() {
         <div className="flex flex-wrap gap-2">
           <Button
             variant="secondary"
+            disabled={loading}
             onClick={() => {
               void loadClients();
               if (selectedId) void loadBalance(selectedId);
@@ -265,7 +266,7 @@ export default function AdminCreditsPage() {
         </p>
       ) : null}
 
-      {!clients.length ? (
+      {!pending && !clients?.length ? (
         <EmptyState
           title="No client accounts"
           body="Client accounts appear here once they exist on the platform. Grants require a client destination."
@@ -278,17 +279,23 @@ export default function AdminCreditsPage() {
             </h2>
             <Field>
               <FieldLabel>Client</FieldLabel>
-              <Select value={selectedId} onValueChange={(v) => setSelectedId(v ?? "")}>
+              <Select
+                value={selectedId}
+                disabled={pending}
+                onValueChange={(v) => setSelectedId(v ?? "")}
+              >
                 <SelectTrigger className="min-h-11 w-full">
-                  <SelectValue placeholder="Choose a client">
+                  <SelectValue
+                    placeholder={pending ? "Loading clients…" : "Choose a client"}
+                  >
                     {(v) => {
-                      const c = clients.find((x) => x.id === v);
+                      const c = clients?.find((x) => x.id === v);
                       return c ? `${c.name} · ${c.email}` : "Choose a client";
                     }}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {clients.map((c) => (
+                  {(clients ?? []).map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.name} · {c.email}
                     </SelectItem>
@@ -298,7 +305,18 @@ export default function AdminCreditsPage() {
             </Field>
 
             {ledgerLoading ? (
-              <LoadingBlock label="Loading ledger…" />
+              <div
+                className="flex flex-wrap items-end justify-between gap-3"
+                role="status"
+                aria-busy="true"
+              >
+                <span className="sr-only">Loading ledger</span>
+                <div aria-hidden>
+                  <p className="text-caption text-text-muted m-0">Balance</p>
+                  <SkeletonValue className="mt-1 h-8 w-32" />
+                </div>
+                <Skeleton className="h-3 w-24" aria-hidden />
+              </div>
             ) : balance ? (
               <div className="flex flex-wrap items-end justify-between gap-3">
                 <div>
@@ -319,7 +337,18 @@ export default function AdminCreditsPage() {
             )}
           </section>
 
-          {balance && balance.ledger.length > 0 ? (
+          {ledgerLoading ? (
+            <DataTable
+              columns={ledgerColumns}
+              data={[]}
+              loading
+              getRowId={(e) => e.id}
+              caption="Pilot Credit ledger"
+              filterPlaceholder="Filter ledger…"
+              defaultSortId="at"
+              defaultSortDirection="desc"
+            />
+          ) : balance && balance.ledger.length > 0 ? (
             <DataTable
               columns={ledgerColumns}
               data={[...balance.ledger].sort((a, b) =>

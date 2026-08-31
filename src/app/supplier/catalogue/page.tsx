@@ -34,7 +34,6 @@ import {
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { StatusChip } from "@/components/ui/StatusChip";
 import {
   ApiError,
@@ -200,8 +199,10 @@ export default function SupplierCataloguePage() {
   }
 
   const columns = useMemo<DataTableColumn<SupplierService>[]>(() => {
-    if (!data) return [];
-    const { taxonomy, zones } = data;
+    // Headers do not depend on the API, so the table can frame itself
+    // before the taxonomy lands; the label helpers tolerate a null taxonomy.
+    const taxonomy = data?.taxonomy ?? null;
+    const zones = data?.zones ?? null;
     return [
       {
         id: "capability",
@@ -303,10 +304,9 @@ export default function SupplierCataloguePage() {
     ];
   }, [data]);
 
-  if (loading && !data) {
-    return <LoadingBlock label="Loading service catalogue…" />;
-  }
-  if (error || !data) {
+  const pending = loading && !data;
+
+  if (!pending && (error || !data)) {
     return (
       <ErrorState
         body={error ?? "Could not load catalogue."}
@@ -319,7 +319,9 @@ export default function SupplierCataloguePage() {
     );
   }
 
-  const { services, taxonomy, zones } = data;
+  const services = data?.services ?? [];
+  const taxonomy = data?.taxonomy ?? null;
+  const zones = data?.zones ?? [];
   const needsAttention = services.filter((s) =>
     ["draft", "suspended", "pending_verification"].includes(s.state),
   ).length;
@@ -344,17 +346,24 @@ export default function SupplierCataloguePage() {
                 . Withdrawing a line stops new matches only — in-flight orders keep
                 running.
               </p>
-              <p className="text-caption text-text-muted m-0 mt-1">
-                {services.length} line{services.length === 1 ? "" : "s"}
-                {needsAttention > 0 ? ` · ${needsAttention} not live yet` : ""}
-              </p>
+              {pending ? null : (
+                <p className="text-caption text-text-muted m-0 mt-1">
+                  {services.length} line{services.length === 1 ? "" : "s"}
+                  {needsAttention > 0 ? ` · ${needsAttention} not live yet` : ""}
+                </p>
+              )}
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={() => void load()}>
+              <Button
+                variant="secondary"
+                disabled={loading}
+                onClick={() => void load()}
+              >
                 Refresh
               </Button>
               <Button
                 variant="primary"
+                disabled={pending}
                 onClick={() => {
                   setFormMode("create");
                   setEditing(null);
@@ -373,7 +382,7 @@ export default function SupplierCataloguePage() {
             </p>
           ) : null}
 
-          {!services.length ? (
+          {!pending && !services.length ? (
             <EmptyState
               title="No service lines yet"
               body="Add a capability from the platform taxonomy so Operations can match jobs to your shop."
@@ -396,6 +405,7 @@ export default function SupplierCataloguePage() {
             <DataTable
               columns={columns}
               data={services}
+              loading={pending}
               getRowId={(s) => s.id}
               caption="Service catalogue"
               filterPlaceholder="Filter services…"
@@ -475,23 +485,25 @@ export default function SupplierCataloguePage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <ServiceFormDialog
-        open={formOpen}
-        onOpenChange={(open) => {
-          setFormOpen(open);
-          if (!open) {
-            setEditing(null);
-            setFormError(null);
-          }
-        }}
-        mode={formMode}
-        service={editing}
-        taxonomy={taxonomy}
-        zones={zones}
-        busy={formBusy}
-        error={formError}
-        onSubmit={formMode === "create" ? handleCreate : handleUpdate}
-      />
+      {taxonomy ? (
+        <ServiceFormDialog
+          open={formOpen}
+          onOpenChange={(open) => {
+            setFormOpen(open);
+            if (!open) {
+              setEditing(null);
+              setFormError(null);
+            }
+          }}
+          mode={formMode}
+          service={editing}
+          taxonomy={taxonomy}
+          zones={zones}
+          busy={formBusy}
+          error={formError}
+          onSubmit={formMode === "create" ? handleCreate : handleUpdate}
+        />
+      ) : null}
     </>
   );
 }

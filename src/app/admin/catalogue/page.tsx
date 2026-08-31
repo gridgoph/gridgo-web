@@ -29,7 +29,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -353,10 +352,9 @@ export default function AdminCataloguePage() {
     [services],
   );
 
-  if (loading && !taxonomy) {
-    return <LoadingBlock label="Loading catalogue taxonomy…" />;
-  }
-  if (error || !taxonomy) {
+  const pending = loading && !taxonomy;
+
+  if (!pending && (error || !taxonomy)) {
     return (
       <ErrorState
         body={error ?? "No data."}
@@ -379,11 +377,16 @@ export default function AdminCataloguePage() {
           you save.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => void load()}>
+          <Button
+            variant="secondary"
+            disabled={loading}
+            onClick={() => void load()}
+          >
             Refresh
           </Button>
           <Button
             variant="primary"
+            disabled={pending}
             onClick={() =>
               openCreate(
                 tab === "categories"
@@ -423,18 +426,21 @@ export default function AdminCataloguePage() {
       >
         <TabsList>
           <TabsTrigger value="categories">
-            Categories ({taxonomy.categories.length})
+            Categories
+            {taxonomy ? ` (${taxonomy.categories.length})` : ""}
           </TabsTrigger>
           <TabsTrigger value="materials">
-            Materials ({taxonomy.materials.length})
+            Materials
+            {taxonomy ? ` (${taxonomy.materials.length})` : ""}
           </TabsTrigger>
           <TabsTrigger value="finishes">
-            Finishes ({taxonomy.finishes.length})
+            Finishes
+            {taxonomy ? ` (${taxonomy.finishes.length})` : ""}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="categories" className="mt-4 flex flex-col gap-3">
-          {!taxonomy.categories.length ? (
+          {!pending && !taxonomy?.categories.length ? (
             <EmptyState
               title="No categories"
               body="Use Add category above so suppliers can declare service lines against a platform code."
@@ -442,7 +448,8 @@ export default function AdminCataloguePage() {
           ) : (
             <DataTable
               columns={categoryColumns}
-              data={taxonomy.categories}
+              data={taxonomy?.categories ?? []}
+              loading={pending}
               getRowId={(c) => c.id}
               caption="Taxonomy categories"
               filterPlaceholder="Filter categories…"
@@ -458,7 +465,7 @@ export default function AdminCataloguePage() {
         </TabsContent>
 
         <TabsContent value="materials" className="mt-4 flex flex-col gap-3">
-          {!taxonomy.materials.length ? (
+          {!pending && !taxonomy?.materials.length ? (
             <EmptyState
               title="No materials"
               body="Use Add material above so suppliers can attach materials to service declarations."
@@ -466,7 +473,8 @@ export default function AdminCataloguePage() {
           ) : (
             <DataTable
               columns={materialColumns}
-              data={taxonomy.materials}
+              data={taxonomy?.materials ?? []}
+              loading={pending}
               getRowId={(m) => m.id}
               caption="Taxonomy materials"
               filterPlaceholder="Filter materials…"
@@ -482,7 +490,7 @@ export default function AdminCataloguePage() {
         </TabsContent>
 
         <TabsContent value="finishes" className="mt-4 flex flex-col gap-3">
-          {!taxonomy.finishes.length ? (
+          {!pending && !taxonomy?.finishes.length ? (
             <EmptyState
               title="No finishes"
               body="Use Add finish above so suppliers can attach finishes to service declarations."
@@ -490,7 +498,8 @@ export default function AdminCataloguePage() {
           ) : (
             <DataTable
               columns={finishColumns}
-              data={taxonomy.finishes}
+              data={taxonomy?.finishes ?? []}
+              loading={pending}
               getRowId={(f) => f.id}
               caption="Taxonomy finishes"
               filterPlaceholder="Filter finishes…"

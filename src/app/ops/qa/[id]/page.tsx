@@ -5,23 +5,21 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
+import { EvidenceStrip } from "@/components/orders/EvidencePreview";
 import { MilestoneList } from "@/components/orders/MilestoneList";
 import { MoneyBreakdown } from "@/components/orders/MoneyBreakdown";
 import { OrderMeta } from "@/components/orders/OrderMeta";
 import { PaymentSummary } from "@/components/orders/PaymentSummary";
+import { pickupEvidence } from "@/lib/evidence";
 import { Timeline } from "@/components/orders/Timeline";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { SkeletonDetail } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { getOrder, listUsers, transitionOrder } from "@/lib/api/client";
 import type { Order, User } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
-import {
-  actionsForOps,
-  opsHandoffForState,
-  type OpsAction,
-} from "@/lib/ops-actions";
+import { actionsForOps, opsHandoffForState, type OpsAction } from "@/lib/ops-actions";
 import {
   presentChecklistStatus,
   presentOrderState,
@@ -57,9 +55,7 @@ export default function OpsQaWorkspacePage() {
       ]);
       setOrder(next);
       setPeople(
-        Object.fromEntries(
-          directory.map((u) => [u.id, u.supplierName || u.name]),
-        ),
+        Object.fromEntries(directory.map((u) => [u.id, u.supplierName || u.name])),
       );
     } catch (err) {
       setOrder(null);
@@ -96,7 +92,7 @@ export default function OpsQaWorkspacePage() {
     }
   }
 
-  if (loading && !order) return <LoadingBlock label="Loading QA workspace…" />;
+  if (loading && !order) return <SkeletonDetail label="Loading QA workspace" />;
   if (error || !order) {
     return (
       <ErrorState
@@ -130,8 +126,7 @@ export default function OpsQaWorkspacePage() {
             <h2 className="text-h2 text-text-primary m-0">{order.title}</h2>
             {order.assignmentNotifiedAt ? (
               <p className="text-caption text-text-muted m-0 mt-1">
-                Client told the final price{" "}
-                {formatDateTime(order.assignmentNotifiedAt)}
+                Client told the final price {formatDateTime(order.assignmentNotifiedAt)}
               </p>
             ) : null}
           </div>
@@ -164,22 +159,22 @@ export default function OpsQaWorkspacePage() {
               </div>
               {primary?.requires === "supplierId" ? (
                 <p className="text-caption text-text-muted m-0">
-                  Assigns the demo supplier. Use Matching to choose from
-                  eligible, approved suppliers with a reason.
+                  Assigns the demo supplier. Use Matching to choose from eligible,
+                  approved suppliers with a reason.
                 </p>
               ) : null}
               {primary?.requires === "riderId" ? (
                 <p className="text-caption text-text-muted m-0">
-                  Assigns the demo rider when none is set. Riders normally
-                  accept an offer themselves from the rider app.
+                  Assigns the demo rider when none is set. Riders normally accept an offer
+                  themselves from the rider app.
                 </p>
               ) : null}
             </>
           ) : handoff ? (
             <div className="flex flex-wrap items-center gap-3">
               <p className="text-body text-text-secondary m-0">
-                Nothing to change here — this order&rsquo;s next step lives on
-                another surface.
+                Nothing to change here — this order&rsquo;s next step lives on another
+                surface.
               </p>
               <Button
                 variant="secondary"
@@ -191,8 +186,8 @@ export default function OpsQaWorkspacePage() {
             </div>
           ) : (
             <p className="text-body text-text-secondary m-0">
-              Nothing for Operations to change from here. The timeline below
-              shows who moved this order last, and when.
+              Nothing for Operations to change from here. The timeline below shows who
+              moved this order last, and when.
             </p>
           )}
           {actionError ? (
@@ -204,119 +199,123 @@ export default function OpsQaWorkspacePage() {
       </header>
 
       <div className="grid w-full gap-3 lg:grid-cols-2 lg:items-start">
-      <section className="gg-card p-3" aria-labelledby="spec-heading">
-        <h3 id="spec-heading" className="text-h3 text-text-primary m-0 mb-3">
-          Spec
-        </h3>
-        <OrderMeta order={order} showMoney={false} />
-        <dl className="mt-4 grid grid-cols-1 gap-3 border-t border-outline-subtle pt-4 sm:grid-cols-2">
-          <div>
-            <dt className="text-caption text-text-muted">Supplier</dt>
-            <dd className="text-body text-text-primary m-0">
-              {order.supplierId
-                ? (people[order.supplierId] ??
-                  presentTimelineActor(order.supplierId))
-                : "Not assigned"}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-caption text-text-muted">Rider</dt>
-            <dd className="text-body text-text-primary m-0">
-              {order.riderId
-                ? (people[order.riderId] ?? presentTimelineActor(order.riderId))
-                : "Not assigned"}
-            </dd>
-          </div>
-        </dl>
-      </section>
-
-      <section className="gg-card p-3" aria-labelledby="money-heading">
-        <h3 id="money-heading" className="text-h3 text-text-primary m-0">
-          Money
-        </h3>
-        <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
-          Operations and Super Admin only. The client is never shown the
-          supplier price or the commission.
-        </p>
-        <MoneyBreakdown order={order} />
-      </section>
-
-      <section className="gg-card p-3" aria-labelledby="payments-heading">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h3 id="payments-heading" className="text-h3 text-text-primary m-0">
-            Payments
+        <section className="gg-card p-3" aria-labelledby="spec-heading">
+          <h3 id="spec-heading" className="text-h3 text-text-primary m-0 mb-3">
+            Spec
           </h3>
-          <Button
-            variant="secondary"
-            nativeButton={false}
-            render={<Link href={`/ops/payments/${order.id}`} />}
-          >
-            Review payments
-          </Button>
-        </div>
-        <PaymentSummary order={order} />
-      </section>
-
-      <section className="gg-card p-3" aria-labelledby="milestones-heading">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h3 id="milestones-heading" className="text-h3 text-text-primary m-0">
-            Supplier payout
-          </h3>
-          <Button
-            variant="secondary"
-            nativeButton={false}
-            render={<Link href="/ops/payouts" />}
-          >
-            Open payouts
-          </Button>
-        </div>
-        <MilestoneList order={order} />
-      </section>
-
-      {checklist && checklist.status !== "not_started" ? (
-        <section className="gg-card p-3" aria-labelledby="pickup-heading">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <h3 id="pickup-heading" className="text-h3 text-text-primary m-0">
-              Rider pickup checks
-            </h3>
-            <StatusChip {...presentChecklistStatus(checklist.status)} />
-          </div>
-          <ul className="m-0 flex list-none flex-wrap gap-2 p-0">
-            {checklist.checks.map((check) => (
-              <li key={check.code}>
-                <StatusChip
-                  tone={check.passed ? "success" : "error"}
-                  label={presentPickupCheck(check.code)}
-                  icon={check.passed ? "circle-check" : "circle-x"}
-                />
-              </li>
-            ))}
-          </ul>
-          {checklist.failureNote ? (
-            <p className="text-body text-text-primary m-0 mt-3">
-              {checklist.failureNote}
-            </p>
-          ) : null}
-          {checklist.escalationId ? (
-            <div className="mt-3">
-              <Button
-                variant="secondary"
-                nativeButton={false}
-                render={<Link href="/ops/escalations" />}
-              >
-                Open the escalation
-              </Button>
+          <OrderMeta order={order} showMoney={false} />
+          <dl className="mt-4 grid grid-cols-1 gap-3 border-t border-outline-subtle pt-4 sm:grid-cols-2">
+            <div>
+              <dt className="text-caption text-text-muted">Supplier</dt>
+              <dd className="text-body text-text-primary m-0">
+                {order.supplierId
+                  ? (people[order.supplierId] ?? presentTimelineActor(order.supplierId))
+                  : "Not assigned"}
+              </dd>
             </div>
-          ) : null}
+            <div>
+              <dt className="text-caption text-text-muted">Rider</dt>
+              <dd className="text-body text-text-primary m-0">
+                {order.riderId
+                  ? (people[order.riderId] ?? presentTimelineActor(order.riderId))
+                  : "Not assigned"}
+              </dd>
+            </div>
+          </dl>
         </section>
-      ) : null}
 
-      <section className="gg-card p-3" aria-labelledby="timeline-heading">
-        <h3 id="timeline-heading" className="text-h3 text-text-primary m-0 mb-3">
-          Audit timeline
-        </h3>
-        <Timeline entries={order.timeline} />
-      </section>
+        <section className="gg-card p-3" aria-labelledby="money-heading">
+          <h3 id="money-heading" className="text-h3 text-text-primary m-0">
+            Money
+          </h3>
+          <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
+            Operations and Super Admin only. The client is never shown the supplier price
+            or the commission.
+          </p>
+          <MoneyBreakdown order={order} />
+        </section>
+
+        <section className="gg-card p-3" aria-labelledby="payments-heading">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 id="payments-heading" className="text-h3 text-text-primary m-0">
+              Payments
+            </h3>
+            <Button
+              variant="secondary"
+              nativeButton={false}
+              render={<Link href={`/ops/payments/${order.id}`} />}
+            >
+              Review payments
+            </Button>
+          </div>
+          <PaymentSummary order={order} />
+        </section>
+
+        <section className="gg-card p-3" aria-labelledby="milestones-heading">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <h3 id="milestones-heading" className="text-h3 text-text-primary m-0">
+              Supplier payout
+            </h3>
+            <Button
+              variant="secondary"
+              nativeButton={false}
+              render={<Link href="/ops/payouts" />}
+            >
+              Open payouts
+            </Button>
+          </div>
+          <MilestoneList order={order} />
+        </section>
+
+        {checklist && checklist.status !== "not_started" ? (
+          <section className="gg-card p-3" aria-labelledby="pickup-heading">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h3 id="pickup-heading" className="text-h3 text-text-primary m-0">
+                Rider pickup checks
+              </h3>
+              <StatusChip {...presentChecklistStatus(checklist.status)} />
+            </div>
+            <ul className="m-0 flex list-none flex-wrap gap-2 p-0">
+              {checklist.checks.map((check) => (
+                <li key={check.code}>
+                  <StatusChip
+                    tone={check.passed ? "success" : "error"}
+                    label={presentPickupCheck(check.code)}
+                    icon={check.passed ? "circle-check" : "circle-x"}
+                  />
+                </li>
+              ))}
+            </ul>
+            {checklist.failureNote ? (
+              <p className="text-body text-text-primary m-0 mt-3">
+                {checklist.failureNote}
+              </p>
+            ) : null}
+            {pickupEvidence(order).length ? (
+              <div className="mt-3">
+                <EvidenceStrip items={pickupEvidence(order)} />
+              </div>
+            ) : null}
+            {checklist.escalationId ? (
+              <div className="mt-3">
+                <Button
+                  variant="secondary"
+                  nativeButton={false}
+                  render={<Link href="/ops/escalations" />}
+                >
+                  Open the escalation
+                </Button>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        <section className="gg-card p-3" aria-labelledby="timeline-heading">
+          <h3 id="timeline-heading" className="text-h3 text-text-primary m-0 mb-3">
+            Audit timeline
+          </h3>
+          <Timeline entries={order.timeline} />
+        </section>
       </div>
     </div>
   );

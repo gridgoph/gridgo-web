@@ -18,6 +18,7 @@ import {
   presentZone,
 } from "@/app/ops/_lib/present";
 import { Button } from "@/components/ui/button";
+import { describeQuantity } from "@/lib/quantity";
 import {
   DataTable,
   DataTableRowAction,
@@ -25,7 +26,7 @@ import {
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { SkeletonCards } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import {
   ApiError,
@@ -178,7 +179,7 @@ export default function OpsMatchingPage() {
               {o.title}
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5">
-              {presentZone(o.zone)} · qty {o.quantity}
+              {presentZone(o.zone)} · {describeQuantity(o.quantity, o.unit)}
             </p>
           </div>
         ),
@@ -186,18 +187,14 @@ export default function OpsMatchingPage() {
       {
         id: "material",
         header: "Material",
-        sortValue: (o) => o.material,
+        sortValue: (o) => o.material ?? "",
         cell: (o) => (
-          <span className="text-body text-text-secondary">{o.material}</span>
+          <span className="text-body text-text-secondary">{o.material || "—"}</span>
         ),
       },
     ],
     [],
   );
-
-  if (loading && !orders) {
-    return <LoadingBlock label="Loading matching queue…" />;
-  }
 
   if (error) {
     return (
@@ -212,6 +209,8 @@ export default function OpsMatchingPage() {
     );
   }
 
+  const pending = loading && !orders;
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -219,7 +218,11 @@ export default function OpsMatchingPage() {
           Operations chooses the supplier. Each candidate shows why it
           qualifies — this is not an auto-ranker.
         </p>
-        <Button variant="secondary" onClick={() => void loadOrders()}>
+        <Button
+          variant="secondary"
+          disabled={loading}
+          onClick={() => void loadOrders()}
+        >
           Refresh
         </Button>
       </div>
@@ -230,7 +233,24 @@ export default function OpsMatchingPage() {
         </p>
       ) : null}
 
-      {!matchingQueue.length ? (
+      {pending ? (
+        <section aria-labelledby="match-queue-heading">
+          <h2
+            id="match-queue-heading"
+            className="text-h3 text-text-primary m-0 mb-3"
+          >
+            Ready to match
+          </h2>
+          <DataTable
+            columns={queueColumns}
+            data={[]}
+            loading
+            getRowId={(o) => o.id}
+            caption="Orders ready for supplier matching"
+            filterPlaceholder="Filter matching queue…"
+          />
+        </section>
+      ) : !matchingQueue.length ? (
         <EmptyState
           title="No orders waiting for matching"
           body="Orders appear here after QA approves them for matching. Open the QA queue to progress work into this stage."
@@ -286,7 +306,8 @@ export default function OpsMatchingPage() {
                   </h2>
                   <p className="text-body text-text-secondary m-0 mt-1">
                     {selectedOrder.title} · {presentZone(selectedOrder.zone)} ·{" "}
-                    {selectedOrder.material} · qty {selectedOrder.quantity}
+                    {selectedOrder.material || "—"} ·{" "}
+                    {describeQuantity(selectedOrder.quantity, selectedOrder.unit)}
                   </p>
                   <p className="text-caption text-text-muted m-0 mt-1">
                     Status: {presentOrderState(selectedOrder.state).label}
@@ -303,7 +324,11 @@ export default function OpsMatchingPage() {
               </div>
 
               {loadingEligible ? (
-                <LoadingBlock label="Loading eligible suppliers…" />
+                <SkeletonCards
+                  count={3}
+                  lines={2}
+                  label="Loading eligible suppliers"
+                />
               ) : eligibleError ? (
                 <ErrorState
                   body={eligibleError}

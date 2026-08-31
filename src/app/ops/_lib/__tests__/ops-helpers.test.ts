@@ -2,16 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { Claim, Issue, Order } from "@/lib/api/types";
 
-import {
-  filterDispatchOrders,
-  presentLocation,
-  LOCATION_STALE_MS,
-} from "../dispatch";
-import {
-  explainCandidates,
-  formatCapacity,
-  formatTurnaround,
-} from "../matching";
+import { filterDispatchOrders, presentLocation, LOCATION_STALE_MS } from "../dispatch";
+import { explainCandidates, formatCapacity, formatTurnaround } from "../matching";
 import {
   buildOverviewBuckets,
   isSlaAtRisk,
@@ -25,11 +17,7 @@ import {
   presentZone,
 } from "../present";
 import { buildRecoveryItems } from "../recovery";
-import {
-  buildScheduleEvents,
-  filterEventsInRange,
-  rangeForView,
-} from "../schedule";
+import { buildScheduleEvents, filterEventsInRange, rangeForView } from "../schedule";
 
 function order(partial: Partial<Order> & Pick<Order, "id" | "state">): Order {
   return {
@@ -60,6 +48,9 @@ function order(partial: Partial<Order> & Pick<Order, "id" | "state">): Order {
 describe("present helpers", () => {
   it("maps zones and claim status without snake_case", () => {
     expect(presentZone("davao_central")).toBe("Davao Central");
+    expect(presentZone(null)).toBe("—");
+    expect(presentZone(undefined)).toBe("—");
+    expect(presentZone("")).toBe("—");
     expect(presentClaimStatus("payout_held").label).toBe("Payout held");
     expect(presentAuditAction("claim.raise")).toBe("Claim raised");
   });
@@ -320,12 +311,37 @@ describe("schedule", () => {
       ],
       [],
     );
-    expect(events.some((e) => e.kind === "qa" && e.href.includes("/ops/qa/"))).toBe(
-      true,
-    );
+    expect(events.some((e) => e.kind === "qa" && e.href.includes("/ops/qa/"))).toBe(true);
     expect(
       events.some((e) => e.kind === "pickup" && e.href.includes("/ops/dispatch")),
     ).toBe(true);
+  });
+
+  it("treats a pending API initial payment as a confirmation event", () => {
+    const events = buildScheduleEvents(
+      [
+        order({
+          id: "pay1",
+          state: "production",
+          payments: {
+            initial: {
+              amountMinor: 8000,
+              method: "qr_manual",
+              status: "pending_confirmation",
+              reference: "GCASH-1",
+              submittedAt: "2026-08-31T10:00:00.000Z",
+              confirmedAt: null,
+              confirmedBy: null,
+              confirmationSource: null,
+            },
+          } as Order["payments"],
+        }),
+      ],
+      [],
+    );
+    const payment = events.find((e) => e.kind === "payment_confirmation");
+    expect(payment?.href).toContain("/ops/payments/pay1");
+    expect(payment?.detail?.toLowerCase()).toContain("downpayment");
   });
 
   it("filters events to the week range", () => {

@@ -5,6 +5,7 @@
 
 import type { Claim, Order } from "@/lib/api/types";
 import { claimBlocksPayout } from "@/lib/api/constraints";
+import { listedInstallments, paymentOf } from "@/lib/payments";
 import {
   endOfDay,
   endOfWeek,
@@ -63,7 +64,7 @@ const PICKUP_STATES = new Set(["ready_for_dispatch", "rider_assigned"]);
 const DELIVERY_STATES = new Set(["picked_up", "out_for_delivery"]);
 const RECOVERY_STATES = new Set(["client_correction", "issue_window_open"]);
 /** Cash on delivery is gone; what needs attention now is a transfer to confirm. */
-const PAYMENT_REVIEW_STATES = new Set(["downpayment_review"]);
+const PAYMENT_REVIEW_STATES = new Set(["downpayment_review", "initial_payment_review"]);
 
 function safeIso(value: string | null | undefined, fallback: string): string {
   if (!value) return fallback;
@@ -191,8 +192,8 @@ export function buildScheduleEvents(
       });
     }
 
-    const pendingInstallment = (["downpayment", "balance"] as const).find(
-      (code) => order.payments?.[code].status === "pending_confirmation",
+    const pendingInstallment = listedInstallments(order).find(
+      (code) => paymentOf(order, code)?.status === "pending_confirmation",
     );
     if (pendingInstallment || PAYMENT_REVIEW_STATES.has(order.state)) {
       const code = pendingInstallment ?? "downpayment";
@@ -200,7 +201,7 @@ export function buildScheduleEvents(
         id: `${order.id}:payment`,
         kind: "payment_confirmation",
         title: "Payment to confirm",
-        at: order.payments?.[code].submittedAt || anchor,
+        at: paymentOf(order, code)?.submittedAt || anchor,
         orderId: order.id,
         orderTitle: order.title,
         href: `/ops/payments/${order.id}?installment=${code}`,
@@ -213,11 +214,7 @@ export function buildScheduleEvents(
 
     // Explicit deadline / promised markers when parseable and not already covered
     if (order.promisedDate && !Number.isNaN(Date.parse(order.promisedDate))) {
-      if (
-        !events.some(
-          (e) => e.orderId === order.id && e.at === order.promisedDate,
-        )
-      ) {
+      if (!events.some((e) => e.orderId === order.id && e.at === order.promisedDate)) {
         // already using promised as anchor above — no extra row needed
       }
     }

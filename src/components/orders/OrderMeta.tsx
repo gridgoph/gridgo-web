@@ -1,6 +1,10 @@
+"use client";
+
+import { EvidencePlate } from "@/components/orders/EvidencePreview";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentZone } from "@/lib/order-state";
 import type { Order } from "@/lib/api/types";
+import { describeQuantity } from "@/lib/quantity";
 
 type Props = {
   order: Order;
@@ -17,10 +21,11 @@ type Props = {
  */
 export function OrderMeta({ order, showMoney = true }: Props) {
   const rows: { label: string; value: string }[] = [
-    { label: "Quantity", value: String(order.quantity) },
+    { label: "Quantity", value: describeQuantity(order.quantity, order.unit) },
     { label: "Size", value: order.size || "—" },
     { label: "Material", value: order.material || "—" },
-    { label: "Zone", value: order.zone ? presentZone(order.zone) : "—" },
+    { label: "Finish", value: order.finish || "—" },
+    { label: "Zone", value: presentZone(order.zone) },
     { label: "Deadline", value: formatDateTime(order.deadline) },
     { label: "Promised", value: formatDateTime(order.promisedDate) },
   ];
@@ -38,20 +43,33 @@ export function OrderMeta({ order, showMoney = true }: Props) {
     });
   }
 
-  rows.push({ label: "Artwork", value: order.artworkName || "None on file" });
   rows.push({ label: "Address", value: order.address || "—" });
 
+  const artworkId = order.artworkFileIds?.[order.artworkFileIds.length - 1] ?? null;
+  const mockupId = order.mockupFileIds?.[order.mockupFileIds.length - 1] ?? null;
+
   return (
-    <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      {rows.map((row) => (
-        <div key={row.label} className="min-w-0">
-          <dt className="text-caption text-text-muted m-0">{row.label}</dt>
-          <dd className="text-body text-text-primary m-0 mt-0.5 break-words">
-            {row.value}
-          </dd>
-        </div>
-      ))}
-    </dl>
+    <div className="flex flex-col gap-4">
+      <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {rows.map((row) => (
+          <div key={row.label} className="min-w-0">
+            <dt className="text-caption text-text-muted m-0">{row.label}</dt>
+            <dd className="text-body text-text-primary m-0 mt-0.5 break-words">
+              {row.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <div className="grid grid-cols-1 gap-3 border-t border-outline-subtle pt-4 sm:grid-cols-2">
+        <EvidencePlate
+          fileId={artworkId}
+          label="Artwork"
+          caption={order.artworkName}
+          empty="None on file"
+        />
+        <EvidencePlate fileId={mockupId} label="Mockup" empty="No mockup on file" />
+      </div>
+    </div>
   );
 }
 

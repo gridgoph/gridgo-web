@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   AlertTriangle,
+  ArrowLeftRight,
   Banknote,
   BookOpen,
   CalendarDays,
@@ -81,6 +82,7 @@ import {
   type NavIconKey,
   type NavItem,
 } from "@/lib/nav";
+import { portalRolesFromMemberships } from "@/lib/auth/portal-access";
 import { homeForRole, roleLabel } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
@@ -148,9 +150,12 @@ function AccountInitials({ name }: { name: string | undefined }) {
 
 /** shadcn / UAGC NavUser — footer trigger opens Settings + Log out. */
 function NavUser({ role }: { role: Role }) {
-  const { user, signOut } = useAuth();
+  const { user, memberships, signOut } = useAuth();
   const { state } = useSidebar();
   const settingsHref = settingsHrefForRole(role);
+  const switchableRoles = portalRolesFromMemberships(memberships ?? []).filter(
+    (candidate) => candidate !== role,
+  );
   const name = user?.name?.trim() || "Account";
   const email = user?.email?.trim() ?? "";
   const collapsed = state === "collapsed";
@@ -215,6 +220,20 @@ function NavUser({ role }: { role: Role }) {
                   <Settings aria-hidden />
                   Settings
                 </DropdownMenuItem>
+              </DropdownMenuGroup>
+            ) : null}
+            {switchableRoles.length > 0 ? (
+              <DropdownMenuGroup>
+                {switchableRoles.map((nextRole) => (
+                  <DropdownMenuItem
+                    key={nextRole}
+                    render={<Link href={homeForRole(nextRole)} />}
+                    className="min-h-11"
+                  >
+                    <ArrowLeftRight aria-hidden />
+                    Open {roleLabel(nextRole)}
+                  </DropdownMenuItem>
+                ))}
               </DropdownMenuGroup>
             ) : null}
             <DropdownMenuSeparator />

@@ -18,7 +18,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import {
   Select,
   SelectContent,
@@ -243,9 +242,7 @@ export default function OpsAuditPage() {
     [],
   );
 
-  if (loading && !entries) {
-    return <LoadingBlock label="Loading audit log…" />;
-  }
+  const pending = loading && !entries;
 
   if (error && !entries) {
     return (
@@ -268,7 +265,11 @@ export default function OpsAuditPage() {
           by record type, action, order, or actor. This is the trail the product
           rests on — not a debug dump.
         </p>
-        <Button variant="secondary" onClick={() => void load()}>
+        <Button
+          variant="secondary"
+          disabled={loading}
+          onClick={() => void load()}
+        >
           Refresh
         </Button>
       </div>
@@ -384,7 +385,7 @@ export default function OpsAuditPage() {
         </p>
       ) : null}
 
-      {!entries?.length ? (
+      {!pending && !entries?.length ? (
         <EmptyState
           title="No audit entries match"
           body="Widen filters or clear them. Platform actions (claims, issues, verification, credits, zones) appear here as they happen."
@@ -405,7 +406,8 @@ export default function OpsAuditPage() {
       ) : (
         <DataTable
           columns={columns}
-          data={entries}
+          data={entries ?? []}
+          loading={pending}
           getRowId={(e) => e.id}
           caption="Platform audit log"
           filterPlaceholder="Search who, action, reason…"

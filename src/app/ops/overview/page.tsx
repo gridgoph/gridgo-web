@@ -25,7 +25,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { SkeletonLines } from "@/components/ui/loading";
+import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/ui/StatusChip";
 import {
   ApiError,
@@ -93,20 +94,22 @@ export default function OpsOverviewPage() {
     void load();
   }, [load]);
 
+  // Every bucket's label, description and destination is static copy — only
+  // the count comes from the API. Building the buckets from empty arrays gives
+  // the real grid with zeroed counts, so the queue names are on screen before
+  // the numbers arrive.
   const buckets = useMemo(
     () =>
-      data
-        ? buildOverviewBuckets(
-            data.orders,
-            data.claims,
-            data.issues,
-            Date.now(),
-            {
-              pendingSignups: data.pendingSignups,
-              openEscalations: data.openEscalations,
-            },
-          )
-        : [],
+      buildOverviewBuckets(
+        data?.orders ?? [],
+        data?.claims ?? [],
+        data?.issues ?? [],
+        Date.now(),
+        {
+          pendingSignups: data?.pendingSignups ?? 0,
+          openEscalations: data?.openEscalations ?? 0,
+        },
+      ),
     [data],
   );
 
@@ -124,14 +127,10 @@ export default function OpsOverviewPage() {
     [data],
   );
 
-  if (loading && !data) {
-    return <LoadingBlock label="Loading operations overview…" />;
-  }
-
-  if (error || !data) {
+  if (error) {
     return (
       <ErrorState
-        body={error ?? "No data."}
+        body={error}
         action={
           <Button variant="secondary" onClick={() => void load()}>
             Retry
@@ -141,22 +140,43 @@ export default function OpsOverviewPage() {
     );
   }
 
-  const activeCount = data.orders.filter((o) => o.state !== "draft").length;
+  const pending = loading && !data;
+  const activeCount = data
+    ? data.orders.filter((o) => o.state !== "draft").length
+    : 0;
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          {activeCount
-            ? `${activeCount} active order${activeCount === 1 ? "" : "s"} across queues. Focus the next action first — not every counter at once.`
-            : "No active orders yet. Queues fill as clients submit work."}
+          {pending
+            ? "Focus the next action first — not every counter at once."
+            : activeCount
+              ? `${activeCount} active order${activeCount === 1 ? "" : "s"} across queues. Focus the next action first — not every counter at once.`
+              : "No active orders yet. Queues fill as clients submit work."}
         </p>
-        <Button variant="secondary" onClick={() => void load()}>
+        <Button
+          variant="secondary"
+          disabled={loading}
+          onClick={() => void load()}
+        >
           Refresh
         </Button>
       </div>
 
-      {next ? (
+      {pending ? (
+        // "Next action" is the page's own promise, so the heading is real and
+        // only the recommendation itself is reserved.
+        <section className="gg-card flex flex-col gap-3" aria-busy>
+          <span className="sr-only">Working out the next action</span>
+          <p className="text-overline text-text-muted m-0 uppercase">
+            Next action
+          </p>
+          <Skeleton className="h-7 w-1/2" aria-hidden />
+          <SkeletonLines lines={2} />
+          <Skeleton className="h-11 w-40 rounded-field" aria-hidden />
+        </section>
+      ) : next ? (
         <section
           className="gg-card flex flex-col gap-3"
           aria-labelledby="next-action-heading"
@@ -215,7 +235,7 @@ export default function OpsOverviewPage() {
         </h2>
         <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {buckets.map((bucket) => (
-            <BucketCard key={bucket.id} bucket={bucket} />
+            <BucketCard key={bucket.id} bucket={bucket} pending={pending} />
           ))}
         </ul>
       </section>
@@ -239,7 +259,14 @@ const BUCKET_ICONS: Record<OverviewBucketId, LucideIcon> = {
   sla_risk: Timer,
 };
 
-function BucketCard({ bucket }: { bucket: OverviewBucket }) {
+function BucketCard({
+  bucket,
+  pending,
+}: {
+  bucket: OverviewBucket;
+  /** Counts are still in flight; the queue's own copy is not. */
+  pending: boolean;
+}) {
   const Icon = BUCKET_ICONS[bucket.id];
   return (
     <li>
@@ -247,7 +274,7 @@ function BucketCard({ bucket }: { bucket: OverviewBucket }) {
           nothing that the card title did not already say. */}
       <Link
         href={bucket.href}
-        aria-label={`${bucket.label}: ${bucket.count}`}
+        aria-label={pending ? bucket.label : `${bucket.label}: ${bucket.count}`}
         className="gg-card group flex h-full min-h-11 flex-col gap-2 no-underline hover:bg-overlay-hover"
       >
         <div className="flex items-start justify-between gap-3">
@@ -257,12 +284,19 @@ function BucketCard({ bucket }: { bucket: OverviewBucket }) {
           >
             <Icon size={18} strokeWidth={1.75} />
           </span>
-          <p
-            className="text-h2 text-text-primary m-0 tabular-nums"
-            aria-hidden
-          >
-            {bucket.count}
-          </p>
+          {pending ? (
+            // 30px is the `text-h2` line box the count will occupy.
+            <div className="flex h-[30px] items-center" aria-hidden>
+              <Skeleton className="h-6 w-8" />
+            </div>
+          ) : (
+            <p
+              className="text-h2 text-text-primary m-0 tabular-nums"
+              aria-hidden
+            >
+              {bucket.count}
+            </p>
+          )}
         </div>
         <p
           className="text-body text-text-primary m-0 mt-1"

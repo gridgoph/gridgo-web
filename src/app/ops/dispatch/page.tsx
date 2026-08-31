@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { StatusChip } from "@/components/ui/StatusChip";
 import {
   ApiError,
@@ -231,14 +230,10 @@ export default function OpsDispatchPage() {
     [locations, focusOrder],
   );
 
-  if (loading && !orders) {
-    return <LoadingBlock label="Loading dispatch…" />;
-  }
-
-  if (error || !orders) {
+  if (error) {
     return (
       <ErrorState
-        body={error ?? "No data."}
+        body={error}
         action={
           <Button variant="secondary" onClick={() => void load()}>
             Retry
@@ -247,6 +242,8 @@ export default function OpsDispatchPage() {
       />
     );
   }
+
+  const pending = loading && !orders;
 
   return (
     <div className="flex flex-col gap-3">
@@ -265,7 +262,11 @@ export default function OpsDispatchPage() {
             <RefreshCw size={16} aria-hidden />
             {locLoading ? "Refreshing location…" : "Refresh location"}
           </Button>
-          <Button variant="secondary" onClick={() => void load()}>
+          <Button
+            variant="secondary"
+            disabled={loading}
+            onClick={() => void load()}
+          >
             Refresh board
           </Button>
         </div>
@@ -306,7 +307,7 @@ export default function OpsDispatchPage() {
         </section>
       ) : null}
 
-      {!board.length ? (
+      {!pending && !board.length ? (
         <EmptyState
           title="No orders in dispatch"
           body="Orders appear when production clears self-QC and is ready for pickup. Nothing is out with a rider right now."
@@ -320,6 +321,7 @@ export default function OpsDispatchPage() {
         <DataTable
           columns={columns}
           data={board}
+          loading={pending}
           getRowId={(o) => o.id}
           caption="Dispatch board"
           filterPlaceholder="Filter dispatch…"

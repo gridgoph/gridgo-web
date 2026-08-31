@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, listOrders } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
@@ -105,7 +104,7 @@ export default function OpsQaQueuePage() {
         id: "zone",
         header: "Zone",
         sortValue: (order) => presentZone(order.zone),
-        filterValue: (order) => `${presentZone(order.zone)} ${order.zone}`,
+        filterValue: (order) => presentZone(order.zone),
         cell: (order) => (
           <span className="text-body text-text-secondary">{presentZone(order.zone)}</span>
         ),
@@ -138,7 +137,6 @@ export default function OpsQaQueuePage() {
     [],
   );
 
-  if (loading && !orders) return <LoadingBlock label="Loading QA queue…" />;
   if (error) {
     return (
       <ErrorState
@@ -152,6 +150,8 @@ export default function OpsQaQueuePage() {
     );
   }
 
+  const pending = loading && !orders;
+
   const statusFacet = {
     columnId: "status",
     title: "Status",
@@ -164,10 +164,9 @@ export default function OpsQaQueuePage() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0">
-          {showAll
-            ? `All orders (${queue.length})`
-            : `Awaiting Operations action (${queue.length})`}
-          .{" "}
+          {/* The count is the only part of this sentence that has to wait. */}
+          {showAll ? "All orders" : "Awaiting Operations action"}
+          {pending ? "" : ` (${queue.length})`}.{" "}
           {showAll
             ? "Everything on the book, newest activity first."
             : "These are the orders that stop moving until Operations decides."}
@@ -180,13 +179,17 @@ export default function OpsQaQueuePage() {
           >
             {showAll ? "Show action queue" : "Show all orders"}
           </Button>
-          <Button variant="secondary" onClick={() => void load()}>
+          <Button
+            variant="secondary"
+            disabled={loading}
+            onClick={() => void load()}
+          >
             Refresh
           </Button>
         </div>
       </div>
 
-      {!queue.length ? (
+      {!pending && !queue.length ? (
         <EmptyState
           title={showAll ? "No orders yet" : "Queue is clear"}
           body={
@@ -204,6 +207,7 @@ export default function OpsQaQueuePage() {
         <DataTable
           columns={columns}
           data={queue}
+          loading={pending}
           getRowId={(order) => order.id}
           caption="QA queue"
           filterPlaceholder="Filter orders…"

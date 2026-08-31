@@ -13,6 +13,7 @@ import type {
   PayoutMilestone,
   PayoutMilestoneCode,
 } from "@/lib/api/types";
+import { listedInstallments, paymentOf } from "@/lib/payments";
 
 /** Share of the client total taken as the downpayment. */
 export const DOWNPAYMENT_PERCENT = 75;
@@ -130,9 +131,7 @@ export function paymentAwaitsConfirmation(
 export function paymentIsSettled(
   payment: Pick<PaymentRecord, "status"> | undefined | null,
 ): boolean {
-  return (
-    payment?.status === "confirmed" || payment?.status === "legacy_confirmed"
-  );
+  return payment?.status === "confirmed" || payment?.status === "legacy_confirmed";
 }
 
 /** The installments on an order that Operations still has to decide on. */
@@ -140,8 +139,8 @@ export function installmentsAwaitingConfirmation(
   order: Pick<Order, "payments">,
 ): PaymentInstallment[] {
   if (!order.payments) return [];
-  return (["downpayment", "balance"] as const).filter((code) =>
-    paymentAwaitsConfirmation(order.payments?.[code]),
+  return listedInstallments(order).filter((code) =>
+    paymentAwaitsConfirmation(paymentOf(order, code)),
   );
 }
 
@@ -151,7 +150,7 @@ export function installmentsAwaitingConfirmation(
  * it can explain the order of events before the client is asked for anything.
  */
 export function canSubmitBalance(order: Pick<Order, "payments">): boolean {
-  return paymentIsSettled(order.payments?.downpayment);
+  return paymentIsSettled(paymentOf(order, "downpayment"));
 }
 
 /** True when the client has been told the final price and may be asked to pay. */
@@ -172,9 +171,7 @@ export function milestoneHasProof(
   );
 }
 
-export function milestoneIsReleased(
-  milestone: Pick<PayoutMilestone, "status">,
-): boolean {
+export function milestoneIsReleased(milestone: Pick<PayoutMilestone, "status">): boolean {
   return milestone.status === "released";
 }
 
@@ -198,7 +195,8 @@ export function milestoneReleaseBlocker(
     if (!order.deliveryEvidence) {
       return "The delivered share releases once the rider has filed delivery evidence.";
     }
-    if (!paymentIsSettled(order.payments?.balance)) {
+    const balance = paymentOf(order, "balance");
+    if (balance && !paymentIsSettled(balance)) {
       return "The delivered share releases once the client's 25% balance is confirmed.";
     }
   }

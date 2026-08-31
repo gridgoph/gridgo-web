@@ -48,6 +48,7 @@ import type {
   VerificationStatus,
   Zone,
 } from "@/lib/api/types";
+import { normalizeOrder, normalizeOrders } from "@/lib/payments";
 
 const DEFAULT_API_BASE = "http://127.0.0.1:8787";
 
@@ -265,18 +266,18 @@ export async function getPortalRoleProjection<R extends PortalRole>(
 
 export async function listOrders(): Promise<Order[]> {
   const result = await request<{ orders: Order[] }>("/orders");
-  return result.orders;
+  return normalizeOrders(result.orders);
 }
 
 /** Supplier job inbox — 403 for non-supplier roles. */
 export async function listJobs(): Promise<Order[]> {
   const result = await request<{ jobs: Order[] }>("/jobs");
-  return result.jobs;
+  return normalizeOrders(result.jobs);
 }
 
 export async function getOrder(orderId: string): Promise<Order> {
   const result = await request<{ order: Order }>(`/orders/${orderId}`);
-  return result.order;
+  return normalizeOrder(result.order);
 }
 
 export type CreateOrderInput = {
@@ -298,7 +299,7 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
     method: "POST",
     body: JSON.stringify(input),
   });
-  return result.order;
+  return normalizeOrder(result.order);
 }
 
 export type TransitionExtra = {
@@ -325,7 +326,7 @@ export async function transitionOrder(
     method: "POST",
     body: JSON.stringify({ state, ...extra }),
   });
-  return result.order;
+  return normalizeOrder(result.order);
 }
 
 // ---------------------------------------------------------------------------
@@ -348,7 +349,7 @@ export async function submitPayment(
       body: JSON.stringify({ method: input.method ?? "qr_manual", ...input }),
     },
   );
-  return result.order;
+  return normalizeOrder(result.order);
 }
 
 /**
@@ -364,7 +365,7 @@ export async function confirmPayment(
     `/orders/${orderId}/payments/${installment}/confirm`,
     { method: "POST", body: JSON.stringify(input) },
   );
-  return result.order;
+  return normalizeOrder(result.order);
 }
 
 /**
@@ -381,7 +382,7 @@ export async function rejectPayment(
     `/orders/${orderId}/payments/${installment}/reject`,
     { method: "POST", body: JSON.stringify(input) },
   );
-  return result.order;
+  return normalizeOrder(result.order);
 }
 
 // ---------------------------------------------------------------------------
@@ -399,10 +400,14 @@ export async function releaseMilestone(
   code: PayoutMilestoneCode | string,
   input: { note?: string } = {},
 ): Promise<{ order: Order; milestone: PayoutMilestone }> {
-  return request(`/orders/${orderId}/milestones/${code}/release`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
+  const result = await request<{ order: Order; milestone: PayoutMilestone }>(
+    `/orders/${orderId}/milestones/${code}/release`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+  return { ...result, order: normalizeOrder(result.order) };
 }
 
 // ---------------------------------------------------------------------------
@@ -445,7 +450,9 @@ export async function updateSettings(
 
 /** Hosted payment-QR path checkout and this portal fetch without a signed URL. */
 export function paymentQrPublicPath(fileId?: string): string {
-  return fileId ? `/public/payment-qr?v=${encodeURIComponent(fileId)}` : "/public/payment-qr";
+  return fileId
+    ? `/public/payment-qr?v=${encodeURIComponent(fileId)}`
+    : "/public/payment-qr";
 }
 
 /**
@@ -970,7 +977,7 @@ export async function listAudit(filters?: {
 
 export async function listDispatchOffers(): Promise<Order[]> {
   const result = await request<{ offers: Order[] }>("/dispatch/offers");
-  return result.offers;
+  return normalizeOrders(result.offers);
 }
 
 export async function getDispatchLocation(orderId: string): Promise<LocationPing | null> {
@@ -985,7 +992,7 @@ export async function acceptDispatchOffer(orderId: string): Promise<Order> {
   const result = await request<{ order: Order }>(`/dispatch/${orderId}/accept`, {
     method: "POST",
   });
-  return result.order;
+  return normalizeOrder(result.order);
 }
 
 /** Rider only. */
@@ -1012,5 +1019,5 @@ export async function recordDelivery(
     method: "POST",
     body: JSON.stringify({ evidenceType: "photo", ...input }),
   });
-  return result.order;
+  return normalizeOrder(result.order);
 }

@@ -11,7 +11,6 @@ import {
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, listJobs } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
@@ -81,7 +80,7 @@ export default function SupplierJobsPage() {
               {job.title}
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5">
-              {job.size} · {job.material}
+              {job.size || "—"} · {job.material || "—"}
             </p>
           </div>
         ),
@@ -142,7 +141,8 @@ export default function SupplierJobsPage() {
     [],
   );
 
-  if (loading && !jobs) return <LoadingBlock label="Loading assigned jobs…" />;
+  const pending = loading && !jobs;
+
   if (error) {
     return (
       <ErrorState
@@ -155,7 +155,7 @@ export default function SupplierJobsPage() {
       />
     );
   }
-  if (!jobs?.length) {
+  if (!pending && !jobs?.length) {
     return (
       <EmptyState
         title="No assigned jobs"
@@ -169,27 +169,39 @@ export default function SupplierJobsPage() {
     );
   }
 
-  const actionRequired = jobs.filter((j) => needsSupplierAction(j.state)).length;
+  const actionRequired =
+    jobs?.filter((j) => needsSupplierAction(j.state)).length ?? 0;
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-body text-text-secondary m-0">
-            {jobs.length} job{jobs.length === 1 ? "" : "s"}
-            {actionRequired > 0
-              ? ` · ${actionRequired} need${actionRequired === 1 ? "s" : ""} your action`
-              : ""}
+            {pending ? (
+              "Work matched to your shop, newest first."
+            ) : (
+              <>
+                {jobs?.length} job{jobs?.length === 1 ? "" : "s"}
+                {actionRequired > 0
+                  ? ` · ${actionRequired} need${actionRequired === 1 ? "s" : ""} your action`
+                  : ""}
+              </>
+            )}
           </p>
         </div>
-        <Button variant="secondary" onClick={() => void load()}>
+        <Button
+          variant="secondary"
+          disabled={loading}
+          onClick={() => void load()}
+        >
           Refresh
         </Button>
       </div>
 
       <DataTable
         columns={columns}
-        data={jobs}
+        data={jobs ?? []}
+        loading={pending}
         getRowId={(job) => job.id}
         caption="Assigned jobs"
         filterPlaceholder="Filter jobs…"

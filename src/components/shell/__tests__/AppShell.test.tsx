@@ -10,9 +10,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "@/components/shell/AppShell";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-const { pathnameRef, signOutMock } = vi.hoisted(() => ({
+const { pathnameRef, signOutMock, membershipsRef } = vi.hoisted(() => ({
   pathnameRef: { current: "/admin/overview" },
   signOutMock: vi.fn(),
+  membershipsRef: { current: [] as Array<{ role: "supplier" | "ops_admin" | "super_admin" }> },
 }));
 
 vi.stubGlobal("React", React);
@@ -30,6 +31,7 @@ vi.mock("@/lib/auth/AuthProvider", () => ({
       name: "Ada Admin",
       role: "super_admin",
     },
+    memberships: membershipsRef.current,
     signOut: signOutMock,
     loading: false,
   }),
@@ -72,6 +74,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  membershipsRef.current = [];
   vi.clearAllMocks();
 });
 
@@ -202,6 +205,23 @@ describe("AppShell chrome", () => {
     );
     expect(await screen.findByRole("menuitem", { name: "Log out" })).toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Settings" })).not.toBeInTheDocument();
+  });
+
+  it("offers the other portal workspace when the identity has both memberships", async () => {
+    membershipsRef.current = [{ role: "super_admin" }, { role: "ops_admin" }];
+    const user = userEvent.setup();
+    const { container } = renderShell("/admin/overview");
+    const footer = container.querySelector('[data-slot="sidebar-footer"]');
+    await user.click(
+      within(footer as HTMLElement).getByRole("button", {
+        name: /Ada Admin/,
+      }),
+    );
+    expect(await screen.findByRole("menuitem", { name: "Open Operations" })).toHaveAttribute(
+      "href",
+      "/ops/qa",
+    );
+    expect(screen.queryByRole("menuitem", { name: "Open Super Admin" })).not.toBeInTheDocument();
   });
 
   it("invokes portal sign-out from the account menu Log out item", async () => {

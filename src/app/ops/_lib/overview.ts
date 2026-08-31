@@ -42,7 +42,7 @@ export type OverviewNextAction = {
 const QA_STATES = new Set(["submitted", "needs_qa"]);
 const MATCH_STATES = new Set(["approved_for_matching"]);
 /** An order stalls here until Operations confirms the client's transfer. */
-const PAYMENT_REVIEW_STATES = new Set(["downpayment_review"]);
+const PAYMENT_REVIEW_STATES = new Set(["downpayment_review", "initial_payment_review"]);
 const PRODUCTION_STATES = new Set([
   "supplier_assigned",
   "awaiting_downpayment",
@@ -112,9 +112,7 @@ export function orderIsBlocked(
   if (order.payoutHold) return true;
   const orderClaims = claims.filter((c) => c.orderId === order.id);
   if (orderClaims.some((c) => claimBlocksPayout(c.status))) return true;
-  const openIssues = issues.filter(
-    (i) => i.orderId === order.id && i.status === "open",
-  );
+  const openIssues = issues.filter((i) => i.orderId === order.id && i.status === "open");
   return openIssues.length > 0;
 }
 
@@ -136,9 +134,7 @@ export function buildOverviewBuckets(
   const production = active.filter((o) => PRODUCTION_STATES.has(o.state));
   const delivery = active.filter((o) => DELIVERY_STATES.has(o.state));
   const blocked = active.filter((o) => orderIsBlocked(o, claims, issues));
-  const slaRisk = active.filter(
-    (o) => isSlaAtRisk(o, nowMs) || isSlaBreached(o, nowMs),
-  );
+  const slaRisk = active.filter((o) => isSlaAtRisk(o, nowMs) || isSlaBreached(o, nowMs));
   const pendingSignups = extras.pendingSignups ?? 0;
   const openEscalations = extras.openEscalations ?? 0;
 
@@ -312,9 +308,7 @@ export function pickOverviewNextAction(
     const order = active.find((o) => o.id === openIssue.orderId);
     return {
       title: "Resolve open issue",
-      body: order
-        ? `${order.title}: ${openIssue.description}`
-        : openIssue.description,
+      body: order ? `${order.title}: ${openIssue.description}` : openIssue.description,
       href: "/ops/recovery",
       cta: "Open recovery",
       orderId: openIssue.orderId,
@@ -327,9 +321,7 @@ export function pickOverviewNextAction(
     const order = active.find((o) => o.id === heldClaim.orderId);
     return {
       title: "Review payout hold",
-      body: order
-        ? `${order.title} — ${heldClaim.reason}`
-        : heldClaim.reason,
+      body: order ? `${order.title} — ${heldClaim.reason}` : heldClaim.reason,
       href: "/ops/claims",
       cta: "Open claims",
       orderId: heldClaim.orderId,

@@ -4,19 +4,16 @@
  */
 
 import type {
+  OrderPayments,
   PaymentInstallment,
-  PaymentRecord,
   PayoutMilestone,
   PickupCheckCode,
 } from "@/lib/api/types";
+import { paymentOf } from "@/lib/payments";
 
 export type StatusTone = "success" | "warning" | "error" | "info" | "neutral";
 export type StatusIconName =
-  | "circle-check"
-  | "triangle-alert"
-  | "circle-x"
-  | "clock"
-  | "square-pen";
+  "circle-check" | "triangle-alert" | "circle-x" | "clock" | "square-pen";
 
 export type StatePresentation = {
   label: string;
@@ -39,9 +36,15 @@ export function presentOrderState(state: string): StatePresentation {
     case "approved_for_matching":
       return { label: "Ready to match supplier", tone: "info", icon: "clock" };
     case "supplier_assigned":
-      return { label: "Awaiting supplier decision", tone: "warning", icon: "triangle-alert" };
+      return {
+        label: "Awaiting supplier decision",
+        tone: "warning",
+        icon: "triangle-alert",
+      };
+    case "awaiting_initial_payment":
     case "awaiting_downpayment":
       return { label: "Awaiting downpayment", tone: "warning", icon: "clock" };
+    case "initial_payment_review":
     case "downpayment_review":
       return {
         label: "Downpayment needs confirming",
@@ -97,9 +100,7 @@ export const INSTALLMENT_LABEL: Record<PaymentInstallment, string> = {
 
 /** "Downpayment (75%)" — the share is part of how the team talks about it. */
 export function presentInstallment(installment: PaymentInstallment): string {
-  return installment === "downpayment"
-    ? "Downpayment (75%)"
-    : "Balance (25%)";
+  return installment === "downpayment" ? "Downpayment (75%)" : "Balance (25%)";
 }
 
 export function presentPaymentStatus(
@@ -159,31 +160,33 @@ export function presentConfirmationSource(source: string | null): string {
 
 /** Roll-up of both installments for a list row. */
 export function presentPaymentProgress(
-  payments: Record<PaymentInstallment, PaymentRecord> | undefined,
+  payments: OrderPayments | undefined,
 ): StatePresentation {
-  if (!payments) {
+  const downpayment = paymentOf(payments, "downpayment");
+  const balance = paymentOf(payments, "balance");
+  if (!downpayment && !balance) {
     return { label: "No payment set up", tone: "neutral", icon: "clock" };
   }
-  const { downpayment, balance } = payments;
-  if (downpayment.status === "pending_confirmation") {
+  if (downpayment?.status === "pending_confirmation") {
     return {
       label: "Downpayment to confirm",
       tone: "warning",
       icon: "triangle-alert",
     };
   }
-  if (balance.status === "pending_confirmation") {
+  if (balance?.status === "pending_confirmation") {
     return {
       label: "Balance to confirm",
       tone: "warning",
       icon: "triangle-alert",
     };
   }
-  const settled = (s: string) => s === "confirmed" || s === "legacy_confirmed";
-  if (settled(downpayment.status) && settled(balance.status)) {
+  const settled = (record: { status: string } | undefined) =>
+    record?.status === "confirmed" || record?.status === "legacy_confirmed";
+  if (settled(downpayment) && (!balance || settled(balance))) {
     return { label: "Paid in full", tone: "success", icon: "circle-check" };
   }
-  if (settled(downpayment.status)) {
+  if (settled(downpayment)) {
     return { label: "Downpayment in", tone: "info", icon: "circle-check" };
   }
   return { label: "Nothing paid yet", tone: "neutral", icon: "clock" };
@@ -284,9 +287,7 @@ export function presentPickupCheck(code: string): string {
   return PICKUP_CHECKS.find((c) => c.code === code)?.label ?? "Pickup check";
 }
 
-export function presentChecklistStatus(
-  status: string | undefined,
-): StatePresentation {
+export function presentChecklistStatus(status: string | undefined): StatePresentation {
   switch (status) {
     case "passed":
       return { label: "All six checks passed", tone: "success", icon: "circle-check" };
@@ -315,7 +316,8 @@ export function presentEscalationStatus(status: string): StatePresentation {
  * Delivery zone id → the name a person uses. Zone ids are API-shaped; the id
  * itself must never reach the screen.
  */
-export function presentZone(zone: string): string {
+export function presentZone(zone: string | null | undefined): string {
+  if (zone == null || !String(zone).trim()) return "—";
   const map: Record<string, string> = {
     davao_central: "Davao Central",
     davao_north: "Davao North",

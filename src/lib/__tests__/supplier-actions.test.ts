@@ -10,11 +10,12 @@ import { presentOrderState } from "@/lib/order-state";
 
 describe("presentOrderState", () => {
   it("maps supplier states to plain language without snake_case", () => {
-    expect(presentOrderState("supplier_assigned").label).toBe("Awaiting supplier decision");
-    expect(presentOrderState("payment_authorized").label).toBe(
-      "Downpayment confirmed",
+    expect(presentOrderState("supplier_assigned").label).toBe(
+      "Awaiting supplier decision",
     );
-    expect(presentOrderState("awaiting_downpayment").label).toBe(
+    expect(presentOrderState("payment_authorized").label).toBe("Downpayment confirmed");
+    expect(presentOrderState("awaiting_downpayment").label).toBe("Awaiting downpayment");
+    expect(presentOrderState("awaiting_initial_payment").label).toBe(
       "Awaiting downpayment",
     );
     expect(presentOrderState("downpayment_review").label).toBe(

@@ -29,7 +29,7 @@ import {
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { SkeletonDetail } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, getOrder, transitionOrder } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
@@ -160,7 +160,9 @@ export default function SupplierJobDetailPage() {
     }
   }
 
-  if (loading && !job) return <LoadingBlock label="Loading order workspace…" />;
+  if (loading && !job) {
+    return <SkeletonDetail label="Loading order workspace" panels={3} />;
+  }
   if (error || !job) {
     return (
       <ErrorState

@@ -26,7 +26,6 @@ import {
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
@@ -192,10 +191,9 @@ function ServiceLines() {
     }
   }
 
-  if (loading && !services) {
-    return <LoadingBlock label="Loading service lines…" />;
-  }
-  if (error || !services) {
+  const pending = loading && !services;
+
+  if (!pending && (error || !services)) {
     return (
       <ErrorState
         body={error ?? "No data."}
@@ -217,7 +215,11 @@ function ServiceLines() {
           Suspending a live line removes it from new matching only; jobs already
           assigned keep running.
         </p>
-        <Button variant="secondary" onClick={() => void load()}>
+        <Button
+          variant="secondary"
+          disabled={loading}
+          onClick={() => void load()}
+        >
           Refresh
         </Button>
       </div>
@@ -233,7 +235,7 @@ function ServiceLines() {
         </p>
       ) : null}
 
-      {!services.length ? (
+      {!pending && !services?.length ? (
         <EmptyState
           title="No service lines"
           body="Lines appear when a supplier declares what it can make. Approve their account first so they can submit one."
@@ -241,7 +243,8 @@ function ServiceLines() {
       ) : (
         <DataTable
           columns={columns}
-          data={services}
+          data={services ?? []}
+          loading={pending}
           getRowId={(s) => s.id}
           caption="Supplier service verification"
           filterPlaceholder="Filter services…"

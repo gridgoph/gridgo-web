@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { listOrders } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
@@ -142,13 +141,10 @@ export default function OpsPaymentsPage() {
     [],
   );
 
-  if (loading && !orders) {
-    return <LoadingBlock label="Loading payments…" />;
-  }
-  if (error || !orders) {
+  if (error) {
     return (
       <ErrorState
-        body={error ?? "No data."}
+        body={error}
         action={
           <Button variant="secondary" onClick={() => void load()}>
             Retry
@@ -158,6 +154,8 @@ export default function OpsPaymentsPage() {
     );
   }
 
+  const pending = loading && !orders;
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -166,12 +164,16 @@ export default function OpsPaymentsPage() {
           confirms the money arrived. Check the reference against the GRIDGO
           wallet, then confirm it or send it back with a reason.
         </p>
-        <Button variant="secondary" onClick={() => void load()}>
+        <Button
+          variant="secondary"
+          disabled={loading}
+          onClick={() => void load()}
+        >
           Refresh
         </Button>
       </div>
 
-      {!queue.length ? (
+      {!pending && !queue.length ? (
         <EmptyState
           title="No payments waiting"
           body={
@@ -191,6 +193,7 @@ export default function OpsPaymentsPage() {
         <DataTable
           columns={columns}
           data={queue}
+          loading={pending}
           getRowId={(row) => `${row.order.id}:${row.installment}`}
           caption="Payments waiting for confirmation"
           filterPlaceholder="Filter by order or reference…"

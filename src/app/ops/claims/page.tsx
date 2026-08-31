@@ -35,7 +35,6 @@ import {
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import {
   Select,
   SelectContent,
@@ -244,14 +243,10 @@ export default function OpsClaimsPage() {
     [orderTitle],
   );
 
-  if (loading && !claims) {
-    return <LoadingBlock label="Loading claims…" />;
-  }
-
-  if (error || !claims) {
+  if (error) {
     return (
       <ErrorState
-        body={error ?? "No data."}
+        body={error}
         action={
           <Button variant="secondary" onClick={() => void load()}>
             Retry
@@ -261,6 +256,7 @@ export default function OpsClaimsPage() {
     );
   }
 
+  const pending = loading && !claims;
   const payoutCopy = PLATFORM_CONSTRAINT_COPY.payout_held;
 
   return (
@@ -271,11 +267,19 @@ export default function OpsClaimsPage() {
           visible, attributable, and timestamped.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => void load()}>
+          <Button
+            variant="secondary"
+            disabled={loading}
+            onClick={() => void load()}
+          >
             Refresh
           </Button>
           {/* Sole page-surface yellow CTA. Dialog footer submit is a separate panel. */}
-          <Button variant="primary" onClick={() => openDialog({ type: "raise" })}>
+          <Button
+            variant="primary"
+            disabled={pending}
+            onClick={() => openDialog({ type: "raise" })}
+          >
             Raise claim
           </Button>
         </div>
@@ -300,7 +304,7 @@ export default function OpsClaimsPage() {
         </Select>
       </div>
 
-      {!filtered.length ? (
+      {!pending && !filtered.length ? (
         <EmptyState
           title={statusFilter === "all" ? "No claims yet" : "No claims in this status"}
           body={
@@ -318,6 +322,7 @@ export default function OpsClaimsPage() {
         <DataTable
           columns={columns}
           data={filtered}
+          loading={pending}
           getRowId={(c) => c.id}
           caption="Claims and payout holds"
           filterPlaceholder="Filter claims…"

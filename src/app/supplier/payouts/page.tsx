@@ -11,7 +11,7 @@ import { MilestoneList } from "@/components/orders/MilestoneList";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { SkeletonCards } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, listIssues, listJobs } from "@/lib/api/client";
 import type { Issue, Order } from "@/lib/api/types";
@@ -73,10 +73,9 @@ export default function SupplierPayoutsPage() {
     [data],
   );
 
-  if (loading && !data) {
-    return <LoadingBlock label="Loading payouts…" />;
-  }
-  if (error || !data) {
+  const pending = loading && !data;
+
+  if (!pending && (error || !data)) {
     return (
       <ErrorState
         body={error ?? "Could not load payouts."}
@@ -102,12 +101,18 @@ export default function SupplierPayoutsPage() {
             closes. Each part needs a Proof of Fulfilment before Operations can
             release it.
           </p>
-          <p className="text-caption text-text-muted m-0 mt-1">
-            {rows.length} job{rows.length === 1 ? "" : "s"}
-            {heldCount > 0 ? ` · ${heldCount} on hold` : ""}
-          </p>
+          {pending ? null : (
+            <p className="text-caption text-text-muted m-0 mt-1">
+              {rows.length} job{rows.length === 1 ? "" : "s"}
+              {heldCount > 0 ? ` · ${heldCount} on hold` : ""}
+            </p>
+          )}
         </div>
-        <Button variant="secondary" onClick={() => void load()}>
+        <Button
+          variant="secondary"
+          disabled={loading}
+          onClick={() => void load()}
+        >
           Refresh
         </Button>
       </div>
@@ -118,7 +123,9 @@ export default function SupplierPayoutsPage() {
         </p>
       ) : null}
 
-      {!rows.length ? (
+      {pending ? (
+        <SkeletonCards count={3} lines={2} label="Loading payouts" />
+      ) : !rows.length ? (
         <EmptyState
           title="No payouts yet"
           body="Once a job you have accepted reaches production, its four milestones appear here as you earn them."

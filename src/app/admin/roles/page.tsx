@@ -29,7 +29,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import {
   Select,
   SelectContent,
@@ -159,10 +158,9 @@ export default function AdminRolesPage() {
     }
   }
 
-  if (loading && !users) {
-    return <LoadingBlock label="Loading user directory…" />;
-  }
-  if (error || !users) {
+  const pending = loading && !users;
+
+  if (!pending && (error || !users)) {
     return (
       <ErrorState
         body={error ?? "No data."}
@@ -183,7 +181,11 @@ export default function AdminRolesPage() {
           Super Admin creates another full administrator; removing it revokes governance
           access immediately. Every change is audited.
         </p>
-        <Button variant="secondary" onClick={() => void load()}>
+        <Button
+          variant="secondary"
+          disabled={loading}
+          onClick={() => void load()}
+        >
           Refresh
         </Button>
       </div>
@@ -194,7 +196,7 @@ export default function AdminRolesPage() {
         </p>
       ) : null}
 
-      {!users.length ? (
+      {!pending && !users?.length ? (
         <EmptyState
           title="No users"
           body="The directory is empty. Users appear once accounts exist on the demo API."
@@ -207,7 +209,8 @@ export default function AdminRolesPage() {
       ) : (
         <DataTable
           columns={columns}
-          data={users}
+          data={users ?? []}
+          loading={pending}
           getRowId={(u) => u.id}
           caption="Platform users and roles"
           filterPlaceholder="Filter people…"

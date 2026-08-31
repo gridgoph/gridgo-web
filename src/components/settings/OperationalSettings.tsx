@@ -24,7 +24,8 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { SkeletonLines } from "@/components/ui/loading";
+import { Skeleton } from "@/components/ui/skeleton";
 import { getApiBase, getSettings, updateSettings, uploadPaymentQr } from "@/lib/api/client";
 import {
   ISSUE_WINDOW_MAX_HOURS,
@@ -32,6 +33,42 @@ import {
 } from "@/lib/api/constraints";
 import type { DeliveryFeeBand, PlatformSettings } from "@/lib/api/types";
 import { formatPhp } from "@/lib/format";
+
+/**
+ * Section copy is the same whether or not the values have arrived, so both the
+ * form and its loading view read it from here.
+ */
+const ISSUE_WINDOW_COPY = (
+  <>
+    How long a client has after delivery to raise a problem. While it is open a
+    claim can hold the supplier&rsquo;s payout; when it closes with nothing
+    raised, the order completes and the final 10% retention releases.
+  </>
+);
+
+const BANDS_COPY = (
+  <>
+    A fixed fee per distance band, measured from the supplier&rsquo;s shop to
+    the delivery address. Each band reaches further than the one above it, and
+    the last one covers everything beyond.
+  </>
+);
+
+const QR_COPY = (
+  <>
+    The GCash InstaPay plate clients scan at checkout. One receiving wallet for
+    the platform. Replacing it here is live — phones pick it up the next time
+    checkout loads settings, without an app rebuild.
+  </>
+);
+
+const HOURS_HELP = (
+  <>
+    Whole hours, {ISSUE_WINDOW_MIN_HOURS} to {ISSUE_WINDOW_MAX_HOURS}. Applies
+    to windows opened from now on — orders already delivered keep the length
+    they were given.
+  </>
+);
 
 /** A band as it is being edited — text, so a half-typed number is not lost. */
 type BandDraft = {
@@ -217,7 +254,7 @@ export function OperationalSettings() {
     return value;
   }
 
-  if (loading && !settings) return <LoadingBlock label="Loading settings…" />;
+  if (loading && !settings) return <SettingsSkeleton />;
   if (error || !settings) {
     return (
       <ErrorState
@@ -248,10 +285,7 @@ export function OperationalSettings() {
           Issue window
         </h2>
         <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
-          How long a client has after delivery to raise a problem. While it is
-          open a claim can hold the supplier&rsquo;s payout; when it closes with
-          nothing raised, the order completes and the final 10% retention
-          releases.
+          {ISSUE_WINDOW_COPY}
         </p>
         <FieldGroup>
           <Field>
@@ -263,11 +297,7 @@ export function OperationalSettings() {
               value={hours}
               onChange={(e) => setHours(e.target.value)}
             />
-            <FieldDescription>
-              Whole hours, {ISSUE_WINDOW_MIN_HOURS} to{" "}
-              {ISSUE_WINDOW_MAX_HOURS}. Applies to windows opened from now on —
-              orders already delivered keep the length they were given.
-            </FieldDescription>
+            <FieldDescription>{HOURS_HELP}</FieldDescription>
           </Field>
         </FieldGroup>
       </section>
@@ -277,9 +307,7 @@ export function OperationalSettings() {
           Delivery distance bands
         </h2>
         <p className="text-body text-text-secondary m-0 mt-1 max-w-prose">
-          A fixed fee per distance band, measured from the supplier&rsquo;s shop
-          to the delivery address. Each band reaches further than the one above
-          it, and the last one covers everything beyond.
+          {BANDS_COPY}
         </p>
         <p className="text-body text-warning m-0 mt-2 max-w-prose">
           The figures below are Firstmate&rsquo;s starting suggestion, not
@@ -398,9 +426,7 @@ export function OperationalSettings() {
           Payment QR
         </h2>
         <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
-          The GCash InstaPay plate clients scan at checkout. One receiving
-          wallet for the platform. Replacing it here is live — phones pick it
-          up the next time checkout loads settings, without an app rebuild.
+          {QR_COPY}
         </p>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
           <div className="w-40 max-w-full overflow-hidden rounded-card border border-outline bg-surface-variant">
@@ -485,6 +511,96 @@ export function OperationalSettings() {
           Discard changes
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The settings page while the stored values are on their way: every heading,
+ * description, and field label is already correct, and only the figures the
+ * API owns are reserved.
+ */
+function SettingsSkeleton() {
+  return (
+    <div
+      className="flex w-full flex-col gap-3"
+      role="status"
+      aria-busy="true"
+    >
+      <span className="sr-only">Loading platform settings</span>
+      <p className="text-body text-text-secondary m-0 max-w-prose">
+        Platform-wide numbers and the GCash plate checkout scans, changed here
+        rather than in a release.
+      </p>
+
+      <div className="grid w-full gap-3 lg:grid-cols-2 lg:items-start">
+        <section className="gg-card p-3">
+          <h2 className="text-h3 text-text-primary m-0">Issue window</h2>
+          <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
+            {ISSUE_WINDOW_COPY}
+          </p>
+          <p className="text-caption text-text-secondary m-0 mb-1">
+            Hours after delivery
+          </p>
+          <Skeleton className="h-11 max-w-40 rounded-field" aria-hidden />
+          <p className="text-caption text-text-muted m-0 mt-2 max-w-prose">
+            {HOURS_HELP}
+          </p>
+        </section>
+
+        <section className="gg-card p-3">
+          <h2 className="text-h3 text-text-primary m-0">
+            Delivery distance bands
+          </h2>
+          <p className="text-body text-text-secondary m-0 mt-1 max-w-prose">
+            {BANDS_COPY}
+          </p>
+          <div className="mt-4 flex flex-col gap-3" aria-hidden>
+            {[0, 1, 2].map((row) => (
+              <div
+                key={row}
+                className="flex flex-wrap items-end gap-3 rounded-card border border-outline-subtle p-3"
+              >
+                <div className="min-w-32 flex-1">
+                  <p className="text-caption text-text-secondary m-0 mb-1">
+                    Up to (km)
+                  </p>
+                  <Skeleton className="h-11 w-full rounded-field" />
+                </div>
+                <div className="min-w-32 flex-1">
+                  <p className="text-caption text-text-secondary m-0 mb-1">
+                    Fee (₱)
+                  </p>
+                  <Skeleton className="h-11 w-full rounded-field" />
+                </div>
+                <Skeleton className="h-11 w-11 rounded-field" />
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 border-t border-outline-subtle pt-4">
+            <h3 className="text-caption text-text-muted m-0">
+              In force right now
+            </h3>
+            <SkeletonLines lines={3} className="mt-2" />
+          </div>
+        </section>
+      </div>
+
+      <section className="gg-card p-3">
+        <h2 className="text-h3 text-text-primary m-0">Payment QR</h2>
+        <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
+          {QR_COPY}
+        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+          <Skeleton className="h-40 w-40 max-w-full rounded-card" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="text-caption text-text-secondary m-0 mb-1">
+              Replace the plate
+            </p>
+            <Skeleton className="h-9 w-64 max-w-full rounded-field" aria-hidden />
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

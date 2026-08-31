@@ -7,6 +7,7 @@
  * from an Operations surface — the API refuses anyone else.
  */
 
+import { EvidenceStrip } from "@/components/orders/EvidencePreview";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Button } from "@/components/ui/button";
 import type { Order, PayoutMilestone } from "@/lib/api/types";
@@ -32,8 +33,8 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
   if (!milestones?.length) {
     return (
       <p className="text-body text-text-secondary m-0">
-        Milestones are set up when the supplier accepts and names its price.
-        Each of the four releases against a Proof of Fulfilment.
+        Milestones are set up when the supplier accepts and names its price. Each of the
+        four releases against a Proof of Fulfilment.
       </p>
     );
   }
@@ -75,11 +76,7 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
             </div>
 
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <StatusChip
-                tone={status.tone}
-                label={status.label}
-                icon={status.icon}
-              />
+              <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
               <span className="text-caption text-text-muted">
                 {proofCount === 0
                   ? "No proof on file"
@@ -94,10 +91,23 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
               ) : null}
             </div>
 
+            {proofCount > 0 ? (
+              <div className="mt-3">
+                <EvidenceStrip
+                  items={milestone.pofFileIds.map((fileId, index) => ({
+                    fileId,
+                    kind: "pof" as const,
+                    label:
+                      milestone.pofFileIds.length > 1
+                        ? `Proof ${index + 1}`
+                        : "Proof of fulfilment",
+                  }))}
+                />
+              </div>
+            ) : null}
+
             {!released && blocker ? (
-              <p className="text-caption text-text-secondary m-0 mt-2">
-                {blocker}
-              </p>
+              <p className="text-caption text-text-secondary m-0 mt-2">{blocker}</p>
             ) : null}
 
             {onRelease && !released ? (

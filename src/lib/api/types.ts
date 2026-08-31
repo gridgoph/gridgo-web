@@ -149,7 +149,10 @@ export type TimelineEntry = {
 
 // ---- Split digital payment (v2) ----
 
-/** The two installments every order is paid in. COD is not an option. */
+/**
+ * Portal names for the client online collections. The live API stores these as
+ * `initial` and `final_online`; pickup plans often have only the first.
+ */
 export type PaymentInstallment = "downpayment" | "balance";
 
 export type PaymentStatusCode =
@@ -176,9 +179,12 @@ export type PaymentRecord = {
   rejectedBy?: string | null;
   /** Client-visible. What Operations told them to fix. */
   rejectionReason?: string | null;
+  /** Client-uploaded QR-transfer photo. */
+  proofFileId?: string | null;
 };
 
-export type OrderPayments = Record<PaymentInstallment, PaymentRecord>;
+/** Present installments after mapping. A pickup plan may omit the balance. */
+export type OrderPayments = Partial<Record<PaymentInstallment, PaymentRecord>>;
 
 // ---- Milestone payouts (v2) ----
 
@@ -249,16 +255,19 @@ export type Order = {
   supplierId: string | null;
   riderId: string | null;
   state: string;
-  productId: string;
+  productId?: string | null;
   title: string;
-  quantity: number;
-  size: string;
-  material: string;
+  quantity?: number | null;
+  /** Catalog unit from the checkout line (`pack100`, `sqm`, `piece`, …). */
+  unit?: string | null;
+  size?: string;
+  material?: string;
   /** Optional finish note/code; may be empty string. */
-  finish?: string;
+  finish?: string | null;
   deadline: string | null;
   address: string;
-  zone: string;
+  /** Checkout may leave this unset; present as an em dash. */
+  zone?: string | null;
   pickup?: MapPoint | null;
   dropoff?: MapPoint | null;
 
@@ -308,6 +317,8 @@ export type Order = {
 
   artworkName: string | null;
   artworkFileIds?: string[];
+  /** Shop mockup from the checkout line, when the client attached one. */
+  mockupFileIds?: string[];
   /** Retired supplier-proof files, preserved by the migration. */
   proofFileIds?: string[];
   fulfilmentProofFileIds?: string[];

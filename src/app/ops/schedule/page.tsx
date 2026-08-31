@@ -18,7 +18,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { SkeletonCards } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ApiError, listClaims, listOrders } from "@/lib/api/client";
@@ -114,14 +114,10 @@ export default function OpsSchedulePage() {
     setAnchor((d) => addDays(d, mode === "day" ? delta : delta * 7));
   }
 
-  if (loading && !orders) {
-    return <LoadingBlock label="Loading schedule…" />;
-  }
-
-  if (error || !orders) {
+  if (error) {
     return (
       <ErrorState
-        body={error ?? "No data."}
+        body={error}
         action={
           <Button variant="secondary" onClick={() => void load()}>
             Retry
@@ -131,6 +127,10 @@ export default function OpsSchedulePage() {
     );
   }
 
+  // Range, view mode and event-type filters are all local — the calendar
+  // controls stay usable while the events themselves are still arriving.
+  const pending = loading && !orders;
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -139,7 +139,11 @@ export default function OpsSchedulePage() {
           delivery, recovery, cash reconciliation, and payout holds. Selecting an event
           opens the existing workspace; nothing new is created here.
         </p>
-        <Button variant="secondary" onClick={() => void load()}>
+        <Button
+          variant="secondary"
+          disabled={loading}
+          onClick={() => void load()}
+        >
           Refresh
         </Button>
       </div>
@@ -204,7 +208,9 @@ export default function OpsSchedulePage() {
         </fieldset>
       </div>
 
-      {!visible.length ? (
+      {pending ? (
+        <SkeletonCards count={3} lines={2} chip={false} label="Loading schedule" />
+      ) : !visible.length ? (
         <EmptyState
           title="No events in this range"
           body="Try Today, switch day/week, or turn filters back on. Events come from live orders and active payout holds — not a separate calendar store."

@@ -30,7 +30,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { SkeletonCards } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Textarea } from "@/components/ui/textarea";
 import { listUsers, setUserVerification } from "@/lib/api/client";
@@ -159,8 +159,9 @@ export function SignupApprovals({ intro }: Props) {
     }
   }
 
-  if (loading && !data) return <LoadingBlock label="Loading sign-ups…" />;
-  if (error || !data) {
+  const pending = loading && !data;
+
+  if (!pending && (error || !data)) {
     return (
       <ErrorState
         body={error ?? "No data."}
@@ -180,7 +181,11 @@ export function SignupApprovals({ intro }: Props) {
           {intro ??
             "Suppliers and riders sign themselves up. Until someone approves them they cannot be matched to an order or accept a delivery, so this queue is where new capacity comes from."}
         </p>
-        <Button variant="secondary" onClick={() => void load()}>
+        <Button
+          variant="secondary"
+          disabled={loading}
+          onClick={() => void load()}
+        >
           Refresh
         </Button>
       </div>
@@ -198,9 +203,11 @@ export function SignupApprovals({ intro }: Props) {
 
       <section aria-labelledby="waiting-heading" className="flex flex-col gap-3">
         <h2 id="waiting-heading" className="text-h3 text-text-primary m-0">
-          Waiting for a decision ({waiting.length})
+          Waiting for a decision{data ? ` (${waiting.length})` : ""}
         </h2>
-        {!waiting.length ? (
+        {pending ? (
+          <SkeletonCards count={2} lines={2} label="Loading sign-ups" />
+        ) : !waiting.length ? (
           <EmptyState
             title="Nobody is waiting"
             body="Every supplier and rider who has signed up has had a decision. New sign-ups land here the moment they finish registering."
@@ -216,7 +223,7 @@ export function SignupApprovals({ intro }: Props) {
               <ApplicantCard
                 key={person.id}
                 person={person}
-                categoryNames={data.categoryNames}
+                categoryNames={data?.categoryNames ?? {}}
                 onAction={(action) => {
                   setActionError(null);
                   setReason("");
@@ -238,7 +245,7 @@ export function SignupApprovals({ intro }: Props) {
               <ApplicantCard
                 key={person.id}
                 person={person}
-                categoryNames={data.categoryNames}
+                categoryNames={data?.categoryNames ?? {}}
                 onAction={(action) => {
                   setActionError(null);
                   setReason("");

@@ -4,10 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
-import {
-  formatWait,
-  PAYMENT_REJECTION_REASONS,
-} from "@/app/ops/_lib/payments";
+import { formatWait, PAYMENT_REJECTION_REASONS } from "@/app/ops/_lib/payments";
+import { EvidencePlate } from "@/components/orders/EvidencePreview";
 import { MoneyBreakdown } from "@/components/orders/MoneyBreakdown";
 import { Timeline } from "@/components/orders/Timeline";
 import {
@@ -23,12 +21,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { SkeletonDetail } from "@/components/ui/loading";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Textarea } from "@/components/ui/textarea";
 import { confirmPayment, getOrder, rejectPayment } from "@/lib/api/client";
 import type { Order, PaymentInstallment } from "@/lib/api/types";
+import { paymentOf } from "@/lib/payments";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import {
   presentInstallment,
@@ -78,7 +77,7 @@ export default function OpsPaymentReviewPage() {
     void load();
   }, [load]);
 
-  const payment = order?.payments?.[installment];
+  const payment = paymentOf(order, installment);
 
   const waitingMinutes = useMemo(() => {
     if (!payment?.submittedAt) return 0;
@@ -87,9 +86,7 @@ export default function OpsPaymentReviewPage() {
     return Math.max(0, Math.floor((Date.now() - ms) / 60_000));
   }, [payment?.submittedAt]);
 
-  const selectedReason = PAYMENT_REJECTION_REASONS.find(
-    (r) => r.id === reasonId,
-  )!;
+  const selectedReason = PAYMENT_REJECTION_REASONS.find((r) => r.id === reasonId)!;
 
   async function runConfirm() {
     if (!order) return;
@@ -108,9 +105,7 @@ export default function OpsPaymentReviewPage() {
           : "Balance confirmed. The order is paid in full and can be delivered.",
       );
     } catch (err) {
-      setActionError(
-        opsErrorMessage(err, "Could not confirm this payment. Try again."),
-      );
+      setActionError(opsErrorMessage(err, "Could not confirm this payment. Try again."));
     } finally {
       setBusy(false);
     }
@@ -144,7 +139,7 @@ export default function OpsPaymentReviewPage() {
   }
 
   if (loading && !order) {
-    return <LoadingBlock label="Loading payment…" />;
+    return <SkeletonDetail label="Loading payment" panels={2} />;
   }
   if (error || !order) {
     return (
@@ -155,10 +150,7 @@ export default function OpsPaymentReviewPage() {
             <Button variant="secondary" onClick={() => void load()}>
               Retry
             </Button>
-            <Button
-              variant="secondary"
-              onClick={() => router.push("/ops/payments")}
-            >
+            <Button variant="secondary" onClick={() => router.push("/ops/payments")}>
               Back to payments
             </Button>
           </div>
@@ -173,10 +165,7 @@ export default function OpsPaymentReviewPage() {
         title="No payment set up on this order"
         body="The two installments are created when the supplier accepts and names its price. Nothing is owed on this order yet."
         action={
-          <Button
-            variant="secondary"
-            onClick={() => router.push("/ops/payments")}
-          >
+          <Button variant="secondary" onClick={() => router.push("/ops/payments")}>
             Back to payments
           </Button>
         }
@@ -198,11 +187,7 @@ export default function OpsPaymentReviewPage() {
             </p>
             <h2 className="text-h2 text-text-primary m-0 mt-1">{order.title}</h2>
           </div>
-          <StatusChip
-            tone={status.tone}
-            label={status.label}
-            icon={status.icon}
-          />
+          <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
         </div>
 
         <div className="flex flex-wrap items-end justify-between gap-4 border-t border-outline-subtle pt-4">
@@ -264,16 +249,24 @@ export default function OpsPaymentReviewPage() {
               </dd>
             </div>
           ) : null}
+          {payment.proofFileId ? (
+            <div className="min-w-0 sm:col-span-2">
+              <EvidencePlate
+                fileId={payment.proofFileId}
+                label="QR proof the client sent"
+                caption={payment.reference}
+              />
+            </div>
+          ) : null}
         </dl>
 
         <div className="flex flex-col gap-2 border-t border-outline-subtle pt-4">
           {decidable ? (
             <>
               <p className="text-body text-text-secondary m-0 max-w-prose">
-                Open the GRIDGO wallet and find this reference. Confirm it only
-                when you can see {formatPhp(payment.amountMinor)} against it.
-                Sending it back returns the installment to unpaid so the client
-                can try again.
+                Open the GRIDGO wallet and find this reference. Confirm it only when you
+                can see {formatPhp(payment.amountMinor)} against it. Sending it back
+                returns the installment to unpaid so the client can try again.
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button variant="primary" onClick={() => setConfirmOpen(true)}>
@@ -313,23 +306,23 @@ export default function OpsPaymentReviewPage() {
       </header>
 
       <div className="grid w-full gap-3 lg:grid-cols-2 lg:items-start">
-      <section className="gg-card p-3" aria-labelledby="money-heading">
-        <h3 id="money-heading" className="text-h3 text-text-primary m-0">
-          What this order is worth
-        </h3>
-        <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
-          Operations and Super Admin only. The client never sees the supplier
-          price or the commission.
-        </p>
-        <MoneyBreakdown order={order} />
-      </section>
+        <section className="gg-card p-3" aria-labelledby="money-heading">
+          <h3 id="money-heading" className="text-h3 text-text-primary m-0">
+            What this order is worth
+          </h3>
+          <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
+            Operations and Super Admin only. The client never sees the supplier price or
+            the commission.
+          </p>
+          <MoneyBreakdown order={order} />
+        </section>
 
-      <section className="gg-card p-3" aria-labelledby="timeline-heading">
-        <h3 id="timeline-heading" className="text-h3 text-text-primary m-0 mb-3">
-          Order history
-        </h3>
-        <Timeline entries={order.timeline} />
-      </section>
+        <section className="gg-card p-3" aria-labelledby="timeline-heading">
+          <h3 id="timeline-heading" className="text-h3 text-text-primary m-0 mb-3">
+            Order history
+          </h3>
+          <Timeline entries={order.timeline} />
+        </section>
       </div>
 
       <AlertDialog
@@ -410,9 +403,9 @@ export default function OpsPaymentReviewPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Send this payment back?</AlertDialogTitle>
             <AlertDialogDescription>
-              The installment returns to unpaid and the client is told why, so
-              they can send a new transfer. Pick the reason that matches what
-              you found in the wallet.
+              The installment returns to unpaid and the client is told why, so they can
+              send a new transfer. Pick the reason that matches what you found in the
+              wallet.
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -444,9 +437,7 @@ export default function OpsPaymentReviewPage() {
             </Field>
 
             <Field>
-              <FieldLabel htmlFor="reject-detail">
-                Anything to add (optional)
-              </FieldLabel>
+              <FieldLabel htmlFor="reject-detail">Anything to add (optional)</FieldLabel>
               <Textarea
                 id="reject-detail"
                 rows={2}
@@ -455,8 +446,8 @@ export default function OpsPaymentReviewPage() {
                 placeholder="e.g. We received ₱500 against this reference."
               />
               <FieldDescription>
-                Added to the end of the message above. The client reads all of
-                it, so write it for them.
+                Added to the end of the message above. The client reads all of it, so
+                write it for them.
               </FieldDescription>
             </Field>
           </FieldGroup>
