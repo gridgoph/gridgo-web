@@ -99,12 +99,12 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
         {
           id: "supplier-catalogue",
           href: "/supplier/catalogue",
-          label: "Service catalogue",
-          title: "Service catalogue",
+          label: "Catalogues",
+          title: "Catalogues",
           icon: "catalogue",
           ready: true,
           placeholderBody:
-            "Manage taxonomy-backed services through draft → verification → live. Use listSupplierServices, createSupplierService, submitSupplierService, withdrawSupplierService, and getTaxonomy.",
+            "The shop board: listings clients pick from. Hunt, filter, and open a listing page. Uses GET/POST /me/catalog-items.",
         },
         {
           id: "supplier-schedule",
@@ -453,6 +453,12 @@ export function contextTitleForPath(
 ): string {
   // Nested workspaces that share a list parent
   if (pathname.startsWith("/supplier/jobs/")) return "Order workspace";
+  if (pathname === "/supplier/catalogue/new") return "New listing";
+  if (pathname.startsWith("/supplier/catalogue/")) return "Listing";
+  if (pathname === "/admin/catalogue/jobs/new") return "Add print job";
+  if (pathname.startsWith("/admin/catalogue/jobs/")) return "Print job";
+  if (pathname === "/admin/catalogue/categories/new") return "Add category";
+  if (pathname.startsWith("/admin/catalogue/categories/")) return "Category";
   if (pathname.startsWith("/ops/orders/")) return "Order workspace";
   if (pathname.startsWith("/ops/payouts/")) return "Payout review";
 

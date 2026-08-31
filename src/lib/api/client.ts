@@ -37,10 +37,13 @@ import type {
   PostAnnouncementInput,
   StoredFile,
   SupplierService,
+  PublicCatalogShop,
+  PublicCatalogShopSummary,
   Taxonomy,
   TaxonomyCategory,
   TaxonomyFinish,
   TaxonomyMaterial,
+  TaxonomySubcategory,
   UpdateSettingsInput,
   UpdateSupplierServiceInput,
   UpdateZoneInput,
@@ -665,9 +668,49 @@ export async function getTaxonomy(): Promise<Taxonomy> {
   return result.taxonomy;
 }
 
+export async function listCatalogShops(filters?: {
+  categoryCode?: string;
+  cursor?: string | null;
+}): Promise<{ shops: PublicCatalogShopSummary[]; nextCursor: string | null }> {
+  const q = buildQuery({
+    categoryCode: filters?.categoryCode,
+    cursor: filters?.cursor,
+  });
+  const result = await request<{
+    shops?: PublicCatalogShopSummary[];
+    nextCursor?: string | null;
+  }>(`/catalog/shops${q}`);
+  return {
+    shops: result.shops ?? [],
+    nextCursor: result.nextCursor ?? null,
+  };
+}
+
+export async function listAllCatalogShops(
+  categoryCode?: string,
+): Promise<PublicCatalogShopSummary[]> {
+  const shops: PublicCatalogShopSummary[] = [];
+  let cursor: string | null = null;
+  do {
+    const page = await listCatalogShops({ categoryCode, cursor });
+    shops.push(...page.shops);
+    cursor = page.nextCursor;
+  } while (cursor);
+  return shops;
+}
+
+export async function getCatalogShop(supplierId: string): Promise<PublicCatalogShop> {
+  const result = await request<{ shop: PublicCatalogShop }>(
+    `/catalog/shops/${encodeURIComponent(supplierId)}`,
+  );
+  return result.shop;
+}
+
 export async function createTaxonomyCategory(input: {
   code: string;
   name: string;
+  bestFor?: string;
+  sortOrder?: number;
   productFamilyIds?: string[];
   active?: boolean;
 }): Promise<TaxonomyCategory> {
@@ -682,6 +725,8 @@ export async function updateTaxonomyCategory(
   idOrCode: string,
   input: {
     name?: string;
+    bestFor?: string;
+    sortOrder?: number;
     productFamilyIds?: string[];
     active?: boolean;
   },
@@ -691,6 +736,38 @@ export async function updateTaxonomyCategory(
     { method: "PATCH", body: JSON.stringify(input) },
   );
   return result.category;
+}
+
+export async function createTaxonomySubcategory(input: {
+  code: string;
+  name: string;
+  categoryCode: string;
+  examples?: string[];
+  sortOrder?: number;
+  active?: boolean;
+}): Promise<TaxonomySubcategory> {
+  const result = await request<{ subcategory: TaxonomySubcategory }>(
+    "/taxonomy/subcategories",
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.subcategory;
+}
+
+export async function updateTaxonomySubcategory(
+  idOrCode: string,
+  input: {
+    name?: string;
+    categoryCode?: string;
+    examples?: string[];
+    sortOrder?: number;
+    active?: boolean;
+  },
+): Promise<TaxonomySubcategory> {
+  const result = await request<{ subcategory: TaxonomySubcategory }>(
+    `/taxonomy/subcategories/${idOrCode}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return result.subcategory;
 }
 
 export async function createTaxonomyMaterial(input: {
@@ -1020,4 +1097,245 @@ export async function recordDelivery(
     body: JSON.stringify({ evidenceType: "photo", ...input }),
   });
   return normalizeOrder(result.order);
+}
+
+// ---------------------------------------------------------------------------
+// Shop listings — /me/catalog-items. Contract: gridgo-api docs/SUPPLIER_CATALOG_API.md
+// ---------------------------------------------------------------------------
+
+function versioned(
+  version: number | null,
+  body?: Record<string, unknown>,
+): RequestInit {
+  const headers: Record<string, string> = {};
+  if (version != null) headers["If-Match"] = String(version);
+  const payload =
+    body == null
+      ? version != null
+        ? { expectedVersion: version }
+        : undefined
+      : { ...body, ...(version != null ? { expectedVersion: version } : {}) };
+  return {
+    headers,
+    body: payload ? JSON.stringify(payload) : undefined,
+  };
+}
+
+export type CatalogListQuery = {
+  q?: string | null;
+  sort?: string | null;
+  subcategoryCode?: string | null;
+  active?: boolean | null;
+  limit?: number | null;
+  cursor?: string | null;
+};
+
+export async function listCatalogItems(query: CatalogListQuery = {}): Promise<unknown> {
+  const params = new URLSearchParams();
+  const q = (query.q ?? "").trim();
+  if (q) params.set("q", q);
+  if (query.sort) params.set("sort", query.sort);
+  if (query.subcategoryCode) params.set("subcategoryCode", query.subcategoryCode);
+  if (query.active != null) params.set("active", query.active ? "true" : "false");
+  if (query.limit != null) params.set("limit", String(query.limit));
+  if (query.cursor) params.set("cursor", query.cursor);
+  const search = params.toString();
+  return request<unknown>(`/me/catalog-items${search ? `?${search}` : ""}`);
+}
+
+export async function getCatalogItem(itemId: string): Promise<unknown> {
+  return request<unknown>(`/me/catalog-items/${encodeURIComponent(itemId)}`);
+}
+
+export async function listMySupplierServices(): Promise<unknown> {
+  return request<unknown>("/me/supplier-services");
+}
+
+export async function createCatalogItem(body: Record<string, unknown>): Promise<unknown> {
+  return request<unknown>("/me/catalog-items", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateCatalogItem(
+  itemId: string,
+  version: number | null,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  return request<unknown>(`/me/catalog-items/${encodeURIComponent(itemId)}`, {
+    method: "PATCH",
+    ...versioned(version, body),
+  });
+}
+
+export async function deleteCatalogItem(
+  itemId: string,
+  version: number | null,
+): Promise<unknown> {
+  return request<unknown>(`/me/catalog-items/${encodeURIComponent(itemId)}`, {
+    method: "DELETE",
+    ...versioned(version),
+  });
+}
+
+export async function putCatalogItemFileFormats(
+  itemId: string,
+  version: number | null,
+  mode: "inherit" | "override",
+  formatCodes: string[],
+): Promise<unknown> {
+  return request<unknown>(`/me/catalog-items/${encodeURIComponent(itemId)}/file-formats`, {
+    method: "PUT",
+    ...versioned(version, { mode, formatCodes }),
+  });
+}
+
+export async function createCatalogOptionGroup(
+  itemId: string,
+  itemVersion: number | null,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  return request<unknown>(`/me/catalog-items/${encodeURIComponent(itemId)}/option-groups`, {
+    method: "POST",
+    ...versioned(itemVersion, body),
+  });
+}
+
+export async function updateCatalogOptionGroup(
+  itemId: string,
+  groupId: string,
+  groupVersion: number | null,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  return request<unknown>(
+    `/me/catalog-items/${encodeURIComponent(itemId)}/option-groups/${encodeURIComponent(groupId)}`,
+    { method: "PATCH", ...versioned(groupVersion, body) },
+  );
+}
+
+export async function deleteCatalogOptionGroup(
+  itemId: string,
+  groupId: string,
+  groupVersion: number | null,
+): Promise<unknown> {
+  return request<unknown>(
+    `/me/catalog-items/${encodeURIComponent(itemId)}/option-groups/${encodeURIComponent(groupId)}`,
+    { method: "DELETE", ...versioned(groupVersion) },
+  );
+}
+
+export async function createCatalogOption(
+  groupId: string,
+  groupVersion: number | null,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  return request<unknown>(`/me/catalog-option-groups/${encodeURIComponent(groupId)}/options`, {
+    method: "POST",
+    ...versioned(groupVersion, body),
+  });
+}
+
+export async function updateCatalogOption(
+  groupId: string,
+  optionId: string,
+  groupVersion: number | null,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  return request<unknown>(
+    `/me/catalog-option-groups/${encodeURIComponent(groupId)}/options/${encodeURIComponent(optionId)}`,
+    { method: "PATCH", ...versioned(groupVersion, body) },
+  );
+}
+
+export async function deleteCatalogOption(
+  groupId: string,
+  optionId: string,
+  groupVersion: number | null,
+): Promise<unknown> {
+  return request<unknown>(
+    `/me/catalog-option-groups/${encodeURIComponent(groupId)}/options/${encodeURIComponent(optionId)}`,
+    { method: "DELETE", ...versioned(groupVersion) },
+  );
+}
+
+export async function listCatalogItemPrepSteps(itemId: string): Promise<unknown> {
+  return request<unknown>(`/me/catalog-items/${encodeURIComponent(itemId)}/prep-steps`);
+}
+
+export async function createCatalogItemPrepStep(
+  itemId: string,
+  version: number | null,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  return request<unknown>(`/me/catalog-items/${encodeURIComponent(itemId)}/prep-steps`, {
+    method: "POST",
+    ...versioned(version, body),
+  });
+}
+
+export async function updateCatalogItemPrepStep(
+  itemId: string,
+  stepId: string,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  return request<unknown>(
+    `/me/catalog-items/${encodeURIComponent(itemId)}/prep-steps/${encodeURIComponent(stepId)}`,
+    { method: "PATCH", body: JSON.stringify(body) },
+  );
+}
+
+export async function deleteCatalogItemPrepStep(
+  itemId: string,
+  stepId: string,
+): Promise<unknown> {
+  return request<unknown>(
+    `/me/catalog-items/${encodeURIComponent(itemId)}/prep-steps/${encodeURIComponent(stepId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export async function listListingStarters(subcategoryCode: string): Promise<unknown> {
+  const q = buildQuery({ subcategoryCode });
+  return request<unknown>(`/listing-starters${q}`);
+}
+
+export async function listAcceptedFileFormats(q?: string): Promise<
+  Array<{ code: string; displayName: string; inputKind: "file" | "url"; uploadable?: boolean }>
+> {
+  const search = buildQuery({ q });
+  const result = await request<{
+    formats?: Array<{
+      code: string;
+      displayName: string;
+      inputKind: "file" | "url";
+      uploadable?: boolean;
+    }>;
+  }>(`/accepted-file-formats${search}`);
+  return result.formats ?? [];
+}
+
+export async function uploadCatalogItemPhoto(file: File): Promise<StoredFile> {
+  const body = new FormData();
+  body.append("purpose", "catalog_item_photo");
+  body.append("file", file);
+  const result = await request<{ file: StoredFile }>("/files", {
+    method: "POST",
+    body,
+  });
+  return result.file;
+}
+
+export async function attachCatalogItemPhoto(
+  fileId: string,
+  catalogItemId: string,
+  sortOrder: number,
+  altText?: string,
+): Promise<unknown> {
+  const payload: Record<string, unknown> = { catalogItemId, sortOrder };
+  if (altText) payload.altText = altText;
+  return request<unknown>(`/files/${encodeURIComponent(fileId)}/attach`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }

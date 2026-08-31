@@ -477,6 +477,9 @@ export type TaxonomyCategory = {
   id: string;
   code: string;
   name: string;
+  /** Audience line from the chart, without a "Best for:" prefix. */
+  bestFor?: string;
+  sortOrder?: number;
   productFamilyIds: string[];
   active: boolean;
 };
@@ -497,10 +500,70 @@ export type TaxonomyFinish = {
   active: boolean;
 };
 
+export type TaxonomySubcategory = {
+  id: string;
+  code: string;
+  categoryCode: string;
+  name: string;
+  /** Chart examples for this print job, as chips. */
+  examples?: string[];
+  active: boolean;
+  sortOrder?: number;
+};
+
+/** Retired pre-chart category code still accepted on input. */
+export type TaxonomyCategoryAlias = {
+  code: string;
+  name: string;
+  categoryCode: string;
+  ambiguous?: boolean;
+  note?: string;
+  active?: boolean;
+};
+
 export type Taxonomy = {
   categories: TaxonomyCategory[];
+  /** Flat chart of what each category covers. Present on the live taxonomy. */
+  subcategories?: TaxonomySubcategory[];
   materials: TaxonomyMaterial[];
   finishes: TaxonomyFinish[];
+  categoryAliases?: TaxonomyCategoryAlias[];
+};
+
+/** Public marketplace shop card from GET /catalog/shops. */
+export type PublicCatalogShopSummary = {
+  supplierId: string;
+  shopName: string;
+  categories?: string[];
+  itemCount?: number;
+};
+
+export type PublicCatalogListing = {
+  id: string;
+  supplierId?: string;
+  subcategoryCode?: string;
+  name: string;
+  fromPriceMinor?: number;
+  basePriceMinor?: number;
+  turnaroundHours?: number | null;
+  photos?: Array<{
+    fileId: string;
+    sortOrder?: number;
+    altText?: string | null;
+    downloadUrl?: string | null;
+    url?: string;
+  }>;
+};
+
+export type PublicCatalogShop = {
+  supplierId: string;
+  shopName: string;
+  categories?: string[];
+  services?: Array<{
+    id: string;
+    categoryCode: string;
+    items?: PublicCatalogListing[];
+  }>;
 };
 
 // ---- Supplier services ----

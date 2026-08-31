@@ -206,6 +206,18 @@ describe("nav helpers", () => {
     );
     expect(contextTitleForPath("/ops/orders/ord_1", "ops_admin")).toBe("Order workspace");
     expect(contextTitleForPath("/admin/zones", "super_admin")).toBe("Delivery zones");
+    expect(contextTitleForPath("/admin/catalogue/jobs/new", "super_admin")).toBe(
+      "Add print job",
+    );
+    expect(contextTitleForPath("/admin/catalogue/jobs/flyers", "super_admin")).toBe(
+      "Print job",
+    );
+    expect(contextTitleForPath("/admin/catalogue/categories/new", "super_admin")).toBe(
+      "Add category",
+    );
+    expect(
+      contextTitleForPath("/admin/catalogue/categories/marketing_collateral", "super_admin"),
+    ).toBe("Category");
     });
 
   it("finds the longest matching nav item", () => {

@@ -10,11 +10,44 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "@/components/shell/AppShell";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-const { pathnameRef, signOutMock, membershipsRef } = vi.hoisted(() => ({
-  pathnameRef: { current: "/admin/overview" },
-  signOutMock: vi.fn(),
-  membershipsRef: { current: [] as Array<{ role: "supplier" | "ops_admin" | "super_admin" }> },
-}));
+type ClerkProfileMock = {
+  id: string;
+  fullName: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  imageUrl: string | null;
+  primaryEmailAddress: { emailAddress: string } | null;
+};
+
+const adaClerk: ClerkProfileMock = {
+  id: "user_clerk",
+  fullName: "Ada Admin",
+  firstName: "Ada",
+  lastName: "Admin",
+  imageUrl: "https://img.clerk.com/ada.png",
+  primaryEmailAddress: { emailAddress: "admin@example.com" },
+};
+
+const { pathnameRef, signOutMock, membershipsRef, userRef, clerkUserRef, openUserProfileMock } =
+  vi.hoisted(() => ({
+    pathnameRef: { current: "/admin/overview" },
+    signOutMock: vi.fn(),
+    membershipsRef: {
+      current: [] as Array<{ role: "supplier" | "ops_admin" | "super_admin" }>,
+    },
+    userRef: {
+      current: {
+        id: "user_admin",
+        email: "admin@example.com",
+        name: "Ada Admin",
+        role: "super_admin" as const,
+      },
+    },
+    clerkUserRef: {
+      current: null as ClerkProfileMock | null,
+    },
+    openUserProfileMock: vi.fn(),
+  }));
 
 vi.stubGlobal("React", React);
 
@@ -25,15 +58,21 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/lib/auth/AuthProvider", () => ({
   useAuth: () => ({
-    user: {
-      id: "user_admin",
-      email: "admin@example.com",
-      name: "Ada Admin",
-      role: "super_admin",
-    },
+    user: userRef.current,
     memberships: membershipsRef.current,
     signOut: signOutMock,
     loading: false,
+  }),
+}));
+
+vi.mock("@clerk/nextjs", () => ({
+  useUser: () => ({
+    isLoaded: true,
+    isSignedIn: Boolean(clerkUserRef.current),
+    user: clerkUserRef.current,
+  }),
+  useClerk: () => ({
+    openUserProfile: openUserProfileMock,
   }),
 }));
 
@@ -70,11 +109,19 @@ function renderShell(pathname: string) {
 
 beforeEach(() => {
   mockMatchMedia();
+  clerkUserRef.current = { ...adaClerk };
 });
 
 afterEach(() => {
   cleanup();
   membershipsRef.current = [];
+  userRef.current = {
+    id: "user_admin",
+    email: "admin@example.com",
+    name: "Ada Admin",
+    role: "super_admin",
+  };
+  clerkUserRef.current = { ...adaClerk };
   vi.clearAllMocks();
 });
 
@@ -90,11 +137,10 @@ describe("AppShell chrome", () => {
     const header = container.querySelector('[data-slot="sidebar-header"]');
     const home = header?.querySelector("a");
     expect(home).toBeTruthy();
-    // Icon-rail: 44×44 cell like the nav rows; 4px inset puts the 24px mark
-    // on the same x-center as the 16px Overview / QA icons (p-2 + size-4).
+    // Icon-rail: 44×44 cell, centered in the 60px column (8px group pad each side).
     expect(home?.className).toMatch(/group-data-\[collapsible=icon\]:size-11/);
-    expect(home?.className).toMatch(/group-data-\[collapsible=icon\]:pl-1/);
-    expect(home?.className).not.toMatch(/group-data-\[collapsible=icon\]:justify-center/);
+    expect(home?.className).toMatch(/group-data-\[collapsible=icon\]:justify-center/);
+    expect(home?.className).not.toMatch(/group-data-\[collapsible=icon\]:pl-1/);
     // Expanded lockup stays a left-aligned text row; the wordmark only hides on collapse.
     expect(home).toHaveTextContent("GRIDGO");
     expect(home).toHaveTextContent("Super Admin");
@@ -158,10 +204,60 @@ describe("AppShell chrome", () => {
     expect(trigger).toHaveTextContent("Super Admin");
     expect(trigger).toHaveTextContent("AA");
     expect(trigger.querySelector("svg")).not.toBeNull();
+    expect(trigger.querySelector('[data-slot="avatar"]')).not.toBeNull();
     expect(
       within(footer as HTMLElement).queryByRole("button", { name: "Sign out" }),
     ).not.toBeInTheDocument();
     expect(screen.queryByRole("menuitem", { name: "Log out" })).toBeNull();
+  });
+
+  it("shows the Clerk person instead of the portal API display name", () => {
+    userRef.current = {
+      ...userRef.current,
+      name: "Operations Lead",
+      email: "ops@example.com",
+    };
+    clerkUserRef.current = {
+      id: "user_clerk_ops",
+      fullName: "Giorno Giovanna",
+      firstName: "Giorno",
+      lastName: "Giovanna",
+      imageUrl: "https://img.clerk.com/giorno.png",
+      primaryEmailAddress: { emailAddress: "giorno@example.com" },
+    };
+    const { container } = renderShell("/ops/overview");
+    const footer = container.querySelector('[data-slot="sidebar-footer"]');
+    const trigger = within(footer as HTMLElement).getByRole("button", {
+      name: /Giorno Giovanna/,
+    });
+    expect(trigger).toHaveTextContent("Giorno Giovanna");
+    expect(trigger).toHaveTextContent("Operations");
+    expect(trigger).not.toHaveTextContent("Operations Lead");
+    expect(trigger.querySelector('[data-slot="avatar"]')).not.toBeNull();
+  });
+
+  it("falls back to the portal name when Clerk has not loaded a profile", () => {
+    clerkUserRef.current = null;
+    userRef.current = { ...userRef.current, name: "Operations Lead" };
+    const { container } = renderShell("/ops/overview");
+    const footer = container.querySelector('[data-slot="sidebar-footer"]');
+    expect(
+      within(footer as HTMLElement).getByRole("button", { name: /Operations Lead/ }),
+    ).toBeInTheDocument();
+    expect(
+      (footer as HTMLElement).querySelector("img"),
+    ).toBeNull();
+  });
+
+  it("opens the Clerk account profile from the footer menu", async () => {
+    const user = userEvent.setup();
+    const { container } = renderShell("/ops/overview");
+    const footer = container.querySelector('[data-slot="sidebar-footer"]');
+    await user.click(
+      within(footer as HTMLElement).getByRole("button", { name: /Ada Admin/ }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Manage account" }));
+    expect(openUserProfileMock).toHaveBeenCalledTimes(1);
   });
 
   it("opens Log out and Settings for admin, Settings for ops, and no Settings for suppliers", async () => {
@@ -243,6 +339,8 @@ describe("AppShell chrome", () => {
     const current = within(nav).getByRole("link", { name: "Overview" });
     expect(current).toHaveAttribute("aria-current", "page");
     expect(current.className).toMatch(/action-yellow/);
+    expect(current.className).toMatch(/group-data-\[collapsible=icon\]:justify-center/);
+    expect(current.className).toMatch(/group-data-\[collapsible=icon\]:size-11/);
     expect(current.className).toMatch(/data-active:bg-sidebar-accent/);
     expect(current.className).not.toMatch(/data-active:bg-transparent/);
     expect(current.className).not.toMatch(/border-l/);
