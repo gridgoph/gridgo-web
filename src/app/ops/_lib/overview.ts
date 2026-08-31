@@ -145,7 +145,7 @@ export function buildOverviewBuckets(
       description:
         "A client has transferred and is waiting. Nothing moves until the money is confirmed.",
       count: payments.length,
-      href: "/ops/payments",
+      href: "/ops/orders?stage=payment",
       urgent: payments.length > 0,
     },
     {
@@ -162,7 +162,7 @@ export function buildOverviewBuckets(
       label: "Needs QA",
       description: "Submitted or in review — artwork and specs need a decision.",
       count: needsQa.length,
-      href: "/ops/qa",
+      href: "/ops/orders",
       urgent: needsQa.length > 0,
     },
     {
@@ -170,7 +170,7 @@ export function buildOverviewBuckets(
       label: "Awaiting matching",
       description: "Approved work waiting for an Operations supplier choice.",
       count: matching.length,
-      href: "/ops/matching",
+      href: "/ops/orders?stage=qa",
       urgent: matching.length > 0,
     },
     {
@@ -187,7 +187,7 @@ export function buildOverviewBuckets(
       label: "In production",
       description: "Assigned through supplier self-QC — monitor, not queue.",
       count: production.length,
-      href: "/ops/qa",
+      href: "/ops/orders",
       urgent: false,
     },
     {
@@ -253,7 +253,7 @@ export function pickOverviewNextAction(
     return {
       title: "Confirm a downpayment",
       body: `${paymentOrder.title} — the client has transferred and the order cannot move until the money is confirmed.`,
-      href: `/ops/payments/${paymentOrder.id}?installment=downpayment`,
+      href: `/ops/orders/${paymentOrder.id}`,
       cta: "Review payment",
       orderId: paymentOrder.id,
       orderTitle: paymentOrder.title,
@@ -269,7 +269,7 @@ export function pickOverviewNextAction(
     return {
       title: action?.label ?? "Open QA workspace",
       body: `${qaOrder.title} — ${presentOrderState(qaOrder.state).label}.`,
-      href: `/ops/qa/${qaOrder.id}`,
+      href: `/ops/orders/${qaOrder.id}`,
       cta: action?.label ?? "Open for QA",
       orderId: qaOrder.id,
       orderTitle: qaOrder.title,
@@ -282,7 +282,7 @@ export function pickOverviewNextAction(
     return {
       title: "Assign a supplier",
       body: `${matchOrder.title} is ready for matching. Choose an eligible supplier with a clear reason.`,
-      href: `/ops/matching?order=${encodeURIComponent(matchOrder.id)}`,
+      href: `/ops/orders/${matchOrder.id}`,
       cta: "Open matching",
       orderId: matchOrder.id,
       orderTitle: matchOrder.title,
@@ -341,7 +341,7 @@ export function pickOverviewNextAction(
     return {
       title: "SLA breached",
       body: `${breached.title} is past its deadline or promised date.`,
-      href: `/ops/qa/${breached.id}`,
+      href: `/ops/orders/${breached.id}`,
       cta: "Open order",
       orderId: breached.id,
       orderTitle: breached.title,
@@ -359,7 +359,7 @@ export function pickOverviewNextAction(
     return {
       title: "Deadline approaching",
       body: `${near.title} is within the next ${SLA_NEAR_HOURS} hours.`,
-      href: `/ops/qa/${near.id}`,
+      href: `/ops/orders/${near.id}`,
       cta: "Open order",
       orderId: near.id,
       orderTitle: near.title,

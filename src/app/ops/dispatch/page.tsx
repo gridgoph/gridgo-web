@@ -339,7 +339,7 @@ export default function OpsDispatchPage() {
               <DataTableRowAction
                 label="Open"
                 icon={Eye}
-                href={`/ops/qa/${o.id}`}
+                href={`/ops/orders/${o.id}`}
               />
             </>
           )}

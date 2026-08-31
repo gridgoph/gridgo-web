@@ -275,7 +275,23 @@ export type Order = {
   // Server-side projection decides which of these a caller receives:
   // supplier price is hidden from the client; commission is Ops / Super Admin only.
   /** Supplier's own asking price. Ops / Super Admin and the assigned supplier. */
+  /**
+   * What the shop is paid for the work. The API has always called it this;
+   * `supplierPriceMinor` was the quote-era name and appears nowhere in it, so a
+   * screen reading that field read undefined on every order.
+   */
+  supplierSubtotalMinor?: number;
   supplierPriceMinor?: number;
+  /**
+   * The date the client was promised. The shop's own date is deliberately
+   * absent from every client-facing payload, and Operations reads this one.
+   */
+  readyBy?: string | null;
+  /** When the shop actually finished, stamped as it hands over to a rider. */
+  readyAt?: string | null;
+  cancelledAt?: string | null;
+  cancelledBy?: string | null;
+  cancellationReason?: string | null;
   /** GRIDGO's cut, added on top of the supplier price. Ops / Super Admin only. */
   commissionRatePercent?: number;
   /** Ops / Super Admin only — never shown to a client, supplier or rider. */

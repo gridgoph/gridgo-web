@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import type { Claim, Issue, Order } from "@/lib/api/types";
 
 import { filterDispatchOrders, presentLocation, LOCATION_STALE_MS } from "../dispatch";
-import { explainCandidates, formatCapacity, formatTurnaround } from "../matching";
 import {
   buildOverviewBuckets,
   isSlaAtRisk,
@@ -100,7 +99,7 @@ describe("overview", () => {
       now,
     );
     expect(next?.orderId).toBe("q");
-    expect(next?.href).toContain("/ops/qa/q");
+    expect(next?.href).toContain("/ops/orders/q");
   });
 
   it("detects SLA near and breached", () => {
@@ -225,72 +224,6 @@ describe("dispatch location freshness", () => {
   });
 });
 
-describe("matching explain", () => {
-  it("sorts eligible first and formats capacity", () => {
-    const explained = explainCandidates([
-      {
-        supplier: {
-          id: "s2",
-          email: "b@x",
-          name: "B",
-          role: "supplier",
-          supplierName: "Beta Print",
-          verificationStatus: "pending",
-        },
-        eligible: false,
-        reasons: ["qty_below_min"],
-        matchingServiceIds: [],
-        services: [],
-      },
-      {
-        supplier: {
-          id: "s1",
-          email: "a@x",
-          name: "A",
-          role: "supplier",
-          supplierName: "Alpha Print",
-          verificationStatus: "approved",
-        },
-        eligible: true,
-        reasons: ["zone_covered"],
-        matchingServiceIds: ["svc_1"],
-        services: [
-          {
-            id: "svc_1",
-            supplierId: "s1",
-            categoryCode: "offset",
-            materialCodes: [],
-            finishCodes: [],
-            productFamilyIds: ["flyer"],
-            sizeMin: null,
-            sizeMax: null,
-            qtyMin: 1,
-            qtyMax: 100,
-            pricingBasis: "per_pack",
-            referenceRateMinor: 100,
-            turnaroundHours: 24,
-            capacityDaily: 10,
-            capacityWeekly: 50,
-            zones: ["davao_central"],
-            equipmentNotes: "",
-            state: "live",
-            verifiedAt: null,
-            suspendedAt: null,
-            suspendReason: null,
-            withdrawnAt: null,
-            createdAt: "",
-            updatedAt: "",
-          },
-        ],
-      },
-    ]);
-    expect(explained[0].supplierName).toBe("Alpha Print");
-    expect(explained[0].eligible).toBe(true);
-    expect(explained[0].reasons[0]).toMatch(/Zone/i);
-    expect(formatCapacity(10, 50)).toBe("10/day · 50/week");
-    expect(formatTurnaround(24)).toBe("1 day");
-  });
-});
 
 describe("schedule", () => {
   it("builds events that link to authorised workspaces", () => {
@@ -311,7 +244,7 @@ describe("schedule", () => {
       ],
       [],
     );
-    expect(events.some((e) => e.kind === "qa" && e.href.includes("/ops/qa/"))).toBe(true);
+    expect(events.some((e) => e.kind === "qa" && e.href.includes("/ops/orders/"))).toBe(true);
     expect(
       events.some((e) => e.kind === "pickup" && e.href.includes("/ops/dispatch")),
     ).toBe(true);
@@ -340,7 +273,7 @@ describe("schedule", () => {
       [],
     );
     const payment = events.find((e) => e.kind === "payment_confirmation");
-    expect(payment?.href).toContain("/ops/payments/pay1");
+    expect(payment?.href).toContain("/ops/orders/pay1");
     expect(payment?.detail?.toLowerCase()).toContain("downpayment");
   });
 

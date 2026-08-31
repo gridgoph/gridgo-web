@@ -165,33 +165,17 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
       id: "ops-queue",
       label: "Queue",
       items: [
-        {
-          id: "ops-qa",
-          href: "/ops/qa",
-          label: "QA queue",
-          title: "QA queue",
-          icon: "qa",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "ops-payments",
-          href: "/ops/payments",
-          label: "Payments",
-          title: "Payment confirmations",
-          icon: "payments",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "ops-matching",
-          href: "/ops/matching",
-          label: "Matching",
-          title: "Supplier matching",
-          icon: "matching",
-          ready: true,
-          placeholderBody: "",
-        },
+      {
+        // One queue. Payments and QA were the same order at two moments of the
+        // same job, and matching is gone -- GRIDGO chooses the press.
+        id: "ops-orders",
+        href: "/ops/orders",
+        label: "Orders",
+        title: "Orders",
+        icon: "qa",
+        ready: true,
+        placeholderBody: "",
+      },
         {
           id: "ops-approvals",
           href: "/ops/approvals",
@@ -363,15 +347,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
       label: "Money",
       items: [
         {
-          id: "admin-credits",
-          href: "/admin/credits",
-          label: "Pilot Credits",
-          title: "Pilot Credits",
-          icon: "credits",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
           id: "admin-finance",
           href: "/admin/finance",
           label: "Finance",
@@ -478,8 +453,7 @@ export function contextTitleForPath(
 ): string {
   // Nested workspaces that share a list parent
   if (pathname.startsWith("/supplier/jobs/")) return "Order workspace";
-  if (pathname.startsWith("/ops/qa/")) return "QA workspace";
-  if (pathname.startsWith("/ops/payments/")) return "Payment review";
+  if (pathname.startsWith("/ops/orders/")) return "Order workspace";
   if (pathname.startsWith("/ops/payouts/")) return "Payout review";
 
   const item = navItemForPath(pathname, role);

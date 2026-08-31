@@ -221,7 +221,7 @@ export default function OpsOverviewPage() {
             <Button
               variant="secondary"
               nativeButton={false}
-              render={<Link href="/ops/qa" />}
+              render={<Link href="/ops/orders" />}
             >
               Open QA queue
             </Button>

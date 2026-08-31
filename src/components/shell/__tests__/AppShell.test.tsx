@@ -219,7 +219,7 @@ describe("AppShell chrome", () => {
     );
     expect(await screen.findByRole("menuitem", { name: "Open Operations" })).toHaveAttribute(
       "href",
-      "/ops/qa",
+      "/ops/orders",
     );
     expect(screen.queryByRole("menuitem", { name: "Open Super Admin" })).not.toBeInTheDocument();
   });
@@ -304,12 +304,12 @@ describe("AppShell chrome", () => {
   });
 
   it("keeps every nav group open so items stay reachable without expanding", () => {
-    renderShell("/ops/payments");
+    renderShell("/ops/orders");
     const nav = screen.getByRole("navigation", { name: "Primary navigation" });
-    const payments = within(nav).getByRole("link", { name: "Payments" });
+    const payments = within(nav).getByRole("link", { name: "Orders" });
     expect(payments).toHaveAttribute("aria-current", "page");
     expect(payments.className).toMatch(/action-yellow/);
-    expect(within(nav).getByRole("link", { name: "QA queue" })).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Sign-up approvals" })).toBeInTheDocument();
     // Other groups stay expanded — no click required.
     expect(within(nav).getByRole("link", { name: "Dispatch" })).toHaveAttribute(
       "href",
@@ -326,23 +326,23 @@ describe("AppShell chrome", () => {
 
   it("keeps a nested parent crumb as a same-tab link with a destination tooltip", async () => {
     const user = userEvent.setup();
-    renderShell("/ops/qa/ord_demo");
+    renderShell("/ops/orders/ord_demo");
 
     const crumb = screen.getByRole("navigation", { name: "breadcrumb" });
-    const parent = within(crumb).getByRole("link", { name: "Back to QA queue" });
-    expect(parent).toHaveAttribute("href", "/ops/qa");
+    const parent = within(crumb).getByRole("link", { name: "Back to Orders" });
+    expect(parent).toHaveAttribute("href", "/ops/orders");
     expect(parent).not.toHaveAttribute("target");
     expect(parent).toHaveAttribute("data-base-ui-tooltip-trigger");
-    expect(parent).toHaveTextContent("QA queue");
+    expect(parent).toHaveTextContent("Orders");
 
     await user.hover(parent);
     expect(
-      await screen.findByText("Back to QA queue", {
+      await screen.findByText("Back to Orders", {
         selector: "[data-slot='tooltip-content']",
       }),
     ).toBeInTheDocument();
 
-    const current = within(crumb).getByText("QA workspace");
+    const current = within(crumb).getByText("Order workspace");
     expect(current.tagName).not.toBe("A");
     expect(current.closest("a")).toBeNull();
   });

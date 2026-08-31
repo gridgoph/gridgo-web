@@ -103,7 +103,7 @@ export function buildScheduleEvents(
         at: anchor,
         orderId: order.id,
         orderTitle: order.title,
-        href: `/ops/qa/${order.id}`,
+        href: `/ops/orders/${order.id}`,
         detail: "Review artwork and specs",
       });
     }
@@ -116,7 +116,7 @@ export function buildScheduleEvents(
         at: anchor,
         orderId: order.id,
         orderTitle: order.title,
-        href: `/ops/qa/${order.id}`,
+        href: `/ops/orders/${order.id}`,
         detail: "Waiting on client proof decision",
       });
     }
@@ -129,7 +129,7 @@ export function buildScheduleEvents(
         at: anchor,
         orderId: order.id,
         orderTitle: order.title,
-        href: `/ops/qa/${order.id}`,
+        href: `/ops/orders/${order.id}`,
         detail: "Supplier must accept or decline",
       });
     }
@@ -142,7 +142,7 @@ export function buildScheduleEvents(
         at: anchor,
         orderId: order.id,
         orderTitle: order.title,
-        href: `/ops/qa/${order.id}`,
+        href: `/ops/orders/${order.id}`,
         detail: "In supplier production",
       });
     }
@@ -204,7 +204,7 @@ export function buildScheduleEvents(
         at: paymentOf(order, code)?.submittedAt || anchor,
         orderId: order.id,
         orderTitle: order.title,
-        href: `/ops/payments/${order.id}?installment=${code}`,
+        href: `/ops/orders/${order.id}`,
         detail:
           code === "downpayment"
             ? "The client's downpayment is waiting on Operations"

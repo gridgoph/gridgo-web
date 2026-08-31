@@ -171,31 +171,26 @@ export default function SupplierJobsPage() {
 
   const actionRequired =
     jobs?.filter((j) => needsSupplierAction(j.state)).length ?? 0;
+  const dueSoon = (jobs ?? []).filter((j) => isDueWithin(j.readyBy ?? j.deadline, 24)).length;
+  const onTheBoard = (jobs ?? []).reduce((total, j) => total + (j.supplierSubtotalMinor ?? 0), 0);
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-body text-text-secondary m-0">
-            {pending ? (
-              "Work matched to your shop, newest first."
-            ) : (
-              <>
-                {jobs?.length} job{jobs?.length === 1 ? "" : "s"}
-                {actionRequired > 0
-                  ? ` · ${actionRequired} need${actionRequired === 1 ? "s" : ""} your action`
-                  : ""}
-              </>
-            )}
-          </p>
+      {/*
+        Three figures across the top instead of one sentence above a short
+        table. A shop opening this wants to know what needs its attention, what
+        runs out of time today, and what the board is worth -- and on a quiet
+        day this page was a line of text with a screen of nothing under it.
+      */}
+      <div className="flex flex-wrap items-stretch gap-2">
+        <SummaryFigure label="Need your action" value={String(actionRequired)} emphasis={actionRequired > 0} />
+        <SummaryFigure label="Due within a day" value={String(dueSoon)} emphasis={dueSoon > 0} />
+        <SummaryFigure label="On the board" value={formatPhp(onTheBoard)} />
+        <div className="ml-auto flex items-end">
+          <Button variant="secondary" disabled={loading} onClick={() => void load()}>
+            Refresh
+          </Button>
         </div>
-        <Button
-          variant="secondary"
-          disabled={loading}
-          onClick={() => void load()}
-        >
-          Refresh
-        </Button>
       </div>
 
       <DataTable
@@ -213,6 +208,30 @@ export default function SupplierJobsPage() {
           />
         )}
       />
+    </div>
+  );
+}
+
+/** Whether a due date falls inside the next `hours`. */
+function isDueWithin(when: string | null | undefined, hours: number): boolean {
+  if (!when) return false;
+  const at = Date.parse(when);
+  if (Number.isNaN(at)) return false;
+  return at - Date.now() <= hours * 3_600_000;
+}
+
+function SummaryFigure({
+  label, value, emphasis = false,
+}: { label: string; value: string; emphasis?: boolean }) {
+  return (
+    <div
+      className="gg-card px-3 py-2 min-w-36"
+      style={emphasis ? { borderColor: "var(--color-accent)" } : undefined}
+    >
+      <p className="text-overline text-text-muted m-0">{label}</p>
+      <p className="text-h3 text-text-primary m-0 mt-0.5 tabular-nums" style={{ fontFamily: "var(--font-bold)" }}>
+        {value}
+      </p>
     </div>
   );
 }

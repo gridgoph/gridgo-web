@@ -300,7 +300,7 @@ export default function OpsRecoveryPage() {
                       <Button
                         variant="secondary"
                         nativeButton={false}
-                        render={<Link href={`/ops/qa/${order.id}`} />}
+                        render={<Link href={`/ops/orders/${order.id}`} />}
                       >
                         Open order
                       </Button>

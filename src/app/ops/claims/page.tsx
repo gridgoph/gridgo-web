@@ -350,7 +350,7 @@ export default function OpsClaimsPage() {
               <DataTableRowAction
                 label="Order"
                 icon={ChevronRight}
-                href={`/ops/qa/${c.orderId}`}
+                href={`/ops/orders/${c.orderId}`}
               />
             </>
           )}

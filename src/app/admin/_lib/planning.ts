@@ -46,7 +46,8 @@ export type AgendaItem = {
   dateKey: string;
   at: string | null;
   title: string;
-  zone: string;
+  /** An order placed through the storefront carries no zone; it is matched by distance. */
+  zone: string | null | undefined;
   kind: "delivery";
 };
 
