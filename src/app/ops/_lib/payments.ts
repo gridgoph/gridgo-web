@@ -11,6 +11,7 @@
 
 import type { Order, PaymentInstallment, PaymentRecord } from "@/lib/api/types";
 import { paymentIsSettled } from "@/lib/api/constraints";
+import { listedInstallments, paymentOf } from "@/lib/payments";
 
 export type PaymentReviewRow = {
   order: Order;
@@ -32,12 +33,10 @@ export function paymentsAwaitingReview(
 
   for (const order of orders) {
     if (!order.payments) continue;
-    for (const installment of ["downpayment", "balance"] as const) {
-      const payment = order.payments[installment];
-      if (payment.status !== "pending_confirmation") continue;
-      const submittedMs = payment.submittedAt
-        ? Date.parse(payment.submittedAt)
-        : NaN;
+    for (const installment of listedInstallments(order)) {
+      const payment = paymentOf(order, installment);
+      if (payment?.status !== "pending_confirmation") continue;
+      const submittedMs = payment.submittedAt ? Date.parse(payment.submittedAt) : NaN;
       rows.push({
         order,
         installment,
@@ -73,13 +72,17 @@ export function ordersAwaitingClientPayment(orders: Order[]): Order[] {
   return orders
     .filter((order) => {
       if (!order.payments) return false;
-      const { downpayment, balance } = order.payments;
-      if (order.state === "awaiting_downpayment") {
-        return downpayment.status === "not_submitted";
+      const downpayment = paymentOf(order, "downpayment");
+      const balance = paymentOf(order, "balance");
+      if (
+        order.state === "awaiting_downpayment" ||
+        order.state === "awaiting_initial_payment"
+      ) {
+        return downpayment?.status === "not_submitted";
       }
       return (
         paymentIsSettled(downpayment) &&
-        balance.status === "not_submitted" &&
+        balance?.status === "not_submitted" &&
         !["draft", "submitted", "needs_qa"].includes(order.state)
       );
     })

@@ -3,7 +3,7 @@ import type { Role } from "@/lib/api/types";
 /** Role → home path. Single source of truth for post-login landing. */
 export const ROLE_HOME: Record<Role, string> = {
   supplier: "/supplier/jobs",
-  ops_admin: "/ops/qa",
+  ops_admin: "/ops/orders",
   super_admin: "/admin/overview",
   client: "/login",
   rider: "/login",

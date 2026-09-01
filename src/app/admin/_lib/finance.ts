@@ -7,12 +7,12 @@
  * nowhere else.
  */
 
-import type { Claim, Order } from "@/lib/api/types";
+import type { Claim, Order, PaymentRecord } from "@/lib/api/types";
 import { claimBlocksPayout, paymentIsSettled } from "@/lib/api/constraints";
+import { listedInstallments, paymentOf } from "@/lib/payments";
 
 export type MoneyFigure =
-  | { kind: "amount"; minor: number }
-  | { kind: "unavailable"; reason: string };
+  { kind: "amount"; minor: number } | { kind: "unavailable"; reason: string };
 
 export type FinanceRollup = {
   /** Client money actually confirmed as received, across both installments. */
@@ -45,33 +45,29 @@ function sum(values: number[]): number {
 export function rollupFinance(orders: Order[], claims: Claim[]): FinanceRollup {
   const live = orders.filter((o) => !DEAD_STATES.has(o.state));
 
+  const installmentAmounts = (
+    order: Order,
+    match: (payment: PaymentRecord) => boolean,
+  ): number[] =>
+    listedInstallments(order).flatMap((code) => {
+      const payment = paymentOf(order, code);
+      return payment && match(payment) ? [payment.amountMinor] : [];
+    });
+
   const confirmedIn = sum(
-    live.flatMap((order) => {
-      if (!order.payments) return [];
-      return (["downpayment", "balance"] as const)
-        .filter((code) => paymentIsSettled(order.payments![code]))
-        .map((code) => order.payments![code].amountMinor);
-    }),
+    live.flatMap((order) => installmentAmounts(order, paymentIsSettled)),
   );
 
   const awaiting = sum(
-    live.flatMap((order) => {
-      if (!order.payments) return [];
-      return (["downpayment", "balance"] as const)
-        .filter(
-          (code) => order.payments![code].status === "pending_confirmation",
-        )
-        .map((code) => order.payments![code].amountMinor);
-    }),
+    live.flatMap((order) =>
+      installmentAmounts(order, (payment) => payment.status === "pending_confirmation"),
+    ),
   );
 
   const outstanding = sum(
-    live.flatMap((order) => {
-      if (!order.payments) return [];
-      return (["downpayment", "balance"] as const)
-        .filter((code) => order.payments![code].status === "not_submitted")
-        .map((code) => order.payments![code].amountMinor);
-    }),
+    live.flatMap((order) =>
+      installmentAmounts(order, (payment) => payment.status === "not_submitted"),
+    ),
   );
 
   const priced = live.filter((o) => o.commissionMinor !== undefined);
@@ -79,14 +75,10 @@ export function rollupFinance(orders: Order[], claims: Claim[]): FinanceRollup {
 
   const milestones = live.flatMap((o) => o.payoutMilestones ?? []);
   const released = sum(
-    milestones
-      .filter((m) => m.status === "released")
-      .map((m) => m.amountMinor ?? 0),
+    milestones.filter((m) => m.status === "released").map((m) => m.amountMinor ?? 0),
   );
   const stillOwed = sum(
-    milestones
-      .filter((m) => m.status !== "released")
-      .map((m) => m.amountMinor ?? 0),
+    milestones.filter((m) => m.status !== "released").map((m) => m.amountMinor ?? 0),
   );
 
   const held = sum(

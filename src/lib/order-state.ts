@@ -4,19 +4,16 @@
  */
 
 import type {
+  OrderPayments,
   PaymentInstallment,
-  PaymentRecord,
   PayoutMilestone,
   PickupCheckCode,
 } from "@/lib/api/types";
+import { paymentOf } from "@/lib/payments";
 
 export type StatusTone = "success" | "warning" | "error" | "info" | "neutral";
 export type StatusIconName =
-  | "circle-check"
-  | "triangle-alert"
-  | "circle-x"
-  | "clock"
-  | "square-pen";
+  "circle-check" | "triangle-alert" | "circle-x" | "clock" | "square-pen";
 
 export type StatePresentation = {
   label: string;
@@ -39,9 +36,15 @@ export function presentOrderState(state: string): StatePresentation {
     case "approved_for_matching":
       return { label: "Ready to match supplier", tone: "info", icon: "clock" };
     case "supplier_assigned":
-      return { label: "Awaiting supplier decision", tone: "warning", icon: "triangle-alert" };
+      return {
+        label: "Awaiting supplier decision",
+        tone: "warning",
+        icon: "triangle-alert",
+      };
+    case "awaiting_initial_payment":
     case "awaiting_downpayment":
       return { label: "Awaiting downpayment", tone: "warning", icon: "clock" };
+    case "initial_payment_review":
     case "downpayment_review":
       return {
         label: "Downpayment needs confirming",
@@ -62,6 +65,10 @@ export function presentOrderState(state: string): StatePresentation {
       return { label: "Picked up", tone: "info", icon: "circle-check" };
     case "out_for_delivery":
       return { label: "Out for delivery", tone: "info", icon: "clock" };
+    // Waiting on the counter, and on Operations to release it. It is a job that
+    // needs somebody here, so it reads as one rather than as finished.
+    case "awaiting_collection":
+      return { label: "Waiting at the counter", tone: "warning", icon: "clock" };
     case "delivered":
       return { label: "Delivered", tone: "success", icon: "circle-check" };
     case "issue_window_open":
@@ -97,9 +104,7 @@ export const INSTALLMENT_LABEL: Record<PaymentInstallment, string> = {
 
 /** "Downpayment (75%)" — the share is part of how the team talks about it. */
 export function presentInstallment(installment: PaymentInstallment): string {
-  return installment === "downpayment"
-    ? "Downpayment (75%)"
-    : "Balance (25%)";
+  return installment === "downpayment" ? "Downpayment (75%)" : "Balance (25%)";
 }
 
 export function presentPaymentStatus(
@@ -159,31 +164,33 @@ export function presentConfirmationSource(source: string | null): string {
 
 /** Roll-up of both installments for a list row. */
 export function presentPaymentProgress(
-  payments: Record<PaymentInstallment, PaymentRecord> | undefined,
+  payments: OrderPayments | undefined,
 ): StatePresentation {
-  if (!payments) {
+  const downpayment = paymentOf(payments, "downpayment");
+  const balance = paymentOf(payments, "balance");
+  if (!downpayment && !balance) {
     return { label: "No payment set up", tone: "neutral", icon: "clock" };
   }
-  const { downpayment, balance } = payments;
-  if (downpayment.status === "pending_confirmation") {
+  if (downpayment?.status === "pending_confirmation") {
     return {
       label: "Downpayment to confirm",
       tone: "warning",
       icon: "triangle-alert",
     };
   }
-  if (balance.status === "pending_confirmation") {
+  if (balance?.status === "pending_confirmation") {
     return {
       label: "Balance to confirm",
       tone: "warning",
       icon: "triangle-alert",
     };
   }
-  const settled = (s: string) => s === "confirmed" || s === "legacy_confirmed";
-  if (settled(downpayment.status) && settled(balance.status)) {
+  const settled = (record: { status: string } | undefined) =>
+    record?.status === "confirmed" || record?.status === "legacy_confirmed";
+  if (settled(downpayment) && (!balance || settled(balance))) {
     return { label: "Paid in full", tone: "success", icon: "circle-check" };
   }
-  if (settled(downpayment.status)) {
+  if (settled(downpayment)) {
     return { label: "Downpayment in", tone: "info", icon: "circle-check" };
   }
   return { label: "Nothing paid yet", tone: "neutral", icon: "clock" };
@@ -193,7 +200,21 @@ export function presentPaymentProgress(
 // Payout milestones
 // ---------------------------------------------------------------------------
 
-export function presentMilestone(code: string): string {
+/**
+ * The name of a payout stage.
+ *
+ * Two shapes are live at once. The four-stage split (printing / packaging_qc /
+ * delivered / retention) is the one the blueprint describes; the running API
+ * also issues a two-stage `initial` + `completion` split, and which of them
+ * GRIDGO settles on is still the captain's open call. Both are named here so a
+ * shop is never shown the word "Milestone" twice in a column and asked to tell
+ * them apart.
+ *
+ * `sharePercent` is the last resort. An unrecognised code with a known share is
+ * still worth describing — "75% release" says more than "Milestone" — and only
+ * a stage with neither falls back to its position.
+ */
+export function presentMilestone(code: string, sharePercent?: number): string {
   switch (code) {
     case "printing":
       return "Printing in progress";
@@ -203,8 +224,14 @@ export function presentMilestone(code: string): string {
       return "Delivered";
     case "retention":
       return "Client retention";
+    case "initial":
+      return "First release";
+    case "completion":
+      return "Final release";
     default:
-      return "Milestone";
+      return sharePercent !== undefined && Number.isFinite(sharePercent)
+        ? `${sharePercent}% release`
+        : "Milestone";
   }
 }
 
@@ -218,6 +245,10 @@ export function milestoneProofSource(code: string): string {
       return "Rider uploads the proof at delivery";
     case "retention":
       return "Covered by the delivered proof";
+    case "initial":
+      return "Supplier uploads the proof";
+    case "completion":
+      return "Released once the work is delivered";
     default:
       return "Proof required";
   }
@@ -232,9 +263,10 @@ export function presentMilestoneStatus(
     case "pof_attached":
       return { label: "Proof attached", tone: "info", icon: "circle-check" };
     case "pending_pof":
+    case "pending":
       return { label: "Proof needed", tone: "warning", icon: "clock" };
     default:
-      return { label: "Milestone", tone: "neutral", icon: "clock" };
+      return { label: "Not released yet", tone: "neutral", icon: "clock" };
   }
 }
 
@@ -284,9 +316,7 @@ export function presentPickupCheck(code: string): string {
   return PICKUP_CHECKS.find((c) => c.code === code)?.label ?? "Pickup check";
 }
 
-export function presentChecklistStatus(
-  status: string | undefined,
-): StatePresentation {
+export function presentChecklistStatus(status: string | undefined): StatePresentation {
   switch (status) {
     case "passed":
       return { label: "All six checks passed", tone: "success", icon: "circle-check" };
@@ -315,7 +345,8 @@ export function presentEscalationStatus(status: string): StatePresentation {
  * Delivery zone id → the name a person uses. Zone ids are API-shaped; the id
  * itself must never reach the screen.
  */
-export function presentZone(zone: string): string {
+export function presentZone(zone: string | null | undefined): string {
+  if (zone == null || !String(zone).trim()) return "—";
   const map: Record<string, string> = {
     davao_central: "Davao Central",
     davao_north: "Davao North",

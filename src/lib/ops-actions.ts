@@ -118,7 +118,7 @@ export type OpsHandoff = {
 export function opsHandoffForState(state: string): OpsHandoff | null {
   switch (state) {
     case "downpayment_review":
-      return { label: "Confirm the downpayment", href: "/ops/payments" };
+      return { label: "Confirm the downpayment", href: "/ops/orders?stage=payment" };
     case "rider_assigned":
       return { label: "Check for a pickup escalation", href: "/ops/escalations" };
     case "issue_window_open":

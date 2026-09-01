@@ -5,7 +5,7 @@ import { Coins, Package, Truck, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { SkeletonLines } from "@/components/ui/loading";
 import { StatCard } from "@/components/ui/StatCard";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, creditBalance, listOrders, listUsers } from "@/lib/api/client";
@@ -103,11 +103,10 @@ export default function AdminOverviewPage() {
     };
   }, [data]);
 
-  if (loading && !data) return <LoadingBlock label="Loading platform overview…" />;
-  if (error || !data || !derived) {
+  if (error) {
     return (
       <ErrorState
-        body={error ?? "No data."}
+        body={error}
         action={
           <Button variant="secondary" onClick={() => void load()}>
             Retry
@@ -116,6 +115,8 @@ export default function AdminOverviewPage() {
       />
     );
   }
+
+  const pending = loading && !data;
 
   return (
     <div className="flex flex-col gap-3">
@@ -126,38 +127,90 @@ export default function AdminOverviewPage() {
           Accreditation, zones, grants and settings each have their own screen
           on the rail.
         </p>
-        <Button variant="secondary" onClick={() => void load()}>
+        <Button
+          variant="secondary"
+          disabled={loading}
+          onClick={() => void load()}
+        >
           Refresh
         </Button>
       </div>
 
+      {/* Each figure's label, icon and provenance line are this screen's own
+          copy. Only the number waits. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Orders"
-          value={String(data.orders.length)}
-          hint={`For ${derived.clientCount} client${derived.clientCount === 1 ? "" : "s"}`}
+          value={String(data?.orders.length ?? 0)}
+          hint={
+            derived
+              ? `For ${derived.clientCount} client${derived.clientCount === 1 ? "" : "s"}`
+              : "Across every client on the book"
+          }
           icon={Package}
+          loading={pending}
         />
         <StatCard
           label="Suppliers working"
-          value={String(derived.supplierCount)}
+          value={String(derived?.supplierCount ?? 0)}
           hint="Named on at least one order"
           icon={Users}
+          loading={pending}
         />
         <StatCard
           label="Riders carrying"
-          value={String(derived.riderCount)}
+          value={String(derived?.riderCount ?? 0)}
           hint="Named on at least one order"
           icon={Truck}
+          loading={pending}
         />
         <StatCard
           label="Pilot Credit balance"
-          value={formatPhp(derived.totalCredit)}
-          hint={`Across ${data.credits.length} client ledger${data.credits.length === 1 ? "" : "s"}`}
+          value={formatPhp(derived?.totalCredit ?? 0)}
+          hint={
+            data
+              ? `Across ${data.credits.length} client ledger${data.credits.length === 1 ? "" : "s"}`
+              : "Across every client ledger on the book"
+          }
           icon={Coins}
+          loading={pending}
         />
       </div>
 
+      {pending || !data || !derived ? (
+        <>
+          <section className="gg-card" aria-labelledby="states-heading">
+            <h2
+              id="states-heading"
+              className="text-h3 text-text-primary m-0 mb-3"
+            >
+              Orders by state
+            </h2>
+            <SkeletonLines lines={4} />
+          </section>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <section className="gg-card" aria-labelledby="credit-heading">
+              <h2
+                id="credit-heading"
+                className="text-h3 text-text-primary m-0 mb-3"
+              >
+                Pilot Credit positions
+              </h2>
+              <SkeletonLines lines={3} />
+            </section>
+            <section className="gg-card" aria-labelledby="parties-heading">
+              <h2
+                id="parties-heading"
+                className="text-h3 text-text-primary m-0 mb-3"
+              >
+                Parties seen on orders
+              </h2>
+              <SkeletonLines lines={3} />
+            </section>
+          </div>
+        </>
+      ) : (
+        <>
       <section className="gg-card" aria-labelledby="states-heading">
         <h2 id="states-heading" className="text-h3 text-text-primary m-0 mb-3">
           Orders by state
@@ -296,6 +349,8 @@ export default function AdminOverviewPage() {
           </p>
         </section>
       </div>
+        </>
+      )}
     </div>
   );
 }

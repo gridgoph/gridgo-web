@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import type { SupplierService } from "@/lib/api/types";
+import type { SupplierService, TaxonomyCategoryAlias } from "@/lib/api/types";
 
 import {
-  usageBlastCopy,
+  printJobConsequenceCopy,
+  shopsAccreditedCopy,
   usageForCategory,
-  usageForMaterial,
 } from "./taxonomy-usage";
 
 function svc(
@@ -38,40 +38,62 @@ function svc(
   };
 }
 
+const aliases: TaxonomyCategoryAlias[] = [
+  {
+    code: "large_format",
+    name: "Large format",
+    categoryCode: "marketing_collateral",
+    active: true,
+  },
+];
+
 describe("taxonomy usage", () => {
-  it("counts live vs other for a category", () => {
+  it("counts unique shops, taking the strongest state", () => {
     const services = [
-      svc({ id: "1", state: "live", categoryCode: "large_format" }),
-      svc({ id: "2", state: "draft", categoryCode: "large_format" }),
-      svc({ id: "3", state: "live", categoryCode: "offset" }),
+      svc({ id: "1", supplierId: "a", state: "live", categoryCode: "marketing_collateral" }),
+      svc({ id: "2", supplierId: "a", state: "draft", categoryCode: "marketing_collateral" }),
+      svc({ id: "3", supplierId: "b", state: "draft", categoryCode: "marketing_collateral" }),
+      svc({ id: "4", supplierId: "c", state: "live", categoryCode: "corporate_event_merch" }),
     ];
-    const u = usageForCategory(services, "large_format");
+    const u = usageForCategory(services, "marketing_collateral");
     expect(u.total).toBe(2);
     expect(u.live).toBe(1);
     expect(u.other).toBe(1);
   });
 
-  it("counts material references", () => {
+  it("resolves retired category codes through aliases", () => {
     const services = [
+      svc({ id: "1", supplierId: "a", state: "live", categoryCode: "large_format" }),
       svc({
-        id: "1",
+        id: "2",
+        supplierId: "b",
         state: "live",
-        materialCodes: ["tarpaulin_13oz", "other"],
+        categoryCode: "marketing_collateral",
       }),
-      svc({ id: "2", state: "live", materialCodes: ["other"] }),
     ];
-    expect(usageForMaterial(services, "tarpaulin_13oz").total).toBe(1);
+    const u = usageForCategory(services, "marketing_collateral", aliases);
+    expect(u.total).toBe(2);
+    expect(u.live).toBe(2);
   });
 
-  it("writes blast copy without snake_case", () => {
-    const copy = usageBlastCopy(
-      { total: 2, live: 1, pending: 0, other: 1 },
-      "category",
-    );
-    expect(copy).toMatch(/live service/);
+  it("writes shop copy without snake_case", () => {
+    const copy = shopsAccreditedCopy({
+      total: 2,
+      live: 1,
+      pending: 0,
+      other: 1,
+    });
+    expect(copy).toMatch(/2 shops are accredited/);
+    expect(copy).toMatch(/1 live/);
     expect(copy).not.toMatch(/_/);
-    expect(usageBlastCopy({ total: 0, live: 0, pending: 0, other: 0 }, "material")).toMatch(
-      /No supplier services/,
-    );
+    expect(
+      shopsAccreditedCopy({ total: 0, live: 0, pending: 0, other: 0 }),
+    ).toMatch(/No shops are accredited/);
+  });
+
+  it("does not invent a listing count for print jobs", () => {
+    const copy = printJobConsequenceCopy();
+    expect(copy).toMatch(/listings of this job/);
+    expect(copy).not.toMatch(/\d/);
   });
 });

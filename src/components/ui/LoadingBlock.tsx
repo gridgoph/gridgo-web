@@ -1,5 +1,13 @@
-import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+
+/**
+ * The wait before a screen exists: checking access, completing sign-in,
+ * choosing a portal. Nothing about the destination is known yet, so this
+ * states what is happening instead of promising a shape.
+ *
+ * For a screen that is already on the page and waiting on the API, use the
+ * layout-matched shapes in `@/components/ui/loading` — never this.
+ */
 
 type Props = {
   label?: string;
@@ -10,17 +18,17 @@ export function LoadingBlock({ label = "Loading…", className }: Props) {
   return (
     <div
       className={cn(
-        "flex flex-col gap-3 rounded-card border border-outline bg-surface p-4",
+        "flex min-h-40 flex-col items-center justify-center gap-3 p-6",
         className,
       )}
       role="status"
       aria-live="polite"
-      aria-label={label}
     >
-      <p className="text-body text-text-secondary m-0">{label}</p>
-      <Skeleton className="h-4 w-2/3" />
-      <Skeleton className="h-4 w-1/2" />
-      <Skeleton className="h-4 w-3/4" />
+      <span
+        className="size-2 animate-pulse rounded-full bg-text-muted motion-reduce:animate-none"
+        aria-hidden
+      />
+      <p className="text-body text-text-secondary m-0 text-center">{label}</p>
     </div>
   );
 }

@@ -23,6 +23,7 @@ export type PortalRole = Extract<Role, "supplier" | "ops_admin" | "super_admin">
  * module stays free of React for tests.
  */
 export type NavIconKey =
+  | "dashboard"
   | "jobs"
   | "catalogue"
   | "schedule"
@@ -82,6 +83,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
       id: "supplier-top",
       items: [
         {
+          id: "supplier-dashboard",
+          href: "/supplier/dashboard",
+          label: "Dashboard",
+          title: "Shop dashboard",
+          icon: "dashboard",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "supplier-jobs",
           href: "/supplier/jobs",
           label: "Jobs",
@@ -99,12 +109,12 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
         {
           id: "supplier-catalogue",
           href: "/supplier/catalogue",
-          label: "Service catalogue",
-          title: "Service catalogue",
+          label: "Catalogues",
+          title: "Catalogues",
           icon: "catalogue",
           ready: true,
           placeholderBody:
-            "Manage taxonomy-backed services through draft → verification → live. Use listSupplierServices, createSupplierService, submitSupplierService, withdrawSupplierService, and getTaxonomy.",
+            "The shop board: listings clients pick from. Hunt, filter, and open a listing page. Uses GET/POST /me/catalog-items.",
         },
         {
           id: "supplier-schedule",
@@ -165,33 +175,17 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
       id: "ops-queue",
       label: "Queue",
       items: [
-        {
-          id: "ops-qa",
-          href: "/ops/qa",
-          label: "QA queue",
-          title: "QA queue",
-          icon: "qa",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "ops-payments",
-          href: "/ops/payments",
-          label: "Payments",
-          title: "Payment confirmations",
-          icon: "payments",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "ops-matching",
-          href: "/ops/matching",
-          label: "Matching",
-          title: "Supplier matching",
-          icon: "matching",
-          ready: true,
-          placeholderBody: "",
-        },
+      {
+        // One queue. Payments and QA were the same order at two moments of the
+        // same job, and matching is gone -- GRIDGO chooses the press.
+        id: "ops-orders",
+        href: "/ops/orders",
+        label: "Orders",
+        title: "Orders",
+        icon: "qa",
+        ready: true,
+        placeholderBody: "",
+      },
         {
           id: "ops-approvals",
           href: "/ops/approvals",
@@ -363,15 +357,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
       label: "Money",
       items: [
         {
-          id: "admin-credits",
-          href: "/admin/credits",
-          label: "Pilot Credits",
-          title: "Pilot Credits",
-          icon: "credits",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
           id: "admin-finance",
           href: "/admin/finance",
           label: "Finance",
@@ -478,8 +463,13 @@ export function contextTitleForPath(
 ): string {
   // Nested workspaces that share a list parent
   if (pathname.startsWith("/supplier/jobs/")) return "Order workspace";
-  if (pathname.startsWith("/ops/qa/")) return "QA workspace";
-  if (pathname.startsWith("/ops/payments/")) return "Payment review";
+  if (pathname === "/supplier/catalogue/new") return "New listing";
+  if (pathname.startsWith("/supplier/catalogue/")) return "Listing";
+  if (pathname === "/admin/catalogue/jobs/new") return "Add print job";
+  if (pathname.startsWith("/admin/catalogue/jobs/")) return "Print job";
+  if (pathname === "/admin/catalogue/categories/new") return "Add category";
+  if (pathname.startsWith("/admin/catalogue/categories/")) return "Category";
+  if (pathname.startsWith("/ops/orders/")) return "Order workspace";
   if (pathname.startsWith("/ops/payouts/")) return "Payout review";
 
   const item = navItemForPath(pathname, role);

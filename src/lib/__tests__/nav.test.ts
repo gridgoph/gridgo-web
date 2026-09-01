@@ -13,6 +13,7 @@ describe("ROLE_NAV", () => {
   it("covers the full supplier surface", () => {
     const hrefs = ROLE_NAV.supplier.map((n) => n.href);
     expect(hrefs).toEqual([
+      "/supplier/dashboard",
       "/supplier/jobs",
       "/supplier/catalogue",
       "/supplier/schedule",
@@ -25,9 +26,7 @@ describe("ROLE_NAV", () => {
     const hrefs = ROLE_NAV.ops_admin.map((n) => n.href);
     expect(hrefs).toEqual([
       "/ops/overview",
-      "/ops/qa",
-      "/ops/payments",
-      "/ops/matching",
+      "/ops/orders",
       "/ops/approvals",
       "/ops/dispatch",
       "/ops/escalations",
@@ -48,8 +47,7 @@ describe("ROLE_NAV", () => {
       "/admin/roles",
       "/admin/catalogue",
       "/admin/zones",
-      "/admin/credits",
-      "/admin/finance",
+        "/admin/finance",
       "/admin/settings",
       "/admin/audit",
       "/admin/planning",
@@ -67,7 +65,6 @@ describe("ROLE_NAV", () => {
       "/admin/audit",
       "/admin/broadcast",
       "/admin/catalogue",
-      "/admin/credits",
       "/admin/finance",
       "/admin/overview",
       "/admin/planning",
@@ -80,16 +77,15 @@ describe("ROLE_NAV", () => {
       "/ops/claims",
       "/ops/dispatch",
       "/ops/escalations",
-      "/ops/matching",
+      "/ops/orders",
       "/ops/overview",
-      "/ops/payments",
       "/ops/payouts",
-      "/ops/qa",
       "/ops/recovery",
       "/ops/schedule",
       "/ops/settings",
       "/supplier/capacity",
       "/supplier/catalogue",
+      "/supplier/dashboard",
       "/supplier/jobs",
       "/supplier/payouts",
       "/supplier/schedule",
@@ -145,7 +141,7 @@ describe("ROLE_NAV", () => {
       ROLE_NAV_GROUPS.ops_admin
         .find((g) => g.id === "ops-queue")
         ?.items.map((n) => n.href),
-    ).toEqual(["/ops/qa", "/ops/payments", "/ops/matching", "/ops/approvals"]);
+    ).toEqual(["/ops/orders", "/ops/approvals"]);
     expect(
       ROLE_NAV_GROUPS.ops_admin
         .find((g) => g.id === "ops-field")
@@ -176,7 +172,7 @@ describe("ROLE_NAV", () => {
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-money")
         ?.items.map((n) => n.href),
-    ).toEqual(["/admin/credits", "/admin/finance"]);
+    ).toEqual(["/admin/finance"]);
     expect(
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-system")
@@ -210,15 +206,24 @@ describe("nav helpers", () => {
     expect(contextTitleForPath("/supplier/jobs/ord_1", "supplier")).toBe(
       "Order workspace",
     );
-    expect(contextTitleForPath("/ops/qa/ord_1", "ops_admin")).toBe("QA workspace");
+    expect(contextTitleForPath("/ops/orders/ord_1", "ops_admin")).toBe("Order workspace");
     expect(contextTitleForPath("/admin/zones", "super_admin")).toBe("Delivery zones");
-    expect(contextTitleForPath("/ops/payments/ord_1", "ops_admin")).toBe(
-      "Payment review",
+    expect(contextTitleForPath("/admin/catalogue/jobs/new", "super_admin")).toBe(
+      "Add print job",
     );
-  });
+    expect(contextTitleForPath("/admin/catalogue/jobs/flyers", "super_admin")).toBe(
+      "Print job",
+    );
+    expect(contextTitleForPath("/admin/catalogue/categories/new", "super_admin")).toBe(
+      "Add category",
+    );
+    expect(
+      contextTitleForPath("/admin/catalogue/categories/marketing_collateral", "super_admin"),
+    ).toBe("Category");
+    });
 
   it("finds the longest matching nav item", () => {
-    const item = navItemForPath("/ops/qa/ord_1", "ops_admin");
-    expect(item?.href).toBe("/ops/qa");
+    const item = navItemForPath("/ops/orders/ord_1", "ops_admin");
+    expect(item?.href).toBe("/ops/orders");
   });
 });

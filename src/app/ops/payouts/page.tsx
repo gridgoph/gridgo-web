@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { SkeletonCards } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Textarea } from "@/components/ui/textarea";
 import { listClaims, listOrders, releaseMilestone } from "@/lib/api/client";
@@ -98,11 +98,18 @@ export default function OpsPayoutsPage() {
             claim.orderId === order.id && claimBlocksPayout(claim.status),
         ),
       }))
+      /*
+       Longest wait first.
+
+       Every stage now waits for somebody here, which means a shop can sit
+       unpaid because nobody opened this screen. Ordering by how much is
+       outstanding buries the one job that has been waiting three days under
+       four fresh ones, so the wait leads and the amount only breaks its ties.
+      */
       .sort((a, b) => {
-        const aOutstanding = outstandingCount(a.order);
-        const bOutstanding = outstandingCount(b.order);
-        if (aOutstanding !== bOutstanding) return bOutstanding - aOutstanding;
-        return (a.order.updatedAt || "").localeCompare(b.order.updatedAt || "");
+        const waited = (a.order.updatedAt || "").localeCompare(b.order.updatedAt || "");
+        if (waited !== 0) return waited;
+        return outstandingCount(b.order) - outstandingCount(a.order);
       });
   }, [data]);
 
@@ -136,11 +143,10 @@ export default function OpsPayoutsPage() {
     }
   }
 
-  if (loading && !data) return <LoadingBlock label="Loading payouts…" />;
-  if (error || !data) {
+  if (error) {
     return (
       <ErrorState
-        body={error ?? "No data."}
+        body={error}
         action={
           <Button variant="secondary" onClick={() => void load()}>
             Retry
@@ -150,6 +156,8 @@ export default function OpsPayoutsPage() {
     );
   }
 
+  const pending = loading && !data;
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -158,7 +166,11 @@ export default function OpsPayoutsPage() {
           Proof of Fulfilment. The shares are of what the supplier earns — the
           commission and the delivery fee sit outside them.
         </p>
-        <Button variant="secondary" onClick={() => void load()}>
+        <Button
+          variant="secondary"
+          disabled={loading}
+          onClick={() => void load()}
+        >
           Refresh
         </Button>
       </div>
@@ -174,7 +186,14 @@ export default function OpsPayoutsPage() {
         </p>
       ) : null}
 
-      {!rows.length ? (
+      {pending ? (
+        <SkeletonCards
+          count={2}
+          lines={4}
+          label="Loading payouts"
+          className="gap-4"
+        />
+      ) : !rows.length ? (
         <EmptyState
           title="No payouts in play"
           body="Milestones appear once a supplier has accepted an order and production begins. Nothing has reached that point yet."

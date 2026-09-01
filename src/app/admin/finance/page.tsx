@@ -25,7 +25,7 @@ import {
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { listClaims, listOrders } from "@/lib/api/client";
 import type { Claim, Order } from "@/lib/api/types";
@@ -247,10 +247,9 @@ export default function AdminFinancePage() {
     [],
   );
 
-  if (loading && !orders) {
-    return <LoadingBlock label="Loading finance snapshot…" />;
-  }
-  if (error || !orders || !claims || !rollup) {
+  const pending = loading && !orders;
+
+  if (!pending && (error || !orders || !claims || !rollup)) {
     return (
       <ErrorState
         body={error ?? "No data."}
@@ -263,13 +262,16 @@ export default function AdminFinancePage() {
     );
   }
 
-  const confirmedIn = formatFigure(rollup.confirmedIn);
-  const awaiting = formatFigure(rollup.awaitingConfirmation);
-  const outstanding = formatFigure(rollup.outstanding);
-  const commission = formatFigure(rollup.commissionEarned);
-  const released = formatFigure(rollup.supplierReleased);
-  const owed = formatFigure(rollup.supplierOutstanding);
-  const held = formatFigure(rollup.heldOnOrders);
+  // Figures are only rendered when `rollup` exists; while it does not, every
+  // card is in its reserved state and these values are never read.
+  const blank = formatFigure({ kind: "amount", minor: 0 });
+  const confirmedIn = rollup ? formatFigure(rollup.confirmedIn) : blank;
+  const awaiting = rollup ? formatFigure(rollup.awaitingConfirmation) : blank;
+  const outstanding = rollup ? formatFigure(rollup.outstanding) : blank;
+  const commission = rollup ? formatFigure(rollup.commissionEarned) : blank;
+  const released = rollup ? formatFigure(rollup.supplierReleased) : blank;
+  const owed = rollup ? formatFigure(rollup.supplierOutstanding) : blank;
+  const held = rollup ? formatFigure(rollup.heldOnOrders) : blank;
 
   return (
     <div className="flex flex-col gap-3">
@@ -279,7 +281,11 @@ export default function AdminFinancePage() {
           still owed. Every order is paid in two digital installments and every
           supplier in four milestones, so both sides are counted separately.
         </p>
-        <Button variant="secondary" onClick={() => void load()}>
+        <Button
+          variant="secondary"
+          disabled={loading}
+          onClick={() => void load()}
+        >
           Refresh
         </Button>
       </div>
@@ -292,17 +298,24 @@ export default function AdminFinancePage() {
           <FigureCard
             label="Confirmed"
             value={confirmedIn.value}
-            hint={`${rollup.orderCount} live order${rollup.orderCount === 1 ? "" : "s"}`}
+            hint={
+              rollup
+                ? `${rollup.orderCount} live order${rollup.orderCount === 1 ? "" : "s"}`
+                : "Across every live order"
+            }
+            loading={pending}
           />
           <FigureCard
             label="Waiting on Operations"
             value={awaiting.value}
             hint="Submitted by a client, not yet confirmed"
+            loading={pending}
           />
           <FigureCard
             label="Not sent yet"
             value={outstanding.value}
             hint="Billed but the client has not transferred"
+            loading={pending}
           />
         </div>
       </section>
@@ -317,25 +330,33 @@ export default function AdminFinancePage() {
             value={commission.value}
             hint={
               commission.hint ??
-              (rollup.unpricedOrderCount
+              (rollup?.unpricedOrderCount
                 ? `${rollup.unpricedOrderCount} order${rollup.unpricedOrderCount === 1 ? "" : "s"} not priced yet`
                 : "10% on top of every supplier price")
             }
+            loading={pending}
           />
           <FigureCard
             label="Paid to suppliers"
             value={released.value}
             hint="Milestones already released"
+            loading={pending}
           />
           <FigureCard
             label="Still owed to suppliers"
             value={owed.value}
             hint="Milestones awaiting proof or release"
+            loading={pending}
           />
           <FigureCard
             label="Held by claims"
             value={held.value}
-            hint={`${rollup.activeHoldClaims} active hold${rollup.activeHoldClaims === 1 ? "" : "s"}`}
+            hint={
+              rollup
+                ? `${rollup.activeHoldClaims} active hold${rollup.activeHoldClaims === 1 ? "" : "s"}`
+                : "Claims that block a release"
+            }
+            loading={pending}
           />
         </div>
       </section>
@@ -348,7 +369,9 @@ export default function AdminFinancePage() {
           The client total split three ways. The supplier keeps its asking price
           in full; commission sits on top of it, and delivery on top of that.
         </p>
-        {!splits.length ? (
+        {pending ? (
+          <Skeleton className="h-72 w-full rounded-card" aria-hidden />
+        ) : !splits.length ? (
           <EmptyState
             title="Nothing priced yet"
             body="An order only has a real split once a supplier accepts and names its price. Until then the client has an estimate."
@@ -415,7 +438,7 @@ export default function AdminFinancePage() {
           Supplier price and commission are shown here because Operations and
           Super Admin are the only roles allowed to see them.
         </p>
-        {!rows.length ? (
+        {!pending && !rows.length ? (
           <EmptyState
             title="No live orders"
             body="Orders appear here as soon as a client submits one."
@@ -424,6 +447,7 @@ export default function AdminFinancePage() {
           <DataTable
             columns={orderColumns}
             data={rows}
+            loading={pending}
             getRowId={(o) => o.id}
             caption="Order money reconciliation"
             filterPlaceholder="Filter orders…"
@@ -439,7 +463,7 @@ export default function AdminFinancePage() {
           An active hold stops every remaining milestone on that order. Released
           holds are history.
         </p>
-        {!claims.length ? (
+        {!pending && !claims?.length ? (
           <EmptyState
             title="No claims"
             body="Claims appear when Operations raises one, or when a client reports an issue inside the issue window."
@@ -447,7 +471,8 @@ export default function AdminFinancePage() {
         ) : (
           <DataTable
             columns={claimColumns}
-            data={claims}
+            data={claims ?? []}
+            loading={pending}
             getRowId={(c) => c.id}
             caption="Claims and holds"
             filterPlaceholder="Filter claims…"
@@ -462,15 +487,26 @@ function FigureCard({
   label,
   value,
   hint,
+  loading = false,
 }: {
   label: string;
   value: string;
   hint?: string;
+  /** The figure is still being totalled; its label and provenance are not. */
+  loading?: boolean;
 }) {
   return (
-    <div className="gg-card">
+    <div className="gg-card" aria-busy={loading || undefined}>
       <p className="text-caption text-text-muted m-0">{label}</p>
-      <p className="text-h2 text-text-primary m-0 mt-1 tabular-nums">{value}</p>
+      {loading ? (
+        // 30px is the `text-h2` line box the figure will occupy.
+        <div className="mt-1 flex h-[30px] items-center">
+          <Skeleton className="h-6 w-24" aria-hidden />
+          <span className="sr-only">Still totalling</span>
+        </div>
+      ) : (
+        <p className="text-h2 text-text-primary m-0 mt-1 tabular-nums">{value}</p>
+      )}
       {hint ? <p className="text-caption text-text-muted m-0 mt-1">{hint}</p> : null}
     </div>
   );

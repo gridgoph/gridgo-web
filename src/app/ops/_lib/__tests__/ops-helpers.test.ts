@@ -2,16 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Claim, Issue, Order } from "@/lib/api/types";
 
-import {
-  filterDispatchOrders,
-  presentLocation,
-  LOCATION_STALE_MS,
-} from "../dispatch";
-import {
-  explainCandidates,
-  formatCapacity,
-  formatTurnaround,
-} from "../matching";
+import { filterDispatchOrders, presentLocation, LOCATION_STALE_MS } from "../dispatch";
 import {
   buildOverviewBuckets,
   isSlaAtRisk,
@@ -25,11 +16,7 @@ import {
   presentZone,
 } from "../present";
 import { buildRecoveryItems } from "../recovery";
-import {
-  buildScheduleEvents,
-  filterEventsInRange,
-  rangeForView,
-} from "../schedule";
+import { buildScheduleEvents, filterEventsInRange, rangeForView } from "../schedule";
 
 function order(partial: Partial<Order> & Pick<Order, "id" | "state">): Order {
   return {
@@ -60,6 +47,9 @@ function order(partial: Partial<Order> & Pick<Order, "id" | "state">): Order {
 describe("present helpers", () => {
   it("maps zones and claim status without snake_case", () => {
     expect(presentZone("davao_central")).toBe("Davao Central");
+    expect(presentZone(null)).toBe("—");
+    expect(presentZone(undefined)).toBe("—");
+    expect(presentZone("")).toBe("—");
     expect(presentClaimStatus("payout_held").label).toBe("Payout held");
     expect(presentAuditAction("claim.raise")).toBe("Claim raised");
   });
@@ -109,7 +99,7 @@ describe("overview", () => {
       now,
     );
     expect(next?.orderId).toBe("q");
-    expect(next?.href).toContain("/ops/qa/q");
+    expect(next?.href).toContain("/ops/orders/q");
   });
 
   it("detects SLA near and breached", () => {
@@ -232,74 +222,21 @@ describe("dispatch location freshness", () => {
     ]);
     expect(list.map((o) => o.id)).toEqual(["b", "a"]);
   });
-});
 
-describe("matching explain", () => {
-  it("sorts eligible first and formats capacity", () => {
-    const explained = explainCandidates([
-      {
-        supplier: {
-          id: "s2",
-          email: "b@x",
-          name: "B",
-          role: "supplier",
-          supplierName: "Beta Print",
-          verificationStatus: "pending",
-        },
-        eligible: false,
-        reasons: ["qty_below_min"],
-        matchingServiceIds: [],
-        services: [],
-      },
-      {
-        supplier: {
-          id: "s1",
-          email: "a@x",
-          name: "A",
-          role: "supplier",
-          supplierName: "Alpha Print",
-          verificationStatus: "approved",
-        },
-        eligible: true,
-        reasons: ["zone_covered"],
-        matchingServiceIds: ["svc_1"],
-        services: [
-          {
-            id: "svc_1",
-            supplierId: "s1",
-            categoryCode: "offset",
-            materialCodes: [],
-            finishCodes: [],
-            productFamilyIds: ["flyer"],
-            sizeMin: null,
-            sizeMax: null,
-            qtyMin: 1,
-            qtyMax: 100,
-            pricingBasis: "per_pack",
-            referenceRateMinor: 100,
-            turnaroundHours: 24,
-            capacityDaily: 10,
-            capacityWeekly: 50,
-            zones: ["davao_central"],
-            equipmentNotes: "",
-            state: "live",
-            verifiedAt: null,
-            suspendedAt: null,
-            suspendReason: null,
-            withdrawnAt: null,
-            createdAt: "",
-            updatedAt: "",
-          },
-        ],
-      },
+  it("keeps a collected order on the board until the counter releases it", () => {
+    // A rider walking away from the office is not the end of a collected job.
+    // Off this board it would be nobody's, sitting on our own shelf with no
+    // screen anywhere that says so.
+    const list = filterDispatchOrders([
+      order({ id: "a", state: "out_for_delivery" }),
+      order({ id: "b", state: "ready_for_dispatch" }),
+      order({ id: "c", state: "awaiting_collection" }),
     ]);
-    expect(explained[0].supplierName).toBe("Alpha Print");
-    expect(explained[0].eligible).toBe(true);
-    expect(explained[0].reasons[0]).toMatch(/Zone/i);
-    expect(formatCapacity(10, 50)).toBe("10/day · 50/week");
-    expect(formatTurnaround(24)).toBe("1 day");
+    // Waiting on Operations comes first: nothing moves it but somebody here.
+    expect(list.map((o) => o.id)).toEqual(["c", "b", "a"]);
   });
 });
+
 
 describe("schedule", () => {
   it("builds events that link to authorised workspaces", () => {
@@ -320,12 +257,37 @@ describe("schedule", () => {
       ],
       [],
     );
-    expect(events.some((e) => e.kind === "qa" && e.href.includes("/ops/qa/"))).toBe(
-      true,
-    );
+    expect(events.some((e) => e.kind === "qa" && e.href.includes("/ops/orders/"))).toBe(true);
     expect(
       events.some((e) => e.kind === "pickup" && e.href.includes("/ops/dispatch")),
     ).toBe(true);
+  });
+
+  it("treats a pending API initial payment as a confirmation event", () => {
+    const events = buildScheduleEvents(
+      [
+        order({
+          id: "pay1",
+          state: "production",
+          payments: {
+            initial: {
+              amountMinor: 8000,
+              method: "qr_manual",
+              status: "pending_confirmation",
+              reference: "GCASH-1",
+              submittedAt: "2026-08-31T10:00:00.000Z",
+              confirmedAt: null,
+              confirmedBy: null,
+              confirmationSource: null,
+            },
+          } as Order["payments"],
+        }),
+      ],
+      [],
+    );
+    const payment = events.find((e) => e.kind === "payment_confirmation");
+    expect(payment?.href).toContain("/ops/orders/pay1");
+    expect(payment?.detail?.toLowerCase()).toContain("downpayment");
   });
 
   it("filters events to the week range", () => {

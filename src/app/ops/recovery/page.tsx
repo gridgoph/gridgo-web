@@ -30,7 +30,6 @@ import {
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -194,14 +193,10 @@ export default function OpsRecoveryPage() {
     [],
   );
 
-  if (loading && !orders) {
-    return <LoadingBlock label="Loading recovery…" />;
-  }
-
-  if (error || !orders) {
+  if (error) {
     return (
       <ErrorState
-        body={error ?? "No data."}
+        body={error}
         action={
           <Button variant="secondary" onClick={() => void load()}>
             Retry
@@ -211,6 +206,8 @@ export default function OpsRecoveryPage() {
     );
   }
 
+  const pending = loading && !orders;
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -219,7 +216,11 @@ export default function OpsRecoveryPage() {
           next action. Resolving an issue does not release payout; use Claims
           for money holds.
         </p>
-        <Button variant="secondary" onClick={() => void load()}>
+        <Button
+          variant="secondary"
+          disabled={loading}
+          onClick={() => void load()}
+        >
           Refresh
         </Button>
       </div>
@@ -245,7 +246,7 @@ export default function OpsRecoveryPage() {
           <ul className="m-0 flex list-none flex-col gap-3 p-0">
             {openIssues.map((issue) => {
               const status = presentIssueStatus(issue.status);
-              const order = orders.find((o) => o.id === issue.orderId);
+              const order = orders?.find((o) => o.id === issue.orderId);
               return (
                 <li
                   key={issue.id}
@@ -299,7 +300,7 @@ export default function OpsRecoveryPage() {
                       <Button
                         variant="secondary"
                         nativeButton={false}
-                        render={<Link href={`/ops/qa/${order.id}`} />}
+                        render={<Link href={`/ops/orders/${order.id}`} />}
                       >
                         Open order
                       </Button>
@@ -312,7 +313,7 @@ export default function OpsRecoveryPage() {
         </section>
       ) : null}
 
-      {!items.length ? (
+      {!pending && !items.length ? (
         <EmptyState
           title="Nothing in recovery"
           body="No open issues, payout holds, client corrections, or stalled assignments. When a path fails, it lands here with a next step."
@@ -328,11 +329,12 @@ export default function OpsRecoveryPage() {
             id="recovery-list-heading"
             className="text-h3 text-text-primary m-0 mb-3"
           >
-            Recovery queue ({items.length})
+            Recovery queue{pending ? "" : ` (${items.length})`}
           </h2>
           <DataTable
             columns={columns}
             data={items}
+            loading={pending}
             getRowId={(r) => r.id}
             caption="Recovery items needing Operations"
             filterPlaceholder="Filter recovery…"

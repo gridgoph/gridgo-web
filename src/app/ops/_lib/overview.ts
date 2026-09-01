@@ -42,7 +42,7 @@ export type OverviewNextAction = {
 const QA_STATES = new Set(["submitted", "needs_qa"]);
 const MATCH_STATES = new Set(["approved_for_matching"]);
 /** An order stalls here until Operations confirms the client's transfer. */
-const PAYMENT_REVIEW_STATES = new Set(["downpayment_review"]);
+const PAYMENT_REVIEW_STATES = new Set(["downpayment_review", "initial_payment_review"]);
 const PRODUCTION_STATES = new Set([
   "supplier_assigned",
   "awaiting_downpayment",
@@ -55,6 +55,9 @@ const DELIVERY_STATES = new Set([
   "rider_assigned",
   "picked_up",
   "out_for_delivery",
+  // A collected job on the office counter is still Operations' to move: it
+  // waits there until somebody releases it to the client.
+  "awaiting_collection",
 ]);
 const BLOCKED_STATES = new Set(["client_correction"]);
 const TERMINAL_STATES = new Set(["payout_released", "draft"]);
@@ -112,9 +115,7 @@ export function orderIsBlocked(
   if (order.payoutHold) return true;
   const orderClaims = claims.filter((c) => c.orderId === order.id);
   if (orderClaims.some((c) => claimBlocksPayout(c.status))) return true;
-  const openIssues = issues.filter(
-    (i) => i.orderId === order.id && i.status === "open",
-  );
+  const openIssues = issues.filter((i) => i.orderId === order.id && i.status === "open");
   return openIssues.length > 0;
 }
 
@@ -136,9 +137,7 @@ export function buildOverviewBuckets(
   const production = active.filter((o) => PRODUCTION_STATES.has(o.state));
   const delivery = active.filter((o) => DELIVERY_STATES.has(o.state));
   const blocked = active.filter((o) => orderIsBlocked(o, claims, issues));
-  const slaRisk = active.filter(
-    (o) => isSlaAtRisk(o, nowMs) || isSlaBreached(o, nowMs),
-  );
+  const slaRisk = active.filter((o) => isSlaAtRisk(o, nowMs) || isSlaBreached(o, nowMs));
   const pendingSignups = extras.pendingSignups ?? 0;
   const openEscalations = extras.openEscalations ?? 0;
 
@@ -149,7 +148,7 @@ export function buildOverviewBuckets(
       description:
         "A client has transferred and is waiting. Nothing moves until the money is confirmed.",
       count: payments.length,
-      href: "/ops/payments",
+      href: "/ops/orders?stage=payment",
       urgent: payments.length > 0,
     },
     {
@@ -166,7 +165,7 @@ export function buildOverviewBuckets(
       label: "Needs QA",
       description: "Submitted or in review — artwork and specs need a decision.",
       count: needsQa.length,
-      href: "/ops/qa",
+      href: "/ops/orders",
       urgent: needsQa.length > 0,
     },
     {
@@ -174,7 +173,7 @@ export function buildOverviewBuckets(
       label: "Awaiting matching",
       description: "Approved work waiting for an Operations supplier choice.",
       count: matching.length,
-      href: "/ops/matching",
+      href: "/ops/orders?stage=qa",
       urgent: matching.length > 0,
     },
     {
@@ -191,16 +190,18 @@ export function buildOverviewBuckets(
       label: "In production",
       description: "Assigned through supplier self-QC — monitor, not queue.",
       count: production.length,
-      href: "/ops/qa",
+      href: "/ops/orders",
       urgent: false,
     },
     {
       id: "out_for_delivery",
       label: "Out for delivery",
-      description: "Dispatch and rider states through delivery.",
+      description: "Dispatch and rider states through delivery and collection.",
       count: delivery.length,
       href: "/ops/dispatch",
-      urgent: delivery.some((o) => o.state === "ready_for_dispatch"),
+      urgent: delivery.some(
+        (o) => o.state === "ready_for_dispatch" || o.state === "awaiting_collection",
+      ),
     },
     {
       id: "blocked",
@@ -257,7 +258,7 @@ export function pickOverviewNextAction(
     return {
       title: "Confirm a downpayment",
       body: `${paymentOrder.title} — the client has transferred and the order cannot move until the money is confirmed.`,
-      href: `/ops/payments/${paymentOrder.id}?installment=downpayment`,
+      href: `/ops/orders/${paymentOrder.id}`,
       cta: "Review payment",
       orderId: paymentOrder.id,
       orderTitle: paymentOrder.title,
@@ -273,7 +274,7 @@ export function pickOverviewNextAction(
     return {
       title: action?.label ?? "Open QA workspace",
       body: `${qaOrder.title} — ${presentOrderState(qaOrder.state).label}.`,
-      href: `/ops/qa/${qaOrder.id}`,
+      href: `/ops/orders/${qaOrder.id}`,
       cta: action?.label ?? "Open for QA",
       orderId: qaOrder.id,
       orderTitle: qaOrder.title,
@@ -286,7 +287,7 @@ export function pickOverviewNextAction(
     return {
       title: "Assign a supplier",
       body: `${matchOrder.title} is ready for matching. Choose an eligible supplier with a clear reason.`,
-      href: `/ops/matching?order=${encodeURIComponent(matchOrder.id)}`,
+      href: `/ops/orders/${matchOrder.id}`,
       cta: "Open matching",
       orderId: matchOrder.id,
       orderTitle: matchOrder.title,
@@ -312,9 +313,7 @@ export function pickOverviewNextAction(
     const order = active.find((o) => o.id === openIssue.orderId);
     return {
       title: "Resolve open issue",
-      body: order
-        ? `${order.title}: ${openIssue.description}`
-        : openIssue.description,
+      body: order ? `${order.title}: ${openIssue.description}` : openIssue.description,
       href: "/ops/recovery",
       cta: "Open recovery",
       orderId: openIssue.orderId,
@@ -327,9 +326,7 @@ export function pickOverviewNextAction(
     const order = active.find((o) => o.id === heldClaim.orderId);
     return {
       title: "Review payout hold",
-      body: order
-        ? `${order.title} — ${heldClaim.reason}`
-        : heldClaim.reason,
+      body: order ? `${order.title} — ${heldClaim.reason}` : heldClaim.reason,
       href: "/ops/claims",
       cta: "Open claims",
       orderId: heldClaim.orderId,
@@ -349,7 +346,7 @@ export function pickOverviewNextAction(
     return {
       title: "SLA breached",
       body: `${breached.title} is past its deadline or promised date.`,
-      href: `/ops/qa/${breached.id}`,
+      href: `/ops/orders/${breached.id}`,
       cta: "Open order",
       orderId: breached.id,
       orderTitle: breached.title,
@@ -367,7 +364,7 @@ export function pickOverviewNextAction(
     return {
       title: "Deadline approaching",
       body: `${near.title} is within the next ${SLA_NEAR_HOURS} hours.`,
-      href: `/ops/qa/${near.id}`,
+      href: `/ops/orders/${near.id}`,
       cta: "Open order",
       orderId: near.id,
       orderTitle: near.title,

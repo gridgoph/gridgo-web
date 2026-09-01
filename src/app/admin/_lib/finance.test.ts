@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import type { Claim, Order, OrderPayments, PayoutMilestone } from "@/lib/api/types";
+import type {
+  Claim,
+  Order,
+  OrderPayments,
+  PaymentRecord,
+  PayoutMilestone,
+} from "@/lib/api/types";
 
 import { orderMoneySplits, reconciliationRows, rollupFinance } from "./finance";
 
 function payments(
-  downpayment: Partial<OrderPayments["downpayment"]>,
-  balance: Partial<OrderPayments["balance"]>,
+  downpayment: Partial<PaymentRecord>,
+  balance: Partial<PaymentRecord>,
 ): OrderPayments {
   const base = {
     method: "qr_manual",

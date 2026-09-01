@@ -17,7 +17,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import {
   Select,
   SelectContent,
@@ -183,9 +182,8 @@ export default function AdminAuditPage() {
     [],
   );
 
-  if (loading && !entries) {
-    return <LoadingBlock label="Loading audit log…" />;
-  }
+  const pending = loading && !entries;
+
   if (error && !entries) {
     return (
       <ErrorState
@@ -213,7 +211,11 @@ export default function AdminAuditPage() {
             is the audit log only — no silent policy controls.
           </p>
         </div>
-        <Button variant="secondary" onClick={() => void load()}>
+        <Button
+          variant="secondary"
+          disabled={loading}
+          onClick={() => void load()}
+        >
           Refresh
         </Button>
       </div>
@@ -264,9 +266,7 @@ export default function AdminAuditPage() {
         </FieldGroup>
       </section>
 
-      {loading ? <LoadingBlock label="Refreshing audit log…" /> : null}
-
-      {!filtered.length ? (
+      {!pending && !filtered.length ? (
         <EmptyState
           title="No audit entries match"
           body="Broaden filters or wait for governance actions (role changes, grants, verification) to land on the log."
@@ -288,6 +288,7 @@ export default function AdminAuditPage() {
         <DataTable
           columns={columns}
           data={filtered}
+          loading={pending}
           getRowId={(e) => e.id}
           caption="Platform audit log"
           filterPlaceholder="Search entries…"

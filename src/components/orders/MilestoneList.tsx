@@ -7,6 +7,7 @@
  * from an Operations surface — the API refuses anyone else.
  */
 
+import { EvidenceStrip } from "@/components/orders/EvidencePreview";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Button } from "@/components/ui/button";
 import type { Order, PayoutMilestone } from "@/lib/api/types";
@@ -32,15 +33,37 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
   if (!milestones?.length) {
     return (
       <p className="text-body text-text-secondary m-0">
-        Milestones are set up when the supplier accepts and names its price.
-        Each of the four releases against a Proof of Fulfilment.
+        Milestones are set up when the supplier accepts and names its price. Each of the
+        four releases against a Proof of Fulfilment.
       </p>
     );
   }
 
+  /*
+   One reason, stated once.
+
+   Until any proof exists, `milestoneReleaseBlocker` returns the same sentence
+   for every stage — so the list repeated one long paragraph under each row and
+   buried the per-stage detail that actually differs. When they all agree, the
+   reason belongs above the list; the rows keep only what is theirs alone.
+  */
+  const unreleased = milestones.filter((m) => m.status !== "released");
+  const blockers = unreleased.map((m) => milestoneReleaseBlocker(order, m));
+  const sharedBlocker =
+    unreleased.length > 1 &&
+    blockers.every((b) => b !== null && b === blockers[0])
+      ? blockers[0]
+      : null;
+
   return (
+    <div className="flex flex-col gap-3">
+      {sharedBlocker ? (
+        <p className="text-caption text-text-secondary bg-surface-variant rounded-field m-0 px-3 py-2">
+          {sharedBlocker}
+        </p>
+      ) : null}
     <ol className="m-0 flex list-none flex-col gap-3 p-0">
-      {milestones.map((milestone) => {
+      {milestones.map((milestone, index) => {
         const status = presentMilestoneStatus(milestone.status);
         const blocker = milestoneReleaseBlocker(order, milestone);
         const released = milestone.status === "released";
@@ -57,7 +80,10 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
                   className="text-body text-text-primary m-0"
                   style={{ fontFamily: "var(--font-medium)" }}
                 >
-                  {presentMilestone(milestone.code)}
+                  <span className="text-text-muted tabular-nums">
+                    {index + 1}/{milestones.length}
+                  </span>{" "}
+                  {presentMilestone(milestone.code, milestone.sharePercent)}
                 </p>
                 <p className="text-caption text-text-muted m-0 mt-0.5">
                   {milestone.sharePercent}% of supplier earnings ·{" "}
@@ -75,11 +101,7 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
             </div>
 
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <StatusChip
-                tone={status.tone}
-                label={status.label}
-                icon={status.icon}
-              />
+              <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
               <span className="text-caption text-text-muted">
                 {proofCount === 0
                   ? "No proof on file"
@@ -94,10 +116,23 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
               ) : null}
             </div>
 
-            {!released && blocker ? (
-              <p className="text-caption text-text-secondary m-0 mt-2">
-                {blocker}
-              </p>
+            {proofCount > 0 ? (
+              <div className="mt-3">
+                <EvidenceStrip
+                  items={milestone.pofFileIds.map((fileId, index) => ({
+                    fileId,
+                    kind: "pof" as const,
+                    label:
+                      milestone.pofFileIds.length > 1
+                        ? `Proof ${index + 1}`
+                        : "Proof of fulfilment",
+                  }))}
+                />
+              </div>
+            ) : null}
+
+            {!released && blocker && blocker !== sharedBlocker ? (
+              <p className="text-caption text-text-secondary m-0 mt-2">{blocker}</p>
             ) : null}
 
             {onRelease && !released ? (
@@ -117,5 +152,6 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
         );
       })}
     </ol>
+    </div>
   );
 }

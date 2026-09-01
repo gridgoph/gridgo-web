@@ -18,11 +18,12 @@ import {
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { SkeletonValue } from "@/components/ui/loading";
 import { Progress, ProgressLabel, ProgressValue } from "@/components/ui/progress";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, getTaxonomy, listJobs, listSupplierServices } from "@/lib/api/client";
 import type { Order, SupplierService, Taxonomy } from "@/lib/api/types";
+import { describeQuantity } from "@/lib/quantity";
 import { presentOrderState } from "@/lib/order-state";
 import { formatDateTime } from "@/lib/format";
 
@@ -155,7 +156,7 @@ export default function SupplierCapacityPage() {
               {j.title}
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5">
-              {j.quantity} unit{j.quantity === 1 ? "" : "s"}
+              {describeQuantity(j.quantity, j.unit)}
             </p>
           </div>
         ),
@@ -183,10 +184,9 @@ export default function SupplierCapacityPage() {
     [],
   );
 
-  if (loading && !data) {
-    return <LoadingBlock label="Loading capacity…" />;
-  }
-  if (error || !data || !snapshot) {
+  const pending = loading && !data;
+
+  if (!pending && (error || !data || !snapshot)) {
     return (
       <ErrorState
         body={error ?? "Could not load capacity."}
@@ -199,39 +199,45 @@ export default function SupplierCapacityPage() {
     );
   }
 
+  // Labels are fixed for this shop board; only the figures wait on the API.
   const cards = [
     {
       label: "Declared daily",
-      value: formatCapacityFigure(snapshot.declared.daily),
-      hint:
-        snapshot.declared.linesWithDaily > 0
+      value: snapshot ? formatCapacityFigure(snapshot.declared.daily) : "",
+      hint: snapshot
+        ? snapshot.declared.linesWithDaily > 0
           ? `Across ${snapshot.declared.linesWithDaily} live line${snapshot.declared.linesWithDaily === 1 ? "" : "s"}`
-          : "No live line declares daily capacity",
+          : "No live line declares daily capacity"
+        : null,
     },
     {
       label: "Declared weekly",
-      value: formatCapacityFigure(snapshot.declared.weekly),
-      hint:
-        snapshot.declared.linesWithWeekly > 0
+      value: snapshot ? formatCapacityFigure(snapshot.declared.weekly) : "",
+      hint: snapshot
+        ? snapshot.declared.linesWithWeekly > 0
           ? `Across ${snapshot.declared.linesWithWeekly} live line${snapshot.declared.linesWithWeekly === 1 ? "" : "s"}`
-          : "No live line declares weekly capacity",
+          : "No live line declares weekly capacity"
+        : null,
     },
     {
       label: "Committed now",
-      value: formatCapacityFigure(snapshot.committed.unitCount),
-      hint: `${snapshot.committed.jobCount} job${snapshot.committed.jobCount === 1 ? "" : "s"} still in production`,
+      value: snapshot ? formatCapacityFigure(snapshot.committed.unitCount) : "",
+      hint: snapshot
+        ? `${snapshot.committed.jobCount} job${snapshot.committed.jobCount === 1 ? "" : "s"} still in production`
+        : null,
     },
     {
       label: "Remaining daily",
-      value: formatCapacityFigure(snapshot.remainingDaily),
-      hint:
-        snapshot.remainingDaily == null
+      value: snapshot ? formatCapacityFigure(snapshot.remainingDaily) : "",
+      hint: snapshot
+        ? snapshot.remainingDaily == null
           ? "Needs declared daily capacity from the API"
-          : "Declared daily minus committed units",
+          : "Declared daily minus committed units"
+        : null,
     },
   ];
   const dailyUtilisation =
-    snapshot.declared.daily != null && snapshot.declared.daily > 0
+    snapshot && snapshot.declared.daily != null && snapshot.declared.daily > 0
       ? (snapshot.committed.unitCount / snapshot.declared.daily) * 100
       : null;
 
@@ -251,7 +257,11 @@ export default function SupplierCapacityPage() {
           >
             Edit on catalogue
           </Button>
-          <Button variant="secondary" onClick={() => void load()}>
+          <Button
+            variant="secondary"
+            disabled={loading}
+            onClick={() => void load()}
+          >
             Refresh
           </Button>
         </div>
@@ -259,20 +269,33 @@ export default function SupplierCapacityPage() {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map((card) => (
-          <div key={card.label} className="gg-card flex flex-col gap-1">
+          <div
+            key={card.label}
+            className="gg-card flex flex-col gap-1"
+            aria-busy={pending || undefined}
+          >
             <p className="text-caption text-text-muted m-0">{card.label}</p>
-            <p
-              className="text-h2 text-text-primary m-0"
-              style={{ fontFamily: "var(--font-bold)" }}
-            >
-              {card.value}
-            </p>
-            <p className="text-caption text-text-secondary m-0">{card.hint}</p>
+            {pending ? (
+              <div className="flex h-[30px] items-center">
+                <SkeletonValue className="w-20" />
+                <span className="sr-only">Loading</span>
+              </div>
+            ) : (
+              <p
+                className="text-h2 text-text-primary m-0"
+                style={{ fontFamily: "var(--font-bold)" }}
+              >
+                {card.value}
+              </p>
+            )}
+            {card.hint ? (
+              <p className="text-caption text-text-secondary m-0">{card.hint}</p>
+            ) : null}
           </div>
         ))}
       </div>
 
-      {dailyUtilisation != null ? (
+      {snapshot && dailyUtilisation != null ? (
         <section className="gg-card" aria-labelledby="daily-load-heading">
           <Progress value={Math.min(dailyUtilisation, 100)} max={100}>
             <ProgressLabel id="daily-load-heading">Daily production load</ProgressLabel>
@@ -290,7 +313,7 @@ export default function SupplierCapacityPage() {
       ) : null}
 
       <ul className="m-0 flex list-disc flex-col gap-1 pl-5">
-        {snapshot.notes.map((note) => (
+        {(snapshot?.notes ?? []).map((note) => (
           <li key={note} className="text-caption text-text-secondary">
             {note}
           </li>
@@ -301,7 +324,7 @@ export default function SupplierCapacityPage() {
         <h2 id="cap-lines" className="text-h3 text-text-primary m-0">
           Live service capacity
         </h2>
-        {!liveLines.length ? (
+        {!pending && !liveLines.length ? (
           <EmptyState
             title="No live capacity declared"
             body="Verify a service line and set daily or weekly capacity so matching and this board can use real numbers."
@@ -319,6 +342,7 @@ export default function SupplierCapacityPage() {
           <DataTable
             columns={lineColumns}
             data={liveLines}
+            loading={pending}
             getRowId={(s) => s.id}
             caption="Live service capacity"
           />
@@ -329,7 +353,7 @@ export default function SupplierCapacityPage() {
         <h2 id="cap-jobs" className="text-h3 text-text-primary m-0">
           Committed jobs
         </h2>
-        {!snapshot.committed.jobs.length ? (
+        {!pending && !snapshot?.committed.jobs.length ? (
           <EmptyState
             title="No production commitments"
             body="When you accept jobs, their unit counts appear here until they leave the shop for dispatch."
@@ -346,7 +370,8 @@ export default function SupplierCapacityPage() {
         ) : (
           <DataTable
             columns={jobColumns}
-            data={snapshot.committed.jobs}
+            data={snapshot?.committed.jobs ?? []}
+            loading={pending}
             getRowId={(j) => j.id}
             caption="Committed jobs"
             rowActions={(j) => (

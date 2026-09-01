@@ -13,6 +13,7 @@ import type {
   PayoutMilestone,
   PayoutMilestoneCode,
 } from "@/lib/api/types";
+import { listedInstallments, paymentOf } from "@/lib/payments";
 
 /** Share of the client total taken as the downpayment. */
 export const DOWNPAYMENT_PERCENT = 75;
@@ -130,9 +131,7 @@ export function paymentAwaitsConfirmation(
 export function paymentIsSettled(
   payment: Pick<PaymentRecord, "status"> | undefined | null,
 ): boolean {
-  return (
-    payment?.status === "confirmed" || payment?.status === "legacy_confirmed"
-  );
+  return payment?.status === "confirmed" || payment?.status === "legacy_confirmed";
 }
 
 /** The installments on an order that Operations still has to decide on. */
@@ -140,8 +139,8 @@ export function installmentsAwaitingConfirmation(
   order: Pick<Order, "payments">,
 ): PaymentInstallment[] {
   if (!order.payments) return [];
-  return (["downpayment", "balance"] as const).filter((code) =>
-    paymentAwaitsConfirmation(order.payments?.[code]),
+  return listedInstallments(order).filter((code) =>
+    paymentAwaitsConfirmation(paymentOf(order, code)),
   );
 }
 
@@ -151,7 +150,7 @@ export function installmentsAwaitingConfirmation(
  * it can explain the order of events before the client is asked for anything.
  */
 export function canSubmitBalance(order: Pick<Order, "payments">): boolean {
-  return paymentIsSettled(order.payments?.downpayment);
+  return paymentIsSettled(paymentOf(order, "downpayment"));
 }
 
 /** True when the client has been told the final price and may be asked to pay. */
@@ -172,11 +171,29 @@ export function milestoneHasProof(
   );
 }
 
-export function milestoneIsReleased(
-  milestone: Pick<PayoutMilestone, "status">,
-): boolean {
+export function milestoneIsReleased(milestone: Pick<PayoutMilestone, "status">): boolean {
   return milestone.status === "released";
 }
+
+/*
+ The steps each stage names, mirrored from the platform's own gates.
+
+ A screen that lets Operations press a button the server will refuse teaches
+ them to distrust the screen, so the blockers are stated before the click.
+*/
+const PRINTING_STATES = new Set([
+  "production", "supplier_self_qc", "ready_for_dispatch", "rider_assigned",
+  "picked_up", "out_for_delivery", "awaiting_collection", "delivered",
+  "issue_window_open", "completed", "payout_released",
+]);
+const PACKING_STATES = new Set([
+  "supplier_self_qc", "ready_for_dispatch", "rider_assigned", "picked_up",
+  "out_for_delivery", "awaiting_collection", "delivered", "issue_window_open",
+  "completed", "payout_released",
+]);
+const DELIVERED_STATES = new Set([
+  "delivered", "issue_window_open", "completed", "payout_released",
+]);
 
 /**
  * Why this milestone cannot be released right now, in plain language, or null
@@ -194,11 +211,23 @@ export function milestoneReleaseBlocker(
   if (!milestoneHasProof(milestone)) {
     return PLATFORM_CONSTRAINT_COPY.pof_required.guidance;
   }
+  // The two the shop itself has to reach. The server refuses either on the
+  // step rather than on the proof, so the screen has to say which.
+  if (milestone.code === "printing" && !PRINTING_STATES.has(order.state)) {
+    return "Printing releases once the shop has started this job.";
+  }
+  if (milestone.code === "packaging_qc" && !PACKING_STATES.has(order.state)) {
+    return "Packing releases once the shop has finished its own quality check.";
+  }
   if (milestone.code === "delivered") {
+    if (!DELIVERED_STATES.has(order.state)) {
+      return "The delivered share releases once the client has the job, at their door or off the counter.";
+    }
     if (!order.deliveryEvidence) {
       return "The delivered share releases once the rider has filed delivery evidence.";
     }
-    if (!paymentIsSettled(order.payments?.balance)) {
+    const balance = paymentOf(order, "balance");
+    if (balance && !paymentIsSettled(balance)) {
       return "The delivered share releases once the client's 25% balance is confirmed.";
     }
   }

@@ -103,7 +103,7 @@ export function buildRecoveryItems(
         summary:
           "Waiting on the client to correct artwork or specs before QA can continue.",
         nextLabel: "Open workspace",
-        nextHref: `/ops/qa/${order.id}`,
+        nextHref: `/ops/orders/${order.id}`,
         updatedAt: order.updatedAt,
       });
     }
@@ -118,7 +118,7 @@ export function buildRecoveryItems(
         orderState: order.state,
         summary: presentOrderState(order.state).label,
         nextLabel: action?.label ?? "Open workspace",
-        nextHref: `/ops/qa/${order.id}`,
+        nextHref: `/ops/orders/${order.id}`,
         updatedAt: order.updatedAt,
       });
     }
@@ -137,7 +137,7 @@ export function buildRecoveryItems(
           ? "Issue window open with an active payout hold — release the hold before closing payout."
           : "Issue window open — close as completed when the client has no open issue.",
         nextLabel: held ? "Review claim" : "Close as completed",
-        nextHref: held ? "/ops/claims" : `/ops/qa/${order.id}`,
+        nextHref: held ? "/ops/claims" : `/ops/orders/${order.id}`,
         updatedAt: order.updatedAt,
       });
     }
@@ -152,7 +152,7 @@ export function buildRecoveryItems(
         summary:
           "Supplier has not accepted yet. Follow up or reassign from the workspace.",
         nextLabel: "Open workspace",
-        nextHref: `/ops/qa/${order.id}`,
+        nextHref: `/ops/orders/${order.id}`,
         updatedAt: order.updatedAt,
       });
     }

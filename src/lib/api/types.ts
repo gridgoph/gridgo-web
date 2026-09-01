@@ -149,7 +149,10 @@ export type TimelineEntry = {
 
 // ---- Split digital payment (v2) ----
 
-/** The two installments every order is paid in. COD is not an option. */
+/**
+ * Portal names for the client online collections. The live API stores these as
+ * `initial` and `final_online`; pickup plans often have only the first.
+ */
 export type PaymentInstallment = "downpayment" | "balance";
 
 export type PaymentStatusCode =
@@ -176,9 +179,12 @@ export type PaymentRecord = {
   rejectedBy?: string | null;
   /** Client-visible. What Operations told them to fix. */
   rejectionReason?: string | null;
+  /** Client-uploaded QR-transfer photo. */
+  proofFileId?: string | null;
 };
 
-export type OrderPayments = Record<PaymentInstallment, PaymentRecord>;
+/** Present installments after mapping. A pickup plan may omit the balance. */
+export type OrderPayments = Partial<Record<PaymentInstallment, PaymentRecord>>;
 
 // ---- Milestone payouts (v2) ----
 
@@ -249,16 +255,19 @@ export type Order = {
   supplierId: string | null;
   riderId: string | null;
   state: string;
-  productId: string;
+  productId?: string | null;
   title: string;
-  quantity: number;
-  size: string;
-  material: string;
+  quantity?: number | null;
+  /** Catalog unit from the checkout line (`pack100`, `sqm`, `piece`, …). */
+  unit?: string | null;
+  size?: string;
+  material?: string;
   /** Optional finish note/code; may be empty string. */
-  finish?: string;
+  finish?: string | null;
   deadline: string | null;
   address: string;
-  zone: string;
+  /** Checkout may leave this unset; present as an em dash. */
+  zone?: string | null;
   pickup?: MapPoint | null;
   dropoff?: MapPoint | null;
 
@@ -266,7 +275,23 @@ export type Order = {
   // Server-side projection decides which of these a caller receives:
   // supplier price is hidden from the client; commission is Ops / Super Admin only.
   /** Supplier's own asking price. Ops / Super Admin and the assigned supplier. */
+  /**
+   * What the shop is paid for the work. The API has always called it this;
+   * `supplierPriceMinor` was the quote-era name and appears nowhere in it, so a
+   * screen reading that field read undefined on every order.
+   */
+  supplierSubtotalMinor?: number;
   supplierPriceMinor?: number;
+  /**
+   * The date the client was promised. The shop's own date is deliberately
+   * absent from every client-facing payload, and Operations reads this one.
+   */
+  readyBy?: string | null;
+  /** When the shop actually finished, stamped as it hands over to a rider. */
+  readyAt?: string | null;
+  cancelledAt?: string | null;
+  cancelledBy?: string | null;
+  cancellationReason?: string | null;
   /** GRIDGO's cut, added on top of the supplier price. Ops / Super Admin only. */
   commissionRatePercent?: number;
   /** Ops / Super Admin only — never shown to a client, supplier or rider. */
@@ -308,6 +333,8 @@ export type Order = {
 
   artworkName: string | null;
   artworkFileIds?: string[];
+  /** Shop mockup from the checkout line, when the client attached one. */
+  mockupFileIds?: string[];
   /** Retired supplier-proof files, preserved by the migration. */
   proofFileIds?: string[];
   fulfilmentProofFileIds?: string[];
@@ -450,6 +477,9 @@ export type TaxonomyCategory = {
   id: string;
   code: string;
   name: string;
+  /** Audience line from the chart, without a "Best for:" prefix. */
+  bestFor?: string;
+  sortOrder?: number;
   productFamilyIds: string[];
   active: boolean;
 };
@@ -470,10 +500,70 @@ export type TaxonomyFinish = {
   active: boolean;
 };
 
+export type TaxonomySubcategory = {
+  id: string;
+  code: string;
+  categoryCode: string;
+  name: string;
+  /** Chart examples for this print job, as chips. */
+  examples?: string[];
+  active: boolean;
+  sortOrder?: number;
+};
+
+/** Retired pre-chart category code still accepted on input. */
+export type TaxonomyCategoryAlias = {
+  code: string;
+  name: string;
+  categoryCode: string;
+  ambiguous?: boolean;
+  note?: string;
+  active?: boolean;
+};
+
 export type Taxonomy = {
   categories: TaxonomyCategory[];
+  /** Flat chart of what each category covers. Present on the live taxonomy. */
+  subcategories?: TaxonomySubcategory[];
   materials: TaxonomyMaterial[];
   finishes: TaxonomyFinish[];
+  categoryAliases?: TaxonomyCategoryAlias[];
+};
+
+/** Public marketplace shop card from GET /catalog/shops. */
+export type PublicCatalogShopSummary = {
+  supplierId: string;
+  shopName: string;
+  categories?: string[];
+  itemCount?: number;
+};
+
+export type PublicCatalogListing = {
+  id: string;
+  supplierId?: string;
+  subcategoryCode?: string;
+  name: string;
+  fromPriceMinor?: number;
+  basePriceMinor?: number;
+  turnaroundHours?: number | null;
+  photos?: Array<{
+    fileId: string;
+    sortOrder?: number;
+    altText?: string | null;
+    downloadUrl?: string | null;
+    url?: string;
+  }>;
+};
+
+export type PublicCatalogShop = {
+  supplierId: string;
+  shopName: string;
+  categories?: string[];
+  services?: Array<{
+    id: string;
+    categoryCode: string;
+    items?: PublicCatalogListing[];
+  }>;
 };
 
 // ---- Supplier services ----

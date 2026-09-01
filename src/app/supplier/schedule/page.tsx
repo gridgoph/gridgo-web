@@ -18,9 +18,11 @@ import {
   type ScheduleViewMode,
 } from "@/app/supplier/_lib/schedule";
 import { Button } from "@/components/ui/button";
+import { describeQuantity } from "@/lib/quantity";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { SkeletonCards } from "@/components/ui/loading";
+import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ApiError, listJobs } from "@/lib/api/client";
@@ -60,7 +62,8 @@ function JobCard({ entry }: { entry: ScheduleEntry }) {
         </span>
       </div>
       <p className="text-caption text-text-secondary m-0">
-        {entry.job.size} · {entry.job.material} · qty {entry.job.quantity}
+        {entry.job.size || "—"} · {entry.job.material || "—"} ·{" "}
+        {describeQuantity(entry.job.quantity, entry.job.unit)}
       </p>
     </Link>
   );
@@ -114,10 +117,9 @@ export default function SupplierSchedulePage() {
   const days = useMemo(() => eachDayInRange(range), [range]);
   const todayKey = dayKeyFromDate(new Date());
 
-  if (loading && !jobs) {
-    return <LoadingBlock label="Loading production schedule…" />;
-  }
-  if (error || !jobs) {
+  const pending = loading && !jobs;
+
+  if (!pending && (error || !jobs)) {
     return (
       <ErrorState
         body={error ?? "Could not load schedule."}
@@ -137,7 +139,11 @@ export default function SupplierSchedulePage() {
           Accepted jobs by promised date. Open any entry for the existing job workspace —
           this view never creates a parallel record.
         </p>
-        <Button variant="secondary" onClick={() => void load()}>
+        <Button
+          variant="secondary"
+          disabled={loading}
+          onClick={() => void load()}
+        >
           Refresh
         </Button>
       </div>
@@ -202,7 +208,7 @@ export default function SupplierSchedulePage() {
         </Button>
       </div>
 
-      {!entries.length ? (
+      {!pending && !entries.length ? (
         <EmptyState
           title="Nothing on the production schedule"
           body="When you accept jobs, their promised dates appear here as a week grid on larger screens, or a chronological agenda on phones."
@@ -243,7 +249,13 @@ export default function SupplierSchedulePage() {
                     <span className="text-caption text-text-muted">Today</span>
                   ) : null}
                 </h2>
-                {!dayEntries.length ? (
+                {pending ? (
+                  <SkeletonCards
+                    count={1}
+                    lines={1}
+                    label="Loading jobs due"
+                  />
+                ) : !dayEntries.length ? (
                   <p className="text-caption text-text-muted m-0">No jobs due</p>
                 ) : (
                   <div className="flex flex-col gap-2">
@@ -255,7 +267,7 @@ export default function SupplierSchedulePage() {
               </section>
             );
           })}
-          {visible.length === 0 ? (
+          {!pending && visible.length === 0 ? (
             <p className="text-body text-text-secondary m-0">
               No accepted jobs fall in this range. Move the week or open the inbox.
             </p>
@@ -269,6 +281,7 @@ export default function SupplierSchedulePage() {
           }}
           role="grid"
           aria-label="Week schedule"
+          aria-busy={pending || undefined}
         >
           {days.map((day) => {
             const key = dayKeyFromDate(day);
@@ -298,10 +311,14 @@ export default function SupplierSchedulePage() {
                   ) : null}
                 </div>
                 <div className="flex flex-col gap-2">
-                  {dayEntries.map((entry) => (
-                    <JobCard key={entry.job.id} entry={entry} />
-                  ))}
-                  {!dayEntries.length ? (
+                  {pending ? (
+                    <Skeleton className="h-16 w-full rounded-field" aria-hidden />
+                  ) : (
+                    dayEntries.map((entry) => (
+                      <JobCard key={entry.job.id} entry={entry} />
+                    ))
+                  )}
+                  {!pending && !dayEntries.length ? (
                     <p className="text-caption text-text-muted m-0">—</p>
                   ) : null}
                 </div>

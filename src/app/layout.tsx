@@ -9,6 +9,10 @@ export const metadata: Metadata = {
   title: "GRIDGO Portal",
   description:
     "GRIDGO web portal — supplier partner, Operations, and Super Admin.",
+  icons: {
+    icon: [{ url: "/icon.png", type: "image/png" }, { url: "/favicon.ico" }],
+    apple: [{ url: "/apple-icon.png", type: "image/png" }],
+  },
 };
 
 export default function RootLayout({

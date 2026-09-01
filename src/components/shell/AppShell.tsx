@@ -3,16 +3,20 @@
 import { type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useClerk, useUser } from "@clerk/nextjs";
 import {
   AlertTriangle,
+  ArrowLeftRight,
   Banknote,
   BookOpen,
   CalendarDays,
   CalendarRange,
   ChevronsUpDown,
+  CircleUser,
   ClipboardCheck,
   ClipboardList,
   Coins,
+  Gauge,
   LayoutDashboard,
   LogOut,
   MapPinned,
@@ -49,6 +53,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Logo } from "@/components/ui/Logo";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -72,6 +77,12 @@ import {
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import {
+  clerkProfileEmail,
+  clerkProfileImageUrl,
+  clerkProfileName,
+  displayInitials,
+} from "@/lib/auth/clerk-profile";
 import type { Role } from "@/lib/api/types";
 import {
   contextTitleForPath,
@@ -81,10 +92,12 @@ import {
   type NavIconKey,
   type NavItem,
 } from "@/lib/nav";
+import { portalRolesFromMemberships } from "@/lib/auth/portal-access";
 import { homeForRole, roleLabel } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
 const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
+  dashboard: Gauge,
   jobs: Package,
   catalogue: BookOpen,
   schedule: CalendarDays,
@@ -114,19 +127,6 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-/** First letters of the display name — the footer card has no photo. */
-function displayInitials(name: string | undefined): string {
-  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) {
-    const first = parts[0]?.[0];
-    const last = parts[parts.length - 1]?.[0];
-    if (first && last) return `${first}${last}`.toUpperCase();
-  }
-  if (parts[0] && parts[0].length >= 2) return parts[0].slice(0, 2).toUpperCase();
-  if (parts[0]?.[0]) return parts[0][0].toUpperCase();
-  return "?";
-}
-
 /** Operational settings only — suppliers have no settings route. */
 function settingsHrefForRole(role: Role): "/ops/settings" | "/admin/settings" | null {
   if (role === "ops_admin") return "/ops/settings";
@@ -134,25 +134,40 @@ function settingsHrefForRole(role: Role): "/ops/settings" | "/admin/settings" | 
   return null;
 }
 
-function AccountInitials({ name }: { name: string | undefined }) {
+function AccountAvatar({
+  name,
+  imageUrl,
+}: {
+  name: string | undefined;
+  imageUrl?: string;
+}) {
   return (
-    <span
-      aria-hidden
-      className="bg-foreground text-background flex size-8 shrink-0 items-center justify-center rounded-lg text-caption"
-      style={{ fontFamily: "var(--font-bold)" }}
-    >
-      {displayInitials(name)}
-    </span>
+    <Avatar aria-hidden>
+      {imageUrl ? <AvatarImage src={imageUrl} alt="" /> : null}
+      <AvatarFallback
+        className="bg-foreground text-background text-caption"
+        style={{ fontFamily: "var(--font-bold)" }}
+      >
+        {displayInitials(name)}
+      </AvatarFallback>
+    </Avatar>
   );
 }
 
-/** shadcn / UAGC NavUser — footer trigger opens Settings + Log out. */
+/** Footer identity is the Clerk person; the menu still owns GRIDGO settings and sign-out. */
 function NavUser({ role }: { role: Role }) {
-  const { user, signOut } = useAuth();
+  const { user, memberships, signOut } = useAuth();
+  const { user: clerkUser } = useUser();
+  const { openUserProfile } = useClerk();
   const { state } = useSidebar();
   const settingsHref = settingsHrefForRole(role);
-  const name = user?.name?.trim() || "Account";
-  const email = user?.email?.trim() ?? "";
+  const switchableRoles = portalRolesFromMemberships(memberships ?? []).filter(
+    (candidate) => candidate !== role,
+  );
+  const fallbackName = user?.name?.trim() || "Account";
+  const name = clerkProfileName(clerkUser, fallbackName);
+  const email = clerkProfileEmail(clerkUser, user?.email?.trim() ?? "");
+  const imageUrl = clerkProfileImageUrl(clerkUser);
   const collapsed = state === "collapsed";
 
   return (
@@ -164,12 +179,12 @@ function NavUser({ role }: { role: Role }) {
               <SidebarMenuButton
                 size="lg"
                 data-slot="account-menu"
-                className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-11!"
+                className="data-open:bg-sidebar-accent data-open:text-sidebar-accent-foreground group-data-[collapsible=icon]:size-11! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!"
                 aria-label={name}
               />
             }
           >
-            <AccountInitials name={user?.name} />
+            <AccountAvatar name={name} imageUrl={imageUrl} />
             <div className="grid min-w-0 flex-1 text-left leading-tight group-data-[collapsible=icon]:hidden">
               <span className="truncate" style={{ fontFamily: "var(--font-medium)" }}>
                 {name}
@@ -189,7 +204,7 @@ function NavUser({ role }: { role: Role }) {
             <DropdownMenuGroup>
               <DropdownMenuLabel className="p-0 font-normal text-foreground">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                  <AccountInitials name={user?.name} />
+                  <AccountAvatar name={name} imageUrl={imageUrl} />
                   <div className="grid min-w-0 flex-1 text-left leading-tight">
                     <span
                       className="truncate"
@@ -206,6 +221,15 @@ function NavUser({ role }: { role: Role }) {
                 </div>
               </DropdownMenuLabel>
             </DropdownMenuGroup>
+            <DropdownMenuGroup>
+              <DropdownMenuItem
+                className="min-h-11"
+                onClick={() => openUserProfile()}
+              >
+                <CircleUser aria-hidden />
+                Manage account
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
             {settingsHref ? (
               <DropdownMenuGroup>
                 <DropdownMenuItem
@@ -215,6 +239,20 @@ function NavUser({ role }: { role: Role }) {
                   <Settings aria-hidden />
                   Settings
                 </DropdownMenuItem>
+              </DropdownMenuGroup>
+            ) : null}
+            {switchableRoles.length > 0 ? (
+              <DropdownMenuGroup>
+                {switchableRoles.map((nextRole) => (
+                  <DropdownMenuItem
+                    key={nextRole}
+                    render={<Link href={homeForRole(nextRole)} />}
+                    className="min-h-11"
+                  >
+                    <ArrowLeftRight aria-hidden />
+                    Open {roleLabel(nextRole)}
+                  </DropdownMenuItem>
+                ))}
               </DropdownMenuGroup>
             ) : null}
             <DropdownMenuSeparator />
@@ -256,6 +294,7 @@ function RailNavItem({
         onClick={onNavigate}
         aria-current={active ? "page" : undefined}
         className={cn(
+          "group-data-[collapsible=icon]:size-11! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!",
           active &&
             "text-[var(--color-action-yellow)] hover:text-[var(--color-action-yellow)] data-active:font-medium data-active:text-[var(--color-action-yellow)]",
         )}
@@ -326,7 +365,7 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              className="[&_svg]:size-6 group-data-[collapsible=icon]:size-11! group-data-[collapsible=icon]:pl-1!"
+              className="[&_svg]:size-6 group-data-[collapsible=icon]:size-11! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!"
               render={<Link href={homeForRole(role)} />}
               tooltip="GRIDGO home"
               onClick={() => setOpenMobile(false)}
@@ -364,7 +403,7 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
       </SidebarContent>
 
       <SidebarSeparator />
-      <SidebarFooter className="group-data-[collapsible=icon]:p-1.5">
+      <SidebarFooter>
         <NavUser role={role} />
       </SidebarFooter>
 

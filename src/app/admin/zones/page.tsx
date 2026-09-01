@@ -23,7 +23,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Switch } from "@/components/ui/switch";
 import { createZone, listZones, updateZone } from "@/lib/api/client";
@@ -149,10 +148,9 @@ export default function AdminZonesPage() {
     }
   }
 
-  if (loading && !zones) {
-    return <LoadingBlock label="Loading delivery zones…" />;
-  }
-  if (error || !zones) {
+  const pending = loading && !zones;
+
+  if (!pending && (error || !zones)) {
     return (
       <ErrorState
         body={error ?? "No data."}
@@ -174,10 +172,14 @@ export default function AdminZonesPage() {
           distance between the supplier and the address.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={() => void load()}>
+          <Button
+            variant="secondary"
+            disabled={loading}
+            onClick={() => void load()}
+          >
             Refresh
           </Button>
-          <Button variant="primary" onClick={openNew}>
+          <Button variant="primary" disabled={pending} onClick={openNew}>
             Add zone
           </Button>
         </div>
@@ -197,7 +199,7 @@ export default function AdminZonesPage() {
         </p>
       ) : null}
 
-      {!zones.length ? (
+      {!pending && !zones?.length ? (
         <EmptyState
           title="No delivery zones"
           body="Add a zone so clients have somewhere to send an order to."
@@ -210,7 +212,8 @@ export default function AdminZonesPage() {
       ) : (
         <DataTable
           columns={columns}
-          data={zones}
+          data={zones ?? []}
+          loading={pending}
           getRowId={(z) => z.id}
           caption="Delivery zones"
           filterPlaceholder="Filter zones…"

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
+import { EvidencePlate } from "@/components/orders/EvidencePreview";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { LoadingBlock } from "@/components/ui/LoadingBlock";
+import { SkeletonCards } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -63,12 +64,8 @@ export default function OpsEscalationsPage() {
 
       // Evidence metadata is a best-effort read — a missing file must not take
       // the whole queue down, so each lookup fails on its own.
-      const fileIds = [
-        ...new Set(escalations.flatMap((e) => e.evidenceFileIds)),
-      ];
-      const files = await Promise.all(
-        fileIds.map((id) => getFile(id).catch(() => null)),
-      );
+      const fileIds = [...new Set(escalations.flatMap((e) => e.evidenceFileIds))];
+      const files = await Promise.all(fileIds.map((id) => getFile(id).catch(() => null)));
       const evidence: Record<string, StoredFile> = {};
       for (const file of files) if (file) evidence[file.fileId] = file;
 
@@ -120,19 +117,16 @@ export default function OpsEscalationsPage() {
       setInstruction("");
       await load();
     } catch (err) {
-      setActionError(
-        opsErrorMessage(err, "Could not send that instruction. Try again."),
-      );
+      setActionError(opsErrorMessage(err, "Could not send that instruction. Try again."));
     } finally {
       setBusy(false);
     }
   }
 
-  if (loading && !data) return <LoadingBlock label="Loading escalations…" />;
-  if (error || !data) {
+  if (error) {
     return (
       <ErrorState
-        body={error ?? "No data."}
+        body={error}
         action={
           <Button variant="secondary" onClick={() => void load()}>
             Retry
@@ -142,17 +136,18 @@ export default function OpsEscalationsPage() {
     );
   }
 
+  const pending = loading && !data;
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          A rider who fails any of the six pickup checks must not transport the
-          order. They photograph the problem and wait here for instruction. A
-          defect that leaves the supplier unlogged becomes GRIDGO&rsquo;s
-          liability rather than the supplier&rsquo;s, which is what the
-          Zero-Risk Reprint Guarantee rests on.
+          A rider who fails any of the six pickup checks must not transport the order.
+          They photograph the problem and wait here for instruction. A defect that leaves
+          the supplier unlogged becomes GRIDGO&rsquo;s liability rather than the
+          supplier&rsquo;s, which is what the Zero-Risk Reprint Guarantee rests on.
         </p>
-        <Button variant="secondary" onClick={() => void load()}>
+        <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
         </Button>
       </div>
@@ -170,9 +165,11 @@ export default function OpsEscalationsPage() {
 
       <section aria-labelledby="open-heading" className="flex flex-col gap-3">
         <h2 id="open-heading" className="text-h3 text-text-primary m-0">
-          Riders waiting ({open.length})
+          Riders waiting{pending ? "" : ` (${open.length})`}
         </h2>
-        {!open.length ? (
+        {pending ? (
+          <SkeletonCards count={2} lines={3} label="Loading escalations" />
+        ) : !open.length ? (
           <EmptyState
             title="No rider is blocked"
             body="Every pickup has either passed its six checks or already had an instruction. A failed check appears here straight away — riders cannot move without one."
@@ -188,8 +185,8 @@ export default function OpsEscalationsPage() {
               <EscalationCard
                 key={escalation.id}
                 escalation={escalation}
-                order={data.orders[escalation.orderId]}
-                evidence={data.evidence}
+                order={data?.orders[escalation.orderId]}
+                evidence={data?.evidence ?? {}}
                 onResolve={() => {
                   setActionError(null);
                   setInstruction("");
@@ -211,8 +208,8 @@ export default function OpsEscalationsPage() {
               <EscalationCard
                 key={escalation.id}
                 escalation={escalation}
-                order={data.orders[escalation.orderId]}
-                evidence={data.evidence}
+                order={data?.orders[escalation.orderId]}
+                evidence={data?.evidence ?? {}}
               />
             ))}
           </ul>
@@ -233,9 +230,9 @@ export default function OpsEscalationsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Tell the rider what to do</AlertDialogTitle>
             <AlertDialogDescription>
-              The rider is at the supplier and cannot move until you answer.
-              Whatever you write here reaches them, and they then repeat all six
-              checks from the start before transporting.
+              The rider is at the supplier and cannot move until you answer. Whatever you
+              write here reaches them, and they then repeat all six checks from the start
+              before transporting.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <FieldGroup>
@@ -316,11 +313,7 @@ function EscalationCard({
               icon={orderStatus.icon}
             />
           ) : null}
-          <StatusChip
-            tone={status.tone}
-            label={status.label}
-            icon={status.icon}
-          />
+          <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
         </div>
       </div>
 
@@ -329,11 +322,7 @@ function EscalationCard({
         <ul className="m-0 mt-1 flex list-none flex-wrap gap-2 p-0">
           {escalation.failedCheckCodes.map((code) => (
             <li key={code}>
-              <StatusChip
-                tone="error"
-                label={presentPickupCheck(code)}
-                icon="circle-x"
-              />
+              <StatusChip tone="error" label={presentPickupCheck(code)} icon="circle-x" />
             </li>
           ))}
         </ul>
@@ -341,44 +330,32 @@ function EscalationCard({
 
       {escalation.failureNote ? (
         <div>
-          <p className="text-caption text-text-muted m-0">
-            What the rider saw
-          </p>
-          <p className="text-body text-text-primary m-0 mt-1">
-            {escalation.failureNote}
-          </p>
+          <p className="text-caption text-text-muted m-0">What the rider saw</p>
+          <p className="text-body text-text-primary m-0 mt-1">{escalation.failureNote}</p>
         </div>
       ) : null}
 
       <div>
         <p className="text-caption text-text-muted m-0">Photo evidence</p>
         {escalation.evidenceFileIds.length ? (
-          <ul className="m-0 mt-1 flex list-none flex-col gap-1 p-0">
+          <ul className="m-0 mt-2 flex list-none flex-col gap-3 p-0">
             {escalation.evidenceFileIds.map((fileId) => {
               const file = evidence[fileId];
               return (
-                <li key={fileId} className="text-body text-text-primary">
-                  {file ? (
-                    <>
-                      {file.originalFilename}{" "}
-                      <span className="text-caption text-text-muted">
-                        · {Math.round(file.size / 1024)} KB · uploaded{" "}
-                        {formatDateTime(file.createdAt)}
-                      </span>
-                    </>
-                  ) : (
-                    <span className="text-text-secondary">
-                      A photo is on file but its details could not be read.
-                    </span>
-                  )}
+                <li key={fileId}>
+                  <EvidencePlate
+                    fileId={fileId}
+                    label={file?.originalFilename || "Pickup photo"}
+                    caption={file?.originalFilename}
+                  />
                 </li>
               );
             })}
           </ul>
         ) : (
           <p className="text-body text-text-secondary m-0 mt-1">
-            No photo was attached. Ask the rider for one before deciding — it is
-            what protects the guarantee.
+            No photo was attached. Ask the rider for one before deciding — it is what
+            protects the guarantee.
           </p>
         )}
       </div>
@@ -386,9 +363,7 @@ function EscalationCard({
       {escalation.resolution ? (
         <div className="border-t border-outline-subtle pt-3">
           <p className="text-caption text-text-muted m-0">Instruction given</p>
-          <p className="text-body text-text-primary m-0 mt-1">
-            {escalation.resolution}
-          </p>
+          <p className="text-body text-text-primary m-0 mt-1">{escalation.resolution}</p>
           <p className="text-caption text-text-muted m-0 mt-1">
             {formatDateTime(escalation.resolvedAt)}
           </p>
