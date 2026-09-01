@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { History, ListChecks, Wallet } from "lucide-react";
 
 import { pesosToMinor } from "@/app/admin/_lib/errors";
 import { MilestoneList } from "@/components/orders/MilestoneList";
@@ -33,13 +34,14 @@ import { SkeletonDetail } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, getOrder, transitionOrder } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
-import { formatPhp } from "@/lib/format";
+import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
 import {
   actionsForJob,
   supplierWaitingOn,
   type SupplierAction,
 } from "@/lib/supplier-actions";
+import { jobActivity, relativeTime } from "@/app/supplier/_lib/job-activity";
 
 function supplierErrorMessage(err: unknown): string {
   if (!(err instanceof ApiError)) {
@@ -185,6 +187,7 @@ export default function SupplierJobDetailPage() {
   }
 
   const status = presentOrderState(job.state);
+  const activity = jobActivity(job);
   const actions = actionsForJob(job.state);
   const primary = actions.find((a) => a.primary);
   const secondary = actions.filter((a) => !a.primary);
@@ -205,6 +208,31 @@ export default function SupplierJobDetailPage() {
           </div>
           <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
         </div>
+
+        {/*
+          What just happened, at the top.
+
+          The state chip says where the job stands; it does not say what moved
+          it there or when. That was only readable by scrolling to the bottom
+          of the timeline, which is the wrong end of a growing list for the one
+          question a shop opens this page with.
+        */}
+        {activity.at !== null ? (
+          <div className="border-outline-subtle bg-surface-variant rounded-field flex flex-wrap items-baseline gap-x-2 gap-y-1 border px-3 py-2">
+            <span className="text-overline text-text-muted uppercase">Latest</span>
+            <span
+              className="text-body text-text-primary"
+              style={{ fontFamily: "var(--font-medium)" }}
+            >
+              {activity.what}
+            </span>
+            <span className="text-caption text-text-muted">
+              {relativeTime(activity.at)}
+              {activity.who ? ` · ${activity.who}` : ""}
+              {activity.iso ? ` · ${formatDateTime(activity.iso)}` : ""}
+            </span>
+          </div>
+        ) : null}
 
         <div className="flex flex-col gap-2 border-t border-outline-subtle pt-3">
           {primary || secondary.length ? (
@@ -246,33 +274,65 @@ export default function SupplierJobDetailPage() {
         </div>
       </header>
 
-      <div className="grid w-full gap-3 lg:grid-cols-2 lg:items-start">
-      <section className="gg-card p-3" aria-labelledby="spec-heading">
-        <h3 id="spec-heading" className="text-h3 text-text-primary m-0 mb-3">
-          Spec
-        </h3>
-        <OrderMeta order={job} showMoney={false} />
-      </section>
+      {/*
+        Two explicit columns rather than one auto-flowing grid. Spec, payout and
+        timeline flowing in sequence put the timeline under the spec and left
+        the whole right column empty below the payout — a screen of nothing
+        beside the thing a shop scrolls to read.
+      */}
+      <div className="grid w-full gap-3 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:items-start">
+        <div className="flex min-w-0 flex-col gap-3">
+          <section className="gg-card p-3" aria-labelledby="spec-heading">
+            <h3
+              id="spec-heading"
+              className="text-h3 text-text-primary m-0 mb-3 flex items-center gap-2"
+            >
+              <ListChecks size={18} strokeWidth={1.75} aria-hidden />
+              Spec
+            </h3>
+            <OrderMeta order={job} showMoney={false} />
+          </section>
 
-      {job.payoutMilestones?.length ? (
-        <section className="gg-card p-3" aria-labelledby="payout-heading">
-          <h3 id="payout-heading" className="text-h3 text-text-primary m-0">
-            Your payout
-          </h3>
-          <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
-            Four parts of your own price, each released by Operations once they
-            have seen the proof for that stage.
-          </p>
-          <MilestoneList order={job} />
-        </section>
-      ) : null}
+          <section className="gg-card p-3" aria-labelledby="timeline-heading">
+            <h3
+              id="timeline-heading"
+              className="text-h3 text-text-primary m-0 mb-1 flex items-center gap-2"
+            >
+              <History size={18} strokeWidth={1.75} aria-hidden />
+              Timeline
+            </h3>
+            <p className="text-caption text-text-muted m-0 mb-3">
+              Most recent first.
+            </p>
+            <Timeline entries={job.timeline} newestFirst />
+          </section>
+        </div>
 
-      <section className="gg-card p-3" aria-labelledby="timeline-heading">
-        <h3 id="timeline-heading" className="text-h3 text-text-primary m-0 mb-3">
-          Timeline
-        </h3>
-        <Timeline entries={job.timeline} />
-      </section>
+        {job.payoutMilestones?.length ? (
+          <section
+            className="gg-card p-3 lg:sticky lg:top-3"
+            aria-labelledby="payout-heading"
+          >
+            <h3
+              id="payout-heading"
+              className="text-h3 text-text-primary m-0 flex items-center gap-2"
+            >
+              <Wallet size={18} strokeWidth={1.75} aria-hidden />
+              Your payout
+            </h3>
+            <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
+              {/*
+                Counted, not asserted. The blueprint describes four stages and
+                the running API issues two, so a hardcoded "four" was wrong on
+                this very screen.
+              */}
+              {job.payoutMilestones.length === 1
+                ? "One release of your own price, paid by Operations once they have seen the proof."
+                : `${job.payoutMilestones.length} parts of your own price, each released by Operations once they have seen the proof for that stage.`}
+            </p>
+            <MilestoneList order={job} />
+          </section>
+        ) : null}
       </div>
 
       <Dialog

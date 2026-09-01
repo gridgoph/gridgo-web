@@ -200,7 +200,21 @@ export function presentPaymentProgress(
 // Payout milestones
 // ---------------------------------------------------------------------------
 
-export function presentMilestone(code: string): string {
+/**
+ * The name of a payout stage.
+ *
+ * Two shapes are live at once. The four-stage split (printing / packaging_qc /
+ * delivered / retention) is the one the blueprint describes; the running API
+ * also issues a two-stage `initial` + `completion` split, and which of them
+ * GRIDGO settles on is still the captain's open call. Both are named here so a
+ * shop is never shown the word "Milestone" twice in a column and asked to tell
+ * them apart.
+ *
+ * `sharePercent` is the last resort. An unrecognised code with a known share is
+ * still worth describing — "75% release" says more than "Milestone" — and only
+ * a stage with neither falls back to its position.
+ */
+export function presentMilestone(code: string, sharePercent?: number): string {
   switch (code) {
     case "printing":
       return "Printing in progress";
@@ -210,8 +224,14 @@ export function presentMilestone(code: string): string {
       return "Delivered";
     case "retention":
       return "Client retention";
+    case "initial":
+      return "First release";
+    case "completion":
+      return "Final release";
     default:
-      return "Milestone";
+      return sharePercent !== undefined && Number.isFinite(sharePercent)
+        ? `${sharePercent}% release`
+        : "Milestone";
   }
 }
 
@@ -225,6 +245,10 @@ export function milestoneProofSource(code: string): string {
       return "Rider uploads the proof at delivery";
     case "retention":
       return "Covered by the delivered proof";
+    case "initial":
+      return "Supplier uploads the proof";
+    case "completion":
+      return "Released once the work is delivered";
     default:
       return "Proof required";
   }
@@ -239,9 +263,10 @@ export function presentMilestoneStatus(
     case "pof_attached":
       return { label: "Proof attached", tone: "info", icon: "circle-check" };
     case "pending_pof":
+    case "pending":
       return { label: "Proof needed", tone: "warning", icon: "clock" };
     default:
-      return { label: "Milestone", tone: "neutral", icon: "clock" };
+      return { label: "Not released yet", tone: "neutral", icon: "clock" };
   }
 }
 
