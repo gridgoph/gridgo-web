@@ -69,7 +69,20 @@ Ported from `gridgo-client/constants/theme.ts` and `global.css`.
   order — leaving `sm`/`2xl` at their defaults while redefining `md`/`lg`/`xl` puts the
   `sm` block last, and `sm:` then silently beats `lg:` and `xl:` at every width above
   640px. That flattens every responsive step on any element that uses both.
-- Face: **Satoshi** (`--font-sans` / `--font-bold` / …). Never reintroduce Geist or the shadcn default stack.
+- Face: **Instrument Sans** (`--font-sans` / `--font-bold` / …). Never reintroduce Geist,
+  Satoshi, or the shadcn default stack.
+  Self-hosted from **one variable file** (`wght` 400–700) in `public/fonts`, in two
+  subsets. **Both are required**: the peso sign (₱ U+20B1) is latin-ext, and this portal
+  is mostly money — ship only the latin file and every price silently falls back to
+  system-ui mid-sentence.
+  The four family tokens are **pinned-weight aliases** over that one file
+  (`InstrumentSans-Regular` 400 / `-Medium` 500 / `-Bold` 700 / `-Black` 700). They exist
+  because a CSS custom property carries only the family, not the weight, and ~65 call
+  sites select their weight by family name. A single-value `font-weight` descriptor pins
+  the variable axis for that face, so a call site never names a weight. Add a role by
+  adding an alias, not by changing call sites.
+  Instrument Sans stops at **700**, so `--font-black` and `--font-brand` are no longer a
+  distinct step from `--font-bold` — the former Satoshi Black (900) has no equivalent.
 
 Binding UX copy/interaction rules: `/home/kali/firstmate/data/gridgo-design-addendum.md` and the design requirements document under `gridgo-tinker`.
 
@@ -136,7 +149,7 @@ Rules:
 
 - Palette / hex values (edit tokens in `globals.css` only)
 - Focus treatment: global 2px `outline` on `--foreground` — do not reintroduce `ring-3` as the only focus signal
-- Font stack (Satoshi)
+- Font stack (Instrument Sans, via the `--font-*` aliases)
 - Touch target floor (min 44×44)
 - Status meaning (always `StatusChip` with icon + label + tone)
 
@@ -187,7 +200,7 @@ Only add a registry primitive when a real screen uses it in the same change.
 | Added    | `alert-dialog` | Destructive or irreversible confirmations in role changes, verification/suspension, claims and payout release, supplier withdrawal, and job decline. Keep `Dialog` for input tasks such as create/edit forms.                            |
 | Added    | `sidebar`      | `AppShell` desktop rail and mobile Sheet; it still renders only `navGroupsForRole(role)`.                                                                                                                                                |
 | Added    | `progress`     | Supplier capacity shows committed units against declared daily capacity.                                                                                                                                                                 |
-| Added    | `chart`        | Admin Finance splits each order's client total into supplier earnings, commission and delivery — the reconciliation only Operations and Super Admin may see. (Its original call site, a payment-method mix, died with cash on delivery.) |
+| Added    | `chart`        | Admin Finance splits each order's client total into supplier earnings, commission and delivery — the reconciliation only Operations and Super Admin may see. (Its original call site, a payment-method mix, died with cash on delivery.) Also the supplier dashboard's two single-series charts. |
 | Added    | `breadcrumb`   | AppShell identifies the parent queue on nested supplier job and Operations QA workspaces.                                                                                                                                                |
 | Added    | `toggle-group` | Day/week schedule modes and the two-option claim hold choice.                                                                                                                                                                            |
 | Retained | `collapsible`  | Available primitive with no current call site; rail groups are static `SidebarGroup` + `SidebarGroupLabel` sections. Whole-rail icon collapse (`Sidebar collapsible="icon"`) stays.                                                      |
@@ -329,7 +342,7 @@ If a screen still needs a capability the GRIDGO API does not expose, show an hon
 
 | Role        | Surface (hrefs)                                                                                                                                         |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| supplier    | `/supplier/jobs`, `catalogue`, `schedule`, `capacity`, `payouts`                                                                                        |
+| supplier    | `/supplier/dashboard`, `jobs`, `catalogue`, `schedule`, `capacity`, `payouts`                                                                          |
 | ops_admin   | `/ops/overview`, `qa`, `payments`, `matching`, `approvals`, `dispatch`, `escalations`, `schedule`, `payouts`, `claims`, `recovery`, `settings`, `audit` |
 | super_admin | `/admin/overview`, `verification`, `roles`, `catalogue`, `zones`, `credits`, `finance`, `settings`, `audit`, `planning`, `broadcast`                    |
 

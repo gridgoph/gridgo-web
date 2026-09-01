@@ -44,7 +44,7 @@ describe("Logo", () => {
     );
   });
 
-  it("shows the Satoshi wordmark beside the mark unless compact", () => {
+  it("shows the wordmark beside the mark unless compact", () => {
     const { rerender } = render(<Logo />);
     expect(screen.getByLabelText("GRIDGO")).toHaveTextContent("GRIDGO");
 

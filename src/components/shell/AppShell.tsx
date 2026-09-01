@@ -16,6 +16,7 @@ import {
   ClipboardCheck,
   ClipboardList,
   Coins,
+  Gauge,
   LayoutDashboard,
   LogOut,
   MapPinned,
@@ -96,6 +97,7 @@ import { homeForRole, roleLabel } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
 const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
+  dashboard: Gauge,
   jobs: Package,
   catalogue: BookOpen,
   schedule: CalendarDays,

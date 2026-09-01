@@ -13,6 +13,7 @@ describe("ROLE_NAV", () => {
   it("covers the full supplier surface", () => {
     const hrefs = ROLE_NAV.supplier.map((n) => n.href);
     expect(hrefs).toEqual([
+      "/supplier/dashboard",
       "/supplier/jobs",
       "/supplier/catalogue",
       "/supplier/schedule",
@@ -84,6 +85,7 @@ describe("ROLE_NAV", () => {
       "/ops/settings",
       "/supplier/capacity",
       "/supplier/catalogue",
+      "/supplier/dashboard",
       "/supplier/jobs",
       "/supplier/payouts",
       "/supplier/schedule",

@@ -23,6 +23,7 @@ export type PortalRole = Extract<Role, "supplier" | "ops_admin" | "super_admin">
  * module stays free of React for tests.
  */
 export type NavIconKey =
+  | "dashboard"
   | "jobs"
   | "catalogue"
   | "schedule"
@@ -81,6 +82,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "supplier-top",
       items: [
+        {
+          id: "supplier-dashboard",
+          href: "/supplier/dashboard",
+          label: "Dashboard",
+          title: "Shop dashboard",
+          icon: "dashboard",
+          ready: true,
+          placeholderBody: "",
+        },
         {
           id: "supplier-jobs",
           href: "/supplier/jobs",

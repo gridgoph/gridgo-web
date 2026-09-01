@@ -7,7 +7,7 @@ type Props = {
 };
 
 /**
- * Canonical GRIDGO lockup — 3×3 grid from the landing favicon, Satoshi wordmark.
+ * Canonical GRIDGO lockup — 3×3 grid from the landing favicon, Instrument Sans wordmark.
  *
  * Top-right is brand yellow (the only yellow in the mark). Center-right and
  * bottom-right are the mark gray. The other six follow the foreground so they
