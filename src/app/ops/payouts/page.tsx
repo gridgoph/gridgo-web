@@ -98,11 +98,18 @@ export default function OpsPayoutsPage() {
             claim.orderId === order.id && claimBlocksPayout(claim.status),
         ),
       }))
+      /*
+       Longest wait first.
+
+       Every stage now waits for somebody here, which means a shop can sit
+       unpaid because nobody opened this screen. Ordering by how much is
+       outstanding buries the one job that has been waiting three days under
+       four fresh ones, so the wait leads and the amount only breaks its ties.
+      */
       .sort((a, b) => {
-        const aOutstanding = outstandingCount(a.order);
-        const bOutstanding = outstandingCount(b.order);
-        if (aOutstanding !== bOutstanding) return bOutstanding - aOutstanding;
-        return (a.order.updatedAt || "").localeCompare(b.order.updatedAt || "");
+        const waited = (a.order.updatedAt || "").localeCompare(b.order.updatedAt || "");
+        if (waited !== 0) return waited;
+        return outstandingCount(b.order) - outstandingCount(a.order);
       });
   }, [data]);
 

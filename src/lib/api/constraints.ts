@@ -175,6 +175,26 @@ export function milestoneIsReleased(milestone: Pick<PayoutMilestone, "status">):
   return milestone.status === "released";
 }
 
+/*
+ The steps each stage names, mirrored from the platform's own gates.
+
+ A screen that lets Operations press a button the server will refuse teaches
+ them to distrust the screen, so the blockers are stated before the click.
+*/
+const PRINTING_STATES = new Set([
+  "production", "supplier_self_qc", "ready_for_dispatch", "rider_assigned",
+  "picked_up", "out_for_delivery", "awaiting_collection", "delivered",
+  "issue_window_open", "completed", "payout_released",
+]);
+const PACKING_STATES = new Set([
+  "supplier_self_qc", "ready_for_dispatch", "rider_assigned", "picked_up",
+  "out_for_delivery", "awaiting_collection", "delivered", "issue_window_open",
+  "completed", "payout_released",
+]);
+const DELIVERED_STATES = new Set([
+  "delivered", "issue_window_open", "completed", "payout_released",
+]);
+
 /**
  * Why this milestone cannot be released right now, in plain language, or null
  * when Operations can go ahead. Mirrors the server's 409 codes so the screen
@@ -191,7 +211,18 @@ export function milestoneReleaseBlocker(
   if (!milestoneHasProof(milestone)) {
     return PLATFORM_CONSTRAINT_COPY.pof_required.guidance;
   }
+  // The two the shop itself has to reach. The server refuses either on the
+  // step rather than on the proof, so the screen has to say which.
+  if (milestone.code === "printing" && !PRINTING_STATES.has(order.state)) {
+    return "Printing releases once the shop has started this job.";
+  }
+  if (milestone.code === "packaging_qc" && !PACKING_STATES.has(order.state)) {
+    return "Packing releases once the shop has finished its own quality check.";
+  }
   if (milestone.code === "delivered") {
+    if (!DELIVERED_STATES.has(order.state)) {
+      return "The delivered share releases once the client has the job, at their door or off the counter.";
+    }
     if (!order.deliveryEvidence) {
       return "The delivered share releases once the rider has filed delivery evidence.";
     }
