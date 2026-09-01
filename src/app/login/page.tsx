@@ -15,19 +15,17 @@ export default function LoginPage() {
           <Logo />
           <div className="flex min-h-0 flex-1 items-center justify-center py-6">
             <Image
-              src="/illustrations/gridgo-portal-workers.svg"
-              width={816}
-              height={766}
+              src="/illustrations/gridgo-portal-dashboard.png"
+              width={1200}
+              height={1200}
               priority
-              alt="GRIDGO operations team coordinating work"
+              alt="A partner working at a laptop beside their GRIDGO dashboard"
               className="h-auto max-h-[15rem] w-full max-w-[34rem] object-contain md:max-h-[22rem] lg:max-h-[26rem]"
             />
           </div>
           <div className="max-w-xl">
-            <p className="text-overline m-0 uppercase text-text-muted">GRIDGO portal</p>
-            <h1 className="text-h2 m-0 mt-2 text-text-primary">
-              Partner and operations portal
-            </h1>
+            <p className="text-overline m-0 uppercase text-text-muted">GRIDGO</p>
+            <h1 className="text-h2 m-0 mt-2 text-text-primary">Partner portal</h1>
             <p className="text-body-lg m-0 mt-3 text-text-secondary">
               Sign in with the Google account or email and password already connected to
               your GRIDGO access.

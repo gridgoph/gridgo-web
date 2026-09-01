@@ -48,12 +48,12 @@ describe("LoginPage", () => {
     render(<LoginPage />);
 
     expect(
-      screen.getByRole("heading", { name: "Partner and operations portal" }),
+      screen.getByRole("heading", { name: "Partner portal" }),
     ).toBeVisible();
     expect(screen.getByRole("heading", { name: "Welcome back." })).toBeVisible();
     expect(screen.getByTestId("clerk-sign-in")).toBeVisible();
     expect(
-      screen.getByRole("img", { name: /operations team coordinating work/i }),
+      screen.getByRole("img", { name: /working at a laptop beside their GRIDGO dashboard/i }),
     ).toBeVisible();
   });
 

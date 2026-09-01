@@ -192,7 +192,7 @@ describe("SupplierJobsPage", () => {
     const { ApiError } = await vi.importActual<typeof import("@/lib/api/client")>(
       "@/lib/api/client",
     );
-    listJobsMock.mockRejectedValue(new ApiError(403, "forbidden", {}));
+    listJobsMock.mockRejectedValue(new ApiError(403, { error: "forbidden" }));
 
     render(<SupplierJobsPage />);
 
