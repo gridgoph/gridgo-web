@@ -332,6 +332,24 @@ export async function transitionOrder(
   return normalizeOrder(result.order);
 }
 
+/**
+ * Release a collected order at the GRIDGO Office counter.
+ *
+ * The second of a collected order's two endings. The rider's proof said the
+ * package reached our shelf; this says it left with the client, which is the
+ * point the balance has to be settled and the issue window starts.
+ */
+export async function recordCollection(
+  orderId: string,
+  receivedBy: string,
+): Promise<Order> {
+  const result = await request<{ order: Order }>(`/orders/${orderId}/collection`, {
+    method: "POST",
+    body: JSON.stringify({ receivedBy }),
+  });
+  return normalizeOrder(result.order);
+}
+
 // ---------------------------------------------------------------------------
 // Split digital payment — 75% downpayment, then the 25% balance
 // ---------------------------------------------------------------------------

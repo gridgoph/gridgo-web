@@ -61,6 +61,9 @@ const STAGE_BY_STATE: Record<string, Stage> = {
   rider_assigned: "delivery",
   picked_up: "delivery",
   out_for_delivery: "delivery",
+  // On our own counter, still travelling as far as the pipeline is concerned:
+  // it is not done until the client has it.
+  awaiting_collection: "delivery",
   delivered: "delivery",
   issue_window_open: "delivery",
 

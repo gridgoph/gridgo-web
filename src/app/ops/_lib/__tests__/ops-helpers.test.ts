@@ -222,6 +222,19 @@ describe("dispatch location freshness", () => {
     ]);
     expect(list.map((o) => o.id)).toEqual(["b", "a"]);
   });
+
+  it("keeps a collected order on the board until the counter releases it", () => {
+    // A rider walking away from the office is not the end of a collected job.
+    // Off this board it would be nobody's, sitting on our own shelf with no
+    // screen anywhere that says so.
+    const list = filterDispatchOrders([
+      order({ id: "a", state: "out_for_delivery" }),
+      order({ id: "b", state: "ready_for_dispatch" }),
+      order({ id: "c", state: "awaiting_collection" }),
+    ]);
+    // Waiting on Operations comes first: nothing moves it but somebody here.
+    expect(list.map((o) => o.id)).toEqual(["c", "b", "a"]);
+  });
 });
 
 

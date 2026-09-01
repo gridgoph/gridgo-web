@@ -18,6 +18,7 @@ export const PAYOUT_RELEVANT_STATES = [
   "rider_assigned",
   "picked_up",
   "out_for_delivery",
+  "awaiting_collection",
   "delivered",
   "issue_window_open",
   "completed",

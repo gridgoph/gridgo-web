@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Bike, Eye, MapPin, RefreshCw } from "lucide-react";
+import { Bike, Eye, MapPin, PackageCheck, RefreshCw } from "lucide-react";
 
 import {
   filterDispatchOrders,
@@ -13,6 +13,16 @@ import {
 } from "@/app/ops/_lib/dispatch";
 import { presentZone } from "@/app/ops/_lib/present";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import {
   DataTable,
   DataTableRowAction,
@@ -26,6 +36,7 @@ import {
   getDispatchLocation,
   listDispatchOffers,
   listOrders,
+  recordCollection,
   transitionOrder,
 } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
@@ -48,6 +59,8 @@ export default function OpsDispatchPage() {
   const [loading, setLoading] = useState(true);
   const [locLoading, setLocLoading] = useState(false);
   const [acting, setActing] = useState<string | null>(null);
+  const [releasing, setReleasing] = useState<Order | null>(null);
+  const [collector, setCollector] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -115,6 +128,39 @@ export default function OpsDispatchPage() {
   useEffect(() => {
     if (board.length) void refreshLocations(board);
   }, [board, refreshLocations]);
+
+  /*
+    Releasing a collected order at the counter.
+
+    It asks for a name rather than being a bare confirm, because that name is
+    the only record of who walked away with somebody else's paid print job. The
+    balance is checked by the platform, not here — if it is not settled the
+    release is refused and says so.
+  */
+  async function releaseAtCounter() {
+    const order = releasing;
+    if (!order || !collector.trim()) return;
+    setActing(order.id);
+    setActionError(null);
+    try {
+      await recordCollection(order.id, collector.trim());
+      setReleasing(null);
+      setCollector("");
+      await load();
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setActionError(
+          err.code === "final_payment_not_confirmed"
+            ? "This order still owes its remaining balance. Confirm the client's payment before releasing it."
+            : `Could not release this order (${err.code}).`,
+        );
+      } else {
+        setActionError("Network error while releasing the order.");
+      }
+    } finally {
+      setActing(null);
+    }
+  }
 
   async function assignRider(order: Order) {
     setActing(order.id);
@@ -336,6 +382,18 @@ export default function OpsDispatchPage() {
                   onClick={() => void assignRider(o)}
                 />
               ) : null}
+              {o.state === "awaiting_collection" ? (
+                <DataTableRowAction
+                  label="Release at counter"
+                  icon={PackageCheck}
+                  disabled={acting !== null}
+                  onClick={() => {
+                    setCollector("");
+                    setActionError(null);
+                    setReleasing(o);
+                  }}
+                />
+              ) : null}
               <DataTableRowAction
                 label="Open"
                 icon={Eye}
@@ -345,6 +403,49 @@ export default function OpsDispatchPage() {
           )}
         />
       )}
+
+      <Dialog
+        open={releasing !== null}
+        onOpenChange={(open) => {
+          if (!open) setReleasing(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Release at the counter</DialogTitle>
+            <DialogDescription>
+              {releasing?.title} is on the GRIDGO Office counter. Recording this
+              hands it to the client, releases the shop&apos;s final payout and
+              starts the issue window.
+            </DialogDescription>
+          </DialogHeader>
+          <Field>
+            <FieldLabel htmlFor="collector">Collected by</FieldLabel>
+            <Input
+              id="collector"
+              value={collector}
+              autoComplete="off"
+              onChange={(event) => setCollector(event.target.value)}
+              placeholder="Name of the person at the counter"
+            />
+            <FieldDescription>
+              Written into the order&apos;s record. It is the only proof of who
+              took this package.
+            </FieldDescription>
+          </Field>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setReleasing(null)}>
+              Cancel
+            </Button>
+            <Button
+              disabled={!collector.trim() || acting !== null}
+              onClick={() => void releaseAtCounter()}
+            >
+              Release order
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <p className="text-caption text-text-muted m-0 flex items-start gap-2">
         <MapPin size={14} className="mt-0.5 shrink-0" aria-hidden />

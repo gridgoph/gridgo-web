@@ -65,6 +65,10 @@ export function presentOrderState(state: string): StatePresentation {
       return { label: "Picked up", tone: "info", icon: "circle-check" };
     case "out_for_delivery":
       return { label: "Out for delivery", tone: "info", icon: "clock" };
+    // Waiting on the counter, and on Operations to release it. It is a job that
+    // needs somebody here, so it reads as one rather than as finished.
+    case "awaiting_collection":
+      return { label: "Waiting at the counter", tone: "warning", icon: "clock" };
     case "delivered":
       return { label: "Delivered", tone: "success", icon: "circle-check" };
     case "issue_window_open":

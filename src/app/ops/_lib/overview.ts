@@ -55,6 +55,9 @@ const DELIVERY_STATES = new Set([
   "rider_assigned",
   "picked_up",
   "out_for_delivery",
+  // A collected job on the office counter is still Operations' to move: it
+  // waits there until somebody releases it to the client.
+  "awaiting_collection",
 ]);
 const BLOCKED_STATES = new Set(["client_correction"]);
 const TERMINAL_STATES = new Set(["payout_released", "draft"]);
@@ -193,10 +196,12 @@ export function buildOverviewBuckets(
     {
       id: "out_for_delivery",
       label: "Out for delivery",
-      description: "Dispatch and rider states through delivery.",
+      description: "Dispatch and rider states through delivery and collection.",
       count: delivery.length,
       href: "/ops/dispatch",
-      urgent: delivery.some((o) => o.state === "ready_for_dispatch"),
+      urgent: delivery.some(
+        (o) => o.state === "ready_for_dispatch" || o.state === "awaiting_collection",
+      ),
     },
     {
       id: "blocked",
