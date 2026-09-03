@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import {
   Popover,
   PopoverContent,
+  PopoverDescription,
   PopoverHeader,
   PopoverTitle,
   PopoverTrigger,
@@ -16,13 +17,14 @@ import {
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { Notification, Role } from "@/lib/api/types";
-import { formatDateTime } from "@/lib/format";
+import { formatDateTime, formatRelativeTime } from "@/lib/format";
 import { useLive } from "@/lib/live/LiveProvider";
 import { notificationHref } from "@/lib/live/notificationHref";
 import { cn } from "@/lib/utils";
@@ -31,6 +33,13 @@ function unreadLabel(count: number): string {
   if (count <= 0) return "Notifications";
   if (count > 99) return "Notifications, 99+ unread";
   return `Notifications, ${count} unread`;
+}
+
+function waitingCopy(count: number): string {
+  if (count <= 0) return "You're caught up";
+  if (count === 1) return "1 waiting";
+  if (count > 99) return "99+ waiting";
+  return `${count} waiting`;
 }
 
 function InboxList({
@@ -42,62 +51,118 @@ function InboxList({
 }) {
   if (notifications.length === 0) {
     return (
-      <p className="text-muted-foreground m-0 px-1 py-6 text-center text-sm">
-        You&apos;re all caught up
-      </p>
+      <div
+        data-slot="inbox-empty"
+        className="border-outline mx-3 mb-3 flex flex-col gap-1 rounded-[var(--radius-field)] border border-dashed px-3 py-6"
+      >
+        <p
+          className="text-body text-text-primary m-0"
+          style={{ fontFamily: "var(--font-medium)" }}
+        >
+          You&apos;re all caught up
+        </p>
+        <p className="text-caption text-text-muted m-0">
+          New jobs and payments will land here
+        </p>
+      </div>
     );
   }
 
   return (
-    <ul className="m-0 flex max-h-80 list-none flex-col gap-0.5 overflow-y-auto p-0">
-      {notifications.map((notification) => (
-        <li key={notification.id}>
-          <button
-            type="button"
-            className={cn(
-              "hover:bg-muted flex w-full flex-col items-start gap-0.5 rounded-[var(--radius-field)] px-2 py-2 text-left",
-              !notification.read && "bg-muted/60",
-            )}
-            onClick={() => onOpen(notification)}
-          >
-            <span
-              className="text-sm text-foreground"
-              style={{ fontFamily: "var(--font-medium)" }}
+    <ul className="m-0 flex max-h-80 list-none flex-col gap-2 overflow-y-auto px-3 pb-3">
+      {notifications.map((notification) => {
+        const unread = !notification.read;
+        return (
+          <li key={notification.id}>
+            <button
+              type="button"
+              className={cn(
+                "flex min-h-11 w-full flex-col items-stretch gap-1 rounded-[var(--radius-field)] border px-3 py-2.5 text-left",
+                unread
+                  ? "border-outline bg-surface-variant"
+                  : "border-outline-subtle bg-surface",
+                "hover:bg-overlay-hover",
+              )}
+              onClick={() => onOpen(notification)}
             >
-              {notification.title}
-            </span>
-            <span className="text-muted-foreground line-clamp-2 text-xs">
-              {notification.body}
-            </span>
-            <span className="text-muted-foreground text-xs tabular-nums">
-              {formatDateTime(notification.at)}
-            </span>
-          </button>
-        </li>
-      ))}
+              <span className="flex items-center justify-between gap-2">
+                <span
+                  className="text-body text-text-primary min-w-0 truncate"
+                  style={{ fontFamily: "var(--font-medium)" }}
+                >
+                  {notification.title}
+                </span>
+                {unread ? (
+                  <span className="text-overline text-text-primary border-outline shrink-0 border px-1.5 py-0.5">
+                    New
+                  </span>
+                ) : null}
+              </span>
+              <span className="text-caption text-text-secondary line-clamp-2">
+                {notification.body}
+              </span>
+              <time
+                className="text-caption text-text-muted tabular-nums"
+                dateTime={notification.at}
+                title={formatDateTime(notification.at)}
+              >
+                {formatRelativeTime(notification.at)}
+              </time>
+            </button>
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
-function BellButton({
+function InboxPanel({
+  notifications,
   unreadCount,
-  className,
+  markError,
+  onMarkAllRead,
+  onOpen,
 }: {
+  notifications: Notification[];
   unreadCount: number;
-  className?: string;
+  markError: string | null;
+  onMarkAllRead: () => void;
+  onOpen: (notification: Notification) => void;
 }) {
+  return (
+    <div data-slot="inbox-docket" className="flex flex-col gap-0">
+      <div className="flex items-center justify-between gap-2 px-3 pb-2">
+        <p className="text-caption text-text-muted m-0">{waitingCopy(unreadCount)}</p>
+        {unreadCount > 0 ? (
+          <Button variant="outline" size="sm" onClick={onMarkAllRead}>
+            Mark all read
+          </Button>
+        ) : null}
+      </div>
+      {markError ? (
+        <p className="text-caption text-error m-0 px-3 pb-2">{markError}</p>
+      ) : null}
+      <div className="border-outline mx-3 mb-3 border-t border-dashed" aria-hidden />
+      <InboxList notifications={notifications} onOpen={onOpen} />
+    </div>
+  );
+}
+
+/** Must be a Button element — a wrapper component drops the trigger's click. */
+function bellTrigger(unreadCount: number) {
   return (
     <Button
       variant="ghost"
       size="icon"
-      className={cn("relative", className)}
+      className="relative self-center data-open:bg-muted"
       aria-label={unreadLabel(unreadCount)}
+      data-slot="inbox-bell"
     >
       <Bell aria-hidden />
       {unreadCount > 0 ? (
         <Badge
-          className="absolute top-1 right-1 min-w-4 px-1 py-0 text-[10px] leading-4"
-          variant="destructive"
+          variant="default"
+          className="absolute top-1 right-1 min-w-4 px-1 py-0 text-nav leading-4"
         >
           {unreadCount > 99 ? "99+" : unreadCount}
         </Badge>
@@ -111,9 +176,11 @@ export function InboxBell({ role }: { role: Role }) {
   const isMobile = useIsMobile();
   const { notifications, unreadCount, markRead, markAllRead } = useLive();
   const [open, setOpen] = useState(false);
+  const [markError, setMarkError] = useState<string | null>(null);
 
   async function openNotification(notification: Notification) {
     setOpen(false);
+    setMarkError(null);
     if (!notification.read) {
       try {
         await markRead(notification.id);
@@ -125,36 +192,43 @@ export function InboxBell({ role }: { role: Role }) {
     if (href) router.push(href);
   }
 
+  async function handleMarkAllRead() {
+    setMarkError(null);
+    try {
+      await markAllRead();
+    } catch {
+      setMarkError("Couldn't mark them read. Try again.");
+    }
+  }
+
   const panel = (
-    <>
-      <div className="flex items-center justify-between gap-2">
-        {unreadCount > 0 ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-caption h-8 min-h-8 px-2"
-            onClick={() => void markAllRead()}
-          >
-            Mark all read
-          </Button>
-        ) : (
-          <span />
-        )}
-      </div>
-      <InboxList
-        notifications={notifications}
-        onOpen={(notification) => void openNotification(notification)}
-      />
-    </>
+    <InboxPanel
+      notifications={notifications}
+      unreadCount={unreadCount}
+      markError={markError}
+      onMarkAllRead={() => void handleMarkAllRead()}
+      onOpen={(notification) => void openNotification(notification)}
+    />
   );
+
+  const trigger = bellTrigger(unreadCount);
 
   if (isMobile) {
     return (
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetTrigger render={<BellButton unreadCount={unreadCount} />} />
-        <SheetContent side="right" className="w-full gap-2 p-4 sm:max-w-sm">
-          <SheetHeader className="p-0">
-            <SheetTitle>Notifications</SheetTitle>
+      <Sheet
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) setMarkError(null);
+        }}
+      >
+        <SheetTrigger render={trigger} />
+        <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-sm">
+          <SheetHeader className="border-outline gap-1 border-b border-dashed px-3 py-3">
+            <SheetTitle className="text-h3 m-0">Notifications</SheetTitle>
+            <SheetDescription className="sr-only">
+              Job slips and payment notices for this shop
+            </SheetDescription>
           </SheetHeader>
           {panel}
         </SheetContent>
@@ -163,11 +237,24 @@ export function InboxBell({ role }: { role: Role }) {
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger render={<BellButton unreadCount={unreadCount} />} />
-      <PopoverContent align="end" className="w-96 gap-2 p-3">
-        <PopoverHeader>
-          <PopoverTitle>Notifications</PopoverTitle>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setMarkError(null);
+      }}
+    >
+      <PopoverTrigger render={trigger} />
+      <PopoverContent
+        align="end"
+        sideOffset={8}
+        className="w-96 gap-0 rounded-[var(--radius-card)] p-0"
+      >
+        <PopoverHeader className="border-outline gap-1 border-b border-dashed px-3 py-3">
+          <PopoverTitle className="text-h3 m-0">Notifications</PopoverTitle>
+          <PopoverDescription className="sr-only">
+            Job slips and payment notices for this shop
+          </PopoverDescription>
         </PopoverHeader>
         {panel}
       </PopoverContent>
