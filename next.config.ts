@@ -10,6 +10,25 @@ const nextConfig: NextConfig = {
    * Docker deployment: see `docs/DEPLOYMENT.md`.
    */
   output: "standalone",
+  /**
+   * This machine's native file-watch cap is already full. Turbopack then fails
+   * `raw_read_dir` on an installed package (e.g. `@base-ui/react/alert-dialog`)
+   * and reports it as missing. Poll so resolve does not need another watch.
+   */
+  watchOptions: {
+    pollIntervalMs: 1000,
+  },
+  webpack: (config, { dev }) => {
+    if (dev) {
+      config.watchOptions = {
+        ...config.watchOptions,
+        poll: 1000,
+        aggregateTimeout: 300,
+        ignored: ["**/.git/**", "**/node_modules/**"],
+      };
+    }
+    return config;
+  },
 };
 
 export default nextConfig;
