@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { artworkEvidence, paymentProofEvidence } from "@/lib/evidence";
 import { confirmPayment, getOrder, rejectPayment, transitionOrder } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
+import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
 import { paymentOf } from "@/lib/payments";
@@ -54,6 +55,8 @@ export default function OpsOrderWorkspacePage() {
       setLoading(false);
     }
   }, [orderId]);
+
+  useLiveReload(["orders", "jobs"], load, { matchId: orderId });
 
   useEffect(() => {
     void load();

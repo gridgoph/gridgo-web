@@ -34,6 +34,7 @@ import { SkeletonDetail } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, getOrder, transitionOrder } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
+import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
 import {
@@ -99,6 +100,8 @@ export default function SupplierJobDetailPage() {
       setLoading(false);
     }
   }, [orderId]);
+
+  useLiveReload("jobs", load, { matchId: orderId });
 
   useEffect(() => {
     void load();

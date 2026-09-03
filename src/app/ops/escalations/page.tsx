@@ -28,6 +28,7 @@ import {
   resolveEscalation,
 } from "@/lib/api/client";
 import type { Escalation, Order, StoredFile } from "@/lib/api/types";
+import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime } from "@/lib/format";
 import {
   presentEscalationStatus,
@@ -82,6 +83,8 @@ export default function OpsEscalationsPage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload(["escalations", "orders"], load);
 
   useEffect(() => {
     void load();

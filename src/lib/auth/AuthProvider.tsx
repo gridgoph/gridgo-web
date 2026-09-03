@@ -36,7 +36,7 @@ export type ClerkSignOutOptions = {
 };
 
 export type ClerkSessionAdapter = {
-  getToken: () => Promise<string | null>;
+  getToken: (options?: { skipCache?: boolean }) => Promise<string | null>;
   isLoaded: boolean;
   isSignedIn: boolean;
   sessionId: string | null;

@@ -24,6 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { listClaims, listOrders, releaseMilestone } from "@/lib/api/client";
 import { claimBlocksPayout } from "@/lib/api/constraints";
 import type { Claim, Order, PayoutMilestone } from "@/lib/api/types";
+import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatPhp } from "@/lib/format";
 import { presentMilestone, presentOrderState } from "@/lib/order-state";
 
@@ -79,6 +80,8 @@ export default function OpsPayoutsPage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload(["payouts", "orders"], load);
 
   useEffect(() => {
     void load();

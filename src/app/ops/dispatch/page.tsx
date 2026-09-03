@@ -40,6 +40,7 @@ import {
   transitionOrder,
 } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
+import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime } from "@/lib/format";
 import { presentOrderState, presentTimelineActor } from "@/lib/order-state";
 
@@ -86,6 +87,8 @@ export default function OpsDispatchPage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload(["dispatch", "orders"], load);
 
   useEffect(() => {
     void load();
