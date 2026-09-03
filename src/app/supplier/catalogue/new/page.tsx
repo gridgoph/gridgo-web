@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { PrinterMaxWidthField } from "@/app/supplier/_components/PrinterMaxWidthField";
 import { listingErrorMessage } from "@/app/supplier/_lib/listings-api";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -25,7 +26,17 @@ import {
   listListingStarters,
 } from "@/lib/api/client";
 import type { Taxonomy } from "@/lib/api/types";
-import { LISTING_CAPS, boardTargets, normalizeServiceLines, normalizeStarters, type ListingStarter, type ServiceLine } from "@/lib/listings";
+import {
+  LISTING_CAPS,
+  boardTargets,
+  needsPrinterMaxWidth,
+  normalizeServiceLines,
+  normalizeStarters,
+  parsePrinterMaxWidthFeet,
+  printerMaxWidthFeetWrite,
+  type ListingStarter,
+  type ServiceLine,
+} from "@/lib/listings";
 
 const BLANK = "__blank__";
 
@@ -41,6 +52,7 @@ export default function NewListingPage() {
   const [starters, setStarters] = useState<ListingStarter[]>([]);
   const [startersLoading, setStartersLoading] = useState(false);
   const [name, setName] = useState("");
+  const [printerMaxWidthFeet, setPrinterMaxWidthFeet] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -104,6 +116,12 @@ export default function NewListingPage() {
 
   async function create() {
     if (!target || !subcategoryCode || !name.trim()) return;
+    if (
+      needsPrinterMaxWidth(subcategoryCode) &&
+      parsePrinterMaxWidthFeet(printerMaxWidthFeet) == null
+    ) {
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     try {
@@ -112,6 +130,7 @@ export default function NewListingPage() {
         subcategoryCode,
         name: name.trim(),
         active: false,
+        ...printerMaxWidthFeetWrite(subcategoryCode, printerMaxWidthFeet, "create"),
       };
       if (starterId !== BLANK) body.starterId = starterId;
       const created = await createCatalogItem(body);
@@ -223,6 +242,13 @@ export default function NewListingPage() {
             </FieldDescription>
           </Field>
 
+          {needsPrinterMaxWidth(subcategoryCode ?? "") ? (
+            <PrinterMaxWidthField
+              value={printerMaxWidthFeet}
+              onChange={setPrinterMaxWidthFeet}
+            />
+          ) : null}
+
           <Field>
             <FieldLabel htmlFor="listing-name">What clients will call it</FieldLabel>
             <Input
@@ -295,7 +321,13 @@ export default function NewListingPage() {
 
         <Button
           variant="primary"
-          disabled={!subcategoryCode || !name.trim() || saving}
+          disabled={
+            !subcategoryCode ||
+            !name.trim() ||
+            saving ||
+            (needsPrinterMaxWidth(subcategoryCode) &&
+              parsePrinterMaxWidthFeet(printerMaxWidthFeet) == null)
+          }
           onClick={() => void create()}
         >
           {saving ? "Opening…" : "Open this listing"}

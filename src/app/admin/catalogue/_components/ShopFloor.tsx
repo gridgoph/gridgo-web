@@ -7,6 +7,7 @@ import { floorHeadline, type FloorShop } from "@/app/admin/_lib/shop-floor";
 import { SamplePhoto } from "@/app/supplier/_components/SamplePhoto";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { formatPhp } from "@/lib/format";
+import { printerCapLine } from "@/lib/listings";
 
 type Props = {
   shops: FloorShop[];
@@ -87,7 +88,9 @@ function ShopTicket({
       </header>
       {shop.listings.length ? (
         <ul className="m-0 flex flex-col p-0">
-          {shop.listings.map((listing) => (
+          {shop.listings.map((listing) => {
+            const cap = printerCapLine(listing.printerMaxWidthFeet);
+            return (
             <li
               key={listing.id}
               className="border-b border-outline-subtle last:border-b-0"
@@ -107,6 +110,9 @@ function ShopTicket({
                         listing.subcategoryCode.replace(/_/g, " ")}
                     </p>
                   )}
+                  {cap ? (
+                    <p className="text-caption text-text-secondary m-0 truncate">{cap}</p>
+                  ) : null}
                 </div>
                 <p className="text-body text-text-primary m-0 pr-1">
                   {listing.fromPriceMinor != null
@@ -115,7 +121,8 @@ function ShopTicket({
                 </p>
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
       ) : (
         <p className="text-caption text-text-secondary m-0 px-4 py-3">

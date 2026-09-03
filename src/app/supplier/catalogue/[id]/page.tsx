@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 
+import { PrinterMaxWidthField } from "@/app/supplier/_components/PrinterMaxWidthField";
 import { SamplePhoto } from "@/app/supplier/_components/SamplePhoto";
 import {
   ARCHIVED_SENTENCE,
@@ -59,11 +60,14 @@ import {
   boardContextFor,
   boardStanding,
   coversFor,
+  needsPrinterMaxWidth,
   nextFreeSlot,
   normalizeListing,
   normalizePrepSteps,
   normalizeServiceLines,
+  parsePrinterMaxWidthFeet,
   pickLine,
+  printerMaxWidthFeetWrite,
   specs,
   subcategoryName,
   unitChoiceLabel,
@@ -84,6 +88,7 @@ type Draft = {
   turnaroundMode: "inherit" | "override";
   turnaroundHours: number;
   subcategoryCode: string;
+  printerMaxWidthFeet: number | null;
 };
 
 function draftFrom(listing: Listing): Draft {
@@ -97,6 +102,7 @@ function draftFrom(listing: Listing): Draft {
     turnaroundMode: listing.turnaroundMode,
     turnaroundHours: listing.turnaroundHours ?? 48,
     subcategoryCode: listing.subcategoryCode,
+    printerMaxWidthFeet: listing.printerMaxWidthFeet,
   };
 }
 
@@ -165,6 +171,9 @@ export default function ListingEditorPage() {
         turnaroundMode: working.turnaroundMode,
         turnaroundHours: working.turnaroundHours,
         subcategoryCode: working.subcategoryCode,
+        printerMaxWidthFeet: needsPrinterMaxWidth(working.subcategoryCode)
+          ? working.printerMaxWidthFeet
+          : null,
       }
     : listing;
   const blockers = merged && context ? boardBlockers(merged, context) : [];
@@ -179,6 +188,14 @@ export default function ListingEditorPage() {
     const money = pesosToMinor(working.price);
     if (money == null) {
       setActionError("Enter a price in pesos, like 400.00.");
+      return false;
+    }
+    if (
+      needsPrinterMaxWidth(working.subcategoryCode) &&
+      working.printerMaxWidthFeet != null &&
+      parsePrinterMaxWidthFeet(working.printerMaxWidthFeet) == null
+    ) {
+      setActionError("Max printer width must be a whole number of feet from 1 to 20.");
       return false;
     }
     setBusy(true);
@@ -198,6 +215,11 @@ export default function ListingEditorPage() {
           turnaroundHours:
             working.turnaroundMode === "override" ? working.turnaroundHours : null,
           subcategoryCode: working.subcategoryCode,
+          ...printerMaxWidthFeetWrite(
+            working.subcategoryCode,
+            working.printerMaxWidthFeet,
+            "update",
+          ),
           ...(onTheBoard != null ? { active: onTheBoard } : {}),
         }),
       );
@@ -525,6 +547,14 @@ export default function ListingEditorPage() {
                       ))}
                     </div>
                   </Field>
+                ) : null}
+                {needsPrinterMaxWidth(working.subcategoryCode) ? (
+                  <PrinterMaxWidthField
+                    value={working.printerMaxWidthFeet}
+                    onChange={(printerMaxWidthFeet) =>
+                      setDraft({ ...working, printerMaxWidthFeet })
+                    }
+                  />
                 ) : null}
               </FieldGroup>
             </div>

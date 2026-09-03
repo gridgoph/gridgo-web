@@ -8,6 +8,7 @@ import {
   boardContextFor,
   boardStanding,
   priceLine,
+  printerCapLine,
   readyInLine,
   subcategoryName,
   type Listing,
@@ -37,6 +38,7 @@ export function ListingCard({
     listing.turnaroundMode === "override"
       ? listing.turnaroundHours
       : context.inheritedTurnaroundHours;
+  const cap = printerCapLine(listing.printerMaxWidthFeet);
   const showChip = standing.label !== "On the board" || standing.note;
 
   if (layout === "row") {
@@ -64,6 +66,7 @@ export function ListingCard({
         </div>
         <div className="hidden min-w-0 md:block">
           <p className="text-body text-text-primary m-0">{priceLine(listing)}</p>
+          {cap ? <p className="text-caption text-text-secondary m-0">{cap}</p> : null}
           <p className="text-caption text-text-secondary m-0">{readyInLine(hours)}</p>
         </div>
         <div className="flex flex-col items-end gap-1 pr-2">
@@ -99,6 +102,7 @@ export function ListingCard({
           {subcategoryName(taxonomy, listing.subcategoryCode)}
         </p>
         <p className="text-body text-text-primary m-0">{priceLine(listing)}</p>
+        {cap ? <p className="text-caption text-text-secondary m-0">{cap}</p> : null}
         <p className="text-caption text-text-secondary m-0">{readyInLine(hours)}</p>
         {showChip ? (
           <StatusChip tone={standing.tone} label={standing.label} icon={standing.icon} />

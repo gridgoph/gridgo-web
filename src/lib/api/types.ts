@@ -570,6 +570,8 @@ export type PublicCatalogListing = {
   name: string;
   fromPriceMinor?: number;
   basePriceMinor?: number;
+  /** Printing-machine cap in whole feet. Present on tarpaulin listings. */
+  printerMaxWidthFeet?: number | null;
   turnaroundHours?: number | null;
   photos?: Array<{
     fileId: string;

@@ -3,6 +3,11 @@
  *
  * Vocabulary matches the supplier app: listings on a board, not catalog items.
  * Caps and field names follow gridgo-api docs/SUPPLIER_CATALOG_API.md.
+ *
+ * Tarpaulin & Outdoor Banners (`tarpaulins_outdoor_banners`) must set
+ * `printerMaxWidthFeet` (integer feet, 1–20). Other families omit or null it.
+ * That cap is the printing-machine width, not `minimumWidthMilli` (smallest
+ * billable size).
  */
 
 import { formatPhp } from "@/lib/format";
@@ -50,6 +55,12 @@ export const LISTING_CAPS = {
   descriptionChars: 4000,
 } as const;
 
+/** Taxonomy code that requires a printing-machine width cap. */
+export const TARPAULINS_OUTDOOR_BANNERS = "tarpaulins_outdoor_banners";
+
+/** Integer feet the API accepts for `printerMaxWidthFeet`. */
+export const PRINTER_MAX_WIDTH_FEET = { min: 1, max: 20 } as const;
+
 export type SamplePhoto = {
   fileId: string;
   sortOrder: number;
@@ -94,6 +105,8 @@ export type Listing = {
   packageQty: number | null;
   measureUnit: MeasureUnit | null;
   minimumWidthMilli: number | null;
+  /** Printing-machine cap in whole feet. Required for tarpaulin listings only. */
+  printerMaxWidthFeet: number | null;
   minimumHeightMilli: number | null;
   minimumLengthMilli: number | null;
   minimumOrderQuantity: number | null;
@@ -325,6 +338,9 @@ export function normalizeListing(body: unknown, index = 0): Listing | null {
     packageQty: num(pick(raw, "packageQty", "package_qty")),
     measureUnit,
     minimumWidthMilli: num(pick(raw, "minimumWidthMilli", "minimum_width_milli")),
+    printerMaxWidthFeet: parsePrinterMaxWidthFeet(
+      pick(raw, "printerMaxWidthFeet", "printer_max_width_feet"),
+    ),
     minimumHeightMilli: num(pick(raw, "minimumHeightMilli", "minimum_height_milli")),
     minimumLengthMilli: num(pick(raw, "minimumLengthMilli", "minimum_length_milli")),
     minimumOrderQuantity: num(pick(raw, "minimumOrderQuantity", "minimum_order_quantity")),
@@ -440,6 +456,48 @@ export function measurementKind(unit: PricingUnit): "none" | "area" | "length" |
   if (unit === "per_length") return "length";
   if (unit === "per_page") return "pages";
   return "none";
+}
+
+export function needsPrinterMaxWidth(subcategoryCode: string): boolean {
+  return subcategoryCode === TARPAULINS_OUTDOOR_BANNERS;
+}
+
+/** Accepts the API's integer feet (1–20). Anything else is treated as unset. */
+export function parsePrinterMaxWidthFeet(value: unknown): number | null {
+  const n =
+    typeof value === "number" && Number.isFinite(value)
+      ? value
+      : typeof value === "string" && value.trim() && Number.isFinite(Number(value))
+        ? Number(value)
+        : null;
+  if (n == null || !Number.isInteger(n)) return null;
+  if (n < PRINTER_MAX_WIDTH_FEET.min || n > PRINTER_MAX_WIDTH_FEET.max) return null;
+  return n;
+}
+
+/**
+ * What create/PATCH send for the printer cap.
+ *
+ * Tarpaulin: the integer feet, or null when the shop has not set it yet.
+ * Other families: omit on create; send null on update so a leftover tarp
+ * number cannot linger after the listing is recategorised.
+ */
+export function printerMaxWidthFeetWrite(
+  subcategoryCode: string,
+  feet: unknown,
+  mode: "create" | "update" = "update",
+): { printerMaxWidthFeet: number | null } | Record<string, never> {
+  if (needsPrinterMaxWidth(subcategoryCode)) {
+    return { printerMaxWidthFeet: parsePrinterMaxWidthFeet(feet) };
+  }
+  if (mode === "create") return {};
+  return { printerMaxWidthFeet: null };
+}
+
+export function printerCapLine(feet: number | null | undefined): string | null {
+  const parsed = parsePrinterMaxWidthFeet(feet);
+  if (parsed == null) return null;
+  return `Max printer width ${parsed} feet`;
 }
 
 export function asksQuantity(unit: PricingUnit): boolean {
@@ -567,6 +625,15 @@ export function boardBlockers(listing: Listing, context: BoardContext): string[]
   }
   if ((listing.minimumWidthMilli == null) !== (listing.minimumHeightMilli == null)) {
     out.push("A smallest billable size needs both a width and a height.");
+  }
+  if (needsPrinterMaxWidth(listing.subcategoryCode)) {
+    if (parsePrinterMaxWidthFeet(listing.printerMaxWidthFeet) == null) {
+      out.push(
+        listing.printerMaxWidthFeet == null
+          ? "Set the max printer width in feet before it can go on the board."
+          : "Max printer width must be a whole number of feet from 1 to 20.",
+      );
+    }
   }
   if (
     listing.turnaroundMode === "override" &&
