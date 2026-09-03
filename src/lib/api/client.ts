@@ -185,6 +185,13 @@ export function setTokenProvider(provider: TokenProvider): void {
   tokenProvider = provider;
 }
 
+/** Fresh Clerk JWT for Authorization. Never put this on a query string. */
+export async function getAuthToken(
+  options?: TokenProviderOptions,
+): Promise<string | null> {
+  return tokenProvider(options);
+}
+
 function buildQuery(
   params: Record<string, string | number | boolean | undefined | null>,
 ): string {

@@ -76,7 +76,9 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { InboxBell } from "@/components/shell/InboxBell";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { LiveProvider } from "@/lib/live/LiveProvider";
 import {
   clerkProfileEmail,
   clerkProfileImageUrl,
@@ -421,62 +423,65 @@ export function AppShell({ role, children }: Props) {
   const isNested = Boolean(parentItem && pathname !== parentItem.href);
 
   return (
-    <SidebarProvider
-      // The rail has to clear GRIDGO's 44x44 control floor. shadcn's 3rem
-      // assumes a 32px button, which leaves the label clipped mid-word.
-      style={{ "--sidebar-width-icon": "3.75rem" } as CSSProperties}
-    >
-      <PortalSidebar role={role} />
+    <LiveProvider>
+      <SidebarProvider
+        // The rail has to clear GRIDGO's 44x44 control floor. shadcn's 3rem
+        // assumes a 32px button, which leaves the label clipped mid-word.
+        style={{ "--sidebar-width-icon": "3.75rem" } as CSSProperties}
+      >
+        <PortalSidebar role={role} />
 
-      <SidebarInset className="bg-canvas">
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-stretch gap-2 border-b border-outline bg-surface pl-1.5 pr-3">
-          {/* The only navigation toggle in the shell. Tight left padding keeps
-              it next to the rail; the header has no second account control. */}
-          <div className="flex items-center">
-            <SidebarTrigger aria-label="Toggle primary navigation" />
+        <SidebarInset className="bg-canvas">
+          <header className="sticky top-0 z-30 flex h-14 shrink-0 items-stretch gap-2 border-b border-outline bg-surface pl-1.5 pr-3">
+            {/* The only navigation toggle in the shell. Tight left padding keeps
+                it next to the rail; the header has no second account control. */}
+            <div className="flex items-center">
+              <SidebarTrigger aria-label="Toggle primary navigation" />
+            </div>
+            <Separator orientation="vertical" className="hidden sm:block" />
+
+            <div className="flex min-w-0 flex-1 items-center">
+              {isNested && parentItem ? (
+                <>
+                  <h1 className="sr-only">{title}</h1>
+                  <Breadcrumb className="min-w-0">
+                    <BreadcrumbList>
+                      <BreadcrumbItem>
+                        <Tooltip>
+                          <TooltipTrigger
+                            render={
+                              <BreadcrumbLink
+                                render={<Link href={parentItem.href} />}
+                                aria-label={`Back to ${parentItem.label}`}
+                              />
+                            }
+                          >
+                            {parentItem.label}
+                          </TooltipTrigger>
+                          <TooltipContent>{`Back to ${parentItem.label}`}</TooltipContent>
+                        </Tooltip>
+                      </BreadcrumbItem>
+                      <BreadcrumbSeparator />
+                      <BreadcrumbItem>
+                        <BreadcrumbPage className="text-h3 text-text-primary truncate">
+                          {title}
+                        </BreadcrumbPage>
+                      </BreadcrumbItem>
+                    </BreadcrumbList>
+                  </Breadcrumb>
+                </>
+              ) : (
+                <h1 className="text-h3 text-text-primary m-0 truncate">{title}</h1>
+              )}
+            </div>
+            <InboxBell role={role} />
+          </header>
+
+          <div id="main-content" className="flex-1 p-3 md:px-4 md:py-3">
+            {children}
           </div>
-          <Separator orientation="vertical" className="hidden sm:block" />
-
-          <div className="flex min-w-0 flex-1 items-center">
-            {isNested && parentItem ? (
-              <>
-                <h1 className="sr-only">{title}</h1>
-                <Breadcrumb className="min-w-0">
-                  <BreadcrumbList>
-                    <BreadcrumbItem>
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <BreadcrumbLink
-                              render={<Link href={parentItem.href} />}
-                              aria-label={`Back to ${parentItem.label}`}
-                            />
-                          }
-                        >
-                          {parentItem.label}
-                        </TooltipTrigger>
-                        <TooltipContent>{`Back to ${parentItem.label}`}</TooltipContent>
-                      </Tooltip>
-                    </BreadcrumbItem>
-                    <BreadcrumbSeparator />
-                    <BreadcrumbItem>
-                      <BreadcrumbPage className="text-h3 text-text-primary truncate">
-                        {title}
-                      </BreadcrumbPage>
-                    </BreadcrumbItem>
-                  </BreadcrumbList>
-                </Breadcrumb>
-              </>
-            ) : (
-              <h1 className="text-h3 text-text-primary m-0 truncate">{title}</h1>
-            )}
-          </div>
-        </header>
-
-        <div id="main-content" className="flex-1 p-3 md:px-4 md:py-3">
-          {children}
-        </div>
-      </SidebarInset>
-    </SidebarProvider>
+        </SidebarInset>
+      </SidebarProvider>
+    </LiveProvider>
   );
 }

@@ -350,12 +350,37 @@ export type Notification = {
   userId: string;
   type?: string;
   orderId?: string | null;
+  approvalCaseId?: string | null;
+  announcementId?: string | null;
   title: string;
   body: string;
   /** Broadcast picture. Public HTTPS link or `/public/announcement-images/<fileId>`. */
   imageUrl?: string | null;
+  orderTitle?: string;
+  orderState?: string;
+  fulfillmentMode?: "pickup" | "delivery";
+  collectHold?: boolean;
   read: boolean;
   at: string;
+};
+
+export type NotificationInbox = {
+  notifications: Notification[];
+  snapshot: string | null;
+};
+
+export type InvalidateResource =
+  | "orders"
+  | "jobs"
+  | "approvals"
+  | "escalations"
+  | "claims"
+  | "dispatch"
+  | "payouts";
+
+export type InvalidatePing = {
+  resource: InvalidateResource;
+  id?: string;
 };
 
 // ---- Platform settings (v2) ----

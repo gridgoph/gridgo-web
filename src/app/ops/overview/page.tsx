@@ -37,6 +37,7 @@ import {
   listUsers,
 } from "@/lib/api/client";
 import type { Claim, Issue, Order } from "@/lib/api/types";
+import { useLiveReload } from "@/lib/live/useLiveReload";
 
 type LoadState = {
   orders: Order[];
@@ -89,6 +90,8 @@ export default function OpsOverviewPage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload(["orders", "claims", "escalations", "approvals"], load);
 
   useEffect(() => {
     void load();

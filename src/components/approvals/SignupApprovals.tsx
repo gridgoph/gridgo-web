@@ -38,6 +38,7 @@ import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import type { Taxonomy, User } from "@/lib/api/types";
 import { getTaxonomy } from "@/lib/api/client";
 import { formatDateTime } from "@/lib/format";
+import { useLiveReload } from "@/lib/live/useLiveReload";
 
 type Props = {
   /** Extra prose above the queue, when the mounting surface needs it. */
@@ -96,6 +97,8 @@ export function SignupApprovals({ intro }: Props) {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload("approvals", load);
 
   useEffect(() => {
     void load();

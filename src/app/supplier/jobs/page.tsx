@@ -16,6 +16,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, listJobs } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
+import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
 import { needsSupplierAction, primaryAction } from "@/lib/supplier-actions";
@@ -84,6 +85,8 @@ export default function SupplierJobsPage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload("jobs", load);
 
   useEffect(() => {
     void load();
