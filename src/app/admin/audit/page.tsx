@@ -1,5 +1,7 @@
 "use client";
 
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
@@ -68,6 +70,8 @@ export default function AdminAuditPage() {
       setLoading(false);
     }
   }, [entityType]);
+
+  useLiveReload(["orders", "claims", "payouts", "identity", "settings"], load);
 
   useEffect(() => {
     void load();

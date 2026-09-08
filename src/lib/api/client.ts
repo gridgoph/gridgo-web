@@ -1,3 +1,4 @@
+import { withRequestDeadline } from "@/lib/api/requestDeadline";
 /**
  * Typed GRIDGO demo API client.
  *
@@ -204,23 +205,35 @@ function buildQuery(
   return s ? `?${s}` : "";
 }
 
+/** Workspace context selects a projection; the server still verifies membership. */
+export function getWorkspaceRole(): PortalRole | null {
+  if (typeof window === "undefined") return null;
+  const tree = window.location.pathname.split("/")[1];
+  return tree === "supplier" ? "supplier" : tree === "ops" ? "ops_admin" : tree === "admin" ? "super_admin" : null;
+}
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
   tokenOptions?: TokenProviderOptions,
 ): Promise<T> {
+  return withRequestDeadline(init.signal, async (signal) => {
+  const role = path.startsWith("/auth/") ? null : getWorkspaceRole();
   const headers: Record<string, string> = {
     Accept: "application/json",
+    ...(role ? { "X-GRIDGO-Role": role } : {}),
     ...(init.headers as Record<string, string> | undefined),
   };
   const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
   if (init.body && !headers["Content-Type"] && !isFormData) {
     headers["Content-Type"] = "application/json";
   }
+  signal.throwIfAborted();
   const token = await tokenProvider(tokenOptions);
+  signal.throwIfAborted();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
+  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
   const text = await res.text();
   let data: unknown = null;
   if (text) {
@@ -232,6 +245,7 @@ async function request<T>(
   }
   if (!res.ok) throw new ApiError(res.status, data);
   return data as T;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -265,7 +279,7 @@ export async function getPortalRoleProjection<R extends PortalRole>(
 ): Promise<PortalRoleProjection<R>> {
   return request<PortalRoleProjection<R>>(
     PORTAL_PROJECTION_PATH[role],
-    {},
+    { headers: { "X-GRIDGO-Role": role } },
     options?.refreshToken ? { skipCache: true } : undefined,
   );
 }

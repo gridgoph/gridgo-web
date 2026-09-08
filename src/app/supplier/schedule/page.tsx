@@ -1,5 +1,7 @@
 "use client";
 
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -99,6 +101,8 @@ export default function SupplierSchedulePage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload(["jobs", "availability"], load);
 
   useEffect(() => {
     void load();

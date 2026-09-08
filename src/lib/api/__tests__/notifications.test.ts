@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { getApiBase, setTokenProvider } from "@/lib/api/client";
 import {
   openNotificationStream,
+  markNotificationRead,
   readInvalidateEvent,
   readNotificationEvent,
 } from "@/lib/api/notifications";
@@ -12,6 +13,15 @@ afterEach(() => {
   setTokenProvider(() => null);
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+it("scopes a single inbox mutation to the active workspace", async () => {
+  vi.stubGlobal("window", { location: { pathname: "/ops/overview" } });
+  setTokenProvider(() => "test-bearer");
+  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ notification: { id: "ntf_1" } }), { status: 200 }));
+  vi.stubGlobal("fetch", fetchMock);
+  await markNotificationRead("ntf_1");
+  expect(new Headers(fetchMock.mock.calls[0][1].headers).get("X-GRIDGO-Role")).toBe("ops_admin");
 });
 
 describe("SSE event readers", () => {

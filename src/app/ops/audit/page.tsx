@@ -1,5 +1,7 @@
 "use client";
 
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -119,6 +121,8 @@ export default function OpsAuditPage() {
       setLoading(false);
     }
   }, [entityType, actionFilter, orderId, actorId]);
+
+  useLiveReload(["orders", "claims", "payouts", "identity", "settings"], load);
 
   useEffect(() => {
     void load();
