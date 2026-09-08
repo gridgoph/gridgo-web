@@ -423,7 +423,7 @@ export function AppShell({ role, children }: Props) {
   const isNested = Boolean(parentItem && pathname !== parentItem.href);
 
   return (
-    <LiveProvider>
+    <LiveProvider role={role}>
       <SidebarProvider
         // The rail has to clear GRIDGO's 44x44 control floor. shadcn's 3rem
         // assumes a 32px button, which leaves the label clipped mid-word.

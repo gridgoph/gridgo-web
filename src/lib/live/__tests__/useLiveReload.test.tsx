@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.stubGlobal("React", React);
 
+import { getAuthMe, setTokenProvider } from "@/lib/api/client";
 import type { InvalidatePing } from "@/lib/api/types";
 import { LiveContext, type LiveContextValue } from "@/lib/live/LiveProvider";
 import {
@@ -50,9 +51,7 @@ function Probe({
 
 describe("matchesInvalidate", () => {
   it("reloads resource-wide pings and ignores other ids on a detail page", () => {
-    expect(
-      matchesInvalidate({ resource: "orders" }, ["orders"], "ord_1"),
-    ).toBe(true);
+    expect(matchesInvalidate({ resource: "orders" }, ["orders"], "ord_1")).toBe(true);
     expect(
       matchesInvalidate({ resource: "orders", id: "ord_1" }, ["orders"], "ord_1"),
     ).toBe(true);
@@ -91,4 +90,39 @@ describe("useLiveReload", () => {
     await vi.advanceTimersByTimeAsync(LIVE_RELOAD_COALESCE_MS);
     expect(load).toHaveBeenCalledTimes(1);
   });
+});
+
+it("serializes a second invalidation behind the pending refresh", async () => {
+  vi.useFakeTimers();
+  let resolve!: () => void;
+  const load = vi.fn().mockImplementationOnce(() => new Promise<void>(done => {resolve=done;})).mockResolvedValue(undefined);
+  let listener!: (ping: InvalidatePing) => void;
+  const subscribe: LiveContextValue["subscribe"] = next => {listener=next;return () => undefined;};
+  render(<LiveContext.Provider value={idleLive({subscribe})}><Probe subscribe={subscribe} load={load}/></LiveContext.Provider>);
+  listener({resource:"orders"});await vi.advanceTimersByTimeAsync(300);
+  listener({resource:"orders"});await vi.advanceTimersByTimeAsync(300);
+  expect(load).toHaveBeenCalledTimes(1);
+  resolve();await vi.advanceTimersByTimeAsync(0);
+  expect(load).toHaveBeenCalledTimes(2);
+});
+
+it("revalidates protected detail data on an identity change", () => {
+  expect(matchesInvalidate({ resource: "identity" }, ["jobs"], "completed-job")).toBe(true);
+});
+
+it("continues its queued refresh after a stalled request reaches its deadline", async () => {
+  vi.useFakeTimers();
+  setTokenProvider(() => null);
+  const fetchMock = vi.fn().mockImplementationOnce(() => new Promise(() => {})).mockResolvedValue(new Response("{}"));
+  vi.stubGlobal("fetch", fetchMock);
+  const load = vi.fn(async () => { await getAuthMe(); });
+  let listener!: (ping: InvalidatePing) => void;
+  const subscribe: LiveContextValue["subscribe"] = next => { listener = next; return () => {}; };
+  render(<LiveContext.Provider value={idleLive({subscribe})}><Probe subscribe={subscribe} load={load}/></LiveContext.Provider>);
+  listener({resource:"orders"}); await vi.advanceTimersByTimeAsync(300);
+  listener({resource:"orders"}); await vi.advanceTimersByTimeAsync(300);
+  expect(load).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(20_000);
+  expect(load).toHaveBeenCalledTimes(2);
+  vi.unstubAllGlobals();
 });

@@ -20,6 +20,7 @@ export type PortalIdentityStatus =
   "checking" | "mapped" | "unmapped" | "unavailable" | "signed_out";
 
 type AuthState = {
+  revision: number;
   user: User | null;
   memberships: RoleMembership[];
   status: PortalIdentityStatus;
@@ -93,6 +94,7 @@ function SessionAuthProvider({
   children: ReactNode;
   clerkSession: ClerkSessionAdapter;
 }) {
+  const [revision, setRevision] = useState(0);
   const [user, setUser] = useState<User | null>(null);
   const [memberships, setMemberships] = useState<RoleMembership[]>([]);
   const [status, setStatus] = useState<PortalIdentityStatus>(() =>
@@ -102,6 +104,7 @@ function SessionAuthProvider({
   const refreshGeneration = useRef(0);
   const activeRefresh = useRef<AbortController | null>(null);
   const mounted = useRef(false);
+  const hasMappedIdentity = useRef(false);
   const latestClerkSession = useRef<ClerkSessionSnapshot>({
     isLoaded: clerkSession.isLoaded,
     isSignedIn: clerkSession.isSignedIn,
@@ -163,7 +166,7 @@ function SessionAuthProvider({
 
     try {
       if (!clerkSession.isLoaded) {
-        if (isCurrent()) setStatus("checking");
+        if (isCurrent()) setStatus(current => current === "mapped" ? current : "checking");
         return;
       }
       if (!clerkSession.isSignedIn) {
@@ -174,7 +177,7 @@ function SessionAuthProvider({
         return;
       }
 
-      if (isCurrent()) setStatus("checking");
+      if (isCurrent()) setStatus(current => current === "mapped" ? current : "checking");
       const token = await clerkSession.getToken();
       if (!isCurrent()) return;
       if (!token) {
@@ -209,11 +212,14 @@ function SessionAuthProvider({
         }
       }
       if (!isCurrent()) return;
+      hasMappedIdentity.current = true;
+      setRevision((value) => value + 1);
       setUser(next.user);
       setMemberships(next.memberships);
       setStatus("mapped");
     } catch (error) {
       if (!isCurrent()) return;
+      if (hasMappedIdentity.current && !(isApiError(error) && ["unauthorized", "forbidden"].includes(error.kind))) return;
       setUser(null);
       setMemberships([]);
       setStatus(
@@ -241,6 +247,7 @@ function SessionAuthProvider({
 
   const value = useMemo<AuthState>(
     () => ({
+      revision,
       user,
       memberships,
       status,
@@ -248,7 +255,7 @@ function SessionAuthProvider({
       signOut,
       refresh,
     }),
-    [user, memberships, status, signOut, refresh],
+    [revision, user, memberships, status, signOut, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

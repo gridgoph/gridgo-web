@@ -1,5 +1,7 @@
 "use client";
 
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Eye } from "lucide-react";
@@ -65,6 +67,8 @@ export default function SupplierCapacityPage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload(["jobs", "services", "catalog", "availability"], load);
 
   useEffect(() => {
     void load();

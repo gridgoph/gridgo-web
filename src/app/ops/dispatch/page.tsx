@@ -132,6 +132,8 @@ export default function OpsDispatchPage() {
     if (board.length) void refreshLocations(board);
   }, [board, refreshLocations]);
 
+  useLiveReload("location", () => refreshLocations(board));
+
   /*
     Releasing a collected order at the counter.
 

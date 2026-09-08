@@ -1,5 +1,7 @@
 "use client";
 
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { LayoutGrid, List, Plus } from "lucide-react";
@@ -90,6 +92,8 @@ export default function SupplierCataloguesPage() {
       setLoading(false);
     }
   }, [listQuery]);
+
+  useLiveReload(["catalog", "services"], load);
 
   useEffect(() => {
     void load();

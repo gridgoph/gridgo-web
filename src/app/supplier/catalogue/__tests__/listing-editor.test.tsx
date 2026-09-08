@@ -2,11 +2,13 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { LiveContext, type LiveContextValue } from "@/lib/live/LiveProvider";
+import type { InvalidatePing } from "@/lib/api/types";
 import type { Taxonomy } from "@/lib/api/types";
 
 const mocks = vi.hoisted(() => ({
@@ -223,4 +225,19 @@ describe("listing editor printer cap", () => {
     });
     expect(typeof flyersBody.printerMaxWidthFeet === "number").toBe(false);
   });
+});
+
+it("preserves an edited listing draft when a live catalogue refresh arrives", async () => {
+  stubLoad(catalogItem());
+  let listener!: (ping: InvalidatePing) => void;
+  const live: LiveContextValue = {notifications:[],unreadCount:0,snapshot:null,live:true,
+    subscribe: next => {listener=next;return () => undefined;},
+    markRead:async()=>{},markAllRead:async()=>{},remove:async()=>{},refreshInbox:async()=>{}};
+  render(<LiveContext.Provider value={live}><ListingEditorPage/></LiveContext.Provider>);
+  expect(await screen.findByLabelText("Name")).toHaveValue("Flyers");
+  fireEvent.change(screen.getByLabelText("Name"),{target:{value:"My unsaved draft"}});
+  mocks.getCatalogItem.mockResolvedValue(catalogItem({name:"Remote edit",version:4}));
+  await act(async()=>{listener({resource:"catalog"});});
+  await waitFor(()=>expect(mocks.getCatalogItem).toHaveBeenCalledTimes(2));
+  expect(screen.getByLabelText("Name")).toHaveValue("My unsaved draft");
 });

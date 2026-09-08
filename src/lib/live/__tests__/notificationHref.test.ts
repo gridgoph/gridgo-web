@@ -30,3 +30,9 @@ describe("notificationHref", () => {
     expect(notificationHref("supplier", row)).toBeNull();
   });
 });
+
+it("opens the authorized service review queue from its action alert", () => {
+  expect(notificationHref("ops_admin", note({type:"ops_service_submitted"}))).toBe("/ops/approvals?tab=services");
+  expect(notificationHref("super_admin", note({type:"ops_service_submitted"}))).toBe("/admin/verification?tab=services");
+  expect(notificationHref("supplier", note({type:"service_verified"}))).toBe("/supplier/catalogue");
+});

@@ -1,4 +1,5 @@
 "use client";
+import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -63,6 +64,8 @@ export default function AdminPlanningPage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload(["orders", "services", "availability", "identity"], load);
 
   useEffect(() => {
     void load();

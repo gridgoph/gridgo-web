@@ -1,5 +1,7 @@
 "use client";
 
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { CheckCircle, Eye, Unlock, type LucideIcon } from "lucide-react";
@@ -78,6 +80,8 @@ export default function OpsRecoveryPage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload(["orders", "claims", "escalations"], load);
 
   useEffect(() => {
     void load();

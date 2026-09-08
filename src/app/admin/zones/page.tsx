@@ -1,5 +1,7 @@
 "use client";
 
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Pencil } from "lucide-react";
@@ -57,6 +59,8 @@ export default function AdminZonesPage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload(["settings"], load);
 
   useEffect(() => {
     void load();

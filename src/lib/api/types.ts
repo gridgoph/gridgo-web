@@ -376,7 +376,15 @@ export type InvalidateResource =
   | "escalations"
   | "claims"
   | "dispatch"
-  | "payouts";
+  | "payouts"
+  | "notifications"
+  | "identity"
+  | "catalog"
+  | "services"
+  | "availability"
+  | "settings"
+  | "location"
+  | "credits";
 
 export type InvalidatePing = {
   resource: InvalidateResource;
