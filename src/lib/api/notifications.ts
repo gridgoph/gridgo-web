@@ -1,3 +1,4 @@
+import { withRequestDeadline } from "@/lib/api/requestDeadline";
 import { ApiError, getApiBase, getAuthToken, getWorkspaceRole } from "@/lib/api/client";
 import type {
   InvalidatePing,
@@ -31,6 +32,7 @@ async function notificationRequest<T>(
   init: RequestInit = {},
   tokenOptions?: { skipCache?: boolean },
 ): Promise<T> {
+  return withRequestDeadline(init.signal, async (signal) => {
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...(init.headers as Record<string, string> | undefined),
@@ -38,7 +40,9 @@ async function notificationRequest<T>(
   if (init.body && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
+  signal.throwIfAborted();
   const token = await getAuthToken(tokenOptions);
+  signal.throwIfAborted();
   if (token) {
     headers.Authorization = `Bearer ${token}`;
     const role = getWorkspaceRole();
@@ -48,7 +52,7 @@ async function notificationRequest<T>(
   const res = await fetch(`${getApiBase()}${path}`, {
     ...init,
     headers,
-    signal: init.signal ?? AbortSignal.timeout(15_000),
+    signal,
   });
   const text = await res.text();
   let data: unknown = null;
@@ -61,6 +65,7 @@ async function notificationRequest<T>(
   }
   if (!res.ok) throw new ApiError(res.status, data);
   return data as T;
+  });
 }
 
 export async function listNotificationInbox(role?: Role): Promise<NotificationInbox> {

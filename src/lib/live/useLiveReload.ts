@@ -13,6 +13,8 @@ export function matchesInvalidate(
   resources: readonly InvalidateResource[],
   matchId?: string,
 ): boolean {
+  // Approval and membership revocations invalidate every mounted domain view.
+  if (ping.resource === "identity") return true;
   if (!resources.includes(ping.resource)) return false;
   if (matchId && ping.id && ping.id !== matchId) return false;
   return true;

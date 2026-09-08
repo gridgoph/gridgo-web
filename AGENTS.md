@@ -225,22 +225,6 @@ Both were evaluated here and deliberately not adopted:
 | Declined | `@tanstack/react-query` | Every screen here is one `load()` per mount with an explicit `LoadingBlock` / `ErrorState` / `EmptyState` triad and `ApiError.kind` → recovery-copy mapping. Swapping the data layer touches ~28 pages and the error-copy contract for no user-visible gain while there is no polling, cache invalidation, or shared-query story. Revisit when live refresh or optimistic transitions land. |
 | Declined | `sonner`                | Already rejected in the primitive audit above and still correct: this is a Base UI project with the Base `toast` manager and a root `Toaster`. Adding sonner means two toast roots.                                                                                                                                                                                                         |
 
-## Live resource updates
-
-`src/lib/live/LiveProvider.tsx` owns one role-scoped SSE stream per signed-in workspace.
-`useLiveReload` coalesces invalidations through a stable subscription and serializes
-live/reconnect/fallback loads. Reconnection refreshes active resources and identity:
-notification replay alone cannot restore missed transient invalidations. Routine
-identity revalidation keeps the authorized tree mounted; a settled denial removes it.
-API reads send the active workspace's `X-GRIDGO-Role`; membership is still checked by
-the server. Inbox/list/read-all use the same role context and account boundaries.
-
-Preserve draft fields when attaching a live callback. Listing editors retain dirty
-values; taxonomy editors refresh backing data without replacing the form; settings
-compare fields against their prior server values before adopting a remote update.
-`components/approvals/VerificationQueues.tsx` is shared by Operations and Super Admin;
-`?tab=services` opens the service review queue from an action notification.
-
 ## Auth and role boundary
 
 1. Clerk owns sign-in, Google/password recovery, session cookies, JWT refresh, and logout.

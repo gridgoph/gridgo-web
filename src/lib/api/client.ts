@@ -1,3 +1,4 @@
+import { withRequestDeadline } from "@/lib/api/requestDeadline";
 /**
  * Typed GRIDGO demo API client.
  *
@@ -216,6 +217,7 @@ async function request<T>(
   init: RequestInit = {},
   tokenOptions?: TokenProviderOptions,
 ): Promise<T> {
+  return withRequestDeadline(init.signal, async (signal) => {
   const role = path.startsWith("/auth/") ? null : getWorkspaceRole();
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -226,10 +228,12 @@ async function request<T>(
   if (init.body && !headers["Content-Type"] && !isFormData) {
     headers["Content-Type"] = "application/json";
   }
+  signal.throwIfAborted();
   const token = await tokenProvider(tokenOptions);
+  signal.throwIfAborted();
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers });
+  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
   const text = await res.text();
   let data: unknown = null;
   if (text) {
@@ -241,6 +245,7 @@ async function request<T>(
   }
   if (!res.ok) throw new ApiError(res.status, data);
   return data as T;
+  });
 }
 
 // ---------------------------------------------------------------------------
