@@ -33,7 +33,9 @@ privileged account.
 
 | Path                                    | Owns                                                                                                                                                                                             |
 | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `src/lib/api/client.ts`                 | Typed HTTP client — **only** place pages call `fetch` for the API                                                                                                                                |
+| `src/lib/api/client.ts`                 | Typed HTTP client — **only** place pages call `fetch` for ordinary JSON                                                                                                                          |
+| `src/lib/api/notifications.ts`          | Inbox list/mark/delete plus Clerk-bearer SSE (`fetch` + `ReadableStream`; never `EventSource`, never JWT on the query string)                                                                    |
+| `src/lib/live/`                         | One stream per signed-in tab (`LiveProvider`) and coalesced page refetch (`useLiveReload`)                                                                                                       |
 | `src/app/api/gridgo/[...path]/route.ts` | Local-dev same-origin proxy to a loopback API (strips `Origin`)                                                                                                                                  |
 | `src/lib/api/types.ts`                  | Response/request types (no `any`)                                                                                                                                                                |
 | `src/lib/api/constraints.ts`            | Server rules the UI can explain _before_ rejection (payment/milestone gates, holds, issue window)                                                                                                |
@@ -42,6 +44,7 @@ privileged account.
 | `src/middleware.ts`                     | Clerk-session check only; never role authorization; delegates public-origin reconstruction to `publicRequestUrl`                                                                                 |
 | `src/lib/order-state.ts`                | Plain-language state labels (no snake_case on screen)                                                                                                                                            |
 | `src/lib/supplier-actions.ts`           | Valid supplier transitions for current state                                                                                                                                                     |
+| `src/lib/listings.ts`                   | Shop board listings. Tarpaulin (`tarpaulins_outdoor_banners`) requires `printerMaxWidthFeet` (integer feet, 1–20); other families omit/null. Distinct from `minimumWidthMilli`.                  |
 | `src/lib/ops-actions.ts`                | Valid ops transitions + queue membership                                                                                                                                                         |
 | `src/components/ui/`                    | shadcn/ui primitives + GRIDGO-specific components                                                                                                                                                |
 | `src/components/shell/`                 | App shell, nav rail, RoleGate, `ComingNext` placeholders                                                                                                                                         |
@@ -263,7 +266,7 @@ Suppliers are external partners. Never serve `/ops/*` or `/admin/*` to them — 
 
 ## API client contract
 
-**Rule:** pages never call `fetch`. Import from `@/lib/api` (or `@/lib/api/client`).
+**Rule:** pages never call `fetch`. Import from `@/lib/api` (or `@/lib/api/client`). The live inbox stream is the one exception, and it lives in `src/lib/api/notifications.ts` — never `EventSource`, never a JWT on the query string. Pages subscribe through `useLiveReload`.
 
 Authoritative API docs live in the separate `gridgo-api` repo (`AGENTS.md`, `README.md`, `PRD.md`). When docs and the running server disagree, **the server wins** — update types here to match observed JSON.
 

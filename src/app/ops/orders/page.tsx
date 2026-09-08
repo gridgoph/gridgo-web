@@ -24,6 +24,7 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { SkeletonLines } from "@/components/ui/loading";
 import { ApiError, listOrders } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
+import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
 import { describeQuantity } from "@/lib/quantity";
@@ -66,6 +67,8 @@ export default function OpsOrdersPage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload("orders", load);
 
   useEffect(() => {
     void load();

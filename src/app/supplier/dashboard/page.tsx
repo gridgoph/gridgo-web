@@ -26,6 +26,7 @@ import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { StatCard } from "@/components/ui/StatCard";
 import { ApiError, listJobs } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
+import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatPhp } from "@/lib/format";
 
 import {
@@ -103,6 +104,8 @@ export default function SupplierDashboardPage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload("jobs", load);
 
   useEffect(() => {
     void load();

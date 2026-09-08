@@ -42,3 +42,25 @@ export function formatDate(iso: string | null | undefined): string {
     return iso;
   }
 }
+
+/**
+ * Shop-floor glance time for inbox slips. Recent rows stay relative; anything
+ * older than a week prints the date the ticket already carries.
+ */
+export function formatRelativeTime(
+  iso: string | null | undefined,
+  now: number = Date.now(),
+): string {
+  if (!iso) return "—";
+  const at = Date.parse(iso);
+  if (Number.isNaN(at)) return iso;
+  const seconds = Math.round((now - at) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return formatDate(iso);
+}

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "build": "next build && node scripts/assert-no-account-addresses.mjs && node scripts/assert-no-clerk-secrets.mjs",
     "start": "next start",
     "lint": "eslint .",

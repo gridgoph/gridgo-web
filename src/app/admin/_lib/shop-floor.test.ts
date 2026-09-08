@@ -59,6 +59,7 @@ describe("shop floor", () => {
               name: "A5 Flyers",
               subcategoryCode: "flyers",
               fromPriceMinor: 800,
+              printerMaxWidthFeet: null,
               photoFileId: "file_1",
             },
           ],
@@ -87,6 +88,7 @@ describe("shop floor", () => {
               name: "A5 Flyers",
               subcategoryCode: "flyers",
               fromPriceMinor: 800,
+              printerMaxWidthFeet: null,
               photoFileId: null,
             },
             {
@@ -94,6 +96,7 @@ describe("shop floor", () => {
               name: "Folded brochures",
               subcategoryCode: "brochures",
               fromPriceMinor: 1200,
+              printerMaxWidthFeet: null,
               photoFileId: null,
             },
           ],
@@ -132,6 +135,7 @@ describe("shop floor", () => {
         name: "A5 Flyers",
         subcategoryCode: "flyers",
         fromPriceMinor: 800,
+        printerMaxWidthFeet: null,
         photoFileId: "file_1",
       },
     ]);
@@ -150,6 +154,7 @@ describe("shop floor", () => {
               name: "Flyers",
               subcategoryCode: "flyers",
               fromPriceMinor: 1,
+              printerMaxWidthFeet: null,
               photoFileId: null,
             },
           ],
@@ -166,5 +171,51 @@ describe("shop floor", () => {
     expect(copy.title).toBe("2 shops accredited");
     expect(copy.body).toMatch(/1 listing on the board from 1 shop/);
     expect(copy.body).not.toMatch(/_/);
+  });
+
+  it("keeps a tarpaulin printer cap in feet on the floor listing", () => {
+    const listings = listingsFromPublicShop({
+      supplierId: "shop_a",
+      shopName: "Polymedia",
+      services: [
+        {
+          id: "svc",
+          categoryCode: "marketing_collateral",
+          items: [
+            {
+              id: "item_tarp",
+              name: "Storefront tarpaulin",
+              subcategoryCode: "tarpaulins_outdoor_banners",
+              fromPriceMinor: 150000,
+              printerMaxWidthFeet: 5,
+            },
+            {
+              id: "item_flyer",
+              name: "A5 Flyers",
+              subcategoryCode: "flyers",
+              fromPriceMinor: 800,
+            },
+          ],
+        },
+      ],
+    });
+    expect(listings).toEqual([
+      {
+        id: "item_tarp",
+        name: "Storefront tarpaulin",
+        subcategoryCode: "tarpaulins_outdoor_banners",
+        fromPriceMinor: 150000,
+        printerMaxWidthFeet: 5,
+        photoFileId: null,
+      },
+      {
+        id: "item_flyer",
+        name: "A5 Flyers",
+        subcategoryCode: "flyers",
+        fromPriceMinor: 800,
+        printerMaxWidthFeet: null,
+        photoFileId: null,
+      },
+    ]);
   });
 });

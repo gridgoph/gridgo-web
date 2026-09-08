@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { formatPhp } from "@/lib/format";
+import { formatPhp, formatRelativeTime } from "@/lib/format";
 import {
   getApiBase,
   getConfiguredApiBase,
@@ -12,6 +12,21 @@ describe("formatPhp", () => {
   it("formats minor units as PHP pesos", () => {
     expect(formatPhp(120000)).toMatch(/1,200\.00/);
     expect(formatPhp(0)).toMatch(/0\.00/);
+  });
+});
+
+describe("formatRelativeTime", () => {
+  const now = Date.parse("2026-09-03T12:00:00.000Z");
+
+  it("uses shop-floor tokens for recent slips", () => {
+    expect(formatRelativeTime("2026-09-03T11:59:30.000Z", now)).toBe("just now");
+    expect(formatRelativeTime("2026-09-03T11:48:00.000Z", now)).toBe("12m ago");
+    expect(formatRelativeTime("2026-09-03T09:00:00.000Z", now)).toBe("3h ago");
+    expect(formatRelativeTime("2026-09-01T12:00:00.000Z", now)).toBe("2d ago");
+  });
+
+  it("prints the date once a slip is older than a week", () => {
+    expect(formatRelativeTime("2026-08-20T12:00:00.000Z", now)).toMatch(/Aug/);
   });
 });
 

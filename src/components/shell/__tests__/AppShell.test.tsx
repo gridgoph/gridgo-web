@@ -28,8 +28,15 @@ const adaClerk: ClerkProfileMock = {
   primaryEmailAddress: { emailAddress: "admin@example.com" },
 };
 
-const { pathnameRef, signOutMock, membershipsRef, userRef, clerkUserRef, openUserProfileMock } =
-  vi.hoisted(() => ({
+const {
+  pathnameRef,
+  signOutMock,
+  membershipsRef,
+  userRef,
+  clerkUserRef,
+  openUserProfileMock,
+  liveRef,
+} = vi.hoisted(() => ({
     pathnameRef: { current: "/admin/overview" },
     signOutMock: vi.fn(),
     membershipsRef: {
@@ -47,6 +54,26 @@ const { pathnameRef, signOutMock, membershipsRef, userRef, clerkUserRef, openUse
       current: null as ClerkProfileMock | null,
     },
     openUserProfileMock: vi.fn(),
+    liveRef: {
+      current: {
+        notifications: [] as Array<{
+          id: string;
+          userId: string;
+          title: string;
+          body: string;
+          read: boolean;
+          at: string;
+        }>,
+        unreadCount: 0,
+        snapshot: null as string | null,
+        live: false,
+        subscribe: () => () => undefined,
+        markRead: async () => undefined,
+        markAllRead: async () => undefined,
+        remove: async () => undefined,
+        refreshInbox: async () => undefined,
+      },
+    },
   }));
 
 vi.stubGlobal("React", React);
@@ -63,6 +90,12 @@ vi.mock("@/lib/auth/AuthProvider", () => ({
     signOut: signOutMock,
     loading: false,
   }),
+}));
+
+vi.mock("@/lib/live/LiveProvider", () => ({
+  LiveProvider: ({ children }: { children: React.ReactNode }) => children,
+  useLive: () => liveRef.current,
+  useLiveOptional: () => liveRef.current,
 }));
 
 vi.mock("@clerk/nextjs", () => ({
@@ -122,6 +155,17 @@ afterEach(() => {
     role: "super_admin",
   };
   clerkUserRef.current = { ...adaClerk };
+  liveRef.current = {
+    notifications: [],
+    unreadCount: 0,
+    snapshot: null,
+    live: false,
+    subscribe: () => () => undefined,
+    markRead: async () => undefined,
+    markAllRead: async () => undefined,
+    remove: async () => undefined,
+    refreshInbox: async () => undefined,
+  };
   vi.clearAllMocks();
 });
 
@@ -182,6 +226,33 @@ describe("AppShell chrome", () => {
     await user.click(toggle);
     expect(rail).toHaveAttribute("data-state", "collapsed");
     expect(rail).toHaveAttribute("data-collapsible", "icon");
+  });
+
+  it("puts a header bell with an unread count and no extra nav item", () => {
+    liveRef.current = {
+      ...liveRef.current,
+      unreadCount: 2,
+      notifications: [
+        {
+          id: "ntf_1",
+          userId: "user_admin",
+          title: "Payment submitted",
+          body: "A shop sent QR proof.",
+          read: false,
+          at: "2026-09-03T00:00:00.000Z",
+        },
+      ],
+    };
+    const { container } = renderShell("/ops/overview");
+    const header = container.querySelector("header");
+    expect(header).toBeTruthy();
+    expect(
+      within(header as HTMLElement).getByRole("button", {
+        name: "Notifications, 2 unread",
+      }),
+    ).toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+    expect(within(nav).queryByRole("link", { name: /notification/i })).toBeNull();
   });
 
   it("puts identity in a footer menu trigger, not the header", () => {

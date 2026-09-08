@@ -7,12 +7,14 @@ import type {
   TaxonomyCategoryAlias,
   User,
 } from "@/lib/api/types";
+import { parsePrinterMaxWidthFeet } from "@/lib/listings";
 
 export type FloorListing = {
   id: string;
   name: string;
   subcategoryCode: string;
   fromPriceMinor: number | null;
+  printerMaxWidthFeet: number | null;
   photoFileId: string | null;
 };
 
@@ -69,6 +71,7 @@ export function listingFromPublicItem(raw: PublicCatalogListing): FloorListing |
     name,
     subcategoryCode: raw.subcategoryCode ?? "",
     fromPriceMinor: typeof price === "number" ? price : null,
+    printerMaxWidthFeet: parsePrinterMaxWidthFeet(raw.printerMaxWidthFeet),
     photoFileId: photo,
   };
 }

@@ -15,6 +15,7 @@ import { SkeletonCards } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, listIssues, listJobs } from "@/lib/api/client";
 import type { Issue, Order } from "@/lib/api/types";
+import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
 
 type LoadState = {
@@ -63,6 +64,8 @@ export default function SupplierPayoutsPage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload(["payouts", "jobs"], load);
 
   useEffect(() => {
     void load();
