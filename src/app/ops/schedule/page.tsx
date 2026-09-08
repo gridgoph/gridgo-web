@@ -1,5 +1,7 @@
 "use client";
 
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { addDays, format, isSameDay, parseISO } from "date-fns";
@@ -75,6 +77,8 @@ export default function OpsSchedulePage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload(["orders", "claims"], load);
 
   useEffect(() => {
     void load();

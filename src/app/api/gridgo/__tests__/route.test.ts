@@ -59,6 +59,8 @@ describe("GET /api/gridgo/*", () => {
       request("http://localhost:3310/api/gridgo/auth/me", {
         headers: {
           accept: "application/json",
+          "x-gridgo-role": "ops_admin",
+          "idempotency-key": "mutation-attempt-1",
           authorization: "Bearer clerk-session-token",
           origin: "http://localhost:3310",
           cookie: "__session=should-not-forward",
@@ -76,6 +78,8 @@ describe("GET /api/gridgo/*", () => {
     expect(headers.get("cookie")).toBeNull();
     expect(headers.get("authorization")).toBe("Bearer clerk-session-token");
     expect(headers.get("accept")).toBe("application/json");
+    expect(headers.get("x-gridgo-role")).toBe("ops_admin");
+    expect(headers.get("idempotency-key")).toBe("mutation-attempt-1");
     expect(init.body).toBeUndefined();
   });
 });

@@ -1,4 +1,5 @@
 "use client";
+import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -39,7 +40,7 @@ export default function EditCategoryPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (preserveDraft = false) => {
     setLoading(true);
     setError(null);
     try {
@@ -57,13 +58,13 @@ export default function EditCategoryPage() {
       setTaxonomy(tax);
       setServices(svc);
       setUsers(people);
-      setValues({
+      setValues(current => preserveDraft && current ? current : ({
         name: category.name,
         code: category.code,
         bestFor: category.bestFor ?? "",
         sortOrder: category.sortOrder != null ? String(category.sortOrder) : "",
         active: category.active,
-      });
+      }));
     } catch (err) {
       setValues(null);
       setError(adminErrorMessage(err, "Could not load this category."));
@@ -71,6 +72,8 @@ export default function EditCategoryPage() {
       setLoading(false);
     }
   }, [code]);
+
+  useLiveReload(["catalog", "services"], () => load(true));
 
   useEffect(() => {
     void load();

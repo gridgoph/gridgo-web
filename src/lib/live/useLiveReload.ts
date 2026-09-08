@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
 import type { InvalidatePing, InvalidateResource } from "@/lib/api/types";
 import { useLiveOptional } from "@/lib/live/LiveProvider";
@@ -31,14 +31,46 @@ export function useLiveReload(
   options?: { matchId?: string },
 ): void {
   const live = useLiveOptional();
+  const subscribe = live?.subscribe;
+  const connected = live?.live;
+  const previouslyConnected = useRef(connected);
   const loadRef = useRef(load);
   loadRef.current = load;
+  const mounted = useRef(true);
+  const running = useRef(false);
+  const dirty = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  // Events, recovery and fallback share one flight and one dirty follow-up.
+  const queueLoad = useCallback(() => {
+    dirty.current = true;
+    if (running.current) return;
+    running.current = true;
+    void (async () => {
+      try {
+        while (mounted.current && dirty.current) {
+          dirty.current = false;
+          try {
+            await loadRef.current();
+          } catch {
+            /* Screen owns recovery copy. */
+          }
+        }
+      } finally {
+        running.current = false;
+      }
+    })();
+  }, []);
   const resources = Array.isArray(resource) ? resource : [resource];
   const resourceKey = resources.join(",");
   const matchId = options?.matchId;
 
   useEffect(() => {
-    if (!live) return;
+    if (!subscribe) return;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let pending = false;
 
@@ -46,10 +78,10 @@ export function useLiveReload(
       timer = null;
       if (!pending) return;
       pending = false;
-      void loadRef.current();
+      queueLoad();
     };
 
-    const unsubscribe = live.subscribe((ping) => {
+    const unsubscribe = subscribe((ping) => {
       if (!matchesInvalidate(ping, resources, matchId)) return;
       pending = true;
       if (!timer) timer = setTimeout(flush, LIVE_RELOAD_COALESCE_MS);
@@ -61,22 +93,28 @@ export function useLiveReload(
     };
     // resources is derived from resourceKey
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [live, matchId, resourceKey]);
+  }, [subscribe, matchId, resourceKey, queueLoad]);
 
   useEffect(() => {
-    if (!live || live.live) return;
+    if (!subscribe) return;
+    const wasConnected = previouslyConnected.current;
+    previouslyConnected.current = connected;
+    if (connected) {
+      if (!wasConnected) queueLoad();
+      return;
+    }
 
     const onVis = () => {
-      if (document.visibilityState === "visible") void loadRef.current();
+      if (document.visibilityState === "visible") queueLoad();
     };
     document.addEventListener("visibilitychange", onVis);
     const interval = setInterval(() => {
-      void loadRef.current();
+      queueLoad();
     }, FALLBACK_POLL_MS);
 
     return () => {
       document.removeEventListener("visibilitychange", onVis);
       clearInterval(interval);
     };
-  }, [live, live?.live]);
+  }, [subscribe, connected, queueLoad]);
 }

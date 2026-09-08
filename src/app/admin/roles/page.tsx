@@ -1,5 +1,7 @@
 "use client";
 
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { UserCog } from "lucide-react";
 
@@ -69,6 +71,8 @@ export default function AdminRolesPage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload(["identity", "approvals"], load);
 
   useEffect(() => {
     void load();

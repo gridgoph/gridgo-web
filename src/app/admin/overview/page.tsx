@@ -1,5 +1,7 @@
 "use client";
 
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Coins, Package, Truck, Users } from "lucide-react";
 
@@ -76,6 +78,8 @@ export default function AdminOverviewPage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload(["orders", "identity", "credits", "approvals"], load);
 
   useEffect(() => {
     void load();

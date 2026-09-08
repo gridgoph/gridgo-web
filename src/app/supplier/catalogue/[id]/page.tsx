@@ -1,5 +1,7 @@
 "use client";
 
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
@@ -152,6 +154,8 @@ export default function ListingEditorPage() {
       setLoading(false);
     }
   }, [id]);
+
+  useLiveReload(["catalog", "services"], load);
 
   useEffect(() => {
     void load();

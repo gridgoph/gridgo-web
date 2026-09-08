@@ -1,5 +1,7 @@
 "use client";
 
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Pencil, Plus } from "lucide-react";
@@ -45,6 +47,8 @@ export default function AdminCataloguePage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload(["catalog", "services"], load);
 
   useEffect(() => {
     void load();

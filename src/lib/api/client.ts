@@ -204,13 +204,22 @@ function buildQuery(
   return s ? `?${s}` : "";
 }
 
+/** Workspace context selects a projection; the server still verifies membership. */
+export function getWorkspaceRole(): PortalRole | null {
+  if (typeof window === "undefined") return null;
+  const tree = window.location.pathname.split("/")[1];
+  return tree === "supplier" ? "supplier" : tree === "ops" ? "ops_admin" : tree === "admin" ? "super_admin" : null;
+}
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
   tokenOptions?: TokenProviderOptions,
 ): Promise<T> {
+  const role = path.startsWith("/auth/") ? null : getWorkspaceRole();
   const headers: Record<string, string> = {
     Accept: "application/json",
+    ...(role ? { "X-GRIDGO-Role": role } : {}),
     ...(init.headers as Record<string, string> | undefined),
   };
   const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
@@ -265,7 +274,7 @@ export async function getPortalRoleProjection<R extends PortalRole>(
 ): Promise<PortalRoleProjection<R>> {
   return request<PortalRoleProjection<R>>(
     PORTAL_PROJECTION_PATH[role],
-    {},
+    { headers: { "X-GRIDGO-Role": role } },
     options?.refreshToken ? { skipCache: true } : undefined,
   );
 }

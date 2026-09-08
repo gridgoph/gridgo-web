@@ -1,5 +1,7 @@
 "use client";
 
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
@@ -86,6 +88,8 @@ export default function AdminFinancePage() {
       setLoading(false);
     }
   }, []);
+
+  useLiveReload(["orders", "claims", "payouts", "credits"], load);
 
   useEffect(() => {
     void load();

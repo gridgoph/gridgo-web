@@ -1,7 +1,10 @@
 "use client";
-
-import { SignupApprovals } from "@/components/approvals/SignupApprovals";
-
+import { Suspense } from "react";
+import { VerificationQueues } from "@/components/approvals/VerificationQueues";
 export default function OpsApprovalsPage() {
-  return <SignupApprovals />;
+  return (
+    <Suspense>
+      <VerificationQueues />
+    </Suspense>
+  );
 }

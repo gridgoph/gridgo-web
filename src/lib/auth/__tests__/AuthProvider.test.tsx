@@ -212,7 +212,9 @@ describe("AuthProvider refresh ownership", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     await waitFor(() => expect(getAuthMeMock).toHaveBeenCalledTimes(2));
-    expect(screen.getByTestId("status")).toHaveTextContent("checking");
+    // Routine revalidation keeps the authorized screen mounted; a settled
+    // denial still removes it, and a session change cannot adopt this response.
+    expect(screen.getByTestId("status")).toHaveTextContent("mapped");
 
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     await waitFor(() =>

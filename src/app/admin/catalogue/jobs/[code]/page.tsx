@@ -1,4 +1,5 @@
 "use client";
+import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -38,7 +39,7 @@ export default function EditPrintJobPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (preserveDraft = false) => {
     setLoading(true);
     setFloorLoading(true);
     setError(null);
@@ -55,14 +56,14 @@ export default function EditPrintJobPage() {
         return;
       }
       setCategories(tax.categories);
-      setValues({
+      setValues(current => preserveDraft && current ? current : ({
         categoryCode: job.categoryCode,
         name: job.name,
         code: job.code,
         examples: job.examples ?? [],
         sortOrder: job.sortOrder != null ? String(job.sortOrder) : "",
         active: job.active,
-      });
+      }));
       const names = await starterNamesForJobs([job.code]);
       setStarterName(names[job.code] ?? null);
 
@@ -87,6 +88,8 @@ export default function EditPrintJobPage() {
       setFloorLoading(false);
     }
   }, [code]);
+
+  useLiveReload(["catalog", "services"], () => load(true));
 
   useEffect(() => {
     void load();
