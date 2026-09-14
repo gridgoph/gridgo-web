@@ -20,16 +20,10 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonCards, SkeletonValue } from "@/components/ui/loading";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  listOrders,
-  listSupplierServices,
-  listUsers,
-} from "@/lib/api/client";
+import { listOrders, listSupplierServices, listUsers } from "@/lib/api/client";
 import type { Order, SupplierService, User } from "@/lib/api/types";
 import { formatDateTime, formatPhp } from "@/lib/format";
-import { presentOrderState,
-  presentZone,
-} from "@/lib/order-state";
+import { presentOrderState, presentZone } from "@/lib/order-state";
 import { StatusChip } from "@/components/ui/StatusChip";
 
 export default function AdminPlanningPage() {
@@ -40,32 +34,34 @@ export default function AdminPlanningPage() {
   const [loading, setLoading] = useState(true);
   const [anchor, setAnchor] = useState(() => new Date());
 
-  const load = useSerializedLoad(useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [o, s, u] = await Promise.all([
-        listOrders(),
-        listSupplierServices(),
-        listUsers(),
-      ]);
-      setOrders(o);
-      setServices(s);
-      setUsers(u);
-    } catch (err) {
-      setOrders(null);
-      setServices(null);
-      setUsers(null);
-      setError(
-        adminErrorMessage(
-          err,
-          "Could not load planning data. Confirm the demo API is running.",
-        ),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []));
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [o, s, u] = await Promise.all([
+          listOrders(),
+          listSupplierServices(),
+          listUsers(),
+        ]);
+        setOrders(o);
+        setServices(s);
+        setUsers(u);
+      } catch (err) {
+        setOrders(null);
+        setServices(null);
+        setUsers(null);
+        setError(
+          adminErrorMessage(
+            err,
+            "Could not load planning data. Confirm the demo API is running.",
+          ),
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, []),
+  );
 
   useLiveReload(["orders", "services", "availability", "identity"], load);
 
@@ -104,16 +100,11 @@ export default function AdminPlanningPage() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Week view of promised deliveries composed from live orders, plus
-          verified capacity signals from supplier service lines. Rider shift
-          calendars and zone blackouts are not on the demo API — those rows stay
-          explicitly unavailable.
+          Week view of promised deliveries composed from live orders, plus verified
+          capacity signals from supplier service lines. Rider shift calendars and zone
+          blackouts are not on the demo API — those rows stay explicitly unavailable.
         </p>
-        <Button
-          variant="secondary"
-          disabled={loading}
-          onClick={() => void load()}
-        >
+        <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
         </Button>
       </div>
@@ -237,10 +228,7 @@ export default function AdminPlanningPage() {
                     {isToday ? " · Today" : ""}
                   </p>
                   <Skeleton className="mt-1 h-5 w-20" aria-hidden />
-                  <div
-                    className="mt-2 flex flex-col gap-1.5"
-                    aria-hidden
-                  >
+                  <div className="mt-2 flex flex-col gap-1.5" aria-hidden>
                     <Skeleton className="h-3 w-full" />
                     <Skeleton className="h-3 w-4/5" />
                   </div>
@@ -250,11 +238,7 @@ export default function AdminPlanningPage() {
           </div>
         ) : null}
 
-        <div
-          className={
-            pending ? "hidden" : "hidden md:grid md:grid-cols-7 md:gap-2"
-          }
-        >
+        <div className={pending ? "hidden" : "hidden md:grid md:grid-cols-7 md:gap-2"}>
           {(snapshot?.days ?? []).map((day) => (
             <div
               key={day.key}
@@ -268,7 +252,10 @@ export default function AdminPlanningPage() {
                 className="text-caption text-text-muted m-0"
                 style={
                   day.isToday
-                    ? { fontFamily: "var(--font-bold)", color: "var(--color-text-primary)" }
+                    ? {
+                        fontFamily: "var(--font-bold)",
+                        color: "var(--color-text-primary)",
+                      }
                     : undefined
                 }
               >
@@ -303,12 +290,7 @@ export default function AdminPlanningPage() {
         <div className="md:hidden">
           <h3 className="text-h3 text-text-primary m-0 mb-3">Agenda</h3>
           {pending ? (
-            <SkeletonCards
-              count={3}
-              lines={1}
-              chip
-              label="Loading this week’s agenda"
-            />
+            <SkeletonCards count={3} lines={1} chip label="Loading this week’s agenda" />
           ) : !snapshot?.agenda.length ? (
             <EmptyState
               title="No promised deliveries this week"
@@ -318,9 +300,7 @@ export default function AdminPlanningPage() {
             <ul className="m-0 flex list-none flex-col gap-2 p-0">
               {(snapshot?.agenda ?? []).map((item) => {
                 const order = orders?.find((o) => o.id === item.id);
-                const status = order
-                  ? presentOrderState(order.state)
-                  : null;
+                const status = order ? presentOrderState(order.state) : null;
                 return (
                   <li
                     key={item.id}
@@ -337,9 +317,7 @@ export default function AdminPlanningPage() {
                     </p>
                     <p className="text-caption text-text-secondary m-0 mt-0.5">
                       {presentZone(item.zone)}
-                      {order
-                        ? ` · ${formatPhp(order.totalMinor)}`
-                        : ""}
+                      {order ? ` · ${formatPhp(order.totalMinor)}` : ""}
                     </p>
                     {status ? (
                       <div className="mt-2">
@@ -360,18 +338,15 @@ export default function AdminPlanningPage() {
         {/* Desktop empty note when week has no deliveries */}
         {!pending && snapshot?.agenda.length === 0 ? (
           <p className="text-body text-text-muted m-0 mt-4 hidden md:block">
-            No promised deliveries in this week. Adjacent weeks may still have
-            volume — use Previous or Next.
+            No promised deliveries in this week. Adjacent weeks may still have volume —
+            use Previous or Next.
           </p>
         ) : null}
       </section>
 
       {/* Desktop detail list for the week */}
       {!pending && snapshot && snapshot.agenda.length > 0 ? (
-        <section
-          className="gg-card hidden md:block"
-          aria-labelledby="detail-heading"
-        >
+        <section className="gg-card hidden md:block" aria-labelledby="detail-heading">
           <h2 id="detail-heading" className="text-h3 text-text-primary m-0 mb-3">
             This week’s promised deliveries
           </h2>
@@ -392,8 +367,7 @@ export default function AdminPlanningPage() {
                       {item.title}
                     </p>
                     <p className="text-caption text-text-muted m-0 mt-0.5">
-                      {formatDateTime(item.at)} ·{" "}
-                      {presentZone(item.zone)}
+                      {formatDateTime(item.at)} · {presentZone(item.zone)}
                     </p>
                   </div>
                   {status ? (
@@ -435,9 +409,7 @@ function Stat({
       ) : (
         <p className="text-h2 text-text-primary m-0 mt-1">{value}</p>
       )}
-      {hint ? (
-        <p className="text-caption text-text-muted m-0 mt-1">{hint}</p>
-      ) : null}
+      {hint ? <p className="text-caption text-text-muted m-0 mt-1">{hint}</p> : null}
     </div>
   );
 }

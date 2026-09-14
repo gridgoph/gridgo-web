@@ -228,9 +228,9 @@ Check, in order:
 3. The portal itself answers: `curl -s -o /dev/null -w '%{http_code}\n'
 https://gridgo-dash.talasora.com/login` → `200`.
 4. A signed-out protected request returns a public-host login bounce:
-   `curl -sSI https://gridgo-dash.talasora.com/ops/payments | grep -i '^location:'` must
+   `curl -sSI https://gridgo-dash.talasora.com/ops/orders | grep -i '^location:'` must
    show a `https://gridgo-dash.talasora.com/login?redirect_url=...` location whose decoded
-   return URL is `https://gridgo-dash.talasora.com/ops/payments`.
+   return URL is `https://gridgo-dash.talasora.com/ops/orders`.
 
 On the server:
 

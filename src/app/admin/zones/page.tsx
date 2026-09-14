@@ -44,23 +44,25 @@ export default function AdminZonesPage() {
   const [name, setName] = useState("");
   const [active, setActive] = useState(true);
 
-  const load = useSerializedLoad(useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setZones(await listZones());
-    } catch (err) {
-      setZones(null);
-      setError(
-        adminErrorMessage(
-          err,
-          "Could not load delivery zones. Confirm the demo API is running.",
-        ),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []));
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        setZones(await listZones());
+      } catch (err) {
+        setZones(null);
+        setError(
+          adminErrorMessage(
+            err,
+            "Could not load delivery zones. Confirm the demo API is running.",
+          ),
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, []),
+  );
 
   useLiveReload(["settings"], load);
 
@@ -173,16 +175,12 @@ export default function AdminZonesPage() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          The delivery areas a client picks from when placing an order. Zones
-          name a place and nothing more — what delivery costs comes from the
-          distance between the supplier and the address.
+          The delivery areas a client picks from when placing an order. Zones name a place
+          and nothing more — what delivery costs comes from the distance between the
+          supplier and the address.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="secondary"
-            disabled={loading}
-            onClick={() => void load()}
-          >
+          <Button variant="secondary" disabled={loading} onClick={() => void load()}>
             Refresh
           </Button>
           <Button variant="primary" disabled={pending} onClick={openNew}>
@@ -193,7 +191,11 @@ export default function AdminZonesPage() {
 
       <p className="text-body text-text-secondary m-0 max-w-prose">
         Delivery pricing lives in{" "}
-        <Button variant="link" nativeButton={false} render={<Link href="/admin/settings" />}>
+        <Button
+          variant="link"
+          nativeButton={false}
+          render={<Link href="/admin/settings" />}
+        >
           Operational settings
         </Button>
         , as bands of distance.
@@ -225,11 +227,7 @@ export default function AdminZonesPage() {
           filterPlaceholder="Filter zones…"
           defaultSortId="name"
           rowActions={(z) => (
-            <DataTableRowAction
-              label="Edit"
-              icon={Pencil}
-              onClick={() => openEdit(z)}
-            />
+            <DataTableRowAction label="Edit" icon={Pencil} onClick={() => openEdit(z)} />
           )}
         />
       )}
@@ -249,8 +247,8 @@ export default function AdminZonesPage() {
               {editing === "new" ? "Add delivery zone" : "Edit delivery zone"}
             </DialogTitle>
             <DialogDescription>
-              A zone is the area a client chooses on an order. It carries no
-              price of its own.
+              A zone is the area a client chooses on an order. It carries no price of its
+              own.
             </DialogDescription>
           </DialogHeader>
 
@@ -284,11 +282,7 @@ export default function AdminZonesPage() {
               />
             </Field>
             <Field orientation="horizontal" className="items-center">
-              <Switch
-                id="zone-active"
-                checked={active}
-                onCheckedChange={setActive}
-              />
+              <Switch id="zone-active" checked={active} onCheckedChange={setActive} />
               <FieldLabel htmlFor="zone-active">Active for new orders</FieldLabel>
             </Field>
           </FieldGroup>
@@ -300,18 +294,10 @@ export default function AdminZonesPage() {
           ) : null}
 
           <DialogFooter>
-            <Button
-              variant="secondary"
-              disabled={busy}
-              onClick={() => setEditing(null)}
-            >
+            <Button variant="secondary" disabled={busy} onClick={() => setEditing(null)}>
               Cancel
             </Button>
-            <Button
-              variant="primary"
-              disabled={busy}
-              onClick={() => void save()}
-            >
+            <Button variant="primary" disabled={busy} onClick={() => void save()}>
               {busy ? "Saving…" : "Save zone"}
             </Button>
           </DialogFooter>

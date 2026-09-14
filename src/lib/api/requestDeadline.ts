@@ -5,7 +5,13 @@ export async function withRequestDeadline<T>(
 ): Promise<T> {
   const controller = new AbortController();
   const cancel = () => controller.abort(caller?.reason);
-  const timer = setTimeout(() => controller.abort(new DOMException("The request timed out. Try again.", "TimeoutError")), 20_000);
+  const timer = setTimeout(
+    () =>
+      controller.abort(
+        new DOMException("The request timed out. Try again.", "TimeoutError"),
+      ),
+    20_000,
+  );
   if (caller?.aborted) cancel();
   else caller?.addEventListener("abort", cancel, { once: true });
   let rejectAbort!: () => void;

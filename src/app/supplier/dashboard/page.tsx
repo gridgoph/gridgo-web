@@ -84,28 +84,30 @@ export default function SupplierDashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useSerializedLoad(useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setJobs(await listJobs());
-    } catch (err) {
-      setJobs(null);
-      if (err instanceof ApiError) {
-        setError(
-          err.status === 403
-            ? "This dashboard is only available to supplier accounts."
-            : `Could not load your jobs (${err.code}). Check the API and try again.`,
-        );
-      } else {
-        setError(
-          "Network error loading your jobs. Confirm the demo API is running, then retry.",
-        );
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        setJobs(await listJobs());
+      } catch (err) {
+        setJobs(null);
+        if (err instanceof ApiError) {
+          setError(
+            err.status === 403
+              ? "This dashboard is only available to supplier accounts."
+              : `Could not load your jobs (${err.code}). Check the API and try again.`,
+          );
+        } else {
+          setError(
+            "Network error loading your jobs. Confirm the demo API is running, then retry.",
+          );
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, []));
+    }, []),
+  );
 
   useLiveReload("jobs", load);
 
@@ -197,9 +199,9 @@ export default function SupplierDashboardPage() {
           What you finished
         </h2>
         <p className="text-body text-text-secondary m-0 mb-3">
-          The last {WEEKS} weeks, valued at what each job pays your shop, counted
-          on the day you marked it ready. This is work completed, not money
-          released — milestone payouts live on the Payouts screen.
+          The last {WEEKS} weeks, valued at what each job pays your shop, counted on the
+          day you marked it ready. This is work completed, not money released — milestone
+          payouts live on the Payouts screen.
         </p>
         {anyFinished ? (
           <ChartContainer
@@ -209,12 +211,7 @@ export default function SupplierDashboardPage() {
           >
             <AreaChart data={weeks} accessibilityLayer margin={{ left: 4, right: 8 }}>
               <CartesianGrid vertical={false} />
-              <XAxis
-                dataKey="label"
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-              />
+              <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
               <YAxis
                 tickLine={false}
                 axisLine={false}
@@ -243,8 +240,8 @@ export default function SupplierDashboardPage() {
           </ChartContainer>
         ) : (
           <p className="text-body text-text-muted m-0">
-            Nothing marked ready in the last {WEEKS} weeks. The line starts with
-            your first finished job.
+            Nothing marked ready in the last {WEEKS} weeks. The line starts with your
+            first finished job.
           </p>
         )}
       </section>
@@ -254,8 +251,8 @@ export default function SupplierDashboardPage() {
           Where your jobs are
         </h2>
         <p className="text-body text-text-secondary m-0 mb-3">
-          Every job on your board, at the stage it has reached. Read top to
-          bottom — this is the order the work happens in, not a ranking.
+          Every job on your board, at the stage it has reached. Read top to bottom — this
+          is the order the work happens in, not a ranking.
         </p>
         {stages.length ? (
           <ChartContainer
@@ -314,8 +311,8 @@ export default function SupplierDashboardPage() {
         )}
         {unmapped.length ? (
           <p className="text-caption text-text-muted m-0 mt-3">
-            Not shown above: {unmapped.join(", ")}. These jobs sit at a stage
-            this chart does not track yet.
+            Not shown above: {unmapped.join(", ")}. These jobs sit at a stage this chart
+            does not track yet.
           </p>
         ) : null}
       </section>

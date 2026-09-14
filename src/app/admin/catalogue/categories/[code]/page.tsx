@@ -27,7 +27,12 @@ import {
   listUsers,
   updateTaxonomyCategory,
 } from "@/lib/api/client";
-import type { SupplierService, Taxonomy, TaxonomySubcategory, User } from "@/lib/api/types";
+import type {
+  SupplierService,
+  Taxonomy,
+  TaxonomySubcategory,
+  User,
+} from "@/lib/api/types";
 
 export default function EditCategoryPage() {
   const { code } = useParams<{ code: string }>();
@@ -43,42 +48,55 @@ export default function EditCategoryPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
 
-  const load = useSerializedLoad(useCallback(async (preserveDraft = false) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [tax, svc, people] = await Promise.all([
-        getTaxonomy(),
-        listSupplierServices(),
-        listUsers("supplier").catch(() => [] as User[]),
-      ]);
-      const category = tax.categories.find((entry) => entry.code === code);
-      if (!category) {
-        setValues(null);
-        setError("That category is not on the chart.");
-        return;
-      }
-      setTaxonomy(tax);
-      setServices(svc);
-      setUsers(people);
-      setValues(current => preserveDraft && current ? current : ({
-        name: category.name,
-        code: category.code,
-        bestFor: category.bestFor ?? "",
-        sortOrder: category.sortOrder != null ? String(category.sortOrder) : "",
-        active: category.active,
-      }));
-    } catch (err) {
-      if (
-        preserveDraft &&
-        !(isApiError(err) && ["unauthorized", "forbidden", "not_found"].includes(err.kind))
-      ) return;
-      setValues(null);
-      setError(adminErrorMessage(err, "Could not load this category."));
-    } finally {
-      setLoading(false);
-    }
-  }, [code]));
+  const load = useSerializedLoad(
+    useCallback(
+      async (preserveDraft = false) => {
+        setLoading(true);
+        setError(null);
+        try {
+          const [tax, svc, people] = await Promise.all([
+            getTaxonomy(),
+            listSupplierServices(),
+            listUsers("supplier").catch(() => [] as User[]),
+          ]);
+          const category = tax.categories.find((entry) => entry.code === code);
+          if (!category) {
+            setValues(null);
+            setError("That category is not on the chart.");
+            return;
+          }
+          setTaxonomy(tax);
+          setServices(svc);
+          setUsers(people);
+          setValues((current) =>
+            preserveDraft && current
+              ? current
+              : {
+                  name: category.name,
+                  code: category.code,
+                  bestFor: category.bestFor ?? "",
+                  sortOrder: category.sortOrder != null ? String(category.sortOrder) : "",
+                  active: category.active,
+                },
+          );
+        } catch (err) {
+          if (
+            preserveDraft &&
+            !(
+              isApiError(err) &&
+              ["unauthorized", "forbidden", "not_found"].includes(err.kind)
+            )
+          )
+            return;
+          setValues(null);
+          setError(adminErrorMessage(err, "Could not load this category."));
+        } finally {
+          setLoading(false);
+        }
+      },
+      [code],
+    ),
+  );
 
   useLiveReload(["catalog", "services"], () => load(true));
 
@@ -115,7 +133,8 @@ export default function EditCategoryPage() {
   const jobs: TaxonomySubcategory[] = useMemo(() => {
     if (!taxonomy) return [];
     return (
-      groupJobsByCategory(taxonomy).find((panel) => panel.category.code === code)?.jobs ?? []
+      groupJobsByCategory(taxonomy).find((panel) => panel.category.code === code)?.jobs ??
+      []
     );
   }, [taxonomy, code]);
 
@@ -164,7 +183,11 @@ export default function EditCategoryPage() {
         title="Could not open this category"
         body={error ?? "Missing."}
         action={
-          <Button variant="secondary" nativeButton={false} render={<Link href="/admin/catalogue" />}>
+          <Button
+            variant="secondary"
+            nativeButton={false}
+            render={<Link href="/admin/catalogue" />}
+          >
             Back to chart
           </Button>
         }
@@ -176,12 +199,18 @@ export default function EditCategoryPage() {
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 max-w-2xl">
-          <Button variant="ghost" nativeButton={false} render={<Link href="/admin/catalogue" />}>
+          <Button
+            variant="ghost"
+            nativeButton={false}
+            render={<Link href="/admin/catalogue" />}
+          >
             Back to chart
           </Button>
           <h1 className="text-h2 text-text-primary m-0 mt-2">{values.name}</h1>
           {values.bestFor ? (
-            <p className="text-body text-text-secondary m-0 mt-1">Best for {values.bestFor}</p>
+            <p className="text-body text-text-secondary m-0 mt-1">
+              Best for {values.bestFor}
+            </p>
           ) : (
             <p className="text-body text-text-secondary m-0 mt-1">
               Shops accredited here file listings under the print jobs on the right.

@@ -13,10 +13,7 @@ import {
   presentRecoveryKind,
   type RecoveryItem,
 } from "@/app/ops/_lib/recovery";
-import {
-  presentIssueKind,
-  presentIssueStatus,
-} from "@/app/ops/_lib/present";
+import { presentIssueKind, presentIssueStatus } from "@/app/ops/_lib/present";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -59,29 +56,27 @@ export default function OpsRecoveryPage() {
   const [resolving, setResolving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const load = useSerializedLoad(useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [o, c, i] = await Promise.all([
-        listOrders(),
-        listClaims(),
-        listIssues(),
-      ]);
-      setOrders(o);
-      setClaims(c);
-      setIssues(i);
-    } catch (err) {
-      setOrders(null);
-      if (err instanceof ApiError) {
-        setError(`Could not load recovery data (${err.code}).`);
-      } else {
-        setError("Network error loading recovery queues.");
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [o, c, i] = await Promise.all([listOrders(), listClaims(), listIssues()]);
+        setOrders(o);
+        setClaims(c);
+        setIssues(i);
+      } catch (err) {
+        setOrders(null);
+        if (err instanceof ApiError) {
+          setError(`Could not load recovery data (${err.code}).`);
+        } else {
+          setError("Network error loading recovery queues.");
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, []));
+    }, []),
+  );
 
   useLiveReload(["orders", "claims", "escalations"], load);
 
@@ -94,10 +89,7 @@ export default function OpsRecoveryPage() {
     [orders, claims, issues],
   );
 
-  const openIssues = useMemo(
-    () => issues.filter((i) => i.status === "open"),
-    [issues],
-  );
+  const openIssues = useMemo(() => issues.filter((i) => i.status === "open"), [issues]);
 
   async function submitResolve() {
     if (!resolveTarget) return;
@@ -147,9 +139,7 @@ export default function OpsRecoveryPage() {
             >
               {r.orderTitle}
             </p>
-            <p className="text-caption text-text-muted m-0 mt-0.5">
-              Order {r.orderId}
-            </p>
+            <p className="text-caption text-text-muted m-0 mt-0.5">Order {r.orderId}</p>
             <p className="text-caption text-text-muted m-0 mt-0.5">
               {presentRecoveryKind(r.kind)}
             </p>
@@ -162,23 +152,17 @@ export default function OpsRecoveryPage() {
         sortValue: (r) => presentOrderState(r.orderState).label,
         cell: (r) => {
           if (!r.orderState) {
-            return (
-              <span className="text-body text-text-muted">Unknown</span>
-            );
+            return <span className="text-body text-text-muted">Unknown</span>;
           }
           const s = presentOrderState(r.orderState);
-          return (
-            <StatusChip tone={s.tone} label={s.label} icon={s.icon} />
-          );
+          return <StatusChip tone={s.tone} label={s.label} icon={s.icon} />;
         },
       },
       {
         id: "summary",
         header: "What happened",
         sortValue: (r) => r.summary,
-        cell: (r) => (
-          <span className="text-body text-text-secondary">{r.summary}</span>
-        ),
+        cell: (r) => <span className="text-body text-text-secondary">{r.summary}</span>,
       },
       {
         id: "updated",
@@ -194,9 +178,7 @@ export default function OpsRecoveryPage() {
         id: "next",
         header: "Next step",
         sortValue: (r) => r.nextLabel,
-        cell: (r) => (
-          <span className="text-body text-text-secondary">{r.nextLabel}</span>
-        ),
+        cell: (r) => <span className="text-body text-text-secondary">{r.nextLabel}</span>,
       },
     ],
     [],
@@ -221,15 +203,10 @@ export default function OpsRecoveryPage() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Failed QC paths, client issues, and payout holds — each row has a
-          next action. Resolving an issue does not release payout; use Claims
-          for money holds.
+          Failed QC paths, client issues, and payout holds — each row has a next action.
+          Resolving an issue does not release payout; use Claims for money holds.
         </p>
-        <Button
-          variant="secondary"
-          disabled={loading}
-          onClick={() => void load()}
-        >
+        <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
         </Button>
       </div>
@@ -240,17 +217,10 @@ export default function OpsRecoveryPage() {
           aria-labelledby="open-issues-heading"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2
-              id="open-issues-heading"
-              className="text-h3 text-text-primary m-0"
-            >
+            <h2 id="open-issues-heading" className="text-h3 text-text-primary m-0">
               Open issues ({openIssues.length})
             </h2>
-            <StatusChip
-              tone="warning"
-              label="Action required"
-              icon="triangle-alert"
-            />
+            <StatusChip tone="warning" label="Action required" icon="triangle-alert" />
           </div>
           <ul className="m-0 flex list-none flex-col gap-3 p-0">
             {openIssues.map((issue) => {
@@ -273,8 +243,7 @@ export default function OpsRecoveryPage() {
                         Order {issue.orderId}
                       </p>
                       <p className="text-caption text-text-muted m-0 mt-0.5">
-                        {presentIssueKind(issue.kind)} ·{" "}
-                        {formatDateTime(issue.createdAt)}
+                        {presentIssueKind(issue.kind)} · {formatDateTime(issue.createdAt)}
                       </p>
                     </div>
                     <StatusChip
@@ -283,12 +252,10 @@ export default function OpsRecoveryPage() {
                       icon={status.icon}
                     />
                   </div>
-                  <p className="text-body text-text-secondary m-0">
-                    {issue.description}
-                  </p>
+                  <p className="text-body text-text-secondary m-0">{issue.description}</p>
                   <p className="text-caption text-text-muted m-0">
-                    Resolving records the fix. Active payout holds stay until
-                    released on Claims.
+                    Resolving records the fix. Active payout holds stay until released on
+                    Claims.
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <Button
@@ -337,10 +304,7 @@ export default function OpsRecoveryPage() {
         />
       ) : (
         <section aria-labelledby="recovery-list-heading">
-          <h2
-            id="recovery-list-heading"
-            className="text-h3 text-text-primary m-0 mb-3"
-          >
+          <h2 id="recovery-list-heading" className="text-h3 text-text-primary m-0 mb-3">
             Recovery queue{pending ? "" : ` (${items.length})`}
           </h2>
           <DataTable
@@ -392,8 +356,8 @@ export default function OpsRecoveryPage() {
           <DialogHeader>
             <DialogTitle>Resolve issue</DialogTitle>
             <DialogDescription>
-              Record what was done. This does not release a payout hold —
-              release holds on Claims with their own reason.
+              Record what was done. This does not release a payout hold — release holds on
+              Claims with their own reason.
             </DialogDescription>
           </DialogHeader>
           {resolveTarget ? (

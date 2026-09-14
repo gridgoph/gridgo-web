@@ -8,6 +8,7 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LiveContext, type LiveContextValue } from "@/lib/live/LiveProvider";
+import { LIVE_RELOAD_COALESCE_MS } from "@/lib/live/useLiveReload";
 import { ApiError } from "@/lib/api/client";
 import type { InvalidatePing } from "@/lib/api/types";
 import type { Taxonomy } from "@/lib/api/types";
@@ -294,8 +295,18 @@ function renderLiveListing() {
   render(<LiveContext.Provider value={live}><ListingEditorPage /></LiveContext.Provider>);
   return async () => {
     const calls = mocks.getTaxonomy.mock.calls.length;
-    await act(async () => { listener({ resource: "catalog" }); });
-    await waitFor(() => expect(mocks.getTaxonomy).toHaveBeenCalledTimes(calls + 1));
+    // The request starting is not the refresh committing. Flush its promises
+    // and React effects before the caller interacts with the retained input.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      await act(async () => {
+        listener({ resource: "catalog" });
+        await vi.advanceTimersByTimeAsync(LIVE_RELOAD_COALESCE_MS);
+      });
+      expect(mocks.getTaxonomy).toHaveBeenCalledTimes(calls + 1);
+    } finally {
+      vi.useRealTimers();
+    }
   };
 }
 
@@ -365,8 +376,10 @@ it.each([false, true])("reconciles a saved option price after refresh (initial r
   mocks.updateCatalogOption.mockResolvedValue({});
   mocks.getCatalogItem.mockResolvedValue(updated);
   if (refreshFails) mocks.getTaxonomy.mockRejectedValueOnce(new TypeError("Offline"));
-  fireEvent.blur(price);
-  await waitFor(() => expect(mocks.getTaxonomy).toHaveBeenCalledTimes(2));
+  await act(async () => {
+    fireEvent.blur(price);
+  });
+  expect(mocks.getTaxonomy).toHaveBeenCalledTimes(2);
 
   if (refreshFails) {
     expect(await screen.findByText("Price saved, but its refresh failed. Your entered price was kept.")).toBeVisible();

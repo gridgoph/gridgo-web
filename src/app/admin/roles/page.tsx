@@ -56,23 +56,25 @@ export default function AdminRolesPage() {
   const [reason, setReason] = useState("");
   const [typedConfirm, setTypedConfirm] = useState("");
 
-  const load = useSerializedLoad(useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setUsers(await listUsers());
-    } catch (err) {
-      setUsers(null);
-      setError(
-        adminErrorMessage(
-          err,
-          "Could not load the user directory. Confirm the demo API is running.",
-        ),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []));
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        setUsers(await listUsers());
+      } catch (err) {
+        setUsers(null);
+        setError(
+          adminErrorMessage(
+            err,
+            "Could not load the user directory. Confirm the demo API is running.",
+          ),
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, []),
+  );
 
   useLiveReload(["identity", "approvals"], load);
 
@@ -187,11 +189,7 @@ export default function AdminRolesPage() {
           Super Admin creates another full administrator; removing it revokes governance
           access immediately. Every change is audited.
         </p>
-        <Button
-          variant="secondary"
-          disabled={loading}
-          onClick={() => void load()}
-        >
+        <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
         </Button>
       </div>

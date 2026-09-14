@@ -54,37 +54,41 @@ export default function OpsEscalationsPage() {
   const [resolving, setResolving] = useState<Escalation | null>(null);
   const [instruction, setInstruction] = useState("");
 
-  const load = useSerializedLoad(useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [escalations, orderList] = await Promise.all([
-        listEscalations(),
-        listOrders(),
-      ]);
-      const orders: Record<string, Order> = {};
-      for (const order of orderList) orders[order.id] = order;
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [escalations, orderList] = await Promise.all([
+          listEscalations(),
+          listOrders(),
+        ]);
+        const orders: Record<string, Order> = {};
+        for (const order of orderList) orders[order.id] = order;
 
-      // Evidence metadata is a best-effort read — a missing file must not take
-      // the whole queue down, so each lookup fails on its own.
-      const fileIds = [...new Set(escalations.flatMap((e) => e.evidenceFileIds))];
-      const files = await Promise.all(fileIds.map((id) => getFile(id).catch(() => null)));
-      const evidence: Record<string, StoredFile> = {};
-      for (const file of files) if (file) evidence[file.fileId] = file;
+        // Evidence metadata is a best-effort read — a missing file must not take
+        // the whole queue down, so each lookup fails on its own.
+        const fileIds = [...new Set(escalations.flatMap((e) => e.evidenceFileIds))];
+        const files = await Promise.all(
+          fileIds.map((id) => getFile(id).catch(() => null)),
+        );
+        const evidence: Record<string, StoredFile> = {};
+        for (const file of files) if (file) evidence[file.fileId] = file;
 
-      setData({ escalations, orders, evidence });
-    } catch (err) {
-      setData(null);
-      setError(
-        opsErrorMessage(
-          err,
-          "Could not load escalations. Confirm the demo API is running, then retry.",
-        ),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []));
+        setData({ escalations, orders, evidence });
+      } catch (err) {
+        setData(null);
+        setError(
+          opsErrorMessage(
+            err,
+            "Could not load escalations. Confirm the demo API is running, then retry.",
+          ),
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, []),
+  );
 
   useLiveReload(["escalations", "orders"], load);
 

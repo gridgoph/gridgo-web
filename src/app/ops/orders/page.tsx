@@ -53,22 +53,24 @@ export default function OpsOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [stage, setStage] = useState<Stage>(requested ?? "payment");
 
-  const load = useSerializedLoad(useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setOrders(await listOrders());
-    } catch (err) {
-      setOrders(null);
-      setError(
-        err instanceof ApiError
-          ? `Could not load orders (${err.code}).`
-          : "Could not reach the API. Check it is running, then retry.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []));
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        setOrders(await listOrders());
+      } catch (err) {
+        setOrders(null);
+        setError(
+          err instanceof ApiError
+            ? `Could not load orders (${err.code}).`
+            : "Could not reach the API. Check it is running, then retry.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, []),
+  );
 
   useLiveReload("orders", load);
 
@@ -78,14 +80,19 @@ export default function OpsOrdersPage() {
 
   const counts = useMemo(() => stageCounts(orders ?? []), [orders]);
   const waiting = useMemo(
-    () => Object.fromEntries(STAGES.map((entry) => [entry.id, actionableCount(orders ?? [], entry.id)])) as Record<Stage, number>,
+    () =>
+      Object.fromEntries(
+        STAGES.map((entry) => [entry.id, actionableCount(orders ?? [], entry.id)]),
+      ) as Record<Stage, number>,
     [orders],
   );
   const rows = useMemo(() => {
     const inStage = ordersInStage(orders ?? [], stage);
     // Longest wait first: the order that has been sitting there most is the one
     // somebody is wondering about.
-    return [...inStage].sort((a, b) => (a.updatedAt || "").localeCompare(b.updatedAt || ""));
+    return [...inStage].sort((a, b) =>
+      (a.updatedAt || "").localeCompare(b.updatedAt || ""),
+    );
   }, [orders, stage]);
 
   const columns = useMemo<DataTableColumn<Order>[]>(
@@ -95,10 +102,14 @@ export default function OpsOrdersPage() {
         header: "Order",
         primary: true,
         sortValue: (order) => order.title ?? "",
-        filterValue: (order) => `${order.title ?? ""} ${order.id} ${order.material ?? ""}`,
+        filterValue: (order) =>
+          `${order.title ?? ""} ${order.id} ${order.material ?? ""}`,
         cell: (order) => (
           <div className="min-w-0">
-            <p className="text-body text-text-primary m-0 truncate" style={{ fontFamily: "var(--font-medium)" }}>
+            <p
+              className="text-body text-text-primary m-0 truncate"
+              style={{ fontFamily: "var(--font-medium)" }}
+            >
               {order.title || "Untitled order"}
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
@@ -118,7 +129,9 @@ export default function OpsOrdersPage() {
         filterValue: (order) => presentOrderState(order.state).label,
         cell: (order) => {
           const status = presentOrderState(order.state);
-          return <StatusChip tone={status.tone} label={status.label} icon={status.icon} />;
+          return (
+            <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
+          );
         },
       },
       {
@@ -129,7 +142,9 @@ export default function OpsOrdersPage() {
           <span
             className="text-body whitespace-nowrap"
             style={{
-              color: stageNeedsOperations(order) ? "var(--color-text-primary)" : "var(--color-text-muted)",
+              color: stageNeedsOperations(order)
+                ? "var(--color-text-primary)"
+                : "var(--color-text-muted)",
               fontFamily: stageNeedsOperations(order) ? "var(--font-medium)" : undefined,
             }}
           >
@@ -166,7 +181,11 @@ export default function OpsOrdersPage() {
     return (
       <ErrorState
         body={error}
-        action={<Button variant="secondary" onClick={() => void load()}>Retry</Button>}
+        action={
+          <Button variant="secondary" onClick={() => void load()}>
+            Retry
+          </Button>
+        }
       />
     );
   }
@@ -196,12 +215,17 @@ export default function OpsOrdersPage() {
               className="gg-chip min-h-11 flex items-center gap-2 px-3"
               style={{
                 background: selected ? "var(--color-accent)" : "var(--color-surface)",
-                color: selected ? "var(--color-accent-on)" : "var(--color-text-secondary)",
+                color: selected
+                  ? "var(--color-accent-on)"
+                  : "var(--color-text-secondary)",
                 borderColor: selected ? "var(--color-accent)" : "var(--color-outline)",
               }}
             >
               <span className="text-body">{entry.label}</span>
-              <span className="text-caption tabular-nums" style={{ opacity: selected ? 0.75 : 0.6 }}>
+              <span
+                className="text-caption tabular-nums"
+                style={{ opacity: selected ? 0.75 : 0.6 }}
+              >
                 {counts[entry.id]}
               </span>
               {needsYou > 0 ? (
@@ -223,14 +247,20 @@ export default function OpsOrdersPage() {
 
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="text-body text-text-secondary m-0">{active?.hint}</p>
-        <Button variant="secondary" onClick={() => void load()}>Refresh</Button>
+        <Button variant="secondary" onClick={() => void load()}>
+          Refresh
+        </Button>
       </div>
 
       {rows.length === 0 ? (
         <EmptyState
           title={`Nothing at ${active?.label.toLowerCase()}`}
           body="Orders arrive here as they reach this step. Try another step, or refresh."
-          action={<Button variant="secondary" onClick={() => void load()}>Refresh</Button>}
+          action={
+            <Button variant="secondary" onClick={() => void load()}>
+              Refresh
+            </Button>
+          }
         />
       ) : (
         <DataTable
@@ -240,7 +270,11 @@ export default function OpsOrdersPage() {
           caption={`Orders at ${active?.label}`}
           filterPlaceholder="Filter orders…"
           rowActions={(order) => (
-            <DataTableRowAction label="Open" icon={Eye} href={`/ops/orders/${order.id}`} />
+            <DataTableRowAction
+              label="Open"
+              icon={Eye}
+              href={`/ops/orders/${order.id}`}
+            />
           )}
         />
       )}

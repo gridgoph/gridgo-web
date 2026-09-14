@@ -10,10 +10,7 @@ import { Pencil, Plus } from "lucide-react";
 
 import { groupJobsByCategory } from "@/app/admin/_lib/catalogue-chart";
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
-import {
-  shopsAccreditedCopy,
-  usageForCategory,
-} from "@/app/admin/_lib/taxonomy-usage";
+import { shopsAccreditedCopy, usageForCategory } from "@/app/admin/_lib/taxonomy-usage";
 import { starterNamesForJobs } from "@/app/admin/catalogue/_lib/starter-names";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -30,25 +27,27 @@ export default function AdminCataloguePage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useSerializedLoad(useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [tax, svc] = await Promise.all([getTaxonomy(), listSupplierServices()]);
-      setTaxonomy(tax);
-      setServices(svc);
-    } catch (err) {
-      setTaxonomy(null);
-      setError(
-        adminErrorMessage(
-          err,
-          "Could not load the print-job chart. Confirm the demo API is running.",
-        ),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []));
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [tax, svc] = await Promise.all([getTaxonomy(), listSupplierServices()]);
+        setTaxonomy(tax);
+        setServices(svc);
+      } catch (err) {
+        setTaxonomy(null);
+        setError(
+          adminErrorMessage(
+            err,
+            "Could not load the print-job chart. Confirm the demo API is running.",
+          ),
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, []),
+  );
 
   useLiveReload(["catalog", "services"], load);
 
@@ -256,9 +255,7 @@ function JobRow({
             )}
           </div>
           {examples.length ? (
-            <p className="text-caption text-text-secondary m-0">
-              {examples.join(" · ")}
-            </p>
+            <p className="text-caption text-text-secondary m-0">{examples.join(" · ")}</p>
           ) : null}
           {starterName ? (
             <p className="text-caption text-text-muted m-0">

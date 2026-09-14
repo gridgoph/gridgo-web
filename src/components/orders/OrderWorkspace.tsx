@@ -64,18 +64,20 @@ export function OrderWorkspace({ queueHref, queueLabel = "Back to queue" }: Prop
   const [note, setNote] = useState("");
   const [checked, setChecked] = useState<Record<string, boolean>>({});
 
-  const load = useSerializedLoad(useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setOrder(await getOrder(orderId));
-    } catch (err) {
-      setOrder(null);
-      setError(opsErrorMessage(err, "That order could not be loaded."));
-    } finally {
-      setLoading(false);
-    }
-  }, [orderId]));
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        setOrder(await getOrder(orderId));
+      } catch (err) {
+        setOrder(null);
+        setError(opsErrorMessage(err, "That order could not be loaded."));
+      } finally {
+        setLoading(false);
+      }
+    }, [orderId]),
+  );
 
   useLiveReload(["orders", "jobs"], load, { matchId: orderId });
 

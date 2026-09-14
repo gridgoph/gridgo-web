@@ -210,7 +210,13 @@ function buildQuery(
 export function getWorkspaceRole(): PortalRole | null {
   if (typeof window === "undefined") return null;
   const tree = window.location.pathname.split("/")[1];
-  return tree === "supplier" ? "supplier" : tree === "ops" ? "ops_admin" : tree === "admin" ? "super_admin" : null;
+  return tree === "supplier"
+    ? "supplier"
+    : tree === "ops"
+      ? "ops_admin"
+      : tree === "admin"
+        ? "super_admin"
+        : null;
 }
 
 async function request<T>(
@@ -219,33 +225,33 @@ async function request<T>(
   tokenOptions?: TokenProviderOptions,
 ): Promise<T> {
   return withRequestDeadline(init.signal, async (signal) => {
-  const role = path.startsWith("/auth/") ? null : getWorkspaceRole();
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    ...(role ? { "X-GRIDGO-Role": role } : {}),
-    ...(init.headers as Record<string, string> | undefined),
-  };
-  const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
-  if (init.body && !headers["Content-Type"] && !isFormData) {
-    headers["Content-Type"] = "application/json";
-  }
-  signal.throwIfAborted();
-  const token = await tokenProvider(tokenOptions);
-  signal.throwIfAborted();
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const res = await fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
-  const text = await res.text();
-  let data: unknown = null;
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = text;
+    const role = path.startsWith("/auth/") ? null : getWorkspaceRole();
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      ...(role ? { "X-GRIDGO-Role": role } : {}),
+      ...(init.headers as Record<string, string> | undefined),
+    };
+    const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
+    if (init.body && !headers["Content-Type"] && !isFormData) {
+      headers["Content-Type"] = "application/json";
     }
-  }
-  if (!res.ok) throw new ApiError(res.status, data);
-  return data as T;
+    signal.throwIfAborted();
+    const token = await tokenProvider(tokenOptions);
+    signal.throwIfAborted();
+    if (token) headers.Authorization = `Bearer ${token}`;
+
+    const res = await fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
+    const text = await res.text();
+    let data: unknown = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
+      }
+    }
+    if (!res.ok) throw new ApiError(res.status, data);
+    return data as T;
   });
 }
 
@@ -1148,10 +1154,7 @@ export async function recordDelivery(
 // Shop listings — /me/catalog-items. Contract: gridgo-api docs/SUPPLIER_CATALOG_API.md
 // ---------------------------------------------------------------------------
 
-function versioned(
-  version: number | null,
-  body?: Record<string, unknown>,
-): RequestInit {
+function versioned(version: number | null, body?: Record<string, unknown>): RequestInit {
   const headers: Record<string, string> = {};
   if (version != null) headers["If-Match"] = String(version);
   const payload =
@@ -1230,10 +1233,13 @@ export async function putCatalogItemFileFormats(
   mode: "inherit" | "override",
   formatCodes: string[],
 ): Promise<unknown> {
-  return request<unknown>(`/me/catalog-items/${encodeURIComponent(itemId)}/file-formats`, {
-    method: "PUT",
-    ...versioned(version, { mode, formatCodes }),
-  });
+  return request<unknown>(
+    `/me/catalog-items/${encodeURIComponent(itemId)}/file-formats`,
+    {
+      method: "PUT",
+      ...versioned(version, { mode, formatCodes }),
+    },
+  );
 }
 
 export async function createCatalogOptionGroup(
@@ -1241,10 +1247,13 @@ export async function createCatalogOptionGroup(
   itemVersion: number | null,
   body: Record<string, unknown>,
 ): Promise<unknown> {
-  return request<unknown>(`/me/catalog-items/${encodeURIComponent(itemId)}/option-groups`, {
-    method: "POST",
-    ...versioned(itemVersion, body),
-  });
+  return request<unknown>(
+    `/me/catalog-items/${encodeURIComponent(itemId)}/option-groups`,
+    {
+      method: "POST",
+      ...versioned(itemVersion, body),
+    },
+  );
 }
 
 export async function updateCatalogOptionGroup(
@@ -1275,10 +1284,13 @@ export async function createCatalogOption(
   groupVersion: number | null,
   body: Record<string, unknown>,
 ): Promise<unknown> {
-  return request<unknown>(`/me/catalog-option-groups/${encodeURIComponent(groupId)}/options`, {
-    method: "POST",
-    ...versioned(groupVersion, body),
-  });
+  return request<unknown>(
+    `/me/catalog-option-groups/${encodeURIComponent(groupId)}/options`,
+    {
+      method: "POST",
+      ...versioned(groupVersion, body),
+    },
+  );
 }
 
 export async function updateCatalogOption(
@@ -1346,7 +1358,12 @@ export async function listListingStarters(subcategoryCode: string): Promise<unkn
 }
 
 export async function listAcceptedFileFormats(q?: string): Promise<
-  Array<{ code: string; displayName: string; inputKind: "file" | "url"; uploadable?: boolean }>
+  Array<{
+    code: string;
+    displayName: string;
+    inputKind: "file" | "url";
+    uploadable?: boolean;
+  }>
 > {
   const search = buildQuery({ q });
   const result = await request<{

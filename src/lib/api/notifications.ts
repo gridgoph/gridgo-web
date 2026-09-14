@@ -33,38 +33,38 @@ async function notificationRequest<T>(
   tokenOptions?: { skipCache?: boolean },
 ): Promise<T> {
   return withRequestDeadline(init.signal, async (signal) => {
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    ...(init.headers as Record<string, string> | undefined),
-  };
-  if (init.body && !headers["Content-Type"]) {
-    headers["Content-Type"] = "application/json";
-  }
-  signal.throwIfAborted();
-  const token = await getAuthToken(tokenOptions);
-  signal.throwIfAborted();
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-    const role = getWorkspaceRole();
-    if (role) headers["X-GRIDGO-Role"] = role;
-  }
-
-  const res = await fetch(`${getApiBase()}${path}`, {
-    ...init,
-    headers,
-    signal,
-  });
-  const text = await res.text();
-  let data: unknown = null;
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = text;
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      ...(init.headers as Record<string, string> | undefined),
+    };
+    if (init.body && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
     }
-  }
-  if (!res.ok) throw new ApiError(res.status, data);
-  return data as T;
+    signal.throwIfAborted();
+    const token = await getAuthToken(tokenOptions);
+    signal.throwIfAborted();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+      const role = getWorkspaceRole();
+      if (role) headers["X-GRIDGO-Role"] = role;
+    }
+
+    const res = await fetch(`${getApiBase()}${path}`, {
+      ...init,
+      headers,
+      signal,
+    });
+    const text = await res.text();
+    let data: unknown = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
+      }
+    }
+    if (!res.ok) throw new ApiError(res.status, data);
+    return data as T;
   });
 }
 
@@ -89,7 +89,10 @@ export async function markNotificationRead(
   return result.notification;
 }
 
-export async function markAllNotificationsRead(snapshot: string, role?: Role): Promise<number> {
+export async function markAllNotificationsRead(
+  snapshot: string,
+  role?: Role,
+): Promise<number> {
   const result = await notificationRequest<{ updatedCount: number }>(
     `/notifications/read-all${role ? `?role=${role}` : ""}`,
     { method: "PATCH", body: JSON.stringify({ snapshot }) },

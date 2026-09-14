@@ -166,7 +166,8 @@ function SessionAuthProvider({
 
     try {
       if (!clerkSession.isLoaded) {
-        if (isCurrent()) setStatus(current => current === "mapped" ? current : "checking");
+        if (isCurrent())
+          setStatus((current) => (current === "mapped" ? current : "checking"));
         return;
       }
       if (!clerkSession.isSignedIn) {
@@ -178,7 +179,8 @@ function SessionAuthProvider({
         return;
       }
 
-      if (isCurrent()) setStatus(current => current === "mapped" ? current : "checking");
+      if (isCurrent())
+        setStatus((current) => (current === "mapped" ? current : "checking"));
       const token = await clerkSession.getToken();
       if (!isCurrent()) return;
       if (!token) {
@@ -221,7 +223,11 @@ function SessionAuthProvider({
       setStatus("mapped");
     } catch (error) {
       if (!isCurrent()) return;
-      if (hasMappedIdentity.current && !(isApiError(error) && ["unauthorized", "forbidden"].includes(error.kind))) return;
+      if (
+        hasMappedIdentity.current &&
+        !(isApiError(error) && ["unauthorized", "forbidden"].includes(error.kind))
+      )
+        return;
       hasMappedIdentity.current = false;
       setUser(null);
       setMemberships([]);

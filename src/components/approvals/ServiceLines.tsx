@@ -58,23 +58,25 @@ export function ServiceLines() {
   const [confirm, setConfirm] = useState<ConfirmService | null>(null);
   const [reason, setReason] = useState("");
 
-  const load = useSerializedLoad(useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setServices(await listSupplierServices());
-    } catch (err) {
-      setServices(null);
-      setError(
-        opsErrorMessage(
-          err,
-          "Could not load supplier service lines. Confirm the demo API is running.",
-        ),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []));
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        setServices(await listSupplierServices());
+      } catch (err) {
+        setServices(null);
+        setError(
+          opsErrorMessage(
+            err,
+            "Could not load supplier service lines. Confirm the demo API is running.",
+          ),
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, []),
+  );
 
   useLiveReload(["approvals", "services", "identity"], load);
 

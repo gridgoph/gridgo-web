@@ -42,59 +42,73 @@ export default function EditPrintJobPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
 
-  const load = useSerializedLoad(useCallback(async (preserveDraft = false) => {
-    setLoading(true);
-    setFloorLoading(true);
-    setError(null);
-    try {
-      const [tax, svc, people] = await Promise.all([
-        getTaxonomy(),
-        listSupplierServices(),
-        listUsers("supplier").catch(() => [] as User[]),
-      ]);
-      const job = (tax.subcategories ?? []).find((entry) => entry.code === code);
-      if (!job) {
-        setValues(null);
-        setError("That print job is not on the chart.");
-        return;
-      }
-      setCategories(tax.categories);
-      setValues(current => preserveDraft && current ? current : ({
-        categoryCode: job.categoryCode,
-        name: job.name,
-        code: job.code,
-        examples: job.examples ?? [],
-        sortOrder: job.sortOrder != null ? String(job.sortOrder) : "",
-        active: job.active,
-      }));
-      const names = await starterNamesForJobs([job.code]);
-      setStarterName(names[job.code] ?? null);
+  const load = useSerializedLoad(
+    useCallback(
+      async (preserveDraft = false) => {
+        setLoading(true);
+        setFloorLoading(true);
+        setError(null);
+        try {
+          const [tax, svc, people] = await Promise.all([
+            getTaxonomy(),
+            listSupplierServices(),
+            listUsers("supplier").catch(() => [] as User[]),
+          ]);
+          const job = (tax.subcategories ?? []).find((entry) => entry.code === code);
+          if (!job) {
+            setValues(null);
+            setError("That print job is not on the chart.");
+            return;
+          }
+          setCategories(tax.categories);
+          setValues((current) =>
+            preserveDraft && current
+              ? current
+              : {
+                  categoryCode: job.categoryCode,
+                  name: job.name,
+                  code: job.code,
+                  examples: job.examples ?? [],
+                  sortOrder: job.sortOrder != null ? String(job.sortOrder) : "",
+                  active: job.active,
+                },
+          );
+          const names = await starterNamesForJobs([job.code]);
+          setStarterName(names[job.code] ?? null);
 
-      const publicRows = await loadPublicShopListings(job.categoryCode, job.code).catch(
-        () => [],
-      );
-      setFloor(
-        assembleFloorShops({
-          services: svc,
-          categoryCode: job.categoryCode,
-          aliases: tax.categoryAliases,
-          users: people,
-          publicRows,
-          subcategoryCode: job.code,
-        }),
-      );
-    } catch (err) {
-      if (
-        preserveDraft &&
-        !(isApiError(err) && ["unauthorized", "forbidden", "not_found"].includes(err.kind))
-      ) return;
-      setValues(null);
-      setError(adminErrorMessage(err, "Could not load this print job."));
-    } finally {
-      setLoading(false);
-      setFloorLoading(false);
-    }
-  }, [code]));
+          const publicRows = await loadPublicShopListings(
+            job.categoryCode,
+            job.code,
+          ).catch(() => []);
+          setFloor(
+            assembleFloorShops({
+              services: svc,
+              categoryCode: job.categoryCode,
+              aliases: tax.categoryAliases,
+              users: people,
+              publicRows,
+              subcategoryCode: job.code,
+            }),
+          );
+        } catch (err) {
+          if (
+            preserveDraft &&
+            !(
+              isApiError(err) &&
+              ["unauthorized", "forbidden", "not_found"].includes(err.kind)
+            )
+          )
+            return;
+          setValues(null);
+          setError(adminErrorMessage(err, "Could not load this print job."));
+        } finally {
+          setLoading(false);
+          setFloorLoading(false);
+        }
+      },
+      [code],
+    ),
+  );
 
   useLiveReload(["catalog", "services"], () => load(true));
 
@@ -143,7 +157,11 @@ export default function EditPrintJobPage() {
         title="Could not open this print job"
         body={error ?? "Missing."}
         action={
-          <Button variant="secondary" nativeButton={false} render={<Link href="/admin/catalogue" />}>
+          <Button
+            variant="secondary"
+            nativeButton={false}
+            render={<Link href="/admin/catalogue" />}
+          >
             Back to chart
           </Button>
         }
@@ -152,13 +170,18 @@ export default function EditPrintJobPage() {
   }
 
   const categoryName =
-    categories.find((entry) => entry.code === values.categoryCode)?.name ?? "this category";
+    categories.find((entry) => entry.code === values.categoryCode)?.name ??
+    "this category";
 
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 max-w-2xl">
-          <Button variant="ghost" nativeButton={false} render={<Link href="/admin/catalogue" />}>
+          <Button
+            variant="ghost"
+            nativeButton={false}
+            render={<Link href="/admin/catalogue" />}
+          >
             Back to chart
           </Button>
           <h1 className="text-h2 text-text-primary m-0 mt-2">{values.name}</h1>

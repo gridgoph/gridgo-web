@@ -8,7 +8,7 @@ A single Next.js (App Router) portal for three roles: `supplier`, `ops_admin`, `
 
 Mobile apps (client / supplier / rider) are separate repos. Do not invent a parallel product identity here.
 
-**Operations is a required participant in the order flow, not an observer.** A client's 75% downpayment waits for a person here to confirm the money arrived; until they do, the order physically cannot progress. That confirmation lives on the shared order workspace (`/ops/orders/:id`; Super Admin inbox slips open `/admin/orders/:id`).
+**Operations is a required participant in the order flow, not an observer.** A client's 75% downpayment waits for a person here to confirm the money arrived; until they do, the order physically cannot progress. That confirmation lives on the shared order workspace; see [inbox destinations](docs/REALTIME_UPDATES.md#inbox-destinations).
 
 The operational model is v2. Its contract is `gridgo-api/docs/OPERATIONAL_MODEL_V2_API.md`; the captain's reasoning is in `/home/kali/firstmate/data/gridgo-operational-model-v2.md`. Read the contract before changing anything that touches money, states, or roles.
 
@@ -219,11 +219,11 @@ Do not revisit a rejected primitive unless a new screen supplies a concrete call
 The captain's `yanolint/web` and `rxguard` also carry `@tanstack/react-query` and `sonner`.
 Both were evaluated here and deliberately not adopted:
 
-| Decision | Package                 | Reason                                                                                                                                                                                                                                                                                                                                                                                      |
-| -------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Adopted  | `@tanstack/react-table` | The captain names DataTables specifically and uses this everywhere. Powers `src/components/ui/data-table.tsx`.                                                                                                                                                                                                                                                                              |
-| Declined | `@tanstack/react-query` | Every screen here is one `load()` per mount with an explicit `LoadingBlock` / `ErrorState` / `EmptyState` triad and `ApiError.kind` → recovery-copy mapping. Swapping the data layer touches ~28 pages and the error-copy contract for no user-visible gain while there is no polling, cache invalidation, or shared-query story. Revisit when live refresh or optimistic transitions land. |
-| Declined | `sonner`                | Already rejected in the primitive audit above and still correct: this is a Base UI project with the Base `toast` manager and a root `Toaster`. Adding sonner means two toast roots.                                                                                                                                                                                                         |
+| Decision | Package                 | Reason                                                                                                                                                                                                            |
+| -------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Adopted  | `@tanstack/react-table` | The captain names DataTables specifically and uses this everywhere. Powers `src/components/ui/data-table.tsx`.                                                                                                    |
+| Declined | `@tanstack/react-query` | Not adopted. The current refresh and reconciliation contract is in [Live resource updates](docs/REALTIME_UPDATES.md); preserve the existing `ApiError.kind` → recovery-copy mapping if revisiting the data layer. |
+| Declined | `sonner`                | Already rejected in the primitive audit above and still correct: this is a Base UI project with the Base `toast` manager and a root `Toaster`. Adding sonner means two toast roots.                               |
 
 ## Auth and role boundary
 
@@ -349,9 +349,9 @@ If a screen still needs a capability the GRIDGO API does not expose, show an hon
 | ops_admin   | `/ops/overview`, `orders`, `approvals`, `dispatch`, `riders`, `escalations`, `schedule`, `payouts`, `claims`, `recovery`, `settings`, `audit` |
 | super_admin | `/admin/overview`, `verification`, `roles`, `catalogue`, `zones`, `credits`, `finance`, `settings`, `audit`, `planning`, `broadcast`          |
 
-Inbox destinations that are **not** rail items: Super Admin order rows open `/admin/orders/:id` and pickup escalations open `/admin/escalations`. Operations order rows still open `/ops/orders/:id`. `notificationHref` in `src/lib/live/notificationHref.ts` owns that split — RoleGate bounces Super Admin off `/ops/*`.
+For inbox destinations outside the rail and their role boundaries, see [Live resource updates](docs/REALTIME_UPDATES.md#inbox-destinations).
 
-Two surfaces are mounted for both Operations and Super Admin from **one** implementation, so they can never drift:
+The following shared surfaces mount one implementation for Operations and Super Admin:
 
 | Component                                         | Mounted at                                                      |
 | ------------------------------------------------- | --------------------------------------------------------------- |

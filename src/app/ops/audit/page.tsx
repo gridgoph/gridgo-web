@@ -14,10 +14,7 @@ import {
   shortRecordId,
 } from "@/app/ops/_lib/present";
 import { Button } from "@/components/ui/button";
-import {
-  DataTable,
-  type DataTableColumn,
-} from "@/components/ui/data-table";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -78,7 +75,10 @@ function detailSummary(detail: Record<string, unknown> | null): string {
         const v = detail[k];
         if (v == null) return null;
         if (typeof v === "object") return null;
-        return `${k.replace(/([A-Z])/g, " $1").replace(/^./, (s) => s.toUpperCase()).replace(/_/g, " ")}: ${String(v)}`;
+        return `${k
+          .replace(/([A-Z])/g, " $1")
+          .replace(/^./, (s) => s.toUpperCase())
+          .replace(/_/g, " ")}: ${String(v)}`;
       })
       .filter(Boolean)
       .join(" · ");
@@ -96,33 +96,35 @@ export default function OpsAuditPage() {
   const [orderId, setOrderId] = useState("");
   const [actorId, setActorId] = useState("");
 
-  const load = useSerializedLoad(useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await listAudit({
-        limit: 100,
-        entityType: entityType === "all" ? undefined : entityType,
-        action: actionFilter === "all" ? undefined : actionFilter,
-        orderId: orderId.trim() || undefined,
-        actorId: actorId.trim() || undefined,
-      });
-      setEntries(data);
-    } catch (err) {
-      setEntries(null);
-      if (err instanceof ApiError) {
-        setError(
-          err.kind === "forbidden"
-            ? "Audit log is not available for this session."
-            : `Could not load audit log (${err.code}).`,
-        );
-      } else {
-        setError("Network error loading audit log.");
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await listAudit({
+          limit: 100,
+          entityType: entityType === "all" ? undefined : entityType,
+          action: actionFilter === "all" ? undefined : actionFilter,
+          orderId: orderId.trim() || undefined,
+          actorId: actorId.trim() || undefined,
+        });
+        setEntries(data);
+      } catch (err) {
+        setEntries(null);
+        if (err instanceof ApiError) {
+          setError(
+            err.kind === "forbidden"
+              ? "Audit log is not available for this session."
+              : `Could not load audit log (${err.code}).`,
+          );
+        } else {
+          setError("Network error loading audit log.");
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [entityType, actionFilter, orderId, actorId]));
+    }, [entityType, actionFilter, orderId, actorId]),
+  );
 
   useLiveReload(["orders", "claims", "payouts", "identity", "settings"], load);
 
@@ -138,11 +140,7 @@ export default function OpsAuditPage() {
   const entityOptions = useMemo(() => {
     if (!entries) return [] as string[];
     return [
-      ...new Set(
-        entries
-          .map((e) => e.entityType)
-          .filter((t): t is string => Boolean(t)),
-      ),
+      ...new Set(entries.map((e) => e.entityType).filter((t): t is string => Boolean(t))),
     ].sort();
   }, [entries]);
 
@@ -198,8 +196,7 @@ export default function OpsAuditPage() {
       {
         id: "record",
         header: "Record",
-        sortValue: (e) =>
-          `${e.entityType ?? ""} ${e.entityId ?? ""} ${e.orderId ?? ""}`,
+        sortValue: (e) => `${e.entityType ?? ""} ${e.entityId ?? ""} ${e.orderId ?? ""}`,
         filterValue: (e) =>
           `${presentEntityType(e.entityType)} ${e.entityId ?? ""} ${e.orderId ?? ""}`,
         cell: (e) => (
@@ -223,8 +220,7 @@ export default function OpsAuditPage() {
         // right edge of the table.
         className: "max-w-[26rem] whitespace-normal",
         sortValue: (e) => e.reason ?? "",
-        filterValue: (e) =>
-          `${e.reason ?? ""} ${detailSummary(e.detail)}`,
+        filterValue: (e) => `${e.reason ?? ""} ${detailSummary(e.detail)}`,
         cell: (e) => {
           const detail = detailSummary(e.detail);
           return (
@@ -233,9 +229,7 @@ export default function OpsAuditPage() {
                 <p className="text-body text-text-secondary m-0">{e.reason}</p>
               ) : null}
               {detail ? (
-                <p className="text-caption text-text-muted m-0 mt-0.5">
-                  {detail}
-                </p>
+                <p className="text-caption text-text-muted m-0 mt-0.5">{detail}</p>
               ) : null}
               {!e.reason && !detail ? (
                 <span className="text-body text-text-muted">—</span>
@@ -267,15 +261,11 @@ export default function OpsAuditPage() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Platform accountability: who did what, when, to which record. Filter
-          by record type, action, order, or actor. This is the trail the product
-          rests on — not a debug dump.
+          Platform accountability: who did what, when, to which record. Filter by record
+          type, action, order, or actor. This is the trail the product rests on — not a
+          debug dump.
         </p>
-        <Button
-          variant="secondary"
-          disabled={loading}
-          onClick={() => void load()}
-        >
+        <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
         </Button>
       </div>
@@ -290,10 +280,7 @@ export default function OpsAuditPage() {
         <FieldGroup className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field>
             <FieldLabel htmlFor="audit-entity">Record type</FieldLabel>
-            <Select
-              value={entityType}
-              onValueChange={(v) => setEntityType(v ?? "all")}
-            >
+            <Select value={entityType} onValueChange={(v) => setEntityType(v ?? "all")}>
               <SelectTrigger id="audit-entity" className="min-h-11 w-full">
                 <SelectValue>
                   {(v) =>
@@ -329,9 +316,7 @@ export default function OpsAuditPage() {
               <SelectTrigger id="audit-action" className="min-h-11 w-full">
                 <SelectValue>
                   {(v) =>
-                    !v || v === "all"
-                      ? "All actions"
-                      : presentAuditAction(String(v))
+                    !v || v === "all" ? "All actions" : presentAuditAction(String(v))
                   }
                 </SelectValue>
               </SelectTrigger>

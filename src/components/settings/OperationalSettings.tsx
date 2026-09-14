@@ -113,38 +113,41 @@ export function OperationalSettings() {
   const [qrError, setQrError] = useState<string | null>(null);
   const [qrOk, setQrOk] = useState<string | null>(null);
 
-  const load = useSerializedLoad(useCallback(async (preserveDraft = false) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const next = await getSettings();
-      const previous = settingsRef.current;
-      setHours((current) =>
-        preserveDraft && previous && current !== String(previous.issueWindowHours)
-          ? current
-          : String(next.issueWindowHours),
-      );
-      setBands((current) =>
-        preserveDraft && previous &&
-        JSON.stringify(current) !== JSON.stringify(toDraft(previous.deliveryFeeBands))
-          ? current
-          : toDraft(next.deliveryFeeBands),
-      );
-      settingsRef.current = next;
-      setSettings(next);
-    } catch (err) {
-      if (preserveDraft) return;
-      setSettings(null);
-      setError(
-        opsErrorMessage(
-          err,
-          "Could not load platform settings. Confirm the demo API is running, then retry.",
-        ),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []));
+  const load = useSerializedLoad(
+    useCallback(async (preserveDraft = false) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const next = await getSettings();
+        const previous = settingsRef.current;
+        setHours((current) =>
+          preserveDraft && previous && current !== String(previous.issueWindowHours)
+            ? current
+            : String(next.issueWindowHours),
+        );
+        setBands((current) =>
+          preserveDraft &&
+          previous &&
+          JSON.stringify(current) !== JSON.stringify(toDraft(previous.deliveryFeeBands))
+            ? current
+            : toDraft(next.deliveryFeeBands),
+        );
+        settingsRef.current = next;
+        setSettings(next);
+      } catch (err) {
+        if (preserveDraft) return;
+        setSettings(null);
+        setError(
+          opsErrorMessage(
+            err,
+            "Could not load platform settings. Confirm the demo API is running, then retry.",
+          ),
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, []),
+  );
 
   useEffect(() => {
     void load();

@@ -36,10 +36,7 @@ export type LiveContextValue = {
 
 export const LiveContext = createContext<LiveContextValue | null>(null);
 
-function upsertNotification(
-  list: Notification[],
-  next: Notification,
-): Notification[] {
+function upsertNotification(list: Notification[], next: Notification): Notification[] {
   const index = list.findIndex((row) => row.id === next.id);
   if (index === -1) return [next, ...list];
   const copy = list.slice();
@@ -49,10 +46,7 @@ function upsertNotification(
 
 function applyInboxMutations(
   rows: Notification[],
-  mutations: ReadonlyMap<
-    string,
-    { kind: "read" | "deleted"; revision: number }
-  >,
+  mutations: ReadonlyMap<string, { kind: "read" | "deleted"; revision: number }>,
 ): Notification[] {
   return rows
     .filter((row) => mutations.get(row.id)?.kind !== "deleted")
@@ -61,31 +55,16 @@ function applyInboxMutations(
     );
 }
 
-export function LiveProvider({
-  children,
-  role,
-}: {
-  children: ReactNode;
-  role?: Role;
-}) {
+export function LiveProvider({ children, role }: { children: ReactNode; role?: Role }) {
   const { user } = useAuth();
   return (
-    <AccountLiveProvider
-      key={`${user?.id ?? "signed-out"}:${role ?? ""}`}
-      role={role}
-    >
+    <AccountLiveProvider key={`${user?.id ?? "signed-out"}:${role ?? ""}`} role={role}>
       {children}
     </AccountLiveProvider>
   );
 }
 
-function AccountLiveProvider({
-  children,
-  role,
-}: {
-  children: ReactNode;
-  role?: Role;
-}) {
+function AccountLiveProvider({ children, role }: { children: ReactNode; role?: Role }) {
   const { user, refresh: refreshIdentity } = useAuth();
   const userId = user?.id;
   const identityRefresh = useRef(refreshIdentity);
@@ -97,9 +76,7 @@ function AccountLiveProvider({
   const mutations = useRef(
     new Map<string, { kind: "read" | "deleted"; revision: number }>(),
   );
-  const arrivals = useRef(
-    new Map<string, { revision: number; row: Notification }>(),
-  );
+  const arrivals = useRef(new Map<string, { revision: number; row: Notification }>());
   useEffect(() => {
     active.current = true;
     return () => {
@@ -130,8 +107,7 @@ function AccountLiveProvider({
     if (!active.current || generation !== inboxGeneration.current) return;
     let rows = inbox.notifications;
     for (const [id, arrival] of arrivals.current) {
-      if (arrival.revision > revision)
-        rows = upsertNotification(rows, arrival.row);
+      if (arrival.revision > revision) rows = upsertNotification(rows, arrival.row);
       else arrivals.current.delete(id);
     }
     for (const [id, mutation] of mutations.current) {

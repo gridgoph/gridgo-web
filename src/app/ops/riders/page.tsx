@@ -29,22 +29,24 @@ export default function OpsRiderMapPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useSerializedLoad(useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setRiders(await listRiderLocations());
-    } catch (err) {
-      setRiders(null);
-      setError(
-        err instanceof ApiError
-          ? `Could not load rider locations (${err.code}).`
-          : "Could not reach the API. Check it is running, then retry.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []));
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        setRiders(await listRiderLocations());
+      } catch (err) {
+        setRiders(null);
+        setError(
+          err instanceof ApiError
+            ? `Could not load rider locations (${err.code}).`
+            : "Could not reach the API. Check it is running, then retry.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, []),
+  );
 
   useLiveReload("location", load);
 
@@ -122,7 +124,9 @@ export default function OpsRiderMapPage() {
 
 function RiderMap({ riders }: { riders: RiderLocation[] }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const [instance, setInstance] = useState<{ map: LeafletMap; L: LeafletLike } | null>(null);
+  const [instance, setInstance] = useState<{ map: LeafletMap; L: LeafletLike } | null>(
+    null,
+  );
   const markersRef = useRef(new Map<string, LeafletMarker>());
   const fittedRef = useRef(false);
 
@@ -181,14 +185,14 @@ function RiderMap({ riders }: { riders: RiderLocation[] }) {
     if (!instance) return;
     const { map, L } = instance;
     const markers = markersRef.current;
-    const activeIds = new Set(riders.map(rider => rider.riderId));
+    const activeIds = new Set(riders.map((rider) => rider.riderId));
     for (const [id, marker] of markers) {
       if (!activeIds.has(id)) {
         marker.remove();
         markers.delete(id);
       }
     }
-    const points = riders.map(rider => {
+    const points = riders.map((rider) => {
       const point: [number, number] = [rider.lat, rider.lng];
       const html = `<strong>${escapeHtml(rider.name)}</strong><br/>Order ${escapeHtml(rider.orderId)}<br/>${escapeHtml(presentOrderState(rider.state).label)}`;
       const existing = markers.get(rider.riderId);
