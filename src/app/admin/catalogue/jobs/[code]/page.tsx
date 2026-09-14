@@ -128,7 +128,7 @@ export default function EditPrintJobPage() {
     }
   }
 
-  if (loading) {
+  if (loading && (!values || values.code !== code)) {
     return (
       <div className="flex flex-col gap-4">
         <Skeleton className="h-8 w-1/3" />
@@ -194,6 +194,7 @@ export default function EditPrintJobPage() {
           <div className="gg-card flex flex-col gap-5">
             <p className="text-overline text-text-muted m-0 uppercase">On the chart</p>
             <PrintJobFields
+              key={values.code}
               values={values}
               onChange={setValues}
               categories={categories}

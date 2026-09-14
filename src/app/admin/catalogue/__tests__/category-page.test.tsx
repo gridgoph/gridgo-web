@@ -221,3 +221,38 @@ describe.each([
     );
   });
 });
+
+
+it.each(["success", "failure"] as const)(
+  "keeps unfinished example text and focus during background refresh %s",
+  async outcome => {
+    const ping = renderEditor(EditPrintJobPage, "flyers");
+    const input = await screen.findByRole("textbox", { name: "Examples" });
+    fireEvent.change(input, { target: { value: "Unfinished example" } });
+    input.focus();
+
+    let resolve!: (value: Taxonomy) => void;
+    let reject!: (reason: unknown) => void;
+    mocks.getTaxonomy.mockReturnValueOnce(new Promise<Taxonomy>((done, fail) => {
+      resolve = done;
+      reject = fail;
+    }));
+    await ping();
+
+    expect(screen.getByRole("textbox", { name: "Examples" })).toBe(input);
+    expect(input).toHaveValue("Unfinished example");
+    expect(input).toHaveFocus();
+
+    await act(async () => {
+      if (outcome === "success") resolve(taxonomy);
+      else reject(new TypeError("Offline"));
+    });
+
+    expect(screen.getByRole("textbox", { name: "Examples" })).toBe(input);
+    expect(input).toHaveValue("Unfinished example");
+    expect(input).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Add example" }));
+    expect(screen.getByRole("button", { name: "Remove Unfinished example" })).toBeVisible();
+    expect(input).toHaveValue("");
+  },
+);
