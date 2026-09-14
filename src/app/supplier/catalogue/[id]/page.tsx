@@ -160,6 +160,7 @@ export default function ListingEditorPage() {
         dirtyRef.current = false;
       }
       setError(listingErrorMessage(err, "Could not open this listing."));
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -168,7 +169,7 @@ export default function ListingEditorPage() {
   useLiveReload(["catalog", "services"], load);
 
   useEffect(() => {
-    void load();
+    void load().catch(() => undefined);
   }, [load]);
 
   const dirty = Boolean(listing && working && JSON.stringify(working) !== JSON.stringify(draftFrom(listing)));
@@ -311,14 +312,18 @@ export default function ListingEditorPage() {
 
   async function saveOptionPrice(group: SpecGroup, optionId: string, pesos: string) {
     const minor = pesosToMinor(pesos) ?? 0;
+    let priceSaved = false;
     setBusy(true);
     setActionError(null);
     try {
       await updateCatalogOption(group.id, optionId, group.version, { priceModifierMinor: minor });
+      priceSaved = true;
       await load();
       return true;
     } catch (err) {
-      setActionError(listingErrorMessage(err, "Could not save that price."));
+      setActionError(priceSaved
+        ? "Price saved, but its refresh failed. Your entered price was kept."
+        : listingErrorMessage(err, "Could not save that price."));
       return false;
     } finally {
       setBusy(false);
@@ -919,6 +924,14 @@ function OptionPriceInput({ group, option, onSave }: {
   onSave: (group: SpecGroup, optionId: string, pesos: string) => Promise<boolean>;
 }) {
   const [draft, setDraft] = useState<{ group: SpecGroup; pesos: string } | null>(null);
+  useEffect(() => {
+    setDraft(current =>
+      current && group.version !== current.group.version &&
+      pesosToMinor(current.pesos) === option.priceModifierMinor
+        ? null
+        : current,
+    );
+  }, [group.version, option.priceModifierMinor]);
   return (
     <Input
       className="w-28"

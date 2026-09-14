@@ -353,3 +353,36 @@ it("shows a recoverable error when the initial listing load fails", async () => 
   expect(await screen.findByText("This listing could not open")).toBeVisible();
   expect(screen.queryByLabelText("A5 extra pesos")).not.toBeInTheDocument();
 });
+
+
+it.each([false, true])("reconciles a saved option price after refresh (initial refresh fails: %s)", async refreshFails => {
+  const ping = renderLiveListing();
+  const price = await screen.findByLabelText("A5 extra pesos");
+  fireEvent.change(price, { target: { value: "12.50" } });
+  const updated = catalogItem();
+  updated.item.optionGroups[0].version = 2;
+  updated.item.optionGroups[0].options[0].priceModifierMinor = 1250;
+  mocks.updateCatalogOption.mockResolvedValue({});
+  mocks.getCatalogItem.mockResolvedValue(updated);
+  if (refreshFails) mocks.getTaxonomy.mockRejectedValueOnce(new TypeError("Offline"));
+  fireEvent.blur(price);
+  await waitFor(() => expect(mocks.getTaxonomy).toHaveBeenCalledTimes(2));
+
+  if (refreshFails) {
+    expect(await screen.findByText("Price saved, but its refresh failed. Your entered price was kept.")).toBeVisible();
+    expect(screen.getByLabelText("A5 extra pesos")).toBe(price);
+    expect(price).toHaveValue("12.50");
+    await ping();
+  }
+  expect(price).toHaveValue("12.50");
+  fireEvent.blur(price);
+  expect(mocks.updateCatalogOption).toHaveBeenCalledTimes(1);
+
+  fireEvent.change(price, { target: { value: "15.00" } });
+  mocks.updateCatalogOption.mockRejectedValueOnce(new ApiError(409, { error: "version_conflict" }));
+  fireEvent.blur(price);
+  await waitFor(() => expect(mocks.updateCatalogOption).toHaveBeenLastCalledWith(
+    "grp_1", "opt_a", 2, { priceModifierMinor: 1500 },
+  ));
+  expect(price).toHaveValue("15.00");
+});
