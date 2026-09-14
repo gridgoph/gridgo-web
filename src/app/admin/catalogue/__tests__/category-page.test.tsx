@@ -44,9 +44,8 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/api/client", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api/client")>(
-    "@/lib/api/client",
-  );
+  const actual =
+    await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
   return {
     ...actual,
     listListingStarters: mocks.listListingStarters,
@@ -172,7 +171,6 @@ describe("category sheet", () => {
   });
 });
 
-
 function renderEditor(Page: typeof EditCategoryPage, code: string) {
   mocks.code = code;
   mocks.getTaxonomy.mockResolvedValue(taxonomy);
@@ -181,15 +179,29 @@ function renderEditor(Page: typeof EditCategoryPage, code: string) {
   mocks.listAllCatalogShops.mockResolvedValue([]);
   let listener!: (ping: InvalidatePing) => void;
   const live: LiveContextValue = {
-    notifications: [], unreadCount: 0, snapshot: null, live: true,
-    subscribe: next => { listener = next; return () => undefined; },
-    markRead: async () => {}, markAllRead: async () => {},
-    remove: async () => {}, refreshInbox: async () => {},
+    notifications: [],
+    unreadCount: 0,
+    snapshot: null,
+    live: true,
+    subscribe: (next) => {
+      listener = next;
+      return () => undefined;
+    },
+    markRead: async () => {},
+    markAllRead: async () => {},
+    remove: async () => {},
+    refreshInbox: async () => {},
   };
-  render(<LiveContext.Provider value={live}><Page /></LiveContext.Provider>);
+  render(
+    <LiveContext.Provider value={live}>
+      <Page />
+    </LiveContext.Provider>,
+  );
   return async () => {
     const calls = mocks.getTaxonomy.mock.calls.length;
-    await act(async () => { listener({ resource: "catalog" }); });
+    await act(async () => {
+      listener({ resource: "catalog" });
+    });
     await waitFor(() => expect(mocks.getTaxonomy).toHaveBeenCalledTimes(calls + 1));
   };
 }
@@ -201,7 +213,9 @@ describe.each([
   it("retains unsaved values through a transient failure and recovery", async () => {
     const ping = renderEditor(Page, code);
     await screen.findByLabelText("Name");
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Unsaved name" } });
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Unsaved name" },
+    });
     mocks.getTaxonomy.mockRejectedValueOnce(new TypeError("Offline"));
     await ping();
     expect(await screen.findByLabelText("Name")).toHaveValue("Unsaved name");
@@ -209,23 +223,28 @@ describe.each([
     expect(await screen.findByLabelText("Name")).toHaveValue("Unsaved name");
   });
 
-  it.each([403, 404])("clears the draft on definitive HTTP %s", async status => {
+  it.each([403, 404])("clears the draft on definitive HTTP %s", async (status) => {
     const ping = renderEditor(Page, code);
     await screen.findByLabelText("Name");
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Unsaved name" } });
-    mocks.getTaxonomy.mockRejectedValueOnce(new ApiError(status, { error: status === 403 ? "forbidden" : "not_found" }));
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Unsaved name" },
+    });
+    mocks.getTaxonomy.mockRejectedValueOnce(
+      new ApiError(status, { error: status === 403 ? "forbidden" : "not_found" }),
+    );
     await ping();
     await waitFor(() => expect(screen.queryByLabelText("Name")).not.toBeInTheDocument());
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      status === 403 ? "This action is restricted to Super Admin." : "That record was not found.",
+      status === 403
+        ? "This action is restricted to Super Admin."
+        : "That record was not found.",
     );
   });
 });
 
-
 it.each(["success", "failure"] as const)(
   "keeps unfinished example text and focus during background refresh %s",
-  async outcome => {
+  async (outcome) => {
     const ping = renderEditor(EditPrintJobPage, "flyers");
     const input = await screen.findByRole("textbox", { name: "Examples" });
     fireEvent.change(input, { target: { value: "Unfinished example" } });
@@ -233,10 +252,12 @@ it.each(["success", "failure"] as const)(
 
     let resolve!: (value: Taxonomy) => void;
     let reject!: (reason: unknown) => void;
-    mocks.getTaxonomy.mockReturnValueOnce(new Promise<Taxonomy>((done, fail) => {
-      resolve = done;
-      reject = fail;
-    }));
+    mocks.getTaxonomy.mockReturnValueOnce(
+      new Promise<Taxonomy>((done, fail) => {
+        resolve = done;
+        reject = fail;
+      }),
+    );
     await ping();
 
     expect(screen.getByRole("textbox", { name: "Examples" })).toBe(input);
@@ -252,7 +273,9 @@ it.each(["success", "failure"] as const)(
     expect(input).toHaveValue("Unfinished example");
     expect(input).toHaveFocus();
     fireEvent.click(screen.getByRole("button", { name: "Add example" }));
-    expect(screen.getByRole("button", { name: "Remove Unfinished example" })).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Remove Unfinished example" }),
+    ).toBeVisible();
     expect(input).toHaveValue("");
   },
 );

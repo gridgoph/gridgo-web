@@ -1,14 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { LiveContext, type LiveContextValue } from "@/lib/live/LiveProvider";
@@ -53,17 +46,13 @@ it("updates clean settings fields and retains edited fields on live refresh", as
       <OperationalSettings />
     </LiveContext.Provider>,
   );
-  expect(await screen.findByLabelText("Hours after delivery")).toHaveValue(
-    "24",
-  );
+  expect(await screen.findByLabelText("Hours after delivery")).toHaveValue("24");
   fireEvent.change(screen.getByLabelText("Hours after delivery"), {
     target: { value: "48" },
   });
   await act(async () => {
     listener({ resource: "settings" });
   });
-  await waitFor(() =>
-    expect(screen.getByLabelText("Fee (₱)")).toHaveValue("50.00"),
-  );
+  await waitFor(() => expect(screen.getByLabelText("Fee (₱)")).toHaveValue("50.00"));
   expect(screen.getByLabelText("Hours after delivery")).toHaveValue("48");
 });

@@ -10,8 +10,7 @@ import AdminVerification from "@/app/admin/verification/page";
 vi.stubGlobal("React", React);
 const navigation = vi.hoisted(() => ({ url: "", replace: vi.fn() }));
 vi.mock("next/navigation", () => ({
-  useSearchParams: () =>
-    new URLSearchParams(navigation.url.split("?")[1] ?? ""),
+  useSearchParams: () => new URLSearchParams(navigation.url.split("?")[1] ?? ""),
   useRouter: () => ({ replace: navigation.replace }),
 }));
 vi.mock("@/components/approvals/SignupApprovals", () => ({

@@ -1,13 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import OpsRiderMapPage from "@/app/ops/riders/page";
@@ -68,12 +62,8 @@ it("retains the map viewport and open popup while moving, adding and removing ri
   await waitFor(() => expect(first.bindPopup).toHaveBeenCalledTimes(1));
   const cameraCalls = map.setView.mock.calls.length;
   fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-  await waitFor(() =>
-    expect(first.setLatLng).toHaveBeenCalledWith([7.2, 125.6]),
-  );
-  expect(first.setPopupContent).toHaveBeenCalledWith(
-    expect.stringContaining("rider_a"),
-  );
+  await waitFor(() => expect(first.setLatLng).toHaveBeenCalledWith([7.2, 125.6]));
+  expect(first.setPopupContent).toHaveBeenCalledWith(expect.stringContaining("rider_a"));
   expect(first.bindPopup).toHaveBeenCalledTimes(1);
   expect(first.remove).not.toHaveBeenCalled();
   expect(second.bindPopup).toHaveBeenCalledTimes(1);

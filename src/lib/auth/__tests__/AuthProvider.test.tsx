@@ -337,7 +337,6 @@ describe("AuthProvider refresh ownership", () => {
   });
 });
 
-
 it("settles a failed retry after a mapped identity is denied", async () => {
   getAuthMeMock
     .mockResolvedValueOnce(authMe("user_first", "ops_admin"))
@@ -350,9 +349,13 @@ it("settles a failed retry after a mapped identity is denied", async () => {
   );
   expect(await screen.findByText("Authorized workspace")).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-  await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("unavailable"));
+  await waitFor(() =>
+    expect(screen.getByTestId("status")).toHaveTextContent("unavailable"),
+  );
   fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
   await waitFor(() => expect(getAuthMeMock).toHaveBeenCalledTimes(3));
-  await waitFor(() => expect(screen.getByTestId("status")).toHaveTextContent("unavailable"));
+  await waitFor(() =>
+    expect(screen.getByTestId("status")).toHaveTextContent("unavailable"),
+  );
   expect(screen.getByTestId("user")).toHaveTextContent("none");
 });

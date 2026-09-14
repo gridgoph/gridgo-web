@@ -117,9 +117,7 @@ function MutationInbox() {
   inbox = useLive();
   return (
     <output>
-      {JSON.stringify(
-        inbox.notifications.map((row) => ({ id: row.id, read: row.read })),
-      )}
+      {JSON.stringify(inbox.notifications.map((row) => ({ id: row.id, read: row.read })))}
     </output>
   );
 }
@@ -170,15 +168,11 @@ it.each(["read", "all", "delete"] as const)(
       fetch.resolve({ notifications: [row], snapshot: row.id });
     });
     const expected = mutation === "delete" ? [] : [{ id: "n", read: true }];
-    expect(JSON.parse(screen.getByRole("status").textContent!)).toEqual(
-      expected,
-    );
+    expect(JSON.parse(screen.getByRole("status").textContent!)).toEqual(expected);
     await act(async () => {
       handlers.onNotification(row);
     });
-    expect(JSON.parse(screen.getByRole("status").textContent!)).toEqual(
-      expected,
-    );
+    expect(JSON.parse(screen.getByRole("status").textContent!)).toEqual(expected);
     expect(inbox.unreadCount).toBe(0);
   },
 );
@@ -215,9 +209,7 @@ it("leaves arrivals after a read-all cursor unread during reconciliation", async
     pendingFetch.resolve({ notifications: [first], snapshot: first.id });
     await refreshing;
   });
-  expect(
-    inbox.notifications.map((row) => ({ id: row.id, read: row.read })),
-  ).toEqual([
+  expect(inbox.notifications.map((row) => ({ id: row.id, read: row.read }))).toEqual([
     { id: "later", read: false },
     { id: "first", read: true },
   ]);

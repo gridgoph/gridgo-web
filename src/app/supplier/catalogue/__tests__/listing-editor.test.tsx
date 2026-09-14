@@ -43,9 +43,8 @@ vi.mock("@/lib/auth/AuthProvider", () => ({
 }));
 
 vi.mock("@/lib/api/client", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api/client")>(
-    "@/lib/api/client",
-  );
+  const actual =
+    await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
   return {
     ...actual,
     getCatalogItem: mocks.getCatalogItem,
@@ -186,7 +185,9 @@ describe("listing editor printer cap", () => {
     expect(await screen.findByLabelText("Max printer width")).toBeVisible();
     expect(screen.getByText("feet")).toBeVisible();
     expect(
-      screen.getAllByText("Set the max printer width in feet before it can go on the board.").length,
+      screen.getAllByText(
+        "Set the max printer width in feet before it can go on the board.",
+      ).length,
     ).toBeGreaterThan(0);
     expect(
       screen.getAllByRole("button", { name: "Put it on the board" })[0],
@@ -213,7 +214,10 @@ describe("listing editor printer cap", () => {
     await user.click(screen.getAllByRole("button", { name: "Save" })[0]!);
 
     await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled());
-    const tarpBody = mocks.updateCatalogItem.mock.calls[0]?.[2] as Record<string, unknown>;
+    const tarpBody = mocks.updateCatalogItem.mock.calls[0]?.[2] as Record<
+      string,
+      unknown
+    >;
     expect(tarpBody).toMatchObject({ printerMaxWidthFeet: 5 });
     expect(Object.keys(tarpBody)).toContain("printerMaxWidthFeet");
     expect(tarpBody.printerMaxWidthFeet).not.toBeUndefined();
@@ -223,7 +227,10 @@ describe("listing editor printer cap", () => {
     await user.click(screen.getAllByRole("button", { name: "Save" })[0]!);
 
     await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalledTimes(2));
-    const flyersBody = mocks.updateCatalogItem.mock.calls[1]?.[2] as Record<string, unknown>;
+    const flyersBody = mocks.updateCatalogItem.mock.calls[1]?.[2] as Record<
+      string,
+      unknown
+    >;
     expect(flyersBody).toMatchObject({
       subcategoryCode: "flyers",
       printerMaxWidthFeet: null,
@@ -235,64 +242,125 @@ describe("listing editor printer cap", () => {
 it("preserves an edited listing draft when a live catalogue refresh arrives", async () => {
   stubLoad(catalogItem());
   let listener!: (ping: InvalidatePing) => void;
-  const live: LiveContextValue = {notifications:[],unreadCount:0,snapshot:null,live:true,
-    subscribe: next => {listener=next;return () => undefined;},
-    markRead:async()=>{},markAllRead:async()=>{},remove:async()=>{},refreshInbox:async()=>{}};
-  render(<LiveContext.Provider value={live}><ListingEditorPage/></LiveContext.Provider>);
-  expect(await screen.findByLabelText("Name")).toHaveValue("Flyers");
-  fireEvent.change(screen.getByLabelText("Name"),{target:{value:"My unsaved draft"}});
-  mocks.getCatalogItem.mockResolvedValue(catalogItem({name:"Remote edit",basePriceMinor:50000,version:4}));
-  await act(async()=>{listener({resource:"catalog"});});
-  await waitFor(()=>expect(mocks.getCatalogItem).toHaveBeenCalledTimes(2));
-  expect(screen.getByLabelText("Name")).toHaveValue("My unsaved draft");
-  mocks.updateCatalogItem.mockRejectedValueOnce(new ApiError(409, { error: "version_conflict" }));
-  fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]);
-  await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalledWith(
-    "sci_1", 3, expect.objectContaining({ name: "My unsaved draft", basePriceMinor: 40000 }),
-  ));
-  expect(screen.getByLabelText("Name")).toHaveValue("My unsaved draft");
-});
-
-
-it.each([true, false])("keeps option price ownership across refresh (edited: %s)", async edited => {
-  stubLoad(catalogItem());
-  let listener!: (ping: InvalidatePing) => void;
   const live: LiveContextValue = {
-    notifications: [], unreadCount: 0, snapshot: null, live: true,
-    subscribe: next => { listener = next; return () => undefined; },
-    markRead: async () => {}, markAllRead: async () => {},
-    remove: async () => {}, refreshInbox: async () => {},
+    notifications: [],
+    unreadCount: 0,
+    snapshot: null,
+    live: true,
+    subscribe: (next) => {
+      listener = next;
+      return () => undefined;
+    },
+    markRead: async () => {},
+    markAllRead: async () => {},
+    remove: async () => {},
+    refreshInbox: async () => {},
   };
-  render(<LiveContext.Provider value={live}><ListingEditorPage /></LiveContext.Provider>);
-  const price = await screen.findByLabelText("A5 extra pesos");
-  if (edited) fireEvent.change(price, { target: { value: "12.50" } });
-  const remote = catalogItem();
-  remote.item.optionGroups[0].version = 2;
-  remote.item.optionGroups[0].options[0].priceModifierMinor = 2000;
-  mocks.getCatalogItem.mockResolvedValue(remote);
-  await act(async () => { listener({ resource: "catalog" }); });
+  render(
+    <LiveContext.Provider value={live}>
+      <ListingEditorPage />
+    </LiveContext.Provider>,
+  );
+  expect(await screen.findByLabelText("Name")).toHaveValue("Flyers");
+  fireEvent.change(screen.getByLabelText("Name"), {
+    target: { value: "My unsaved draft" },
+  });
+  mocks.getCatalogItem.mockResolvedValue(
+    catalogItem({ name: "Remote edit", basePriceMinor: 50000, version: 4 }),
+  );
+  await act(async () => {
+    listener({ resource: "catalog" });
+  });
   await waitFor(() => expect(mocks.getCatalogItem).toHaveBeenCalledTimes(2));
-  await waitFor(() => expect(price).toHaveValue(edited ? "12.50" : "20.00"));
-  if (!edited) fireEvent.change(price, { target: { value: "12.50" } });
-  mocks.updateCatalogOption.mockRejectedValueOnce(new ApiError(409, { error: "version_conflict" }));
-  fireEvent.blur(price);
-  await waitFor(() => expect(mocks.updateCatalogOption).toHaveBeenCalledWith(
-    "grp_1", "opt_a", edited ? 1 : 2, { priceModifierMinor: 1250 },
-  ));
-  expect(price).toHaveValue("12.50");
+  expect(screen.getByLabelText("Name")).toHaveValue("My unsaved draft");
+  mocks.updateCatalogItem.mockRejectedValueOnce(
+    new ApiError(409, { error: "version_conflict" }),
+  );
+  fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]);
+  await waitFor(() =>
+    expect(mocks.updateCatalogItem).toHaveBeenCalledWith(
+      "sci_1",
+      3,
+      expect.objectContaining({ name: "My unsaved draft", basePriceMinor: 40000 }),
+    ),
+  );
+  expect(screen.getByLabelText("Name")).toHaveValue("My unsaved draft");
 });
 
+it.each([true, false])(
+  "keeps option price ownership across refresh (edited: %s)",
+  async (edited) => {
+    stubLoad(catalogItem());
+    let listener!: (ping: InvalidatePing) => void;
+    const live: LiveContextValue = {
+      notifications: [],
+      unreadCount: 0,
+      snapshot: null,
+      live: true,
+      subscribe: (next) => {
+        listener = next;
+        return () => undefined;
+      },
+      markRead: async () => {},
+      markAllRead: async () => {},
+      remove: async () => {},
+      refreshInbox: async () => {},
+    };
+    render(
+      <LiveContext.Provider value={live}>
+        <ListingEditorPage />
+      </LiveContext.Provider>,
+    );
+    const price = await screen.findByLabelText("A5 extra pesos");
+    if (edited) fireEvent.change(price, { target: { value: "12.50" } });
+    const remote = catalogItem();
+    remote.item.optionGroups[0].version = 2;
+    remote.item.optionGroups[0].options[0].priceModifierMinor = 2000;
+    mocks.getCatalogItem.mockResolvedValue(remote);
+    await act(async () => {
+      listener({ resource: "catalog" });
+    });
+    await waitFor(() => expect(mocks.getCatalogItem).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(price).toHaveValue(edited ? "12.50" : "20.00"));
+    if (!edited) fireEvent.change(price, { target: { value: "12.50" } });
+    mocks.updateCatalogOption.mockRejectedValueOnce(
+      new ApiError(409, { error: "version_conflict" }),
+    );
+    fireEvent.blur(price);
+    await waitFor(() =>
+      expect(mocks.updateCatalogOption).toHaveBeenCalledWith(
+        "grp_1",
+        "opt_a",
+        edited ? 1 : 2,
+        { priceModifierMinor: 1250 },
+      ),
+    );
+    expect(price).toHaveValue("12.50");
+  },
+);
 
 function renderLiveListing() {
   stubLoad(catalogItem());
   let listener!: (ping: InvalidatePing) => void;
   const live: LiveContextValue = {
-    notifications: [], unreadCount: 0, snapshot: null, live: true,
-    subscribe: next => { listener = next; return () => undefined; },
-    markRead: async () => {}, markAllRead: async () => {},
-    remove: async () => {}, refreshInbox: async () => {},
+    notifications: [],
+    unreadCount: 0,
+    snapshot: null,
+    live: true,
+    subscribe: (next) => {
+      listener = next;
+      return () => undefined;
+    },
+    markRead: async () => {},
+    markAllRead: async () => {},
+    remove: async () => {},
+    refreshInbox: async () => {},
   };
-  render(<LiveContext.Provider value={live}><ListingEditorPage /></LiveContext.Provider>);
+  render(
+    <LiveContext.Provider value={live}>
+      <ListingEditorPage />
+    </LiveContext.Provider>,
+  );
   return async () => {
     const calls = mocks.getTaxonomy.mock.calls.length;
     // The request starting is not the refresh committing. Flush its promises
@@ -330,32 +398,42 @@ it("retains an option price draft and its version through transient failure and 
   expect(screen.getByLabelText("A5 extra pesos")).toBe(price);
   expect(price).toHaveValue("12.50");
   expect(price).toHaveFocus();
-  mocks.updateCatalogOption.mockRejectedValueOnce(new ApiError(409, { error: "version_conflict" }));
+  mocks.updateCatalogOption.mockRejectedValueOnce(
+    new ApiError(409, { error: "version_conflict" }),
+  );
   fireEvent.blur(price);
-  await waitFor(() => expect(mocks.updateCatalogOption).toHaveBeenCalledWith(
-    "grp_1", "opt_a", 1, { priceModifierMinor: 1250 },
-  ));
+  await waitFor(() =>
+    expect(mocks.updateCatalogOption).toHaveBeenCalledWith("grp_1", "opt_a", 1, {
+      priceModifierMinor: 1250,
+    }),
+  );
 });
 
-it.each([401, 403, 404])("clears the loaded listing on HTTP %s and keeps it hidden during a failed retry", async status => {
-  const ping = renderLiveListing();
-  const price = await screen.findByLabelText("A5 extra pesos");
-  fireEvent.change(price, { target: { value: "12.50" } });
-  mocks.getTaxonomy.mockRejectedValueOnce(new ApiError(status, {
-    error: status === 401 ? "unauthorized" : status === 403 ? "forbidden" : "not_found",
-  }));
-  await ping();
-  expect(await screen.findByText("This listing could not open")).toBeVisible();
-  expect(screen.queryByLabelText("A5 extra pesos")).not.toBeInTheDocument();
+it.each([401, 403, 404])(
+  "clears the loaded listing on HTTP %s and keeps it hidden during a failed retry",
+  async (status) => {
+    const ping = renderLiveListing();
+    const price = await screen.findByLabelText("A5 extra pesos");
+    fireEvent.change(price, { target: { value: "12.50" } });
+    mocks.getTaxonomy.mockRejectedValueOnce(
+      new ApiError(status, {
+        error:
+          status === 401 ? "unauthorized" : status === 403 ? "forbidden" : "not_found",
+      }),
+    );
+    await ping();
+    expect(await screen.findByText("This listing could not open")).toBeVisible();
+    expect(screen.queryByLabelText("A5 extra pesos")).not.toBeInTheDocument();
 
-  mocks.getTaxonomy.mockRejectedValueOnce(new TypeError("Offline"));
-  await ping();
-  expect(screen.getByText("This listing could not open")).toBeVisible();
-  expect(screen.queryByLabelText("A5 extra pesos")).not.toBeInTheDocument();
+    mocks.getTaxonomy.mockRejectedValueOnce(new TypeError("Offline"));
+    await ping();
+    expect(screen.getByText("This listing could not open")).toBeVisible();
+    expect(screen.queryByLabelText("A5 extra pesos")).not.toBeInTheDocument();
 
-  await ping();
-  expect(await screen.findByLabelText("A5 extra pesos")).toHaveValue("0.00");
-});
+    await ping();
+    expect(await screen.findByLabelText("A5 extra pesos")).toHaveValue("0.00");
+  },
+);
 
 it("shows a recoverable error when the initial listing load fails", async () => {
   stubLoad(catalogItem());
@@ -365,37 +443,47 @@ it("shows a recoverable error when the initial listing load fails", async () => 
   expect(screen.queryByLabelText("A5 extra pesos")).not.toBeInTheDocument();
 });
 
+it.each([false, true])(
+  "reconciles a saved option price after refresh (initial refresh fails: %s)",
+  async (refreshFails) => {
+    const ping = renderLiveListing();
+    const price = await screen.findByLabelText("A5 extra pesos");
+    fireEvent.change(price, { target: { value: "12.50" } });
+    const updated = catalogItem();
+    updated.item.optionGroups[0].version = 2;
+    updated.item.optionGroups[0].options[0].priceModifierMinor = 1250;
+    mocks.updateCatalogOption.mockResolvedValue({});
+    mocks.getCatalogItem.mockResolvedValue(updated);
+    if (refreshFails) mocks.getTaxonomy.mockRejectedValueOnce(new TypeError("Offline"));
+    await act(async () => {
+      fireEvent.blur(price);
+    });
+    expect(mocks.getTaxonomy).toHaveBeenCalledTimes(2);
 
-it.each([false, true])("reconciles a saved option price after refresh (initial refresh fails: %s)", async refreshFails => {
-  const ping = renderLiveListing();
-  const price = await screen.findByLabelText("A5 extra pesos");
-  fireEvent.change(price, { target: { value: "12.50" } });
-  const updated = catalogItem();
-  updated.item.optionGroups[0].version = 2;
-  updated.item.optionGroups[0].options[0].priceModifierMinor = 1250;
-  mocks.updateCatalogOption.mockResolvedValue({});
-  mocks.getCatalogItem.mockResolvedValue(updated);
-  if (refreshFails) mocks.getTaxonomy.mockRejectedValueOnce(new TypeError("Offline"));
-  await act(async () => {
-    fireEvent.blur(price);
-  });
-  expect(mocks.getTaxonomy).toHaveBeenCalledTimes(2);
-
-  if (refreshFails) {
-    expect(await screen.findByText("Price saved, but its refresh failed. Your entered price was kept.")).toBeVisible();
-    expect(screen.getByLabelText("A5 extra pesos")).toBe(price);
+    if (refreshFails) {
+      expect(
+        await screen.findByText(
+          "Price saved, but its refresh failed. Your entered price was kept.",
+        ),
+      ).toBeVisible();
+      expect(screen.getByLabelText("A5 extra pesos")).toBe(price);
+      expect(price).toHaveValue("12.50");
+      await ping();
+    }
     expect(price).toHaveValue("12.50");
-    await ping();
-  }
-  expect(price).toHaveValue("12.50");
-  fireEvent.blur(price);
-  expect(mocks.updateCatalogOption).toHaveBeenCalledTimes(1);
+    fireEvent.blur(price);
+    expect(mocks.updateCatalogOption).toHaveBeenCalledTimes(1);
 
-  fireEvent.change(price, { target: { value: "15.00" } });
-  mocks.updateCatalogOption.mockRejectedValueOnce(new ApiError(409, { error: "version_conflict" }));
-  fireEvent.blur(price);
-  await waitFor(() => expect(mocks.updateCatalogOption).toHaveBeenLastCalledWith(
-    "grp_1", "opt_a", 2, { priceModifierMinor: 1500 },
-  ));
-  expect(price).toHaveValue("15.00");
-});
+    fireEvent.change(price, { target: { value: "15.00" } });
+    mocks.updateCatalogOption.mockRejectedValueOnce(
+      new ApiError(409, { error: "version_conflict" }),
+    );
+    fireEvent.blur(price);
+    await waitFor(() =>
+      expect(mocks.updateCatalogOption).toHaveBeenLastCalledWith("grp_1", "opt_a", 2, {
+        priceModifierMinor: 1500,
+      }),
+    );
+    expect(price).toHaveValue("15.00");
+  },
+);

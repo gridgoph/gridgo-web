@@ -13,10 +13,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { InvalidatePing } from "@/lib/api/types";
 import { LiveContext, type LiveContextValue } from "@/lib/live/LiveProvider";
-import {
-  useLiveReload,
-  LIVE_RELOAD_COALESCE_MS,
-} from "@/lib/live/useLiveReload";
+import { useLiveReload, LIVE_RELOAD_COALESCE_MS } from "@/lib/live/useLiveReload";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 vi.stubGlobal("React", React);
@@ -126,12 +123,9 @@ it("keeps new dependency loads behind a pending previous load", async () => {
   const newLoad = async () => {
     calls.push("new");
   };
-  const { result, rerender } = renderHook(
-    ({ load }) => useSerializedLoad(load),
-    {
-      initialProps: { load: oldLoad },
-    },
-  );
+  const { result, rerender } = renderHook(({ load }) => useSerializedLoad(load), {
+    initialProps: { load: oldLoad },
+  });
   const old = result.current();
   rerender({ load: newLoad });
   const next = result.current();

@@ -18,10 +18,16 @@ afterEach(() => {
 it("scopes a single inbox mutation to the active workspace", async () => {
   vi.stubGlobal("window", { location: { pathname: "/ops/overview" } });
   setTokenProvider(() => "test-bearer");
-  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ notification: { id: "ntf_1" } }), { status: 200 }));
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValue(
+      new Response(JSON.stringify({ notification: { id: "ntf_1" } }), { status: 200 }),
+    );
   vi.stubGlobal("fetch", fetchMock);
   await markNotificationRead("ntf_1");
-  expect(new Headers(fetchMock.mock.calls[0][1].headers).get("X-GRIDGO-Role")).toBe("ops_admin");
+  expect(new Headers(fetchMock.mock.calls[0][1].headers).get("X-GRIDGO-Role")).toBe(
+    "ops_admin",
+  );
 });
 
 describe("SSE event readers", () => {
@@ -57,9 +63,7 @@ describe("openNotificationStream", () => {
     });
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(
-        new Response(null, { status: 409, statusText: "Conflict" }),
-      )
+      .mockResolvedValueOnce(new Response(null, { status: 409, statusText: "Conflict" }))
       .mockResolvedValueOnce(
         new Response(new ReadableStream(), {
           status: 200,
@@ -109,9 +113,7 @@ describe("openNotificationStream", () => {
         }),
       );
     vi.stubGlobal("fetch", fetchMock);
-    setTokenProvider((options) =>
-      options?.skipCache ? tokens[1] : tokens[0],
-    );
+    setTokenProvider((options) => (options?.skipCache ? tokens[1] : tokens[0]));
 
     const handle = openNotificationStream({
       onNotification: () => undefined,
