@@ -306,11 +306,14 @@ export default function ListingEditorPage() {
   async function saveOptionPrice(group: SpecGroup, optionId: string, pesos: string) {
     const minor = pesosToMinor(pesos) ?? 0;
     setBusy(true);
+    setActionError(null);
     try {
       await updateCatalogOption(group.id, optionId, group.version, { priceModifierMinor: minor });
       await load();
+      return true;
     } catch (err) {
       setActionError(listingErrorMessage(err, "Could not save that price."));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -734,7 +737,7 @@ export default function ListingEditorPage() {
                   group={group}
                   index={index + 1}
                   onAddChoice={() => void addOption(group)}
-                  onSavePrice={(optionId, pesos) => void saveOptionPrice(group, optionId, pesos)}
+                  onSavePrice={saveOptionPrice}
                   onRemoveChoice={(optionId) => void dropOption(group, optionId)}
                   onRemoveGroup={() => void dropGroup(group)}
                 />
@@ -758,7 +761,7 @@ export default function ListingEditorPage() {
                   key={group.id}
                   group={group}
                   onAddChoice={() => void addOption(group)}
-                  onSavePrice={(optionId, pesos) => void saveOptionPrice(group, optionId, pesos)}
+                  onSavePrice={saveOptionPrice}
                   onRemoveChoice={(optionId) => void dropOption(group, optionId)}
                   onRemoveGroup={() => void dropGroup(group)}
                 />
@@ -861,7 +864,7 @@ function GroupEditor({
   group: SpecGroup;
   index?: number;
   onAddChoice: () => void;
-  onSavePrice: (optionId: string, pesos: string) => void;
+  onSavePrice: (group: SpecGroup, optionId: string, pesos: string) => Promise<boolean>;
   onRemoveChoice: (optionId: string) => void;
   onRemoveGroup: () => void;
 }) {
@@ -886,13 +889,8 @@ function GroupEditor({
       </div>
       {group.options.map((option) => (
         <div key={option.id} className="flex flex-wrap items-center gap-2">
-          <Input defaultValue={option.label} readOnly className="min-w-40 flex-1" />
-          <Input
-            className="w-28"
-            defaultValue={minorToPesosInput(option.priceModifierMinor)}
-            aria-label={`${option.label} extra pesos`}
-            onBlur={(event) => onSavePrice(option.id, event.target.value)}
-          />
+          <Input value={option.label} readOnly className="min-w-40 flex-1" />
+          <OptionPriceInput group={group} option={option} onSave={onSavePrice} />
           <Button
             variant="ghost"
             size="icon"
@@ -905,5 +903,32 @@ function GroupEditor({
       ))}
       <Button onClick={onAddChoice}>Add choice</Button>
     </div>
+  );
+}
+
+
+function OptionPriceInput({ group, option, onSave }: {
+  group: SpecGroup;
+  option: SpecGroup["options"][number];
+  onSave: (group: SpecGroup, optionId: string, pesos: string) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState<{ group: SpecGroup; pesos: string } | null>(null);
+  return (
+    <Input
+      className="w-28"
+      value={draft?.pesos ?? minorToPesosInput(option.priceModifierMinor)}
+      aria-label={`${option.label} extra pesos`}
+      onChange={(event) => {
+        const pesos = event.target.value;
+        setDraft(current => ({ group: current?.group ?? group, pesos }));
+      }}
+      onBlur={() => {
+        if (!draft) return;
+        const submitted = draft;
+        void onSave(submitted.group, option.id, submitted.pesos).then(saved => {
+          if (saved) setDraft(current => current === submitted ? null : current);
+        });
+      }}
+    />
   );
 }

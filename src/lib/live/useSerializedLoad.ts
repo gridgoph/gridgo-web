@@ -2,23 +2,49 @@
 
 import { useCallback, useRef } from "react";
 
+type PendingLoad = {
+  run: () => Promise<void>;
+  promise: Promise<void>;
+  resolve: () => void;
+  reject: (reason: unknown) => void;
+};
+
 export function useSerializedLoad<Args extends unknown[]>(
   load: (...args: Args) => Promise<void>,
 ): (...args: Args) => Promise<void> {
-  const pending = useRef<Promise<void> | null>(null);
+  const running = useRef(false);
+  const pending = useRef<PendingLoad | null>(null);
 
   return useCallback(
     (...args: Args) => {
-      const run = async () => {
-        await load(...args);
+      const run = () => load(...args);
+      if (running.current) {
+        if (pending.current) {
+          pending.current.run = run;
+        } else {
+          let resolve!: () => void;
+          let reject!: (reason: unknown) => void;
+          const promise = new Promise<void>((done, fail) => {
+            resolve = done;
+            reject = fail;
+          });
+          pending.current = { run, promise, resolve, reject };
+        }
+        return pending.current.promise;
+      }
+
+      const execute = async (task: () => Promise<void>): Promise<void> => {
+        running.current = true;
+        try {
+          await task();
+        } finally {
+          const next = pending.current;
+          pending.current = null;
+          if (next) void execute(next.run).then(next.resolve, next.reject);
+          else running.current = false;
+        }
       };
-      const flight = pending.current ? pending.current.then(run, run) : run();
-      pending.current = flight;
-      const clear = () => {
-        if (pending.current === flight) pending.current = null;
-      };
-      void flight.then(clear, clear);
-      return flight;
+      return execute(run);
     },
     [load],
   );

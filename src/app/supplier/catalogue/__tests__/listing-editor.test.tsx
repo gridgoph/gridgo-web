@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   listAcceptedFileFormats: vi.fn(),
   getFileDownloadUrl: vi.fn(),
   updateCatalogItem: vi.fn(),
+  updateCatalogOption: vi.fn(),
 }));
 
 vi.stubGlobal("React", React);
@@ -53,6 +54,7 @@ vi.mock("@/lib/api/client", async () => {
     listAcceptedFileFormats: mocks.listAcceptedFileFormats,
     getFileDownloadUrl: mocks.getFileDownloadUrl,
     updateCatalogItem: mocks.updateCatalogItem,
+    updateCatalogOption: mocks.updateCatalogOption,
   };
 });
 
@@ -119,6 +121,7 @@ function catalogItem(partial: Record<string, unknown> = {}) {
       optionGroups: [
         {
           id: "grp_1",
+          version: 1,
           name: "Size",
           kind: "spec",
           required: true,
@@ -247,4 +250,33 @@ it("preserves an edited listing draft when a live catalogue refresh arrives", as
     "sci_1", 3, expect.objectContaining({ name: "My unsaved draft", basePriceMinor: 40000 }),
   ));
   expect(screen.getByLabelText("Name")).toHaveValue("My unsaved draft");
+});
+
+
+it.each([true, false])("keeps option price ownership across refresh (edited: %s)", async edited => {
+  stubLoad(catalogItem());
+  let listener!: (ping: InvalidatePing) => void;
+  const live: LiveContextValue = {
+    notifications: [], unreadCount: 0, snapshot: null, live: true,
+    subscribe: next => { listener = next; return () => undefined; },
+    markRead: async () => {}, markAllRead: async () => {},
+    remove: async () => {}, refreshInbox: async () => {},
+  };
+  render(<LiveContext.Provider value={live}><ListingEditorPage /></LiveContext.Provider>);
+  const price = await screen.findByLabelText("A5 extra pesos");
+  if (edited) fireEvent.change(price, { target: { value: "12.50" } });
+  const remote = catalogItem();
+  remote.item.optionGroups[0].version = 2;
+  remote.item.optionGroups[0].options[0].priceModifierMinor = 2000;
+  mocks.getCatalogItem.mockResolvedValue(remote);
+  await act(async () => { listener({ resource: "catalog" }); });
+  await waitFor(() => expect(mocks.getCatalogItem).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(price).toHaveValue(edited ? "12.50" : "20.00"));
+  if (!edited) fireEvent.change(price, { target: { value: "12.50" } });
+  mocks.updateCatalogOption.mockRejectedValueOnce(new ApiError(409, { error: "version_conflict" }));
+  fireEvent.blur(price);
+  await waitFor(() => expect(mocks.updateCatalogOption).toHaveBeenCalledWith(
+    "grp_1", "opt_a", edited ? 1 : 2, { priceModifierMinor: 1250 },
+  ));
+  expect(price).toHaveValue("12.50");
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { ServiceLines } from "@/components/approvals/ServiceLines";
 import { SignupApprovals } from "@/components/approvals/SignupApprovals";
@@ -14,9 +14,21 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
  * implementation, mounted here too — so the two can never drift apart.
  */
 function AdminVerificationBody() {
-  const tab = reviewQueueTab(useSearchParams());
+  const search = useSearchParams();
+  const router = useRouter();
+  const tab = reviewQueueTab(search);
   return (
-    <Tabs defaultValue={tab} key={tab}>
+    <Tabs
+      value={tab}
+      onValueChange={(value) => {
+        if (value !== "signups" && value !== "services") return;
+        const next = new URLSearchParams(search.toString());
+        next.set("tab", value);
+        router.replace("/admin/verification?" + next.toString(), {
+          scroll: false,
+        });
+      }}
+    >
       <TabsList>
         <TabsTrigger value="signups">Sign-ups</TabsTrigger>
         <TabsTrigger value="services">Service lines</TabsTrigger>

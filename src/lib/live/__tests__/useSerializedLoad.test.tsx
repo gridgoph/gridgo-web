@@ -52,15 +52,14 @@ function Probe({ read }: { read: () => Promise<string> }) {
   );
 }
 
-it("orders initial, live and manual loads before committing the newest value", async () => {
+it("coalesces live and manual loads behind the initial load", async () => {
   vi.useFakeTimers();
   const initial = deferred<string>();
   const liveRead = deferred<string>();
   const read = vi
     .fn()
     .mockReturnValueOnce(initial.promise)
-    .mockReturnValueOnce(liveRead.promise)
-    .mockResolvedValue("Newest role");
+    .mockReturnValueOnce(liveRead.promise);
   let listener!: (ping: InvalidatePing) => void;
   const live: LiveContextValue = {
     notifications: [],
@@ -93,9 +92,9 @@ it("orders initial, live and manual loads before committing the newest value", a
   });
   expect(read).toHaveBeenCalledTimes(2);
   await act(async () => {
-    liveRead.resolve("Updated role");
+    liveRead.resolve("Newest role");
   });
-  expect(read).toHaveBeenCalledTimes(3);
+  expect(read).toHaveBeenCalledTimes(2);
   expect(screen.getByRole("status")).toHaveTextContent("Newest role");
 });
 
@@ -140,4 +139,33 @@ it("keeps new dependency loads behind a pending previous load", async () => {
   first.resolve();
   await Promise.all([old, next]);
   expect(calls).toEqual(["old", "new"]);
+});
+
+it("runs only the latest pending filter and settles every superseded caller", async () => {
+  const first = deferred<void>();
+  const last = deferred<void>();
+  const read = vi.fn(async (filter: string) => {
+    if (filter === "") await first.promise;
+    else await last.promise;
+  });
+  const { result } = renderHook(() => useSerializedLoad(read));
+  const initial = result.current("");
+  const calls = [
+    result.current("o"),
+    result.current("or"),
+    result.current("ord"),
+    result.current("order_123"),
+  ];
+  expect(read.mock.calls).toEqual([[""]]);
+  let settled = false;
+  void Promise.all(calls).then(() => {
+    settled = true;
+  });
+  first.resolve();
+  await initial;
+  expect(read.mock.calls).toEqual([[""], ["order_123"]]);
+  expect(settled).toBe(false);
+  last.resolve();
+  await Promise.all(calls);
+  expect(settled).toBe(true);
 });

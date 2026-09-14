@@ -10,6 +10,7 @@ vi.stubGlobal("React", React);
 const list = vi.hoisted(() => vi.fn<() => Promise<SupplierService[]>>(async () => []));
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams("tab=services"),
+  useRouter: () => ({ replace: vi.fn() }),
 }));
 vi.mock("@/components/approvals/SignupApprovals", () => ({
   SignupApprovals: () => <p>Signup queue</p>,

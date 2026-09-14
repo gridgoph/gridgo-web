@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { ServiceLines } from "@/components/approvals/ServiceLines";
 import { SignupApprovals } from "@/components/approvals/SignupApprovals";
@@ -9,9 +9,19 @@ import { reviewQueueTab } from "@/components/approvals/review-tab";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 function OpsApprovalsBody() {
-  const tab = reviewQueueTab(useSearchParams());
+  const search = useSearchParams();
+  const router = useRouter();
+  const tab = reviewQueueTab(search);
   return (
-    <Tabs defaultValue={tab} key={tab}>
+    <Tabs
+      value={tab}
+      onValueChange={(value) => {
+        if (value !== "signups" && value !== "services") return;
+        const next = new URLSearchParams(search.toString());
+        next.set("tab", value);
+        router.replace("/ops/approvals?" + next.toString(), { scroll: false });
+      }}
+    >
       <TabsList>
         <TabsTrigger value="signups">Sign-ups</TabsTrigger>
         <TabsTrigger value="services">Service lines</TabsTrigger>
