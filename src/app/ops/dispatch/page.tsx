@@ -205,6 +205,9 @@ export default function OpsDispatchPage() {
               {o.title}
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5">
+              Order {o.id}
+            </p>
+            <p className="text-caption text-text-muted m-0 mt-0.5">
               {presentZone(o.zone)}
               {focusOrder === o.id ? " · focused" : ""}
             </p>
@@ -346,7 +349,10 @@ export default function OpsDispatchPage() {
                 key={o.id}
                 className="flex flex-wrap items-center justify-between gap-2 border-t border-outline-subtle pt-2 first:border-0 first:pt-0"
               >
-                <span className="text-body text-text-primary">{o.title}</span>
+                <span className="min-w-0">
+                  <span className="text-body text-text-primary block">{o.title}</span>
+                  <span className="text-caption text-text-muted">Order {o.id}</span>
+                </span>
                 <StatusChip
                   tone={presentOrderState(o.state).tone}
                   label={presentOrderState(o.state).label}

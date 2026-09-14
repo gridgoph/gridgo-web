@@ -203,6 +203,7 @@ export default function SupplierJobDetailPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-h2 text-text-primary m-0">{job.title}</h2>
+            <p className="text-caption text-text-muted m-0 mt-1">Order {job.id}</p>
             {job.supplierPriceMinor !== undefined ? (
               <p className="text-caption text-text-muted m-0 mt-1">
                 You earn {formatPhp(job.supplierPriceMinor)} on this job

@@ -100,6 +100,9 @@ export default function OpsOrdersPage() {
               {order.title || "Untitled order"}
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
+              Order {order.id}
+            </p>
+            <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
               {describeQuantity(order.quantity, order.unit)}
               {order.material ? ` · ${order.material}` : ""}
             </p>

@@ -111,6 +111,9 @@ export default function SupplierJobsPage() {
               {job.title}
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
+              Order {job.id}
+            </p>
+            <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
               {job.size || "—"} · {job.material || "—"}
             </p>
           </div>

@@ -198,6 +198,9 @@ export default function OpsClaimsPage() {
               {orderTitle(c.orderId)}
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5">
+              Order {c.orderId}
+            </p>
+            <p className="text-caption text-text-muted m-0 mt-0.5">
               Raised by {presentTimelineActor(c.raisedBy)}
             </p>
           </div>
@@ -370,6 +373,9 @@ export default function OpsClaimsPage() {
               <h2 id="claim-detail-heading" className="text-h3 text-text-primary m-0">
                 {orderTitle(detail.orderId)}
               </h2>
+              <p className="text-caption text-text-muted m-0 mt-1">
+                Order {detail.orderId}
+              </p>
               <p className="text-caption text-text-muted m-0 mt-1">
                 Claim record · {formatDateTime(detail.createdAt)}
               </p>

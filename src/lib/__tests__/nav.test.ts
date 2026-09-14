@@ -29,6 +29,7 @@ describe("ROLE_NAV", () => {
       "/ops/orders",
       "/ops/approvals",
       "/ops/dispatch",
+      "/ops/riders",
       "/ops/escalations",
       "/ops/schedule",
       "/ops/payouts",
@@ -47,7 +48,7 @@ describe("ROLE_NAV", () => {
       "/admin/roles",
       "/admin/catalogue",
       "/admin/zones",
-        "/admin/finance",
+      "/admin/finance",
       "/admin/settings",
       "/admin/audit",
       "/admin/planning",
@@ -81,6 +82,7 @@ describe("ROLE_NAV", () => {
       "/ops/overview",
       "/ops/payouts",
       "/ops/recovery",
+      "/ops/riders",
       "/ops/schedule",
       "/ops/settings",
       "/supplier/capacity",
@@ -146,7 +148,7 @@ describe("ROLE_NAV", () => {
       ROLE_NAV_GROUPS.ops_admin
         .find((g) => g.id === "ops-field")
         ?.items.map((n) => n.href),
-    ).toEqual(["/ops/dispatch", "/ops/escalations", "/ops/schedule"]);
+    ).toEqual(["/ops/dispatch", "/ops/riders", "/ops/escalations", "/ops/schedule"]);
     expect(
       ROLE_NAV_GROUPS.ops_admin
         .find((g) => g.id === "ops-money")
@@ -207,6 +209,12 @@ describe("nav helpers", () => {
       "Order workspace",
     );
     expect(contextTitleForPath("/ops/orders/ord_1", "ops_admin")).toBe("Order workspace");
+    expect(contextTitleForPath("/admin/orders/ord_1", "super_admin")).toBe(
+      "Order workspace",
+    );
+    expect(contextTitleForPath("/admin/escalations", "super_admin")).toBe(
+      "Pickup escalations",
+    );
     expect(contextTitleForPath("/admin/zones", "super_admin")).toBe("Delivery zones");
     expect(contextTitleForPath("/admin/catalogue/jobs/new", "super_admin")).toBe(
       "Add print job",
@@ -218,9 +226,12 @@ describe("nav helpers", () => {
       "Add category",
     );
     expect(
-      contextTitleForPath("/admin/catalogue/categories/marketing_collateral", "super_admin"),
+      contextTitleForPath(
+        "/admin/catalogue/categories/marketing_collateral",
+        "super_admin",
+      ),
     ).toBe("Category");
-    });
+  });
 
   it("finds the longest matching nav item", () => {
     const item = navItemForPath("/ops/orders/ord_1", "ops_admin");

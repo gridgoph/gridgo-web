@@ -289,6 +289,9 @@ function WeekGrid({ start, events }: { start: Date; events: ScheduleEvent[] }) {
                     >
                       {ev.orderTitle}
                     </span>
+                    <span className="text-caption text-text-muted block">
+                      Order {ev.orderId}
+                    </span>
                   </Link>
                 </li>
               ))}
@@ -342,6 +345,9 @@ function AgendaList({
                       style={{ fontFamily: "var(--font-medium)" }}
                     >
                       {ev.orderTitle}
+                    </p>
+                    <p className="text-caption text-text-muted m-0">
+                      Order {ev.orderId}
                     </p>
                     <p className="text-caption text-text-secondary m-0">{ev.detail}</p>
                   </div>

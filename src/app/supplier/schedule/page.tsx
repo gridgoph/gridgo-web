@@ -57,6 +57,7 @@ function JobCard({ entry }: { entry: ScheduleEntry }) {
       >
         {entry.job.title}
       </p>
+      <p className="text-caption text-text-muted m-0">Order {entry.job.id}</p>
       <div className="flex flex-wrap items-center gap-2">
         <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
         <span className="text-caption text-text-muted">

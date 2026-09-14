@@ -155,6 +155,9 @@ export default function SupplierPayoutsPage() {
                     {row.order.title}
                   </p>
                   <p className="text-caption text-text-muted m-0 mt-0.5">
+                    Order {row.order.id}
+                  </p>
+                  <p className="text-caption text-text-muted m-0 mt-0.5">
                     Updated {formatDateTime(row.order.updatedAt)}
                   </p>
                 </div>

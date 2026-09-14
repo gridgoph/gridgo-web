@@ -37,44 +37,44 @@ const {
   openUserProfileMock,
   liveRef,
 } = vi.hoisted(() => ({
-    pathnameRef: { current: "/admin/overview" },
-    signOutMock: vi.fn(),
-    membershipsRef: {
-      current: [] as Array<{ role: "supplier" | "ops_admin" | "super_admin" }>,
+  pathnameRef: { current: "/admin/overview" },
+  signOutMock: vi.fn(),
+  membershipsRef: {
+    current: [] as Array<{ role: "supplier" | "ops_admin" | "super_admin" }>,
+  },
+  userRef: {
+    current: {
+      id: "user_admin",
+      email: "admin@example.com",
+      name: "Ada Admin",
+      role: "super_admin" as const,
     },
-    userRef: {
-      current: {
-        id: "user_admin",
-        email: "admin@example.com",
-        name: "Ada Admin",
-        role: "super_admin" as const,
-      },
+  },
+  clerkUserRef: {
+    current: null as ClerkProfileMock | null,
+  },
+  openUserProfileMock: vi.fn(),
+  liveRef: {
+    current: {
+      notifications: [] as Array<{
+        id: string;
+        userId: string;
+        title: string;
+        body: string;
+        read: boolean;
+        at: string;
+      }>,
+      unreadCount: 0,
+      snapshot: null as string | null,
+      live: false,
+      subscribe: () => () => undefined,
+      markRead: async () => undefined,
+      markAllRead: async () => undefined,
+      remove: async () => undefined,
+      refreshInbox: async () => undefined,
     },
-    clerkUserRef: {
-      current: null as ClerkProfileMock | null,
-    },
-    openUserProfileMock: vi.fn(),
-    liveRef: {
-      current: {
-        notifications: [] as Array<{
-          id: string;
-          userId: string;
-          title: string;
-          body: string;
-          read: boolean;
-          at: string;
-        }>,
-        unreadCount: 0,
-        snapshot: null as string | null,
-        live: false,
-        subscribe: () => () => undefined,
-        markRead: async () => undefined,
-        markAllRead: async () => undefined,
-        remove: async () => undefined,
-        refreshInbox: async () => undefined,
-      },
-    },
-  }));
+  },
+}));
 
 vi.stubGlobal("React", React);
 
@@ -315,9 +315,7 @@ describe("AppShell chrome", () => {
     expect(
       within(footer as HTMLElement).getByRole("button", { name: /Operations Lead/ }),
     ).toBeInTheDocument();
-    expect(
-      (footer as HTMLElement).querySelector("img"),
-    ).toBeNull();
+    expect((footer as HTMLElement).querySelector("img")).toBeNull();
   });
 
   it("opens the Clerk account profile from the footer menu", async () => {
@@ -384,11 +382,12 @@ describe("AppShell chrome", () => {
         name: /Ada Admin/,
       }),
     );
-    expect(await screen.findByRole("menuitem", { name: "Open Operations" })).toHaveAttribute(
-      "href",
-      "/ops/orders",
-    );
-    expect(screen.queryByRole("menuitem", { name: "Open Super Admin" })).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("menuitem", { name: "Open Operations" }),
+    ).toHaveAttribute("href", "/ops/orders");
+    expect(
+      screen.queryByRole("menuitem", { name: "Open Super Admin" }),
+    ).not.toBeInTheDocument();
   });
 
   it("invokes portal sign-out from the account menu Log out item", async () => {
@@ -440,6 +439,10 @@ describe("AppShell chrome", () => {
       "href",
       "/ops/dispatch",
     );
+    expect(within(opsNav).getByRole("link", { name: "Riders" })).toHaveAttribute(
+      "href",
+      "/ops/riders",
+    );
 
     cleanup();
     renderShell("/admin/overview");
@@ -478,11 +481,17 @@ describe("AppShell chrome", () => {
     const payments = within(nav).getByRole("link", { name: "Orders" });
     expect(payments).toHaveAttribute("aria-current", "page");
     expect(payments.className).toMatch(/action-yellow/);
-    expect(within(nav).getByRole("link", { name: "Sign-up approvals" })).toBeInTheDocument();
+    expect(
+      within(nav).getByRole("link", { name: "Sign-up approvals" }),
+    ).toBeInTheDocument();
     // Other groups stay expanded — no click required.
     expect(within(nav).getByRole("link", { name: "Dispatch" })).toHaveAttribute(
       "href",
       "/ops/dispatch",
+    );
+    expect(within(nav).getByRole("link", { name: "Riders" })).toHaveAttribute(
+      "href",
+      "/ops/riders",
     );
     expect(within(nav).getByRole("link", { name: "Escalations" })).toBeInTheDocument();
     expect(within(nav).getByRole("link", { name: "Schedule" })).toBeInTheDocument();

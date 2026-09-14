@@ -220,6 +220,9 @@ export default function OpsPayoutsPage() {
                     >
                       {order.title}
                     </p>
+                    <p className="text-caption text-text-muted m-0 mt-0.5">
+                      Order {order.id}
+                    </p>
                     {order.supplierPriceMinor !== undefined ? (
                       <p className="text-caption text-text-muted m-0 mt-0.5">
                         Supplier earns {formatPhp(order.supplierPriceMinor)} on

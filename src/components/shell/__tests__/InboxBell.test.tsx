@@ -100,10 +100,7 @@ describe("InboxBell", () => {
   it("shows an unread count on the trigger", () => {
     resetLive({
       unreadCount: 2,
-      notifications: [
-        note(),
-        note({ id: "ntf_2", title: "Job assigned", read: false }),
-      ],
+      notifications: [note(), note({ id: "ntf_2", title: "Job assigned", read: false })],
     });
     render(<InboxBell role="ops_admin" />);
     const trigger = screen.getByRole("button", {
@@ -120,7 +117,8 @@ describe("InboxBell", () => {
     });
     render(<InboxBell role="ops_admin" />);
     await user.click(screen.getByRole("button", { name: "Notifications, 1 unread" }));
-    expect(await screen.findByRole("heading", { name: "Notifications" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Desk" })).toBeInTheDocument();
+    expect(screen.getByText("Floor live")).toBeInTheDocument();
     expect(screen.getByText("Payment submitted")).toBeInTheDocument();
     expect(screen.getByText("A shop sent QR proof.")).toBeInTheDocument();
     expect(screen.getByText("1 waiting")).toBeInTheDocument();
@@ -131,8 +129,10 @@ describe("InboxBell", () => {
     const user = userEvent.setup();
     render(<InboxBell role="ops_admin" />);
     await user.click(screen.getByRole("button", { name: "Notifications" }));
-    expect(await screen.findByText("You're all caught up")).toBeInTheDocument();
-    expect(screen.getByText("New jobs and payments will land here")).toBeInTheDocument();
+    expect(await screen.findByText("The desk is clear")).toBeInTheDocument();
+    expect(
+      screen.getByText("Payments, sign-ups, pickup holds, and shop progress land here"),
+    ).toBeInTheDocument();
   });
 
   it("marks a slip read and opens its job", async () => {
@@ -148,5 +148,28 @@ describe("InboxBell", () => {
     await user.click(await screen.findByRole("button", { name: /Payment submitted/ }));
     expect(markRead).toHaveBeenCalledWith("ntf_1");
     expect(pushMock).toHaveBeenCalledWith("/ops/orders/ord_9");
+  });
+
+  it("opens a Super Admin order slip on the admin workspace", async () => {
+    const user = userEvent.setup();
+    const markRead = vi.fn(async () => undefined);
+    resetLive({
+      unreadCount: 1,
+      notifications: [
+        note({
+          type: "ops_order_progress",
+          title: "Shop started printing",
+          body: "The press has the job.",
+        }),
+      ],
+      markRead,
+    });
+    render(<InboxBell role="super_admin" />);
+    await user.click(screen.getByRole("button", { name: "Notifications, 1 unread" }));
+    expect(await screen.findByText("Shop started printing")).toBeInTheDocument();
+    expect(screen.getByText("The press has the job.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Shop started printing/ }));
+    expect(markRead).toHaveBeenCalledWith("ntf_1");
+    expect(pushMock).toHaveBeenCalledWith("/admin/orders/ord_9");
   });
 });

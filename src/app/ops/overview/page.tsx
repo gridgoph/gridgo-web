@@ -195,6 +195,11 @@ export default function OpsOverviewPage() {
               >
                 {next.title}
               </h2>
+              {next.orderId ? (
+                <p className="text-caption text-text-muted m-0 mt-1">
+                  Order {next.orderId}
+                </p>
+              ) : null}
               <p className="text-body text-text-secondary m-0 mt-1">
                 {next.body}
               </p>

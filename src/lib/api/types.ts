@@ -784,6 +784,19 @@ export type LocationPing = {
   at: string;
 };
 
+/** Latest shared GPS fix for a rider on an active trip. */
+export type RiderLocation = {
+  riderId: string;
+  name: string;
+  orderId: string;
+  orderTitle: string | null;
+  state: string;
+  lat: number;
+  lng: number;
+  accuracy: number | null;
+  at: string;
+};
+
 // ---- Platform announcements ----
 //
 // Super Admin only in this portal (the API also authorises ops_admin; do not

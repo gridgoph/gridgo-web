@@ -27,6 +27,7 @@ import type {
   HealthResult,
   Issue,
   LocationPing,
+  RiderLocation,
   Notification,
   Order,
   PaymentInstallment,
@@ -1101,6 +1102,11 @@ export async function getDispatchLocation(orderId: string): Promise<LocationPing
     `/dispatch/${orderId}/location`,
   );
   return result.ping;
+}
+
+export async function listRiderLocations(): Promise<RiderLocation[]> {
+  const result = await request<{ riders: RiderLocation[] }>("/ops/riders/locations");
+  return result.riders;
 }
 
 /** Rider only — included so the client surface is complete. */

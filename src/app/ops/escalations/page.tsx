@@ -305,6 +305,9 @@ function EscalationCard({
             {order?.title ?? "Order no longer visible"}
           </p>
           <p className="text-caption text-text-muted m-0 mt-0.5">
+            Order {escalation.orderId}
+          </p>
+          <p className="text-caption text-text-muted m-0 mt-0.5">
             Raised {formatDateTime(escalation.createdAt)}
           </p>
         </div>

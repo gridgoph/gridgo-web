@@ -146,6 +146,9 @@ export default function OpsRecoveryPage() {
               {r.orderTitle}
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5">
+              Order {r.orderId}
+            </p>
+            <p className="text-caption text-text-muted m-0 mt-0.5">
               {presentRecoveryKind(r.kind)}
             </p>
           </div>
@@ -263,6 +266,9 @@ export default function OpsRecoveryPage() {
                         style={{ fontFamily: "var(--font-medium)" }}
                       >
                         {order?.title ?? issue.orderId}
+                      </p>
+                      <p className="text-caption text-text-muted m-0 mt-0.5">
+                        Order {issue.orderId}
                       </p>
                       <p className="text-caption text-text-muted m-0 mt-0.5">
                         {presentIssueKind(issue.kind)} ·{" "}
