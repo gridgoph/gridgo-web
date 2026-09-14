@@ -43,6 +43,7 @@ import {
   deleteCatalogOptionGroup,
   getCatalogItem,
   getTaxonomy,
+  isApiError,
   listAcceptedFileFormats,
   listCatalogItemPrepSteps,
 
@@ -153,6 +154,11 @@ export default function ListingEditorPage() {
       setError(null);
       if (!dirtyRef.current) setDraft(draftFrom(next));
     } catch (err) {
+      if (isApiError(err) && ["unauthorized", "forbidden", "not_found"].includes(err.kind)) {
+        setListing(null);
+        setDraft(null);
+        dirtyRef.current = false;
+      }
       setError(listingErrorMessage(err, "Could not open this listing."));
     } finally {
       setLoading(false);
@@ -415,7 +421,7 @@ export default function ListingEditorPage() {
   if (loading && !listing) {
     return <p className="text-body text-text-muted m-0">Opening this listing…</p>;
   }
-  if (error || !listing || !working) {
+  if (!listing || !working) {
     return (
       <ErrorState
         title="This listing could not open"

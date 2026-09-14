@@ -280,3 +280,76 @@ it.each([true, false])("keeps option price ownership across refresh (edited: %s)
   ));
   expect(price).toHaveValue("12.50");
 });
+
+
+function renderLiveListing() {
+  stubLoad(catalogItem());
+  let listener!: (ping: InvalidatePing) => void;
+  const live: LiveContextValue = {
+    notifications: [], unreadCount: 0, snapshot: null, live: true,
+    subscribe: next => { listener = next; return () => undefined; },
+    markRead: async () => {}, markAllRead: async () => {},
+    remove: async () => {}, refreshInbox: async () => {},
+  };
+  render(<LiveContext.Provider value={live}><ListingEditorPage /></LiveContext.Provider>);
+  return async () => {
+    const calls = mocks.getTaxonomy.mock.calls.length;
+    await act(async () => { listener({ resource: "catalog" }); });
+    await waitFor(() => expect(mocks.getTaxonomy).toHaveBeenCalledTimes(calls + 1));
+  };
+}
+
+it("retains an option price draft and its version through transient failure and recovery", async () => {
+  const ping = renderLiveListing();
+  const price = await screen.findByLabelText("A5 extra pesos");
+  fireEvent.change(price, { target: { value: "12.50" } });
+  price.focus();
+  mocks.getTaxonomy.mockRejectedValueOnce(new TypeError("Offline"));
+  await ping();
+  expect(screen.getByLabelText("A5 extra pesos")).toBe(price);
+  expect(price).toHaveValue("12.50");
+  expect(price).toHaveFocus();
+  expect(screen.queryByText("This listing could not open")).not.toBeInTheDocument();
+
+  const remote = catalogItem();
+  remote.item.optionGroups[0].version = 2;
+  remote.item.optionGroups[0].options[0].priceModifierMinor = 2000;
+  mocks.getCatalogItem.mockResolvedValue(remote);
+  await ping();
+  expect(screen.getByLabelText("A5 extra pesos")).toBe(price);
+  expect(price).toHaveValue("12.50");
+  expect(price).toHaveFocus();
+  mocks.updateCatalogOption.mockRejectedValueOnce(new ApiError(409, { error: "version_conflict" }));
+  fireEvent.blur(price);
+  await waitFor(() => expect(mocks.updateCatalogOption).toHaveBeenCalledWith(
+    "grp_1", "opt_a", 1, { priceModifierMinor: 1250 },
+  ));
+});
+
+it.each([401, 403, 404])("clears the loaded listing on HTTP %s and keeps it hidden during a failed retry", async status => {
+  const ping = renderLiveListing();
+  const price = await screen.findByLabelText("A5 extra pesos");
+  fireEvent.change(price, { target: { value: "12.50" } });
+  mocks.getTaxonomy.mockRejectedValueOnce(new ApiError(status, {
+    error: status === 401 ? "unauthorized" : status === 403 ? "forbidden" : "not_found",
+  }));
+  await ping();
+  expect(await screen.findByText("This listing could not open")).toBeVisible();
+  expect(screen.queryByLabelText("A5 extra pesos")).not.toBeInTheDocument();
+
+  mocks.getTaxonomy.mockRejectedValueOnce(new TypeError("Offline"));
+  await ping();
+  expect(screen.getByText("This listing could not open")).toBeVisible();
+  expect(screen.queryByLabelText("A5 extra pesos")).not.toBeInTheDocument();
+
+  await ping();
+  expect(await screen.findByLabelText("A5 extra pesos")).toHaveValue("0.00");
+});
+
+it("shows a recoverable error when the initial listing load fails", async () => {
+  stubLoad(catalogItem());
+  mocks.getTaxonomy.mockRejectedValueOnce(new TypeError("Offline"));
+  render(<ListingEditorPage />);
+  expect(await screen.findByText("This listing could not open")).toBeVisible();
+  expect(screen.queryByLabelText("A5 extra pesos")).not.toBeInTheDocument();
+});
