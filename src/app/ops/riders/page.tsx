@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
@@ -27,7 +29,7 @@ export default function OpsRiderMapPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -42,7 +44,7 @@ export default function OpsRiderMapPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []));
 
   useLiveReload("location", load);
 
@@ -120,12 +122,16 @@ export default function OpsRiderMapPage() {
 
 function RiderMap({ riders }: { riders: RiderLocation[] }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<{ remove: () => void } | null>(null);
+  const [instance, setInstance] = useState<{ map: LeafletMap; L: LeafletLike } | null>(null);
+  const markersRef = useRef(new Map<string, LeafletMarker>());
+  const fittedRef = useRef(false);
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
     let cancelled = false;
+    let map: LeafletMap | null = null;
+    const markers = markersRef.current;
 
     function ensureLeaflet(): Promise<LeafletLike> {
       const existing = (window as unknown as { L?: LeafletLike }).L;
@@ -153,21 +159,11 @@ function RiderMap({ riders }: { riders: RiderLocation[] }) {
     void ensureLeaflet()
       .then((L) => {
         if (cancelled || !hostRef.current) return;
-        mapRef.current?.remove();
-        const map = L.map(hostRef.current).setView([DAVAO.lat, DAVAO.lng], 12);
+        map = L.map(host).setView([DAVAO.lat, DAVAO.lng], 12);
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
           attribution: "&copy; OpenStreetMap",
         }).addTo(map);
-        const points = riders.map((rider) => {
-          const marker = L.marker([rider.lat, rider.lng]).addTo(map);
-          marker.bindPopup(
-            `<strong>${escapeHtml(rider.name)}</strong><br/>Order ${escapeHtml(rider.orderId)}<br/>${escapeHtml(presentOrderState(rider.state).label)}`,
-          );
-          return [rider.lat, rider.lng] as [number, number];
-        });
-        if (points.length === 1) map.setView(points[0], 14);
-        else if (points.length > 1) map.fitBounds(points, { padding: [32, 32] });
-        mapRef.current = map;
+        setInstance({ map, L });
       })
       .catch(() => {
         /* Map tiles are optional; the list below still works. */
@@ -175,10 +171,43 @@ function RiderMap({ riders }: { riders: RiderLocation[] }) {
 
     return () => {
       cancelled = true;
-      mapRef.current?.remove();
-      mapRef.current = null;
+      map?.remove();
+      markers.clear();
+      fittedRef.current = false;
     };
-  }, [riders]);
+  }, []);
+
+  useEffect(() => {
+    if (!instance) return;
+    const { map, L } = instance;
+    const markers = markersRef.current;
+    const activeIds = new Set(riders.map(rider => rider.riderId));
+    for (const [id, marker] of markers) {
+      if (!activeIds.has(id)) {
+        marker.remove();
+        markers.delete(id);
+      }
+    }
+    const points = riders.map(rider => {
+      const point: [number, number] = [rider.lat, rider.lng];
+      const html = `<strong>${escapeHtml(rider.name)}</strong><br/>Order ${escapeHtml(rider.orderId)}<br/>${escapeHtml(presentOrderState(rider.state).label)}`;
+      const existing = markers.get(rider.riderId);
+      if (existing) {
+        existing.setLatLng(point);
+        existing.setPopupContent(html);
+      } else {
+        const marker = L.marker(point).addTo(map);
+        marker.bindPopup(html);
+        markers.set(rider.riderId, marker);
+      }
+      return point;
+    });
+    if (!fittedRef.current && points.length) {
+      if (points.length === 1) map.setView(points[0], 14);
+      else map.fitBounds(points, { padding: [32, 32] });
+      fittedRef.current = true;
+    }
+  }, [instance, riders]);
 
   return (
     <div
@@ -196,15 +225,21 @@ type LeafletMap = {
   remove: () => void;
 };
 
+type LeafletMarker = {
+  addTo: (map: LeafletMap) => LeafletMarker;
+  bindPopup: (html: string) => void;
+  setPopupContent: (html: string) => void;
+  setLatLng: (latlng: [number, number]) => void;
+  remove: () => void;
+};
+
 type LeafletLike = {
   map: (el: HTMLElement) => LeafletMap;
   tileLayer: (
     url: string,
     opts: { attribution: string },
   ) => { addTo: (map: LeafletMap) => void };
-  marker: (latlng: [number, number]) => {
-    addTo: (map: LeafletMap) => { bindPopup: (html: string) => void };
-  };
+  marker: (latlng: [number, number]) => LeafletMarker;
 };
 
 function escapeHtml(value: string): string {

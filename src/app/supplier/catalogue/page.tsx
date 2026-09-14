@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -65,7 +67,7 @@ export default function SupplierCataloguesPage() {
 
   const listQuery = useMemo(() => toListQuery(query), [query]);
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -91,7 +93,7 @@ export default function SupplierCataloguesPage() {
     } finally {
       setLoading(false);
     }
-  }, [listQuery]);
+  }, [listQuery]));
 
   useLiveReload(["catalog", "services"], load);
 

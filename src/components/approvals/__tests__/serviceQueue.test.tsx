@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { LiveContext, type LiveContextValue } from "@/lib/live/LiveProvider";
+import type { InvalidatePing, SupplierService } from "@/lib/api/types";
 import OpsApprovals from "@/app/ops/approvals/page";
 vi.stubGlobal("React", React);
-const list = vi.hoisted(() => vi.fn(async () => []));
+const list = vi.hoisted(() => vi.fn<() => Promise<SupplierService[]>>(async () => []));
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams("tab=services"),
 }));
@@ -16,7 +18,7 @@ vi.mock("@/lib/api/client", async () => ({
   ...(await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client")),
   listSupplierServices: list,
 }));
-afterEach(cleanup);
+afterEach(() => { cleanup(); list.mockReset(); list.mockResolvedValue([]); });
 it("opens the real service review queue within the Operations route", async () => {
   render(<OpsApprovals />);
   expect(await screen.findByText("No service lines")).toBeInTheDocument();
@@ -25,4 +27,25 @@ it("opens the real service review queue within the Operations route", async () =
     "true",
   );
   expect(list).toHaveBeenCalledTimes(1);
+});
+
+
+it.each(["approvals", "services", "identity"] as const)("refreshes the mounted service queue on %s", async resource => {
+  let listener!: (ping: InvalidatePing) => void;
+  const live: LiveContextValue = {
+    notifications: [], unreadCount: 0, snapshot: null, live: true,
+    subscribe: next => { listener = next; return () => undefined; },
+    markRead: async () => {}, markAllRead: async () => {},
+    remove: async () => {}, refreshInbox: async () => {},
+  };
+  render(<LiveContext.Provider value={live}><OpsApprovals /></LiveContext.Provider>);
+  expect(await screen.findByText("No service lines")).toBeInTheDocument();
+  list.mockResolvedValue([{
+    id: "service_new", supplierId: "user_new_shop", categoryCode: "flyers",
+    state: "pending_verification", zones: [], updatedAt: "2026-09-15T00:00:00Z",
+  } as SupplierService]);
+  await act(async () => { listener({ resource }); });
+  await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
+  expect(await screen.findAllByText("Supplier new_shop")).not.toHaveLength(0);
+  expect(screen.queryByText("No service lines")).not.toBeInTheDocument();
 });

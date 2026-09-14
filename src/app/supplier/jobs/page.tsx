@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Banknote, CircleAlert, Clock3, Eye } from "lucide-react";
 
@@ -61,7 +63,7 @@ export default function SupplierJobsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -84,7 +86,7 @@ export default function SupplierJobsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []));
 
   useLiveReload("jobs", load);
 

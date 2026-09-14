@@ -1,4 +1,6 @@
 "use client";
+
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -20,6 +22,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/ui/StatusChip";
 import {
   getTaxonomy,
+  isApiError,
   listSupplierServices,
   listUsers,
   updateTaxonomyCategory,
@@ -40,7 +43,7 @@ export default function EditCategoryPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
 
-  const load = useCallback(async (preserveDraft = false) => {
+  const load = useSerializedLoad(useCallback(async (preserveDraft = false) => {
     setLoading(true);
     setError(null);
     try {
@@ -66,12 +69,16 @@ export default function EditCategoryPage() {
         active: category.active,
       }));
     } catch (err) {
+      if (
+        preserveDraft &&
+        !(isApiError(err) && ["unauthorized", "forbidden", "not_found"].includes(err.kind))
+      ) return;
       setValues(null);
       setError(adminErrorMessage(err, "Could not load this category."));
     } finally {
       setLoading(false);
     }
-  }, [code]);
+  }, [code]));
 
   useLiveReload(["catalog", "services"], () => load(true));
 

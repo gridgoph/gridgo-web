@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -68,7 +70,7 @@ export default function AdminFinancePage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -87,7 +89,7 @@ export default function AdminFinancePage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []));
 
   useLiveReload(["orders", "claims", "payouts", "credits"], load);
 

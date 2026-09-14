@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronRight, CirclePause, Eye, Unlock } from "lucide-react";
 
@@ -85,7 +87,7 @@ export default function OpsClaimsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -102,7 +104,7 @@ export default function OpsClaimsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []));
 
   useLiveReload(["claims", "orders"], load);
 

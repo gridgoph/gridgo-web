@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -49,7 +51,7 @@ export default function AdminAuditPage() {
   const [actionQuery, setActionQuery] = useState("");
   const [actorQuery, setActorQuery] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -69,7 +71,7 @@ export default function AdminAuditPage() {
     } finally {
       setLoading(false);
     }
-  }, [entityType]);
+  }, [entityType]));
 
   useLiveReload(["orders", "claims", "payouts", "identity", "settings"], load);
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
@@ -29,7 +31,7 @@ export default function SupplierPayoutsPage() {
   const [loading, setLoading] = useState(true);
   const [issuesNote, setIssuesNote] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     setIssuesNote(null);
@@ -63,7 +65,7 @@ export default function SupplierPayoutsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []));
 
   useLiveReload(["payouts", "jobs"], load);
 

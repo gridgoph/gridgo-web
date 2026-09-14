@@ -1,9 +1,13 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 /**
  * Catalogue-line verification. Operations and Super Admin mount the same
  * queue so an inbox service-review slip opens a screen that account can use.
  */
+
+import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Ban, Check, Play } from "lucide-react";
@@ -54,7 +58,7 @@ export function ServiceLines() {
   const [confirm, setConfirm] = useState<ConfirmService | null>(null);
   const [reason, setReason] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -70,7 +74,9 @@ export function ServiceLines() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []));
+
+  useLiveReload(["approvals", "services", "identity"], load);
 
   useEffect(() => {
     void load();

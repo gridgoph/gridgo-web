@@ -1,4 +1,6 @@
 "use client";
+
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useState } from "react";
@@ -20,6 +22,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   getTaxonomy,
+  isApiError,
   listSupplierServices,
   listUsers,
   updateTaxonomySubcategory,
@@ -39,7 +42,7 @@ export default function EditPrintJobPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
 
-  const load = useCallback(async (preserveDraft = false) => {
+  const load = useSerializedLoad(useCallback(async (preserveDraft = false) => {
     setLoading(true);
     setFloorLoading(true);
     setError(null);
@@ -81,13 +84,17 @@ export default function EditPrintJobPage() {
         }),
       );
     } catch (err) {
+      if (
+        preserveDraft &&
+        !(isApiError(err) && ["unauthorized", "forbidden", "not_found"].includes(err.kind))
+      ) return;
       setValues(null);
       setError(adminErrorMessage(err, "Could not load this print job."));
     } finally {
       setLoading(false);
       setFloorLoading(false);
     }
-  }, [code]);
+  }, [code]));
 
   useLiveReload(["catalog", "services"], () => load(true));
 

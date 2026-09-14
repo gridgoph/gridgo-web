@@ -1,4 +1,6 @@
 "use client";
+
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -38,7 +40,7 @@ export default function AdminPlanningPage() {
   const [loading, setLoading] = useState(true);
   const [anchor, setAnchor] = useState(() => new Date());
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -63,7 +65,7 @@ export default function AdminPlanningPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []));
 
   useLiveReload(["orders", "services", "availability", "identity"], load);
 

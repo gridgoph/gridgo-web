@@ -8,6 +8,7 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LiveContext, type LiveContextValue } from "@/lib/live/LiveProvider";
+import { ApiError } from "@/lib/api/client";
 import type { InvalidatePing } from "@/lib/api/types";
 import type { Taxonomy } from "@/lib/api/types";
 
@@ -236,8 +237,14 @@ it("preserves an edited listing draft when a live catalogue refresh arrives", as
   render(<LiveContext.Provider value={live}><ListingEditorPage/></LiveContext.Provider>);
   expect(await screen.findByLabelText("Name")).toHaveValue("Flyers");
   fireEvent.change(screen.getByLabelText("Name"),{target:{value:"My unsaved draft"}});
-  mocks.getCatalogItem.mockResolvedValue(catalogItem({name:"Remote edit",version:4}));
+  mocks.getCatalogItem.mockResolvedValue(catalogItem({name:"Remote edit",basePriceMinor:50000,version:4}));
   await act(async()=>{listener({resource:"catalog"});});
   await waitFor(()=>expect(mocks.getCatalogItem).toHaveBeenCalledTimes(2));
+  expect(screen.getByLabelText("Name")).toHaveValue("My unsaved draft");
+  mocks.updateCatalogItem.mockRejectedValueOnce(new ApiError(409, { error: "version_conflict" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]);
+  await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalledWith(
+    "sci_1", 3, expect.objectContaining({ name: "My unsaved draft", basePriceMinor: 40000 }),
+  ));
   expect(screen.getByLabelText("Name")).toHaveValue("My unsaved draft");
 });

@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -80,7 +82,7 @@ export default function SupplierSchedulePage() {
   const [anchor, setAnchor] = useState(() => new Date());
   const isNarrow = useIsNarrow(768);
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -101,7 +103,7 @@ export default function SupplierSchedulePage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []));
 
   useLiveReload(["jobs", "availability"], load);
 

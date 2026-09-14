@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Eye } from "lucide-react";
@@ -51,7 +53,7 @@ export default function OpsOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [stage, setStage] = useState<Stage>(requested ?? "payment");
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -66,7 +68,7 @@ export default function OpsOrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []));
 
   useLiveReload("orders", load);
 

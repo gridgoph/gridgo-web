@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Bike, Eye, MapPin, PackageCheck, RefreshCw } from "lucide-react";
@@ -64,7 +66,7 @@ export default function OpsDispatchPage() {
   const [collector, setCollector] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -86,7 +88,7 @@ export default function OpsDispatchPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []));
 
   useLiveReload(["dispatch", "orders"], load);
 
@@ -99,7 +101,7 @@ export default function OpsDispatchPage() {
     [orders],
   );
 
-  const refreshLocations = useCallback(async (list: Order[]) => {
+  const refreshLocations = useSerializedLoad(useCallback(async (list: Order[]) => {
     const trackable = list.filter(
       (o) =>
         o.riderId &&
@@ -126,7 +128,7 @@ export default function OpsDispatchPage() {
     // In-memory only for this view refresh.
     setLocations(next);
     setLocLoading(false);
-  }, []);
+  }, []));
 
   useEffect(() => {
     if (board.length) void refreshLocations(board);

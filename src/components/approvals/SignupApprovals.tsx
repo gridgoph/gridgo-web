@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 /**
  * Supplier and rider sign-up approvals.
  *
@@ -71,7 +73,7 @@ export function SignupApprovals({ intro }: Props) {
   } | null>(null);
   const [reason, setReason] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -96,7 +98,7 @@ export function SignupApprovals({ intro }: Props) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []));
 
   useLiveReload("approvals", load);
 

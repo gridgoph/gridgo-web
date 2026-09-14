@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
 /**
@@ -12,7 +14,7 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
  * implementation, mounted for Operations and Super Admin alike.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
@@ -97,6 +99,8 @@ function describeBand(band: DeliveryFeeBand, previous: number | null): string {
 
 export function OperationalSettings() {
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -109,15 +113,27 @@ export function OperationalSettings() {
   const [qrError, setQrError] = useState<string | null>(null);
   const [qrOk, setQrOk] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async (preserveDraft = false) => {
     setLoading(true);
     setError(null);
     try {
       const next = await getSettings();
+      const previous = settingsRef.current;
+      setHours((current) =>
+        preserveDraft && previous && current !== String(previous.issueWindowHours)
+          ? current
+          : String(next.issueWindowHours),
+      );
+      setBands((current) =>
+        preserveDraft && previous &&
+        JSON.stringify(current) !== JSON.stringify(toDraft(previous.deliveryFeeBands))
+          ? current
+          : toDraft(next.deliveryFeeBands),
+      );
+      settingsRef.current = next;
       setSettings(next);
-      setHours(String(next.issueWindowHours));
-      setBands(toDraft(next.deliveryFeeBands));
     } catch (err) {
+      if (preserveDraft) return;
       setSettings(null);
       setError(
         opsErrorMessage(
@@ -128,28 +144,13 @@ export function OperationalSettings() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []));
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  useLiveReload("settings", async () => {
-    const next = await getSettings();
-    if (settings) {
-      setHours((current) =>
-        current === String(settings.issueWindowHours)
-          ? String(next.issueWindowHours)
-          : current,
-      );
-      setBands((current) =>
-        JSON.stringify(current) === JSON.stringify(toDraft(settings.deliveryFeeBands))
-          ? toDraft(next.deliveryFeeBands)
-          : current,
-      );
-    }
-    setSettings(next);
-  });
+  useLiveReload("settings", () => load(true));
 
   /** Turn the drafts into what the API wants, or explain what is wrong. */
   function readBands(): { bands: DeliveryFeeBand[] } | { problem: string } {

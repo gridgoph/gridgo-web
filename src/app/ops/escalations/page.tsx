@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
@@ -52,7 +54,7 @@ export default function OpsEscalationsPage() {
   const [resolving, setResolving] = useState<Escalation | null>(null);
   const [instruction, setInstruction] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -82,7 +84,7 @@ export default function OpsEscalationsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []));
 
   useLiveReload(["escalations", "orders"], load);
 

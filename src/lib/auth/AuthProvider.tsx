@@ -171,6 +171,7 @@ function SessionAuthProvider({
       }
       if (!clerkSession.isSignedIn) {
         if (!isCurrent()) return;
+        hasMappedIdentity.current = false;
         setUser(null);
         setMemberships([]);
         setStatus("signed_out");
@@ -181,6 +182,7 @@ function SessionAuthProvider({
       const token = await clerkSession.getToken();
       if (!isCurrent()) return;
       if (!token) {
+        hasMappedIdentity.current = false;
         setUser(null);
         setMemberships([]);
         setStatus("signed_out");
@@ -220,6 +222,7 @@ function SessionAuthProvider({
     } catch (error) {
       if (!isCurrent()) return;
       if (hasMappedIdentity.current && !(isApiError(error) && ["unauthorized", "forbidden"].includes(error.kind))) return;
+      hasMappedIdentity.current = false;
       setUser(null);
       setMemberships([]);
       setStatus(
@@ -239,6 +242,7 @@ function SessionAuthProvider({
     await clerkSession.signOut({ redirectUrl: "/login" });
     if (!mounted.current) return;
     setTokenProvider(() => null);
+    hasMappedIdentity.current = false;
     setUser(null);
     setMemberships([]);
     setStatus("signed_out");

@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -81,6 +83,7 @@ import {
 } from "@/lib/listings";
 
 type Draft = {
+  version: Listing["version"];
   name: string;
   description: string;
   price: string;
@@ -95,6 +98,7 @@ type Draft = {
 
 function draftFrom(listing: Listing): Draft {
   return {
+    version: listing.version,
     name: listing.name,
     description: listing.description,
     price: listing.basePriceMinor ? minorToPesosInput(listing.basePriceMinor) : "",
@@ -130,7 +134,7 @@ export default function ListingEditorPage() {
 
   const working = draft ?? (listing ? draftFrom(listing) : null);
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     try {
       const [itemBody, servicesBody, tax, stepsBody, formatList] = await Promise.all([
         getCatalogItem(id),
@@ -153,7 +157,7 @@ export default function ListingEditorPage() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id]));
 
   useLiveReload(["catalog", "services"], load);
 
@@ -206,7 +210,7 @@ export default function ListingEditorPage() {
     setActionError(null);
     try {
       const saved = normalizeListing(
-        await updateCatalogItem(listing.id, listing.version, {
+        await updateCatalogItem(listing.id, working.version, {
           name: working.name.trim(),
           description: working.description.trim(),
           basePriceMinor: money,

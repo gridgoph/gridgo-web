@@ -1,4 +1,6 @@
 "use client";
+
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -81,7 +83,7 @@ function ServiceLines() {
   const [confirm, setConfirm] = useState<ConfirmService | null>(null);
   const [reason, setReason] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -97,7 +99,7 @@ function ServiceLines() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []));
 
   useLiveReload(["approvals", "services", "identity"], load);
 

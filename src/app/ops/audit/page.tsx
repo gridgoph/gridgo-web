@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -94,7 +96,7 @@ export default function OpsAuditPage() {
   const [orderId, setOrderId] = useState("");
   const [actorId, setActorId] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -120,7 +122,7 @@ export default function OpsAuditPage() {
     } finally {
       setLoading(false);
     }
-  }, [entityType, actionFilter, orderId, actorId]);
+  }, [entityType, actionFilter, orderId, actorId]));
 
   useLiveReload(["orders", "claims", "payouts", "identity", "settings"], load);
 

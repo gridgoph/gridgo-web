@@ -2,13 +2,18 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { ApiError } from "@/lib/api/client";
+import { LiveContext, type LiveContextValue } from "@/lib/live/LiveProvider";
+import type { InvalidatePing } from "@/lib/api/types";
 import type { SupplierService, Taxonomy, User } from "@/lib/api/types";
 
 const mocks = vi.hoisted(() => ({
+  code: "marketing_collateral",
+  listListingStarters: vi.fn(async () => []),
   getTaxonomy: vi.fn(),
   listSupplierServices: vi.fn(),
   listUsers: vi.fn(),
@@ -35,7 +40,7 @@ vi.mock("next/link", () => ({
 }));
 
 vi.mock("next/navigation", () => ({
-  useParams: () => ({ code: "marketing_collateral" }),
+  useParams: () => ({ code: mocks.code }),
 }));
 
 vi.mock("@/lib/api/client", async () => {
@@ -44,6 +49,7 @@ vi.mock("@/lib/api/client", async () => {
   );
   return {
     ...actual,
+    listListingStarters: mocks.listListingStarters,
     getTaxonomy: mocks.getTaxonomy,
     listSupplierServices: mocks.listSupplierServices,
     listUsers: mocks.listUsers,
@@ -53,11 +59,13 @@ vi.mock("@/lib/api/client", async () => {
   };
 });
 
+import EditPrintJobPage from "@/app/admin/catalogue/jobs/[code]/page";
 import EditCategoryPage from "@/app/admin/catalogue/categories/[code]/page";
 
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  mocks.code = "marketing_collateral";
 });
 
 const taxonomy: Taxonomy = {
@@ -161,5 +169,55 @@ describe("category sheet", () => {
     expect(screen.getByText("A5 Flyers")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Save category/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Back to chart/i })).toBeInTheDocument();
+  });
+});
+
+
+function renderEditor(Page: typeof EditCategoryPage, code: string) {
+  mocks.code = code;
+  mocks.getTaxonomy.mockResolvedValue(taxonomy);
+  mocks.listSupplierServices.mockResolvedValue([]);
+  mocks.listUsers.mockResolvedValue([]);
+  mocks.listAllCatalogShops.mockResolvedValue([]);
+  let listener!: (ping: InvalidatePing) => void;
+  const live: LiveContextValue = {
+    notifications: [], unreadCount: 0, snapshot: null, live: true,
+    subscribe: next => { listener = next; return () => undefined; },
+    markRead: async () => {}, markAllRead: async () => {},
+    remove: async () => {}, refreshInbox: async () => {},
+  };
+  render(<LiveContext.Provider value={live}><Page /></LiveContext.Provider>);
+  return async () => {
+    const calls = mocks.getTaxonomy.mock.calls.length;
+    await act(async () => { listener({ resource: "catalog" }); });
+    await waitFor(() => expect(mocks.getTaxonomy).toHaveBeenCalledTimes(calls + 1));
+  };
+}
+
+describe.each([
+  ["category", EditCategoryPage, "marketing_collateral"],
+  ["print job", EditPrintJobPage, "flyers"],
+] as const)("live %s editor", (_label, Page, code) => {
+  it("retains unsaved values through a transient failure and recovery", async () => {
+    const ping = renderEditor(Page, code);
+    await screen.findByLabelText("Name");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Unsaved name" } });
+    mocks.getTaxonomy.mockRejectedValueOnce(new TypeError("Offline"));
+    await ping();
+    expect(await screen.findByLabelText("Name")).toHaveValue("Unsaved name");
+    await ping();
+    expect(await screen.findByLabelText("Name")).toHaveValue("Unsaved name");
+  });
+
+  it.each([403, 404])("clears the draft on definitive HTTP %s", async status => {
+    const ping = renderEditor(Page, code);
+    await screen.findByLabelText("Name");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Unsaved name" } });
+    mocks.getTaxonomy.mockRejectedValueOnce(new ApiError(status, { error: status === 403 ? "forbidden" : "not_found" }));
+    await ping();
+    await waitFor(() => expect(screen.queryByLabelText("Name")).not.toBeInTheDocument());
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      status === 403 ? "This action is restricted to Super Admin." : "That record was not found.",
+    );
   });
 });

@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -59,7 +61,7 @@ export default function OpsSchedulePage() {
   const [anchor, setAnchor] = useState(() => new Date());
   const [kinds, setKinds] = useState<Set<ScheduleKind>>(() => new Set(ALL_KINDS));
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -76,7 +78,7 @@ export default function OpsSchedulePage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []));
 
   useLiveReload(["orders", "claims"], load);
 

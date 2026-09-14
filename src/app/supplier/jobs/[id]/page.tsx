@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { History, ListChecks, Wallet } from "lucide-react";
@@ -78,7 +80,7 @@ export default function SupplierJobDetailPage() {
   const [pricePesos, setPricePesos] = useState("");
   const [promisedDate, setPromisedDate] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -99,7 +101,7 @@ export default function SupplierJobDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [orderId]);
+  }, [orderId]));
 
   useLiveReload("jobs", load, { matchId: orderId });
 

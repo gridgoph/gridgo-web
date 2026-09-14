@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
@@ -62,7 +64,7 @@ export default function OpsPayoutsPage() {
   } | null>(null);
   const [note, setNote] = useState("");
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -79,7 +81,7 @@ export default function OpsPayoutsPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []));
 
   useLiveReload(["payouts", "orders"], load);
 

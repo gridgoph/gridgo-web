@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -62,7 +64,7 @@ export function OrderWorkspace({ queueHref, queueLabel = "Back to queue" }: Prop
   const [note, setNote] = useState("");
   const [checked, setChecked] = useState<Record<string, boolean>>({});
 
-  const load = useCallback(async () => {
+  const load = useSerializedLoad(useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -73,7 +75,7 @@ export function OrderWorkspace({ queueHref, queueLabel = "Back to queue" }: Prop
     } finally {
       setLoading(false);
     }
-  }, [orderId]);
+  }, [orderId]));
 
   useLiveReload(["orders", "jobs"], load, { matchId: orderId });
 
