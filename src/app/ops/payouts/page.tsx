@@ -3,36 +3,39 @@
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
-import { MilestoneList } from "@/components/orders/MilestoneList";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { SkeletonCards } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
-import { Textarea } from "@/components/ui/textarea";
-import { listClaims, listOrders, releaseMilestone } from "@/lib/api/client";
-import { claimBlocksPayout } from "@/lib/api/constraints";
-import type { Claim, Order, PayoutMilestone } from "@/lib/api/types";
+import { listClaims, listOrders } from "@/lib/api/client";
+import type { Claim, Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatPhp } from "@/lib/format";
-import { presentMilestone, presentOrderState } from "@/lib/order-state";
+import { presentOrderState } from "@/lib/order-state";
+import {
+  PAYOUT_QUEUE_GROUPS,
+  activeHolds,
+  payoutProgress,
+  payoutQueueGroup,
+  payoutSummary,
+  type PayoutQueueGroup,
+} from "@/lib/payouts";
+import { cn } from "@/lib/utils";
 
 type Loaded = {
   orders: Order[];
   claims: Claim[];
+};
+
+type Row = {
+  order: Order;
+  holds: Claim[];
+  group: PayoutQueueGroup;
 };
 
 /** Orders far enough along that a payout milestone can be in play. */
@@ -44,25 +47,28 @@ const PAYOUT_STATES = new Set([
   "rider_assigned",
   "picked_up",
   "out_for_delivery",
+  "awaiting_collection",
   "delivered",
   "issue_window_open",
   "completed",
   "payout_released",
 ]);
 
+/**
+ * The payout desk, as a queue rather than a ledger.
+ *
+ * Every order used to arrive here with all four of its shares unrolled, so
+ * the one job waiting on a decision sat somewhere inside a wall of rows that
+ * were waiting on a shop, a rider or a clock. Now each order is one line that
+ * says what it is waiting for, sorted into the four questions Operations
+ * actually asks — can I release something, is it held, who am I waiting on,
+ * is it done — and the proof and the release button live on the order's own
+ * review page, where the picture can be large enough to check.
+ */
 export default function OpsPayoutsPage() {
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState(false);
-  const [releasing, setReleasing] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-  const [actionOk, setActionOk] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{
-    order: Order;
-    milestone: PayoutMilestone;
-  } | null>(null);
-  const [note, setNote] = useState("");
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -85,70 +91,39 @@ export default function OpsPayoutsPage() {
     }, []),
   );
 
-  useLiveReload(["payouts", "orders"], load);
+  useLiveReload(["payouts", "orders", "claims"], load);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const rows = useMemo(() => {
+  const rows = useMemo<Row[]>(() => {
     if (!data) return [];
     return (
       data.orders
         .filter(
           (order) => PAYOUT_STATES.has(order.state) && order.payoutMilestones?.length,
         )
-        .map((order) => ({
-          order,
-          holds: data.claims.filter(
-            (claim) => claim.orderId === order.id && claimBlocksPayout(claim.status),
-          ),
-        }))
-        /*
-       Longest wait first.
-
-       Every stage now waits for somebody here, which means a shop can sit
-       unpaid because nobody opened this screen. Ordering by how much is
-       outstanding buries the one job that has been waiting three days under
-       four fresh ones, so the wait leads and the amount only breaks its ties.
-      */
-        .sort((a, b) => {
-          const waited = (a.order.updatedAt || "").localeCompare(b.order.updatedAt || "");
-          if (waited !== 0) return waited;
-          return outstandingCount(b.order) - outstandingCount(a.order);
+        .map((order) => {
+          const holds = activeHolds(order, data.claims);
+          return { order, holds, group: payoutQueueGroup(order, holds) };
         })
+        /*
+         Longest wait first, within each group.
+
+         A shop can sit unpaid because nobody opened this screen, so the one
+         that has been waiting three days leads the four fresh ones.
+        */
+        .sort((a, b) => (a.order.updatedAt || "").localeCompare(b.order.updatedAt || ""))
     );
   }, [data]);
 
-  async function apply() {
-    if (!confirm) return;
-    setBusy(true);
-    setReleasing(confirm.milestone.code);
-    setActionError(null);
-    setActionOk(null);
-    try {
-      await releaseMilestone(confirm.order.id, confirm.milestone.code, {
-        note: note.trim() || "Proof of Fulfilment reviewed",
-      });
-      setActionOk(
-        `${presentMilestone(confirm.milestone.code)} released to the supplier${
-          confirm.milestone.amountMinor !== undefined
-            ? ` — ${formatPhp(confirm.milestone.amountMinor)}`
-            : ""
-        }.`,
-      );
-      setConfirm(null);
-      setNote("");
-      await load();
-    } catch (err) {
-      setActionError(
-        opsErrorMessage(err, "Could not release that milestone. Try again."),
-      );
-    } finally {
-      setBusy(false);
-      setReleasing(null);
-    }
-  }
+  const grouped = useMemo(() => {
+    const byGroup = new Map<PayoutQueueGroup, Row[]>();
+    for (const definition of PAYOUT_QUEUE_GROUPS) byGroup.set(definition.id, []);
+    for (const row of rows) byGroup.get(row.group)?.push(row);
+    return byGroup;
+  }, [rows]);
 
   if (error) {
     return (
@@ -164,37 +139,28 @@ export default function OpsPayoutsPage() {
   }
 
   const pending = loading && !data;
+  const readyCount = grouped.get("ready")?.length ?? 0;
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
           A supplier is paid in four parts, and each one releases only against a Proof of
-          Fulfilment. The shares are of what the supplier earns — the commission and the
-          delivery fee sit outside them.
+          Fulfilment. Open an order to see the proof and release the share. The shares are
+          of what the supplier earns; the commission and the delivery fee sit outside
+          them.
         </p>
         <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
         </Button>
       </div>
 
-      {actionOk ? (
-        <p className="text-body text-success m-0" role="status">
-          {actionOk}
-        </p>
-      ) : null}
-      {actionError && !confirm ? (
-        <p className="text-body text-error m-0" role="alert">
-          {actionError}
-        </p>
-      ) : null}
-
       {pending ? (
-        <SkeletonCards count={2} lines={4} label="Loading payouts" className="gap-4" />
+        <SkeletonCards count={3} lines={2} label="Loading payouts" className="gap-3" />
       ) : !rows.length ? (
         <EmptyState
           title="No payouts in play"
-          body="Milestones appear once a supplier has accepted an order and production begins. Nothing has reached that point yet."
+          body="Shares appear once a supplier has accepted an order and production begins. Nothing has reached that point yet."
           action={
             <Button variant="secondary" onClick={() => void load()}>
               Refresh
@@ -202,146 +168,113 @@ export default function OpsPayoutsPage() {
           }
         />
       ) : (
-        <ul className="m-0 flex list-none flex-col gap-4 p-0">
-          {rows.map(({ order, holds }) => {
-            const status = presentOrderState(order.state);
-            return (
-              <li key={order.id} className="gg-card flex flex-col gap-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p
-                      className="text-body text-text-primary m-0"
-                      style={{ fontFamily: "var(--font-medium)" }}
-                    >
-                      {order.title}
-                    </p>
-                    <p className="text-caption text-text-muted m-0 mt-0.5">
-                      Order {order.id}
-                    </p>
-                    {order.supplierPriceMinor !== undefined ? (
-                      <p className="text-caption text-text-muted m-0 mt-0.5">
-                        Supplier earns {formatPhp(order.supplierPriceMinor)} on this order
-                      </p>
-                    ) : null}
-                  </div>
-                  <StatusChip
-                    tone={status.tone}
-                    label={status.label}
-                    icon={status.icon}
-                  />
-                </div>
-
-                {holds.length ? (
-                  <div
-                    className="rounded-card border border-error px-4 py-3"
-                    role="status"
-                  >
-                    <p
-                      className="text-body text-text-primary m-0"
-                      style={{ fontFamily: "var(--font-medium)" }}
-                    >
-                      {holds.length === 1
-                        ? "A claim is holding this payout"
-                        : `${holds.length} claims are holding this payout`}
-                    </p>
-                    <ul className="m-0 mt-1 flex list-none flex-col gap-1 p-0">
-                      {holds.map((claim) => (
-                        <li key={claim.id} className="text-body text-text-secondary">
-                          {claim.holdReason || claim.reason}
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="text-caption text-text-muted m-0 mt-2">
-                      Nothing releases until the hold is lifted on Claims and payout
-                      holds.
-                    </p>
-                  </div>
-                ) : null}
-
-                <MilestoneList
-                  order={order}
-                  releasing={releasing}
-                  onRelease={(milestone) => {
-                    setActionError(null);
-                    setNote("");
-                    setConfirm({ order, milestone });
-                  }}
-                />
-              </li>
-            );
-          })}
-        </ul>
+        PAYOUT_QUEUE_GROUPS.map((definition) => {
+          const members = grouped.get(definition.id) ?? [];
+          // An empty "ready" group is the one empty group worth saying out
+          // loud: it is the answer to the question this desk opens with.
+          if (members.length === 0 && definition.id !== "ready") return null;
+          return (
+            <section
+              key={definition.id}
+              aria-labelledby={`payout-group-${definition.id}`}
+              className="flex flex-col gap-2"
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <h2
+                  id={`payout-group-${definition.id}`}
+                  className="text-h3 text-text-primary m-0"
+                >
+                  {definition.label}
+                  <span className="text-text-muted tabular-nums"> {members.length}</span>
+                </h2>
+                <p className="text-caption text-text-muted m-0">{definition.hint}</p>
+              </div>
+              {members.length === 0 ? (
+                <p className="text-body text-text-secondary m-0 rounded-card border border-dashed border-outline px-4 py-3">
+                  Nothing to release right now
+                  {readyCount === 0 && rows.length > 0
+                    ? ". Everything below is waiting on someone else, or already paid."
+                    : "."}
+                </p>
+              ) : (
+                <ul className="gg-card-flush m-0 flex list-none flex-col p-0">
+                  {members.map(({ order, holds }) => (
+                    <PayoutRow key={order.id} order={order} holds={holds} />
+                  ))}
+                </ul>
+              )}
+            </section>
+          );
+        })
       )}
-
-      <AlertDialog
-        open={!!confirm}
-        onOpenChange={(open) => {
-          if (!open) {
-            setConfirm(null);
-            setNote("");
-            setActionError(null);
-          }
-        }}
-      >
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Release{" "}
-              {confirm?.milestone.amountMinor !== undefined
-                ? formatPhp(confirm.milestone.amountMinor)
-                : "this milestone"}{" "}
-              to the supplier?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirm
-                ? `${presentMilestone(confirm.milestone.code)} on ${confirm.order.title}. Releasing pays the supplier and cannot be undone from the portal — check the Proof of Fulfilment first.`
-                : ""}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="release-note">
-                Note for the record (optional)
-              </FieldLabel>
-              <Textarea
-                id="release-note"
-                rows={2}
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="e.g. Proof shows the full run boxed and labelled"
-              />
-              <FieldDescription>
-                Stored on the audit trail with your name and the time.
-              </FieldDescription>
-            </Field>
-          </FieldGroup>
-          {actionError ? (
-            <p className="text-body text-error m-0" role="alert">
-              {actionError}
-            </p>
-          ) : null}
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              variant="secondary"
-              disabled={busy}
-              onClick={() => setConfirm(null)}
-            >
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              variant="primary"
-              disabled={busy}
-              onClick={() => void apply()}
-            >
-              {busy ? "Releasing…" : "Release payout"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
 
-function outstandingCount(order: Order): number {
-  return (order.payoutMilestones ?? []).filter((m) => m.status !== "released").length;
+/**
+ * One order on the desk. Title and state on the left, money on the right, and
+ * between them the one sentence that says what happens next. The whole row is
+ * the link, because the only thing to do with a row is open it.
+ */
+function PayoutRow({ order, holds }: { order: Order; holds: Claim[] }) {
+  const status = presentOrderState(order.state);
+  const progress = payoutProgress(order);
+  const percent =
+    progress.totalMinor && progress.releasedMinor !== null
+      ? Math.round((progress.releasedMinor / progress.totalMinor) * 100)
+      : Math.round((progress.releasedCount / Math.max(1, progress.count)) * 100);
+
+  return (
+    <li className="border-b border-outline-subtle last:border-b-0">
+      <Link
+        href={`/ops/payouts/${order.id}`}
+        className={cn(
+          "group flex min-h-11 items-center gap-3 px-4 py-3 text-text-primary",
+          "hover:bg-overlay-hover focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-action-yellow",
+        )}
+        aria-label={`Review the payout on ${order.title || "this order"}`}
+      >
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <p
+              className="text-body text-text-primary m-0 truncate"
+              style={{ fontFamily: "var(--font-medium)" }}
+            >
+              {order.title || "Untitled order"}
+            </p>
+            <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
+          </div>
+          <p className="text-body text-text-secondary m-0">
+            {payoutSummary(order, holds)}
+          </p>
+          <div className="flex items-center gap-3">
+            <span
+              className="bg-surface-variant relative h-1 w-32 max-w-full overflow-hidden rounded-pill"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={percent}
+              aria-label="Share of the supplier's earnings released"
+            >
+              <span
+                className="bg-success absolute inset-y-0 left-0 rounded-pill"
+                style={{ width: `${percent}%` }}
+              />
+            </span>
+            <span className="text-caption text-text-muted tabular-nums">
+              {progress.releasedMinor !== null && progress.totalMinor !== null
+                ? `${formatPhp(progress.releasedMinor)} of ${formatPhp(progress.totalMinor)} released`
+                : `${progress.releasedCount} of ${progress.count} shares released`}
+            </span>
+          </div>
+        </div>
+        <ChevronRight
+          size={16}
+          strokeWidth={2}
+          aria-hidden
+          className="shrink-0 text-text-muted transition-transform duration-150 motion-reduce:transition-none group-hover:translate-x-0.5"
+        />
+      </Link>
+    </li>
+  );
 }

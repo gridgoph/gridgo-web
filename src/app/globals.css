@@ -319,9 +319,9 @@
   --sidebar-ring: #1a1a1a;
 }
 
-/* System dark (existing portal behaviour) */
+/* System dark, unless the person chose light with the header toggle (`.light`) */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not(.light) {
     --color-canvas: #000000;
     --color-surface: #141414;
     --color-surface-variant: #1e1e1e;
@@ -594,6 +594,16 @@ html {
   color-scheme: light dark;
 }
 
+/* An explicit choice from the header toggle also tells the browser which
+   scheme to use for its own controls, scrollbars and form chrome. */
+html.light {
+  color-scheme: light;
+}
+
+html.dark {
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
   min-height: 100dvh;
@@ -640,6 +650,129 @@ textarea:focus-visible,
 [data-slot="dropdown-menu-item"] {
   min-height: 44px;
   min-width: 44px;
+}
+
+/* Rider map. Leaflet builds pins and popups outside React, so they are styled
+   here by class. Pins use tokens so dark mode follows; the route line itself
+   is drawn on the tiles in the same yellow the rider app uses. */
+.gg-pin-host {
+  background: none;
+  border: 0;
+}
+
+.gg-rider-pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-pill);
+  background: var(--color-text-primary);
+  color: var(--color-surface);
+  border: 3px solid var(--color-surface);
+  box-shadow: 0 1px 4px var(--color-scrim);
+}
+
+/* Last ping older than the freshness window: hollow and dashed, never a live-looking pin. */
+.gg-rider-pin--stale {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  border-color: var(--color-warning);
+  border-style: dashed;
+}
+
+.gg-trip-pin {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  border: 3px solid var(--color-text-primary);
+  box-shadow: 0 1px 3px var(--color-scrim);
+}
+
+.gg-trip-pin--dropoff {
+  width: 18px;
+  height: 18px;
+  background: var(--color-text-primary);
+  border-color: var(--color-surface);
+}
+
+/* Leaflet stacks its panes and controls at z-index 400-1000. Isolating the map
+   keeps all of that inside the map's own box, so the header, the Desk popover
+   and dialogs stay above it. */
+.gg-map {
+  position: relative;
+  isolation: isolate;
+  z-index: 0;
+}
+
+/* One OpenStreetMap source, toned to the theme: greys in light, inverted in dark. */
+.gg-map .leaflet-tile-pane {
+  filter: saturate(0.25) contrast(1.02);
+}
+
+.gg-map--dark .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) saturate(0.2) brightness(0.9) contrast(0.95);
+}
+
+.gg-card .leaflet-container {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 18px;
+  /* Shown behind tiles still loading; on the dark map that must not flash white. */
+  background: var(--color-surface-variant);
+}
+
+.gg-card .leaflet-bar {
+  border: 1px solid var(--color-outline);
+  box-shadow: 0 1px 4px var(--color-scrim);
+}
+
+.gg-card .leaflet-bar a {
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  border-bottom-color: var(--color-outline);
+}
+
+.gg-card .leaflet-bar a:hover,
+.gg-card .leaflet-bar a:focus {
+  background: var(--color-surface-variant);
+  color: var(--color-text-primary);
+}
+
+.gg-card .leaflet-bar a.leaflet-disabled {
+  background: var(--color-surface-variant);
+  color: var(--color-text-muted);
+}
+
+.gg-card .leaflet-control-attribution {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.gg-card .leaflet-control-attribution a {
+  color: var(--color-text-secondary);
+}
+
+.gg-card .leaflet-popup-close-button {
+  color: var(--color-text-muted);
+}
+
+.gg-card .leaflet-popup-content-wrapper {
+  border-radius: var(--radius-field);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  box-shadow: 0 2px 8px var(--color-scrim);
+}
+
+.gg-card .leaflet-popup-tip {
+  background: var(--color-surface);
+}
+
+.gg-card .leaflet-marker-icon:focus-visible {
+  outline: 2px solid var(--color-text-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-pill);
 }
 
 /* Reduced motion */

@@ -9,11 +9,7 @@
  */
 
 export type SupplierActionKind =
-  | "accept"
-  | "decline"
-  | "start_production"
-  | "self_qc"
-  | "ready_for_pickup";
+  "accept" | "decline" | "start_production" | "ready_for_pickup";
 
 export type SupplierAction = {
   kind: SupplierActionKind;
@@ -55,11 +51,13 @@ export function actionsForJob(state: string): SupplierAction[] {
         },
       ];
     case "production":
+      // Packed is the shop's last move. Quality and count are checked together
+      // with the rider at pickup, so no supplier self-check step sits between.
       return [
         {
-          kind: "self_qc",
-          label: "Complete self-QC",
-          targetState: "supplier_self_qc",
+          kind: "ready_for_pickup",
+          label: "Package for pickup",
+          targetState: "ready_for_dispatch",
           primary: true,
         },
       ];

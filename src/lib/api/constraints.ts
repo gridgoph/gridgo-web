@@ -18,8 +18,12 @@ import { listedInstallments, paymentOf } from "@/lib/payments";
 /** Share of the client total taken as the downpayment. */
 export const DOWNPAYMENT_PERCENT = 75;
 
-/** GRIDGO's commission, added on top of the supplier's asking price. */
-export const COMMISSION_PERCENT = 10;
+/**
+ * GRIDGO's service fee is not a constant. Operations sets the rate in
+ * Operational settings (`PlatformSettings.serviceFeeRateBps`) and every order
+ * records the rate it was priced at. The API accepts 0–10,000 basis points.
+ */
+export const SERVICE_FEE_MAX_BPS = 10_000;
 
 /** Order state in which a client may report a material issue. */
 export const ISSUE_REPORT_STATE = "issue_window_open" as const;
@@ -81,7 +85,7 @@ export const PLATFORM_CONSTRAINT_COPY: Record<
   pof_required: {
     title: "Proof of Fulfilment missing",
     guidance:
-      "Each milestone releases only against evidence. Ask the supplier (printing, packaging and QC) or the rider (delivered) to upload the proof, then release.",
+      "Each milestone releases only against evidence. Ask the supplier (printing, packaging) or the rider (delivered) to upload the proof, then release.",
   },
   milestone_not_reached: {
     title: "Production has not reached this milestone",
@@ -182,17 +186,35 @@ export function milestoneIsReleased(milestone: Pick<PayoutMilestone, "status">):
  them to distrust the screen, so the blockers are stated before the click.
 */
 const PRINTING_STATES = new Set([
-  "production", "supplier_self_qc", "ready_for_dispatch", "rider_assigned",
-  "picked_up", "out_for_delivery", "awaiting_collection", "delivered",
-  "issue_window_open", "completed", "payout_released",
+  "production",
+  "supplier_self_qc",
+  "ready_for_dispatch",
+  "rider_assigned",
+  "picked_up",
+  "out_for_delivery",
+  "awaiting_collection",
+  "delivered",
+  "issue_window_open",
+  "completed",
+  "payout_released",
 ]);
 const PACKING_STATES = new Set([
-  "supplier_self_qc", "ready_for_dispatch", "rider_assigned", "picked_up",
-  "out_for_delivery", "awaiting_collection", "delivered", "issue_window_open",
-  "completed", "payout_released",
+  "supplier_self_qc",
+  "ready_for_dispatch",
+  "rider_assigned",
+  "picked_up",
+  "out_for_delivery",
+  "awaiting_collection",
+  "delivered",
+  "issue_window_open",
+  "completed",
+  "payout_released",
 ]);
 const DELIVERED_STATES = new Set([
-  "delivered", "issue_window_open", "completed", "payout_released",
+  "delivered",
+  "issue_window_open",
+  "completed",
+  "payout_released",
 ]);
 
 /**
@@ -217,7 +239,7 @@ export function milestoneReleaseBlocker(
     return "Printing releases once the shop has started this job.";
   }
   if (milestone.code === "packaging_qc" && !PACKING_STATES.has(order.state)) {
-    return "Packing releases once the shop has finished its own quality check.";
+    return "Packing releases once the job is packed and ready for a rider.";
   }
   if (milestone.code === "delivered") {
     if (!DELIVERED_STATES.has(order.state)) {

@@ -153,6 +153,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody:
             "Track completed jobs and payout holds. Use listJobs with payoutHold on Order, plus listClaims / listIssues scoped to your orders. Active holds block payout_released.",
         },
+        {
+          id: "supplier-payout-account",
+          href: "/supplier/payout-account",
+          label: "Where you get paid",
+          title: "Where you get paid",
+          icon: "payments",
+          ready: true,
+          placeholderBody:
+            "The receiving QR and account Operations pays your jobs to. getMyPayoutAccount / updateMyPayoutAccount / uploadPayoutQr.",
+        },
       ],
     },
   ],
@@ -309,6 +319,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Overview",
           title: "Platform overview",
           icon: "overview",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-riders",
+          href: "/admin/riders",
+          label: "Riders",
+          title: "Rider locations",
+          icon: "riders",
           ready: true,
           placeholderBody: "",
         },

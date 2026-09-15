@@ -16,12 +16,25 @@ export function LoginAuthPanel() {
 
   if (isSignedIn) {
     return (
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3">
         <p className="text-body m-0 text-text-secondary">
-          The previous session is still active. End it before signing in again.
+          You are already signed in. Continue to the portal, or log out to use a
+          different Google account.
         </p>
+        <Button
+          variant="primary"
+          fullWidth
+          nativeButton={false}
+          onClick={() => {
+            window.location.assign("/");
+          }}
+        >
+          Continue to portal
+        </Button>
         <SignOutButton redirectUrl="/login">
-          <Button variant="primary">Log out</Button>
+          <Button variant="outline" fullWidth>
+            Log out
+          </Button>
         </SignOutButton>
       </div>
     );

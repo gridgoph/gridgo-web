@@ -66,8 +66,8 @@ function paymentsObject(source: unknown): Record<string, unknown> | undefined {
 export function normalizePayments(raw: unknown): OrderPayments | undefined {
   const source = paymentsObject(raw);
   if (!source) return undefined;
-  const downpayment = asPaymentRecord(source.downpayment ?? source.initial);
-  const balance = asPaymentRecord(source.balance ?? source.final_online);
+  const downpayment = asPaymentRecord(source.initial ?? source.downpayment);
+  const balance = asPaymentRecord(source.final_online ?? source.balance);
   if (!downpayment && !balance) return undefined;
   const payments: OrderPayments = {};
   if (downpayment) payments.downpayment = downpayment;
@@ -108,4 +108,21 @@ export function listedInstallments(source: PaymentSource): PaymentInstallment[] 
   if (paymentOf(source, "downpayment")) listed.push("downpayment");
   if (paymentOf(source, "balance")) listed.push("balance");
   return listed;
+}
+
+/** Mutation routes use the API's canonical installment names. */
+export function apiInstallment(code: PaymentInstallment): "initial" | "final_online" {
+  return code === "downpayment" ? "initial" : "final_online";
+}
+
+/** Financial progress is independent of production/delivery progress. */
+export function paymentProgress(order: Pick<Order, "payments" | "totalMinor">) {
+  const records = listedInstallments(order).map((code) => paymentOf(order, code)!);
+  const settled = (record: PaymentRecord) => record.status === "confirmed" || record.status === "legacy_confirmed";
+  const paidMinor = records.length ? records.reduce((sum, record) => sum + (settled(record) ? record.amountMinor : 0), 0) : null;
+  return {
+    label: records.some((record) => record.status === "pending_confirmation") ? "Needs review" : records.length && records.every(settled) ? "Done" : "Awaiting client",
+    paidMinor,
+    remainingMinor: paidMinor !== null && order.totalMinor != null ? Math.max(0, order.totalMinor - paidMinor) : null,
+  };
 }

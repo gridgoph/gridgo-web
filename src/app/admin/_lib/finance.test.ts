@@ -127,10 +127,10 @@ describe("rollupFinance", () => {
     expect(r.orderCount).toBe(0);
   });
 
-  it("sums commission only where the server gave one", () => {
+  it("sums the service fee only where the server gave one", () => {
     const r = rollupFinance(
       [
-        order({ id: "priced", state: "production", commissionMinor: 1000 }),
+        order({ id: "priced", state: "production", serviceFeeMinor: 1000 }),
         order({ id: "unpriced", state: "needs_qa" }),
       ],
       [],
@@ -200,7 +200,7 @@ describe("orderMoneySplits", () => {
         id: "priced",
         state: "production",
         supplierPriceMinor: 100000,
-        commissionMinor: 10000,
+        serviceFeeMinor: 10000,
         deliveryFeeMinor: 2500,
         totalMinor: 112500,
       }),
@@ -220,7 +220,7 @@ describe("orderMoneySplits", () => {
         id: "p",
         state: "production",
         supplierPriceMinor: 100000,
-        commissionMinor: 10000,
+        serviceFeeMinor: 10000,
         deliveryFeeMinor: 2500,
         totalMinor: 112500,
       }),

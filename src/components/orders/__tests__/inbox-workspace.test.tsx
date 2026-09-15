@@ -311,4 +311,7 @@ it.each([
     expect(screen.getByRole("button", { name: "Give an instruction" })).toBeEnabled();
     capture(`${role}-escalations`, role);
   },
+  // Two full portal navigations plus a live-stream refresh in one test; the
+  // whole-suite run on a busy machine needs more room than the 5s default.
+  15_000,
 );

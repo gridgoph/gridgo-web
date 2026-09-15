@@ -364,7 +364,7 @@ function ApplicantCard({
         {person.riderProfile?.vehicleType ? (
           <Detail
             label="Vehicle"
-            value={[person.riderProfile.vehicleType, person.riderProfile.vehiclePlate]
+            value={[person.riderProfile.vehicleType, person.riderProfile.plateNumber]
               .filter(Boolean)
               .join(" · ")}
           />

@@ -9,7 +9,13 @@ import { listedInstallments, paymentOf } from "@/lib/payments";
 import { presentInstallment } from "@/lib/order-state";
 
 export type EvidenceKind =
-  "artwork" | "mockup" | "payment_proof" | "pof" | "delivery" | "pickup";
+  | "artwork"
+  | "mockup"
+  | "payment_proof"
+  | "pof"
+  | "delivery"
+  | "pickup"
+  | "payout_receipt";
 
 export type EvidenceItem = {
   fileId: string;

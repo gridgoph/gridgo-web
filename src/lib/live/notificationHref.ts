@@ -44,6 +44,13 @@ export function notificationHref(role: Role, notification: Notification): string
     return "/admin/overview";
   }
 
+  // Money lands on the payout desk, where the release control is; the order
+  // workspace is one link away from there. Super Admin has no payout tree, so
+  // its copy still opens the order.
+  if (notification.orderId && isPayout(type) && role === "ops_admin") {
+    return `/ops/payouts/${notification.orderId}`;
+  }
+
   if (notification.orderId) {
     if (role === "supplier") return `/supplier/jobs/${notification.orderId}`;
     if (role === "ops_admin") return `/ops/orders/${notification.orderId}`;
@@ -57,6 +64,10 @@ export function notificationHref(role: Role, notification: Notification): string
   }
 
   return null;
+}
+
+function isPayout(type: string): boolean {
+  return type.includes("payout");
 }
 
 function isSignup(notification: Notification): boolean {

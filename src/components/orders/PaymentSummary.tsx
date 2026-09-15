@@ -1,12 +1,13 @@
+import type { ReactNode } from "react";
 /**
  * Both installments of an order's digital payment, with what the client sent
- * and where each one stands. Read-only — the decision lives on the payment
- * review workspace.
+ * and where each one stands. The review workspace supplies authorized actions
+ * beside the matching installment; other callers keep this read-only.
  */
 
 import { EvidencePlate } from "@/components/orders/EvidencePreview";
 import { StatusChip } from "@/components/ui/StatusChip";
-import type { Order } from "@/lib/api/types";
+import type { Order, PaymentInstallment } from "@/lib/api/types";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import {
   presentConfirmationSource,
@@ -18,9 +19,10 @@ import { listedInstallments, paymentOf } from "@/lib/payments";
 
 type Props = {
   order: Order;
+  renderActions?: (code: PaymentInstallment) => ReactNode;
 };
 
-export function PaymentSummary({ order }: Props) {
+export function PaymentSummary({ order, renderActions }: Props) {
   const installments = listedInstallments(order);
   if (installments.length === 0) {
     return (
@@ -104,6 +106,7 @@ export function PaymentSummary({ order }: Props) {
                   : "The client can send the balance once the downpayment is confirmed."}
               </p>
             )}
+            {renderActions?.(code)}
             {payment.proofFileId ? (
               <div className="mt-3">
                 <EvidencePlate

@@ -50,8 +50,7 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
   const unreleased = milestones.filter((m) => m.status !== "released");
   const blockers = unreleased.map((m) => milestoneReleaseBlocker(order, m));
   const sharedBlocker =
-    unreleased.length > 1 &&
-    blockers.every((b) => b !== null && b === blockers[0])
+    unreleased.length > 1 && blockers.every((b) => b !== null && b === blockers[0])
       ? blockers[0]
       : null;
 
@@ -62,96 +61,112 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
           {sharedBlocker}
         </p>
       ) : null}
-    <ol className="m-0 flex list-none flex-col gap-3 p-0">
-      {milestones.map((milestone, index) => {
-        const status = presentMilestoneStatus(milestone.status);
-        const blocker = milestoneReleaseBlocker(order, milestone);
-        const released = milestone.status === "released";
-        const proofCount = milestone.pofFileIds.length;
+      <ol className="m-0 flex list-none flex-col gap-3 p-0">
+        {milestones.map((milestone, index) => {
+          const status = presentMilestoneStatus(milestone.status);
+          const blocker = milestoneReleaseBlocker(order, milestone);
+          const released = milestone.status === "released";
+          const proofCount = milestone.pofFileIds.length;
 
-        return (
-          <li
-            key={milestone.code}
-            className="rounded-card border border-outline-subtle px-4 py-3"
-          >
-            <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-              <div className="min-w-0">
-                <p
-                  className="text-body text-text-primary m-0"
-                  style={{ fontFamily: "var(--font-medium)" }}
-                >
-                  <span className="text-text-muted tabular-nums">
-                    {index + 1}/{milestones.length}
-                  </span>{" "}
-                  {presentMilestone(milestone.code, milestone.sharePercent)}
-                </p>
-                <p className="text-caption text-text-muted m-0 mt-0.5">
-                  {milestone.sharePercent}% of supplier earnings ·{" "}
-                  {milestoneProofSource(milestone.code)}
-                </p>
+          return (
+            <li
+              key={milestone.code}
+              className="rounded-card border border-outline-subtle px-4 py-3"
+            >
+              <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                <div className="min-w-0">
+                  <p
+                    className="text-body text-text-primary m-0"
+                    style={{ fontFamily: "var(--font-medium)" }}
+                  >
+                    <span className="text-text-muted tabular-nums">
+                      {index + 1}/{milestones.length}
+                    </span>{" "}
+                    {presentMilestone(milestone.code, milestone.sharePercent)}
+                  </p>
+                  <p className="text-caption text-text-muted m-0 mt-0.5">
+                    {milestone.sharePercent}% of supplier earnings ·{" "}
+                    {milestoneProofSource(milestone.code)}
+                  </p>
+                </div>
+                {milestone.amountMinor !== undefined ? (
+                  <p
+                    className="text-body text-text-primary m-0 tabular-nums"
+                    style={{ fontFamily: "var(--font-bold)" }}
+                  >
+                    {formatPhp(milestone.amountMinor)}
+                  </p>
+                ) : null}
               </div>
-              {milestone.amountMinor !== undefined ? (
-                <p
-                  className="text-body text-text-primary m-0 tabular-nums"
-                  style={{ fontFamily: "var(--font-bold)" }}
-                >
-                  {formatPhp(milestone.amountMinor)}
-                </p>
-              ) : null}
-            </div>
 
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
-              <span className="text-caption text-text-muted">
-                {proofCount === 0
-                  ? "No proof on file"
-                  : proofCount === 1
-                    ? "1 proof on file"
-                    : `${proofCount} proofs on file`}
-              </span>
-              {released ? (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
                 <span className="text-caption text-text-muted">
-                  Released {formatDateTime(milestone.releasedAt)}
+                  {proofCount === 0
+                    ? "No proof on file"
+                    : proofCount === 1
+                      ? "1 proof on file"
+                      : `${proofCount} proofs on file`}
                 </span>
+                {released ? (
+                  <span className="text-caption text-text-muted">
+                    Released {formatDateTime(milestone.releasedAt)}
+                    {milestone.reference ? `, reference ${milestone.reference}` : ""}
+                  </span>
+                ) : null}
+              </div>
+
+              {released && milestone.receiptFileId ? (
+                <div className="mt-3">
+                  <EvidenceStrip
+                    items={[
+                      {
+                        fileId: milestone.receiptFileId,
+                        kind: "payout_receipt" as const,
+                        label: "Wallet receipt",
+                        caption: milestone.reference ?? null,
+                      },
+                    ]}
+                  />
+                </div>
               ) : null}
-            </div>
 
-            {proofCount > 0 ? (
-              <div className="mt-3">
-                <EvidenceStrip
-                  items={milestone.pofFileIds.map((fileId, index) => ({
-                    fileId,
-                    kind: "pof" as const,
-                    label:
-                      milestone.pofFileIds.length > 1
-                        ? `Proof ${index + 1}`
-                        : "Proof of fulfilment",
-                  }))}
-                />
-              </div>
-            ) : null}
+              {proofCount > 0 ? (
+                <div className="mt-3">
+                  <EvidenceStrip
+                    items={milestone.pofFileIds.map((fileId, index) => ({
+                      fileId,
+                      kind: "pof" as const,
+                      label:
+                        milestone.pofFileIds.length > 1
+                          ? `Proof ${index + 1}`
+                          : "Proof of fulfilment",
+                    }))}
+                  />
+                </div>
+              ) : null}
 
-            {!released && blocker && blocker !== sharedBlocker ? (
-              <p className="text-caption text-text-secondary m-0 mt-2">{blocker}</p>
-            ) : null}
+              {!released && blocker && blocker !== sharedBlocker ? (
+                <p className="text-caption text-text-secondary m-0 mt-2">{blocker}</p>
+              ) : null}
 
-            {onRelease && !released ? (
-              <div className="mt-3">
-                <Button
-                  variant="secondary"
-                  disabled={Boolean(blocker) || releasing !== null}
-                  onClick={() => onRelease(milestone)}
-                >
-                  {releasing === milestone.code
-                    ? "Releasing…"
-                    : `Release ${formatPhp(milestone.amountMinor ?? 0)}`}
-                </Button>
-              </div>
-            ) : null}
-          </li>
-        );
-      })}
-    </ol>
+              {onRelease && !released ? (
+                <div className="mt-3">
+                  <Button
+                    variant="secondary"
+                    disabled={Boolean(blocker) || releasing !== null}
+                    onClick={() => onRelease(milestone)}
+                  >
+                    {releasing === milestone.code
+                      ? "Releasing…"
+                      : `Release ${formatPhp(milestone.amountMinor ?? 0)}`}
+                  </Button>
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }

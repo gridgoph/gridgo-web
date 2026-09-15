@@ -4,6 +4,7 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Bike, Eye, MapPin, PackageCheck, RefreshCw } from "lucide-react";
 
 import {
@@ -14,6 +15,7 @@ import {
   type LocationView,
 } from "@/app/ops/_lib/dispatch";
 import { presentZone } from "@/app/ops/_lib/present";
+import { VehicleGlyph } from "@/components/riders/VehicleGlyph";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,13 +40,15 @@ import {
   getDispatchLocation,
   listDispatchOffers,
   listOrders,
+  listUsers,
   recordCollection,
   transitionOrder,
 } from "@/lib/api/client";
-import type { Order } from "@/lib/api/types";
+import type { Order, User } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime } from "@/lib/format";
 import { presentOrderState, presentTimelineActor } from "@/lib/order-state";
+import { vehicleSummary } from "@/lib/vehicle";
 
 /** Demo rider when order has none — same honesty as QA workspace. */
 const DEMO_RIDER_ID = "user_rider";
@@ -57,6 +61,8 @@ export default function OpsDispatchPage() {
 
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [offers, setOffers] = useState<Order[]>([]);
+  /** Rider directory, so a row shows who is driving and what they drive. */
+  const [ridersById, setRidersById] = useState<Record<string, User>>({});
   const [locations, setLocations] = useState<LocationMap>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,12 +77,14 @@ export default function OpsDispatchPage() {
       setLoading(true);
       setError(null);
       try {
-        const [all, offerList] = await Promise.all([
+        const [all, offerList, riderList] = await Promise.all([
           listOrders(),
           listDispatchOffers().catch(() => [] as Order[]),
+          listUsers("rider").catch(() => [] as User[]),
         ]);
         setOrders(all);
         setOffers(offerList);
+        setRidersById(Object.fromEntries(riderList.map((rider) => [rider.id, rider])));
         // Locations are session-memory only — never localStorage / never treated as durable.
         setLocations({});
       } catch (err) {
@@ -227,11 +235,31 @@ export default function OpsDispatchPage() {
         id: "rider",
         header: "Rider",
         sortValue: (o) => o.riderId ?? "",
-        cell: (o) => (
-          <span className="text-body text-text-secondary">
-            {o.riderId ? presentTimelineActor(o.riderId) : "Unassigned"}
-          </span>
-        ),
+        cell: (o) => {
+          if (!o.riderId) {
+            return <span className="text-body text-text-secondary">Unassigned</span>;
+          }
+          const rider = ridersById[o.riderId];
+          const vehicleType = rider?.riderProfile?.vehicleType ?? null;
+          return (
+            <span className="flex items-center gap-2">
+              <span
+                className="bg-text-primary text-surface flex size-8 shrink-0 items-center justify-center rounded-full"
+                aria-hidden
+              >
+                <VehicleGlyph vehicleType={vehicleType} size={18} />
+              </span>
+              <span className="min-w-0">
+                <span className="text-body text-text-secondary block">
+                  {rider?.name ?? presentTimelineActor(o.riderId)}
+                </span>
+                <span className="text-caption text-text-muted block">
+                  {vehicleSummary(vehicleType, rider?.riderProfile?.plateNumber)}
+                </span>
+              </span>
+            </span>
+          );
+        },
       },
       {
         id: "location",
@@ -262,6 +290,14 @@ export default function OpsDispatchPage() {
                       : ""}
                 </span>
               ) : null}
+              {loc.lat != null && loc.lng != null && o.riderId ? (
+                <Link
+                  href={`/ops/riders?rider=${encodeURIComponent(o.riderId)}`}
+                  className="text-caption text-text-secondary hover:text-text-primary underline-offset-4 hover:underline"
+                >
+                  Show route on map
+                </Link>
+              ) : null}
             </div>
           );
         },
@@ -277,7 +313,7 @@ export default function OpsDispatchPage() {
         ),
       },
     ],
-    [locations, focusOrder],
+    [locations, focusOrder, ridersById],
   );
 
   if (error) {
@@ -355,7 +391,7 @@ export default function OpsDispatchPage() {
       {!pending && !board.length ? (
         <EmptyState
           title="No orders in dispatch"
-          body="Orders appear when production clears self-QC and is ready for pickup. Nothing is out with a rider right now."
+          body="Orders appear when the shop marks a job packed and ready for a rider. Nothing is out with a rider right now."
           action={
             <Button variant="secondary" onClick={() => void load()}>
               Refresh
@@ -445,9 +481,10 @@ export default function OpsDispatchPage() {
       <p className="text-caption text-text-muted m-0 flex items-start gap-2">
         <MapPin size={14} className="mt-0.5 shrink-0" aria-hidden />
         <span>
-          Assign rider uses the demo rider when no directory endpoint exists. Tracking
-          becomes active after pickup; before that the board shows “Tracking starts at
-          pickup”, not a fake live pin.
+          Assign rider uses the demo rider when no directory endpoint exists. The vehicle
+          shown is the one on the rider&apos;s profile. Tracking becomes active after
+          pickup; before that the board shows “Tracking starts at pickup”, not a fake live
+          pin.
         </span>
       </p>
     </div>

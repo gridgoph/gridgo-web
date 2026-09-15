@@ -2,58 +2,100 @@
 
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, CircleCheck, CircleDot, Lock, type LucideIcon } from "lucide-react";
 
 import {
   STAGES,
   isCancelled,
+  stageSummary,
   stepsFor,
+  type StepStatus,
   type WorkspaceStep,
 } from "@/app/ops/_lib/pipeline";
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
-import { EvidenceStrip } from "@/components/orders/EvidencePreview";
+import { EvidencePlate, EvidenceStrip } from "@/components/orders/EvidencePreview";
+import { PaymentSummary } from "@/components/orders/PaymentSummary";
+import { formatRatePercent } from "@/components/settings/service-fee";
+import { PayoutMilestones } from "@/components/orders/PayoutMilestones";
+import {
+  ReleaseMilestoneDialog,
+  type ReleaseDecision,
+  type ReleaseTarget,
+} from "@/components/orders/ReleaseMilestoneDialog";
 import { Timeline } from "@/components/orders/Timeline";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionHeader,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonDetail } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Textarea } from "@/components/ui/textarea";
-import { artworkEvidence, paymentProofEvidence } from "@/lib/evidence";
+import { installmentsAwaitingConfirmation } from "@/lib/api/constraints";
+import { artworkEvidence, deliveryEvidenceItems, pickupEvidence } from "@/lib/evidence";
 import {
   confirmPayment,
   getOrder,
   rejectPayment,
+  releaseMilestoneWithReceipt,
   transitionOrder,
 } from "@/lib/api/client";
-import type { Order } from "@/lib/api/types";
+import type { Order, PaymentInstallment, PayoutMilestone } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
-import { paymentOf } from "@/lib/payments";
+import { paymentOf, paymentProgress } from "@/lib/payments";
+import {
+  milestoneProofs,
+  payoutProgress,
+  payoutSummary,
+  releasableMilestones,
+} from "@/lib/payouts";
 import { describeQuantity } from "@/lib/quantity";
+import { cn } from "@/lib/utils";
 
 type Props = {
   /** Parent queue the back link returns to. Super Admin has no orders rail. */
   queueHref: string;
   queueLabel?: string;
+  /** Where the payout desk lives for this account, when it has one. */
+  payoutsHref?: string;
 };
+
+/** The workspace's sections, in the order the work happens. */
+type SectionId = "payment" | "qa" | "production" | "delivery" | "payout" | "history";
 
 /**
  * One order, as a sequence of steps with everything about it beside them.
  *
- * The two halves are deliberate. On the left, only the step the order is
- * actually on can be acted on -- so nobody is invited to approve artwork on an
- * order whose payment has not cleared. On the right, the whole specification,
- * always visible and never behind a tab, because the one thing a quality check
- * needs is to read the spec and tick the boxes at the same time.
+ * Every step is a row of one accordion. A closed row still says what happened
+ * there — "Paid in full", "Delivered Sep 15, photo on file" — so the page is
+ * read top to bottom as a record, and opened only where the evidence or the
+ * decision lives. The rows that need Operations open themselves.
+ *
+ * After the four production steps comes the supplier's payout: the four shares
+ * of the shop's price, each with the Proof of Fulfilment behind it, so the
+ * picture that justifies the money is on the same page as the order.
+ *
+ * On the right, the whole specification, always visible and never behind a
+ * tab, because the one thing a quality check needs is to read the spec and
+ * tick the boxes at the same time.
  *
  * Operations and Super Admin mount the same workspace so an inbox slip opens
  * a screen that account is allowed to use.
  */
-export function OrderWorkspace({ queueHref, queueLabel = "Back to queue" }: Props) {
+export function OrderWorkspace({
+  queueHref,
+  queueLabel = "Back to queue",
+  payoutsHref,
+}: Props) {
   const { id: orderId } = useParams<{ id: string }>();
 
   const [order, setOrder] = useState<Order | null>(null);
@@ -63,6 +105,10 @@ export function OrderWorkspace({ queueHref, queueLabel = "Back to queue" }: Prop
   const [actionError, setActionError] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [open, setOpen] = useState<SectionId[]>([]);
+  const needed = useRef<SectionId[]>([]);
+  const [release, setRelease] = useState<ReleaseTarget | null>(null);
+  const [releaseError, setReleaseError] = useState<string | null>(null);
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -79,11 +125,25 @@ export function OrderWorkspace({ queueHref, queueLabel = "Back to queue" }: Prop
     }, [orderId]),
   );
 
-  useLiveReload(["orders", "jobs"], load, { matchId: orderId });
+  useLiveReload(["orders", "jobs", "payouts"], load, { matchId: orderId });
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Open a row the moment it needs a decision -- on first load, and again when
+  // a live refresh moves the order on to its next step -- and never close one:
+  // a refresh must not shut what someone is reading, and a row they closed
+  // themselves stays closed until it has something new to say.
+  useEffect(() => {
+    if (!order) return;
+    const next = defaultOpenSections(order);
+    const fresh = next.filter((id) => !needed.current.includes(id));
+    needed.current = next;
+    if (fresh.length > 0) {
+      setOpen((current) => [...current, ...fresh.filter((id) => !current.includes(id))]);
+    }
+  }, [order]);
 
   const steps = useMemo(() => (order ? stepsFor(order) : []), [order]);
 
@@ -98,6 +158,22 @@ export function OrderWorkspace({ queueHref, queueLabel = "Back to queue" }: Prop
       setActionError(
         opsErrorMessage(err, "That did not go through. Refresh the order and try again."),
       );
+    } finally {
+      setActing(null);
+    }
+  }
+
+  async function confirmRelease(decision: ReleaseDecision) {
+    if (!release || !order) return;
+    const code = release.milestone.code;
+    setActing(`release-${code}`);
+    setReleaseError(null);
+    try {
+      const result = await releaseMilestoneWithReceipt(order.id, code, decision);
+      setOrder(result.order);
+      setRelease(null);
+    } catch (err) {
+      setReleaseError(opsErrorMessage(err, "Could not release that share. Try again."));
     } finally {
       setActing(null);
     }
@@ -118,7 +194,11 @@ export function OrderWorkspace({ queueHref, queueLabel = "Back to queue" }: Prop
   }
 
   const status = presentOrderState(order.state);
-  const downpayment = paymentOf(order, "downpayment");
+  const busy = acting !== null;
+  const hasPayout = Boolean(order.payoutMilestones?.length);
+  const releasing = acting?.startsWith("release-")
+    ? acting.slice("release-".length)
+    : null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -167,61 +247,242 @@ export function OrderWorkspace({ queueHref, queueLabel = "Back to queue" }: Prop
       */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex flex-col gap-3">
-          {steps.map((step) => (
-            <StepCard
-              key={step.id}
-              step={step}
-              order={order}
-              note={note}
-              onNote={setNote}
-              checked={checked}
-              onCheck={setChecked}
-              acting={acting}
-              onConfirmPayment={() =>
-                run("confirm", () => confirmPayment(order.id, "downpayment"))
-              }
-              onRejectPayment={(reason) =>
-                run("reject", () => rejectPayment(order.id, "downpayment", { reason }))
-              }
-              onApprove={() =>
-                run("approve", () =>
-                  transitionOrder(order.id, "supplier_assigned", { note }),
-                )
-              }
-              onCorrection={() =>
-                run("correction", () =>
-                  transitionOrder(order.id, "client_correction", { note }),
-                )
-              }
-              onCancel={() =>
-                run("cancel", () =>
-                  transitionOrder(order.id, "cancelled", { reason: note }),
-                )
-              }
-            />
-          ))}
+          <Accordion
+            multiple
+            value={open}
+            onValueChange={(value) => setOpen(value as SectionId[])}
+            className="gg-card-flush"
+          >
+            {steps.map((step) => (
+              <StepRow
+                key={step.id}
+                step={step}
+                order={order}
+                note={note}
+                onNote={setNote}
+                checked={checked}
+                onCheck={setChecked}
+                acting={acting}
+                onConfirmPayment={(installment) =>
+                  run(`confirm-${installment}`, () =>
+                    confirmPayment(order.id, installment),
+                  )
+                }
+                onRejectPayment={(installment, reason) =>
+                  run(`reject-${installment}`, () =>
+                    rejectPayment(order.id, installment, { reason }),
+                  )
+                }
+                onApprove={() =>
+                  run("approve", () =>
+                    transitionOrder(order.id, "supplier_assigned", { note }),
+                  )
+                }
+                onCorrection={() =>
+                  run("correction", () =>
+                    transitionOrder(order.id, "client_correction", { note }),
+                  )
+                }
+                onCancel={() =>
+                  run("cancel", () =>
+                    transitionOrder(order.id, "cancelled", { reason: note }),
+                  )
+                }
+              />
+            ))}
+
+            {hasPayout ? (
+              <SectionRow
+                id="payout"
+                heading="Supplier payout"
+                summary={payoutSummary(order)}
+                marker={payoutMarker(order)}
+                trailing={payoutTrailing(order)}
+              >
+                <PayoutMilestones
+                  order={order}
+                  releasing={releasing}
+                  onRelease={(milestone) => {
+                    setReleaseError(null);
+                    setRelease({ order, milestone });
+                  }}
+                />
+                {payoutsHref ? (
+                  <p className="text-caption text-text-muted m-0 mt-3">
+                    Every order&rsquo;s payout, in one queue:{" "}
+                    <Link
+                      href={`${payoutsHref}/${order.id}`}
+                      className="text-text-secondary underline-offset-2 hover:underline"
+                    >
+                      open the payout review
+                    </Link>
+                    .
+                  </p>
+                ) : null}
+              </SectionRow>
+            ) : null}
+
+            <SectionRow
+              id="history"
+              heading="History"
+              summary={historySummary(order)}
+              marker={{ icon: CircleDot, tone: "muted" }}
+            >
+              <Timeline entries={order.timeline} />
+            </SectionRow>
+          </Accordion>
 
           {actionError ? (
             <p className="text-body text-error m-0" role="alert">
               {actionError}
             </p>
           ) : null}
-
-          <section className="gg-card p-3" aria-labelledby="timeline-heading">
-            <h2 id="timeline-heading" className="text-h3 text-text-primary m-0 mb-2">
-              History
-            </h2>
-            <Timeline entries={order.timeline} />
-          </section>
         </div>
 
-        <SpecRail order={order} downpaymentAmount={downpayment?.amountMinor ?? null} />
+        <SpecRail order={order} payoutsHref={payoutsHref} />
       </div>
+
+      {release ? (
+        <ReleaseMilestoneDialog
+          target={release}
+          destination={order.supplierPayoutAccount ?? null}
+          busy={busy}
+          error={releaseError}
+          onCancel={() => {
+            setRelease(null);
+            setReleaseError(null);
+          }}
+          onConfirm={(decision) => void confirmRelease(decision)}
+        />
+      ) : null}
     </div>
   );
 }
 
-type StepCardProps = {
+/**
+ * Rows that open on first load: the step the order is at, plus any row with
+ * a decision waiting for Operations, wherever it sits. A cancelled order opens
+ * its history, because the reason is the whole story.
+ */
+export function defaultOpenSections(order: Order): SectionId[] {
+  const ids = new Set<SectionId>();
+  const current = stepsFor(order).find((step) => step.status === "current");
+  if (current) ids.add(current.id as SectionId);
+  if (installmentsAwaitingConfirmation(order).length > 0) ids.add("payment");
+  if (releasableMilestones(order).length > 0) ids.add("payout");
+  if (isCancelled(order)) ids.add("history");
+  return [...ids];
+}
+
+function historySummary(order: Order): string {
+  const count = order.timeline.length;
+  if (count === 0) return "Nothing recorded yet.";
+  const latest = [...order.timeline].sort((a, b) => a.at.localeCompare(b.at))[count - 1];
+  return `${count === 1 ? "One event" : `${count} events`}, last ${formatDateTime(latest.at)}.`;
+}
+
+// ---------------------------------------------------------------------------
+// Rows
+// ---------------------------------------------------------------------------
+
+type MarkerSpec = {
+  icon: LucideIcon;
+  tone: "success" | "current" | "muted";
+};
+
+const STEP_MARKER: Record<StepStatus, MarkerSpec> = {
+  done: { icon: CircleCheck, tone: "success" },
+  current: { icon: CircleDot, tone: "current" },
+  locked: { icon: Lock, tone: "muted" },
+};
+
+function payoutMarker(order: Order): MarkerSpec {
+  const progress = payoutProgress(order);
+  if (progress.count > 0 && progress.releasedCount === progress.count) {
+    return { icon: CircleCheck, tone: "success" };
+  }
+  return releasableMilestones(order).length > 0
+    ? { icon: CircleDot, tone: "current" }
+    : { icon: Lock, tone: "muted" };
+}
+
+function payoutTrailing(order: Order): string {
+  const progress = payoutProgress(order);
+  if (progress.count === 0) return "";
+  if (progress.releasedCount === progress.count) return "Done";
+  return releasableMilestones(order).length > 0
+    ? "Your call"
+    : `${progress.releasedCount} of ${progress.count} released`;
+}
+
+function Marker({ icon: Icon, tone }: MarkerSpec) {
+  return (
+    <span
+      className={cn(
+        "mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-pill border",
+        tone === "success" && "border-success text-success",
+        tone === "current" && "border-outline bg-surface-variant text-text-primary",
+        tone === "muted" && "border-outline-subtle text-text-muted",
+      )}
+      aria-hidden
+    >
+      <Icon size={14} strokeWidth={2} />
+    </span>
+  );
+}
+
+type SectionRowProps = {
+  id: SectionId;
+  heading: string;
+  summary: string;
+  marker: MarkerSpec;
+  /** Short state word on the right: "Done", "You are here", "Locked". */
+  trailing?: string;
+  current?: boolean;
+  children: React.ReactNode;
+};
+
+/**
+ * One row of the workspace. The trigger carries the heading, the one-line
+ * summary and the state word, so the row is read without being opened; the
+ * panel carries the evidence and the actions.
+ */
+function SectionRow({
+  id,
+  heading,
+  summary,
+  marker,
+  trailing,
+  current = false,
+  children,
+}: SectionRowProps) {
+  return (
+    <AccordionItem
+      value={id}
+      render={<section aria-current={current ? "step" : undefined} />}
+    >
+      <AccordionHeader render={<h2 className="m-0 flex text-h3" />}>
+        <AccordionTrigger className={cn(current && "bg-surface-variant/40")}>
+          <Marker {...marker} />
+          <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-h3 text-text-primary">{heading}</span>
+            <span className="text-body text-text-secondary">{summary}</span>
+          </span>
+          {trailing ? (
+            <span className="text-overline text-text-muted mt-1.5 shrink-0">
+              {trailing}
+            </span>
+          ) : null}
+        </AccordionTrigger>
+      </AccordionHeader>
+      <AccordionContent>
+        <div className="sm:pl-9">{children}</div>
+      </AccordionContent>
+    </AccordionItem>
+  );
+}
+
+type StepRowProps = {
   step: WorkspaceStep;
   order: Order;
   note: string;
@@ -229,8 +490,8 @@ type StepCardProps = {
   checked: Record<string, boolean>;
   onCheck: (next: Record<string, boolean>) => void;
   acting: string | null;
-  onConfirmPayment: () => void;
-  onRejectPayment: (reason: string) => void;
+  onConfirmPayment: (installment: PaymentInstallment) => void;
+  onRejectPayment: (installment: PaymentInstallment, reason: string) => void;
   onApprove: () => void;
   onCorrection: () => void;
   onCancel: () => void;
@@ -251,7 +512,7 @@ const QA_CHECKS = [
   { id: "address", label: "Delivery address is somewhere a rider can go" },
 ];
 
-function StepCard({
+function StepRow({
   step,
   order,
   note,
@@ -264,31 +525,36 @@ function StepCard({
   onApprove,
   onCorrection,
   onCancel,
-}: StepCardProps) {
+}: StepRowProps) {
   const definition = STAGES.find((entry) => entry.id === step.id);
   const current = step.status === "current";
   const busy = acting !== null;
+  const trailing =
+    step.id === "payment"
+      ? paymentProgress(order).label
+      : step.status === "done"
+        ? "Done"
+        : current
+          ? "You are here"
+          : "Locked";
 
   return (
-    <section
-      className="gg-card p-3"
-      style={{
-        borderColor: current ? "var(--color-accent)" : "var(--color-outline)",
-        opacity: step.status === "locked" ? 0.55 : 1,
-      }}
-      aria-current={current ? "step" : undefined}
+    <SectionRow
+      id={step.id as SectionId}
+      heading={definition?.label ?? step.label}
+      summary={stageSummary(
+        order,
+        step.id as Exclude<typeof step.id, "done">,
+        formatPhp,
+        formatDateTime,
+      )}
+      marker={STEP_MARKER[step.status]}
+      trailing={trailing}
+      current={current}
     >
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-h3 text-text-primary m-0">{definition?.label}</h2>
-        <span className="text-overline text-text-muted">
-          {step.status === "done" ? "Done" : current ? "You are here" : "Locked"}
-        </span>
-      </div>
-
       {step.id === "payment" ? (
         <PaymentStep
           order={order}
-          current={current}
           busy={busy}
           onConfirm={onConfirmPayment}
           onReject={onRejectPayment}
@@ -297,7 +563,7 @@ function StepCard({
 
       {step.id === "qa" ? (
         current ? (
-          <div className="mt-3 flex flex-col gap-3">
+          <div className="flex flex-col gap-3">
             <ul className="flex flex-col gap-2 m-0 p-0 list-none">
               {QA_CHECKS.map((check) => (
                 <li key={check.id}>
@@ -351,81 +617,163 @@ function StepCard({
             </p>
           </div>
         ) : (
-          <p className="text-body text-text-secondary m-0 mt-2">{definition?.hint}</p>
+          <p className="text-body text-text-secondary m-0">{definition?.hint}</p>
         )
       ) : null}
 
-      {step.id === "production" || step.id === "delivery" ? (
-        <p className="text-body text-text-secondary m-0 mt-2">{definition?.hint}</p>
+      {step.id === "production" ? (
+        <ProductionStep order={order} hint={definition?.hint} />
       ) : null}
-    </section>
+
+      {step.id === "delivery" ? (
+        <DeliveryStep order={order} hint={definition?.hint} />
+      ) : null}
+    </SectionRow>
   );
 }
 
 function PaymentStep({
   order,
-  current,
   busy,
   onConfirm,
   onReject,
 }: {
   order: Order;
-  current: boolean;
   busy: boolean;
-  onConfirm: () => void;
-  onReject: (reason: string) => void;
+  onConfirm: (installment: PaymentInstallment) => void;
+  onReject: (installment: PaymentInstallment, reason: string) => void;
 }) {
-  const payment = paymentOf(order, "downpayment");
-  const proofs = paymentProofEvidence(order);
-  const waiting = payment?.status === "pending_confirmation";
+  return (
+    <PaymentSummary
+      order={order}
+      renderActions={(installment) =>
+        paymentOf(order, installment)?.status === "pending_confirmation" ? (
+          <div className="mt-3 flex flex-col gap-2">
+            <p className="text-caption text-text-secondary m-0">
+              Check the transfer against the amount and receipt before confirming.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="primary"
+                onClick={() => onConfirm(installment)}
+                disabled={busy}
+              >
+                {installment === "balance"
+                  ? "Confirm balance payment"
+                  : "Confirm this payment"}
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={busy}
+                onClick={() =>
+                  onReject(
+                    installment,
+                    "The transfer could not be matched to this order.",
+                  )
+                }
+              >
+                {installment === "balance" ? "Reject balance" : "Reject"}
+              </Button>
+            </div>
+          </div>
+        ) : null
+      }
+    />
+  );
+}
+
+/**
+ * The shop's own record of the job: the proofs it filed while printing and
+ * packing. They belong to the payout, but they are also the only sight
+ * Operations gets of the work before a rider collects it.
+ */
+function ProductionStep({ order, hint }: { order: Order; hint?: string }) {
+  const filed = (order.payoutMilestones ?? [])
+    .filter((m) => m.code === "printing" || m.code === "packaging_qc")
+    .map((m) => ({ milestone: m, proofs: milestoneProofs(order, m) }))
+    .filter((entry) => entry.proofs.length > 0);
+
+  if (filed.length === 0) {
+    return <p className="text-body text-text-secondary m-0">{hint}</p>;
+  }
 
   return (
-    <div className="mt-2 flex flex-col gap-3">
-      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 m-0">
-        <dt className="text-caption text-text-muted">Amount</dt>
-        <dd className="text-body text-text-primary m-0 tabular-nums">
-          {payment?.amountMinor != null ? formatPhp(payment.amountMinor) : "—"}
-        </dd>
-        <dt className="text-caption text-text-muted">Reference</dt>
-        <dd className="text-body text-text-primary m-0">{payment?.reference || "—"}</dd>
-        {payment?.confirmedAt ? (
-          <>
-            <dt className="text-caption text-text-muted">Confirmed</dt>
-            <dd className="text-body text-text-secondary m-0">
-              {formatDateTime(payment.confirmedAt)}
-            </dd>
-          </>
-        ) : null}
-      </dl>
-
-      {proofs.length ? <EvidenceStrip items={proofs} /> : null}
-
-      {current && waiting ? (
-        <div className="flex flex-wrap gap-2">
-          <Button variant="primary" onClick={onConfirm} disabled={busy}>
-            Confirm this payment
-          </Button>
-          <Button
-            variant="secondary"
-            disabled={busy}
-            onClick={() => onReject("The transfer could not be matched to this order.")}
+    <div className="flex flex-col gap-4">
+      {filed.map(({ milestone, proofs }) => (
+        <div key={milestone.code}>
+          <p
+            className="text-body text-text-primary m-0 mb-2"
+            style={{ fontFamily: "var(--font-medium)" }}
           >
-            Reject
-          </Button>
+            {milestone.code === "printing" ? "Printed run" : "Packed for pickup"}
+          </p>
+          <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2">
+            {proofs.map((proof) => (
+              <li key={proof.fileId} className="min-w-0">
+                <EvidencePlate fileId={proof.fileId} label={proof.label} />
+                {proof.attachedAt ? (
+                  <p className="text-caption text-text-muted m-0 mt-1">
+                    Filed {formatDateTime(proof.attachedAt)}
+                    {proof.attachedBy ? ` by ${proof.attachedBy}` : ""}
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Pickup checks and the photo at the door, once a rider has them. */
+function DeliveryStep({ order, hint }: { order: Order; hint?: string }) {
+  const pickup = pickupEvidence(order);
+  const delivery = deliveryEvidenceItems(order);
+  const checklist = order.pickupChecklist;
+
+  if (pickup.length === 0 && delivery.length === 0 && !checklist?.completedAt) {
+    return <p className="text-body text-text-secondary m-0">{hint}</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {checklist?.completedAt ? (
+        <p className="text-body text-text-secondary m-0">
+          {checklist.status === "passed"
+            ? `Rider and supplier passed all six pickup checks together ${formatDateTime(checklist.completedAt)}.`
+            : checklist.status === "failed_escalated"
+              ? `A pickup check failed ${formatDateTime(checklist.completedAt)}.${
+                  checklist.failureNote ? ` ${checklist.failureNote}` : ""
+                }`
+              : `Pickup checks recorded ${formatDateTime(checklist.completedAt)}.`}
+        </p>
+      ) : null}
+      {pickup.length > 0 ? <EvidenceStrip items={pickup} /> : null}
+      {delivery.length > 0 ? (
+        <div>
+          <p
+            className="text-body text-text-primary m-0 mb-2"
+            style={{ fontFamily: "var(--font-medium)" }}
+          >
+            {order.deliveryEvidence
+              ? `At the door, ${formatDateTime(order.deliveryEvidence.recordedAt)}`
+              : "Delivery photos"}
+          </p>
+          <EvidenceStrip items={delivery} />
         </div>
       ) : null}
     </div>
   );
 }
 
-/** Everything about the order, always on screen while the left side is worked. */
-function SpecRail({
-  order,
-  downpaymentAmount,
-}: {
-  order: Order;
-  downpaymentAmount: number | null;
-}) {
+// ---------------------------------------------------------------------------
+// The rail
+// ---------------------------------------------------------------------------
+
+function SpecRail({ order, payoutsHref }: { order: Order; payoutsHref?: string }) {
+  const { paidMinor, remainingMinor } = paymentProgress(order);
+  const payout = payoutProgress(order);
   const artwork = artworkEvidence(order);
   return (
     <aside
@@ -471,15 +819,72 @@ function SpecRail({
       <section className="gg-card p-3">
         <h2 className="text-overline text-text-muted m-0 mb-2">Money</h2>
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 m-0">
-          <dt className="text-caption text-text-muted">Total</dt>
+          {/*
+            The shop's price and GRIDGO's fee on top of it. Operations and
+            Super Admin only: the API strips both from every other role, and
+            the client's own receipt folds the fee into the total without a
+            line for it.
+          */}
+          {order.supplierSubtotalMinor != null ? (
+            <>
+              <dt className="text-caption text-text-muted">Shop price</dt>
+              <dd className="text-body text-text-secondary m-0 tabular-nums">
+                {formatPhp(order.supplierSubtotalMinor)}
+              </dd>
+            </>
+          ) : null}
+          {order.serviceFeeMinor != null ? (
+            <>
+              <dt className="text-caption text-text-muted">
+                Service fee
+                {order.serviceFeeRateBps != null
+                  ? ` (${formatRatePercent(order.serviceFeeRateBps)})`
+                  : ""}
+              </dt>
+              <dd className="text-body text-text-secondary m-0 tabular-nums">
+                {formatPhp(order.serviceFeeMinor)}
+              </dd>
+            </>
+          ) : null}
+          {order.deliveryFeeMinor != null ? (
+            <>
+              <dt className="text-caption text-text-muted">Delivery</dt>
+              <dd className="text-body text-text-secondary m-0 tabular-nums">
+                {formatPhp(order.deliveryFeeMinor)}
+              </dd>
+            </>
+          ) : null}
+          <dt className="text-caption text-text-muted">Client total</dt>
           <dd className="text-body text-text-primary m-0 tabular-nums">
             {order.totalMinor != null ? formatPhp(order.totalMinor) : "—"}
           </dd>
           <dt className="text-caption text-text-muted">Paid</dt>
           <dd className="text-body text-text-secondary m-0 tabular-nums">
-            {downpaymentAmount != null ? formatPhp(downpaymentAmount) : "—"}
+            {paidMinor != null ? formatPhp(paidMinor) : "—"}
           </dd>
+          <dt className="text-caption text-text-muted">Remaining</dt>
+          <dd className="text-body text-text-secondary m-0 tabular-nums">
+            {remainingMinor != null ? formatPhp(remainingMinor) : "—"}
+          </dd>
+          {payout.count > 0 ? (
+            <>
+              <dt className="text-caption text-text-muted">To the shop</dt>
+              <dd className="text-body text-text-secondary m-0 tabular-nums">
+                {payout.releasedMinor !== null && payout.totalMinor !== null
+                  ? `${formatPhp(payout.releasedMinor)} of ${formatPhp(payout.totalMinor)}`
+                  : `${payout.releasedCount} of ${payout.count} shares`}
+              </dd>
+            </>
+          ) : null}
         </dl>
+        {payoutsHref && payout.count > 0 ? (
+          <Link
+            href={`${payoutsHref}/${order.id}`}
+            className="text-caption text-text-secondary mt-2 inline-block underline-offset-2 hover:underline"
+          >
+            Review this payout
+          </Link>
+        ) : null}
       </section>
 
       <section className="gg-card p-3">
@@ -494,3 +899,7 @@ function SpecRail({
     </aside>
   );
 }
+
+// Keep the milestone type in this module's public surface for callers that
+// pass a release target through.
+export type { PayoutMilestone };

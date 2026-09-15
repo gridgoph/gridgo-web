@@ -126,8 +126,8 @@ export default function SupplierJobDetailPage() {
       const note =
         action.kind === "decline"
           ? "Supplier declined — returned for rematch"
-          : action.kind === "self_qc"
-            ? "Self-QC passed"
+          : action.kind === "ready_for_pickup"
+            ? "Packaging ready — packed and staged for joint pickup checks with the rider"
             : action.label;
       setJob(await transitionOrder(job.id, action.targetState, { note }));
       setConfirmDecline(false);

@@ -24,7 +24,11 @@ import { weekContaining } from "./schedule";
  * Order carries the meaning here — the chart is a pipeline, so the bars are
  * never re-sorted by size.
  */
-export const PIPELINE_STAGES: readonly { id: string; label: string; states: readonly string[] }[] = [
+export const PIPELINE_STAGES: readonly {
+  id: string;
+  label: string;
+  states: readonly string[];
+}[] = [
   { id: "decision", label: "Awaiting your decision", states: ["supplier_assigned"] },
   {
     id: "payment",
@@ -38,7 +42,7 @@ export const PIPELINE_STAGES: readonly { id: string; label: string; states: read
   },
   { id: "ready-to-start", label: "Ready to start", states: ["payment_authorized"] },
   { id: "production", label: "In production", states: ["production"] },
-  { id: "qc", label: "In self-QC", states: ["supplier_self_qc"] },
+  { id: "qc", label: "Packing (older flow)", states: ["supplier_self_qc"] },
   { id: "dispatch", label: "Waiting for a rider", states: ["ready_for_dispatch"] },
   {
     id: "with-rider",
@@ -150,7 +154,9 @@ export type WeekBucket = {
 };
 
 function weekLabel(start: Date): string {
-  return new Intl.DateTimeFormat("en-PH", { day: "numeric", month: "short" }).format(start);
+  return new Intl.DateTimeFormat("en-PH", { day: "numeric", month: "short" }).format(
+    start,
+  );
 }
 
 /**
@@ -212,7 +218,12 @@ export function stageCounts(jobs: Order[]): StageCount[] {
   const byState = new Map<string, StageCount>();
   const stageFor = new Map<string, string>();
   for (const stage of PIPELINE_STAGES) {
-    byState.set(stage.id, { id: stage.id, label: stage.label, jobs: 0, earningsMinor: 0 });
+    byState.set(stage.id, {
+      id: stage.id,
+      label: stage.label,
+      jobs: 0,
+      earningsMinor: 0,
+    });
     for (const state of stage.states) stageFor.set(state, stage.id);
   }
 

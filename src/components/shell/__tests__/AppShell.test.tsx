@@ -98,6 +98,18 @@ vi.mock("@/lib/live/LiveProvider", () => ({
   useLiveOptional: () => liveRef.current,
 }));
 
+const { ordersRef, listOrdersMock } = vi.hoisted(() => {
+  const ordersRef = { current: [] as Array<Record<string, unknown>> };
+  return {
+    ordersRef,
+    listOrdersMock: vi.fn(async () => ordersRef.current),
+  };
+});
+
+vi.mock("@/lib/api/client", () => ({
+  listOrders: listOrdersMock,
+}));
+
 vi.mock("@clerk/nextjs", () => ({
   useUser: () => ({
     isLoaded: true,
@@ -523,5 +535,49 @@ describe("AppShell chrome", () => {
     const current = within(crumb).getByText("Order workspace");
     expect(current.tagName).not.toBe("A");
     expect(current.closest("a")).toBeNull();
+  });
+
+  describe("the Orders queue pill", () => {
+    beforeEach(() => {
+      ordersRef.current = [];
+      listOrdersMock.mockClear();
+    });
+
+    it("counts the orders waiting on Operations on the Orders row, in yellow", async () => {
+      ordersRef.current = [
+        {
+          id: "ord_transfer",
+          state: "initial_payment_review",
+          payments: { downpayment: { status: "pending_confirmation" } },
+        },
+        { id: "ord_artwork", state: "needs_qa" },
+        { id: "ord_with_shop", state: "production" },
+      ];
+      renderShell("/ops/overview");
+
+      const pill = await screen.findByTestId("orders-queue-pill");
+      expect(pill).toHaveTextContent("2");
+      expect(pill).toHaveTextContent("2 orders waiting on you");
+      expect(pill.className).toContain("--color-action-yellow");
+      const row = pill.closest('[data-slot="sidebar-menu-item"]') as HTMLElement;
+      expect(within(row).getByRole("link", { name: "Orders" })).toHaveAttribute(
+        "href",
+        "/ops/orders",
+      );
+    });
+
+    it("draws nothing when no order is waiting on Operations", async () => {
+      ordersRef.current = [{ id: "ord_with_shop", state: "production" }];
+      renderShell("/ops/overview");
+
+      expect(listOrdersMock).toHaveBeenCalled();
+      await vi.waitFor(() => expect(listOrdersMock.mock.results[0]?.value).resolves.toBeDefined());
+      expect(screen.queryByTestId("orders-queue-pill")).toBeNull();
+    });
+
+    it("never asks for the orders list on a rail that has no Orders row", () => {
+      renderShell("/supplier/dashboard");
+      expect(listOrdersMock).not.toHaveBeenCalled();
+    });
   });
 });

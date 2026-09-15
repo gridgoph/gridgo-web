@@ -40,7 +40,7 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 /**
  * Where each order's money goes. Operations and Super Admin are the only roles
- * the server hands supplier price and commission to, so this reconciliation
+ * the server hands supplier price and the service fee to, so this reconciliation
  * exists on this screen and nowhere else in the portal.
  */
 const splitChartConfig = {
@@ -49,7 +49,7 @@ const splitChartConfig = {
     color: "var(--color-chart-1)",
   },
   commissionMinor: {
-    label: "GRIDGO commission",
+    label: "GRIDGO service fee",
     color: "var(--color-chart-2)",
   },
   deliveryFeeMinor: {
@@ -165,11 +165,11 @@ export default function AdminFinancePage() {
       },
       {
         id: "commission",
-        header: "Commission",
-        sortValue: (o) => o.commissionMinor ?? -1,
+        header: "Service fee",
+        sortValue: (o) => o.serviceFeeMinor ?? -1,
         cell: (o) => (
           <span className="text-body text-text-secondary tabular-nums whitespace-nowrap">
-            {o.commissionMinor !== undefined ? formatPhp(o.commissionMinor) : "—"}
+            {o.serviceFeeMinor !== undefined ? formatPhp(o.serviceFeeMinor) : "—"}
           </span>
         ),
       },
@@ -321,13 +321,13 @@ export default function AdminFinancePage() {
         </h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <FigureCard
-            label="Commission earned"
+            label="Service fee earned"
             value={commission.value}
             hint={
               commission.hint ??
               (rollup?.unpricedOrderCount
                 ? `${rollup.unpricedOrderCount} order${rollup.unpricedOrderCount === 1 ? "" : "s"} not priced yet`
-                : "10% on top of every supplier price")
+                : "At the rate each order was priced at, on top of the supplier price")
             }
             loading={pending}
           />
@@ -362,7 +362,7 @@ export default function AdminFinancePage() {
         </h2>
         <p className="text-body text-text-secondary m-0 mb-3 max-w-prose">
           The client total split three ways. The supplier keeps its asking price in full;
-          commission sits on top of it, and delivery on top of that.
+          the service fee sits on top of it, and delivery on top of that.
         </p>
         {pending ? (
           <Skeleton className="h-72 w-full rounded-card" aria-hidden />
@@ -375,7 +375,7 @@ export default function AdminFinancePage() {
           <ChartContainer
             config={splitChartConfig}
             className="h-72 w-full"
-            aria-label="Client total split into supplier earnings, commission and delivery"
+            aria-label="Client total split into supplier earnings, service fee and delivery"
           >
             <BarChart data={splits} accessibilityLayer>
               <CartesianGrid vertical={false} />
@@ -428,7 +428,7 @@ export default function AdminFinancePage() {
           Order by order
         </h2>
         <p className="text-body text-text-secondary m-0 mb-3">
-          Supplier price and commission are shown here because Operations and Super Admin
+          Supplier price and service fee are shown here because Operations and Super Admin
           are the only roles allowed to see them.
         </p>
         {!pending && !rows.length ? (

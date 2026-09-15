@@ -29,6 +29,18 @@ describe("notificationHref", () => {
     expect(notificationHref("super_admin", row)).toBe("/admin/orders/ord_9");
   });
 
+  it("lands payout releases on the Operations payout desk", () => {
+    const row = note({ type: "ops_payout_released", orderId: "ord_9" });
+    expect(notificationHref("ops_admin", row)).toBe("/ops/payouts/ord_9");
+    expect(notificationHref("super_admin", row)).toBe("/admin/orders/ord_9");
+    expect(
+      notificationHref(
+        "supplier",
+        note({ type: "shop_payout_released", orderId: "ord_9" }),
+      ),
+    ).toBe("/supplier/jobs/ord_9");
+  });
+
   it("sends signup rows to the role's approval surface", () => {
     const row = note({ type: "ops_signup_submitted", approvalCaseId: "case_1" });
     expect(notificationHref("ops_admin", row)).toBe("/ops/approvals");

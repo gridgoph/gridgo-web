@@ -131,4 +131,29 @@ describe("openNotificationStream", () => {
     expect(second.get("authorization")).toBe("Bearer fresh");
     handle.close();
   });
+
+  it("leaves a healthy stream alone on wake and reconnects only a dropped one", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(new ReadableStream(), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    setTokenProvider(() => "clerk-session-token");
+    const onStatus = vi.fn();
+
+    const handle = openNotificationStream({
+      onNotification: () => undefined,
+      onInvalidate: () => undefined,
+      onStatus,
+    });
+
+    await vi.waitFor(() => expect(onStatus).toHaveBeenCalledWith(true));
+    expect(handle.isLive()).toBe(true);
+    handle.wake();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    handle.close();
+    expect(handle.isLive()).toBe(false);
+  });
 });

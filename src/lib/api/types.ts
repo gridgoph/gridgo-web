@@ -38,9 +38,12 @@ export type CategoryRank = {
   rank: number;
 };
 
+/** What a rider drives. The API enforces this set at enrollment and profile edit. */
+export type VehicleType = "motorcycle" | "car" | "van" | "truck" | "bicycle";
+
 export type RiderProfile = {
-  vehicleType?: string;
-  vehiclePlate?: string;
+  vehicleType?: VehicleType | string;
+  plateNumber?: string;
   licenseNumber?: string;
 };
 
@@ -145,6 +148,10 @@ export type TimelineEntry = {
   state: string;
   by: string;
   note: string;
+  /** Set on the row the API writes when a Proof of Fulfilment or delivery photo is attached. */
+  fileId?: string | null;
+  /** Set on proof-attach and payout-release rows: which payout share the row is about. */
+  milestoneCode?: string | null;
 };
 
 // ---- Split digital payment (v2) ----
@@ -204,6 +211,18 @@ export type PayoutMilestone = {
   releasedAt?: string | null;
   releasedBy?: string | null;
   legacyFulfilment?: boolean;
+  /** The wallet receipt screenshot bound at release. Ops / Super Admin and the assigned shop. */
+  receiptFileId?: string | null;
+  /** The wallet's reference number typed at release. Same visibility. */
+  reference?: string | null;
+};
+
+/** Released against outstanding, as the API reports it to Operations. */
+export type SupplierSettlement = {
+  totalSupplierEarningsMinor?: number;
+  supplierReleasedMinor?: number;
+  supplierOutstandingMinor?: number;
+  [key: string]: number | undefined;
 };
 
 // ---- Rider pickup checklist (v2) ----
@@ -292,11 +311,21 @@ export type Order = {
   cancelledAt?: string | null;
   cancelledBy?: string | null;
   cancellationReason?: string | null;
-  /** GRIDGO's cut, added on top of the supplier price. Ops / Super Admin only. */
+  /**
+   * GRIDGO's service fee on this order: the rate it was priced at, in basis
+   * points, and the amount. Added on top of the shop price. Ops / Super Admin
+   * only — the API strips both from every client, supplier and rider payload,
+   * and the client is never shown the fee as a line.
+   */
+  serviceFeeRateBps?: number | null;
+  serviceFeeMinor?: number;
+  /**
+   * The quote-era names for the same two figures. The API never sent them;
+   * kept only so older fixtures type-check. Read `serviceFee*` instead.
+   */
   commissionRatePercent?: number;
-  /** Ops / Super Admin only — never shown to a client, supplier or rider. */
   commissionMinor?: number;
-  /** Supplier price + commission. The client's "subtotal". */
+  /** The client's "subtotal" for the work. */
   subtotalMinor?: number;
   /** Haversine metres, supplier shop → dropoff. Chooses the delivery band. */
   deliveryDistanceMeters?: number;
@@ -318,6 +347,14 @@ export type Order = {
   /** True while an active claim hold exists on this order. */
   payoutHold?: boolean;
   payoutMilestones?: PayoutMilestone[];
+  /** Ops / Super Admin only. The API's own released-versus-outstanding roll-up. */
+  supplierSettlement?: SupplierSettlement;
+  /**
+   * Ops / Super Admin only. Where the assigned shop wants this money sent:
+   * the receiving QR the release desk scans plus the words to check it by.
+   * `null` when the shop has not set one up; absent for every other role.
+   */
+  supplierPayoutAccount?: SupplierPayoutAccount | null;
 
   pickupChecklist?: PickupChecklist;
   deliveryEvidence?: DeliveryEvidence | null;
@@ -339,6 +376,8 @@ export type Order = {
   proofFileIds?: string[];
   fulfilmentProofFileIds?: string[];
   deliveryPhotoFileIds?: string[];
+  /** Wallet receipts Operations bound to released shares. Never sent to clients. */
+  payoutReceiptFileIds?: string[];
 
   createdAt: string;
   updatedAt: string;
@@ -413,8 +452,20 @@ export type PaymentQr = {
 };
 
 export type PlatformSettings = {
+  /**
+   * The settings row's version, quoted back as `expectedVersion` on every
+   * save so a stale screen cannot overwrite a newer change.
+   */
+  version: number;
   /** Whole hours, 1–720. One global value — never per order. */
   issueWindowHours: number;
+  /**
+   * GRIDGO's service fee in basis points of the shop's price (1,000 = 10%),
+   * 0–10,000. Added on top of the shop price and folded into the client's
+   * total; the client is never shown it as a line. Operations and Super Admin
+   * change it here and see it on every order.
+   */
+  serviceFeeRateBps: number;
   deliveryFeeBands: DeliveryFeeBand[];
   /** Manual QR checkout. `imageUrl` is the replaceable plate. */
   paymentQr?: PaymentQr;
@@ -422,6 +473,7 @@ export type PlatformSettings = {
 
 export type UpdateSettingsInput = {
   issueWindowHours?: number;
+  serviceFeeRateBps?: number;
   deliveryFeeBands?: DeliveryFeeBand[];
   reason?: string;
 };
@@ -454,6 +506,45 @@ export type FileReference = {
   id: string;
   field: string;
   milestoneCode?: string;
+};
+
+/* ---------------------------------------------------------------------------
+   Where a shop gets paid
+   Contract: "Supplier payout account" in gridgo-api docs/OPERATIONAL_MODEL_V2_API.md.
+   --------------------------------------------------------------------------- */
+
+export type PayoutProvider = "gcash" | "maya" | "bank" | "other";
+
+export type SupplierPayoutAccount = {
+  supplierId: string;
+  provider: PayoutProvider | string;
+  /** The name the wallet or bank shows back after a scan. */
+  accountName: string;
+  /** Canonical `+639XXXXXXXXX` for a wallet; free text for a bank. */
+  accountNumber: string | null;
+  /** The bank or wallet when `provider` is `bank` or `other`. */
+  institution: string | null;
+  /** The bound plate. Bytes come from `getFileDownloadUrl(qr.fileId)`. */
+  qr: {
+    fileId: string;
+    originalFilename: string | null;
+    detectedContentType: string | null;
+    size: number | null;
+    readyAt: string | null;
+  } | null;
+  version: number;
+  updatedAt: string;
+  /** Present on the Operations projection only. */
+  shopName?: string | null;
+};
+
+/** `qrFileId` binds a stored `supplier_payout_qr` upload; `null` removes the picture. */
+export type SupplierPayoutAccountPatch = {
+  provider?: PayoutProvider;
+  accountName?: string;
+  accountNumber?: string;
+  institution?: string;
+  qrFileId?: string | null;
 };
 
 export type StoredFile = {
@@ -784,10 +875,16 @@ export type LocationPing = {
   at: string;
 };
 
-/** Latest shared GPS fix for a rider on an active trip. */
+/**
+ * Latest shared GPS fix for a rider on an active trip, with what the map needs
+ * to draw them honestly: the vehicle they drive and the trip's two ends.
+ * `dropoff` is already the GRIDGO Office for a collected order.
+ */
 export type RiderLocation = {
   riderId: string;
   name: string;
+  vehicleType: VehicleType | string | null;
+  plateNumber: string | null;
   orderId: string;
   orderTitle: string | null;
   state: string;
@@ -795,6 +892,8 @@ export type RiderLocation = {
   lng: number;
   accuracy: number | null;
   at: string;
+  pickup: MapPoint | null;
+  dropoff: MapPoint | null;
 };
 
 // ---- Platform announcements ----
