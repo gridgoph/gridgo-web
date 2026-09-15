@@ -56,7 +56,7 @@ export function presentOrderState(state: string): StatePresentation {
     case "production":
       return { label: "In production", tone: "info", icon: "square-pen" };
     case "supplier_self_qc":
-      return { label: "Self-QC done", tone: "success", icon: "circle-check" };
+      return { label: "Packing (older flow)", tone: "info", icon: "clock" };
     case "ready_for_dispatch":
       return { label: "Ready for dispatch", tone: "success", icon: "circle-check" };
     case "rider_assigned":
@@ -219,7 +219,7 @@ export function presentMilestone(code: string, sharePercent?: number): string {
     case "printing":
       return "Printing in progress";
     case "packaging_qc":
-      return "Packaging and quality check";
+      return "Packaging";
     case "delivered":
       return "Delivered";
     case "retention":
@@ -239,8 +239,9 @@ export function presentMilestone(code: string, sharePercent?: number): string {
 export function milestoneProofSource(code: string): string {
   switch (code) {
     case "printing":
-    case "packaging_qc":
       return "Supplier uploads the proof";
+    case "packaging_qc":
+      return "Supplier uploads the packed-job photo";
     case "delivered":
       return "Rider uploads the proof at delivery";
     case "retention":

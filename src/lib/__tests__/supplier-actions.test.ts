@@ -66,7 +66,7 @@ describe("actionsForJob", () => {
 
   it("offers a single primary production action chain", () => {
     expect(primaryAction("payment_authorized")?.targetState).toBe("production");
-    expect(primaryAction("production")?.targetState).toBe("supplier_self_qc");
+    expect(primaryAction("production")?.targetState).toBe("ready_for_dispatch");
     expect(primaryAction("supplier_self_qc")?.targetState).toBe("ready_for_dispatch");
   });
 

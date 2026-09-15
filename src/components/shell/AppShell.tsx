@@ -2,7 +2,7 @@
 
 import { type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useClerk, useUser } from "@clerk/nextjs";
 import {
   AlertTriangle,
@@ -78,8 +78,11 @@ import {
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { InboxBell } from "@/components/shell/InboxBell";
+import { OrdersQueuePill } from "@/components/shell/OrdersQueuePill";
+import { ThemeToggle } from "@/components/shell/ThemeToggle";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { LiveProvider } from "@/lib/live/LiveProvider";
+import { notificationHref } from "@/lib/live/notificationHref";
 import {
   clerkProfileEmail,
   clerkProfileImageUrl,
@@ -304,6 +307,8 @@ function RailNavItem({
         <span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
       </SidebarMenuButton>
       {!item.ready ? <SidebarMenuBadge>Soon</SidebarMenuBadge> : null}
+      {/* Only the Operations queue carries live work on the rail. */}
+      {item.id === "ops-orders" ? <OrdersQueuePill /> : null}
     </SidebarMenuItem>
   );
 }
@@ -417,12 +422,19 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
 
 export function AppShell({ role, children }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
   const title = contextTitleForPath(pathname, role);
   const parentItem = navItemForPath(pathname, role);
   const isNested = Boolean(parentItem && pathname !== parentItem.href);
 
   return (
-    <LiveProvider role={role}>
+    <LiveProvider
+      role={role}
+      onOpenNotification={(notification) => {
+        const href = notificationHref(role, notification);
+        if (href) router.push(href);
+      }}
+    >
       <SidebarProvider
         // The rail has to clear GRIDGO's 44x44 control floor. shadcn's 3rem
         // assumes a 32px button, which leaves the label clipped mid-word.
@@ -473,7 +485,10 @@ export function AppShell({ role, children }: Props) {
                 <h1 className="text-h3 text-text-primary m-0 truncate">{title}</h1>
               )}
             </div>
-            <InboxBell role={role} />
+            <div className="flex items-center gap-1">
+              <ThemeToggle />
+              <InboxBell role={role} />
+            </div>
           </header>
 
           <div id="main-content" className="flex-1 p-3 md:px-4 md:py-3">

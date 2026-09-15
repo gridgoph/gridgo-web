@@ -37,6 +37,12 @@ vi.mock("@/lib/live/LiveProvider", () => ({
   useLive: () => liveRef.current,
 }));
 
+const chime = vi.hoisted(() => ({ play: vi.fn(), dispose: vi.fn() }));
+vi.mock("@/lib/live/notificationSound", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/live/notificationSound")>()),
+  notificationChime: () => chime,
+}));
+
 function mockMatchMedia(width = 1280) {
   Object.defineProperty(window, "innerWidth", { writable: true, value: width });
   window.matchMedia = ((query: string) => ({
@@ -87,6 +93,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  chime.play.mockReset();
+  window.localStorage.clear();
 });
 
 describe("InboxBell", () => {
@@ -106,7 +114,24 @@ describe("InboxBell", () => {
     const trigger = screen.getByRole("button", {
       name: "Notifications, 2 unread",
     });
-    expect(trigger).toHaveTextContent("2");
+    const count = trigger.querySelector('[data-slot="inbox-count"]');
+    expect(count).not.toBeNull();
+    expect(count).toHaveTextContent("2");
+    expect(count).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("caps the trigger count at 99+", () => {
+    resetLive({ unreadCount: 120, notifications: [note()] });
+    render(<InboxBell role="ops_admin" />);
+    const trigger = screen.getByRole("button", { name: "Notifications, 99+ unread" });
+    expect(trigger.querySelector('[data-slot="inbox-count"]')).toHaveTextContent("99+");
+  });
+
+  it("hides the count when nothing is unread", () => {
+    resetLive({ unreadCount: 0, notifications: [note({ read: true })] });
+    render(<InboxBell role="ops_admin" />);
+    const trigger = screen.getByRole("button", { name: "Notifications" });
+    expect(trigger.querySelector('[data-slot="inbox-count"]')).toBeNull();
   });
 
   it("opens the notifications panel on click", async () => {
@@ -121,8 +146,86 @@ describe("InboxBell", () => {
     expect(screen.getByText("Floor live")).toBeInTheDocument();
     expect(screen.getByText("Payment submitted")).toBeInTheDocument();
     expect(screen.getByText("A shop sent QR proof.")).toBeInTheDocument();
-    expect(screen.getByText("1 waiting")).toBeInTheDocument();
+    expect(document.querySelector('[data-slot="inbox-waiting"]')).toHaveTextContent(
+      "1 waiting",
+    );
+    expect(screen.getByRole("button", { name: "Mark all read" })).toBeInTheDocument();
     expect(screen.getByText("New")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Payment submitted/ })).toHaveAttribute(
+      "data-read",
+      "false",
+    );
+  });
+
+  it("leads with the event and files the order underneath, never a raw id", async () => {
+    const user = userEvent.setup();
+    resetLive({
+      unreadCount: 1,
+      notifications: [
+        note({
+          type: "ops_order_progress",
+          title: "Issue window open · ord_c6af26dd9caf",
+          body: "The client can still raise an issue.",
+          orderId: "ord_c6af26dd9caf",
+        }),
+      ],
+    });
+    render(<InboxBell role="ops_admin" />);
+    await user.click(screen.getByRole("button", { name: "Notifications, 1 unread" }));
+    expect(await screen.findByText("Issue window open")).toBeInTheDocument();
+    expect(screen.getByText("Order ord_c6af26…")).toBeInTheDocument();
+    expect(screen.queryByText(/Issue window open · ord_/)).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Issue window open/ }));
+    expect(pushMock).toHaveBeenCalledWith("/ops/orders/ord_c6af26dd9caf");
+  });
+
+  it("names the order by its own title when the slip carries one", async () => {
+    const user = userEvent.setup();
+    resetLive({
+      unreadCount: 0,
+      notifications: [
+        note({
+          read: true,
+          title: "Shop accepted · ord_9",
+          orderTitle: "Business cards, 500 pcs",
+        }),
+      ],
+    });
+    render(<InboxBell role="ops_admin" />);
+    await user.click(screen.getByRole("button", { name: "Notifications" }));
+    expect(await screen.findByText("Shop accepted")).toBeInTheDocument();
+    expect(screen.getByText("Business cards, 500 pcs")).toBeInTheDocument();
+    expect(screen.queryByText("Order ord_9")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Shop accepted/ })).toHaveAttribute(
+      "data-read",
+      "true",
+    );
+    expect(screen.queryByText("New")).not.toBeInTheDocument();
+    expect(document.querySelector('[data-slot="inbox-waiting"]')).toHaveTextContent(
+      "You're caught up",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Mark all read" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("lets the person turn the chime off and back on from the Desk", async () => {
+    const user = userEvent.setup();
+    render(<InboxBell role="ops_admin" />);
+    await user.click(screen.getByRole("button", { name: "Notifications" }));
+    const toggle = await screen.findByRole("button", { name: "Turn sound off" });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await user.click(toggle);
+    expect(screen.getByRole("button", { name: "Turn sound on" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(window.localStorage.getItem("gridgo-web.notification-sound")).toBe("off");
+    expect(chime.play).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Turn sound on" }));
+    expect(screen.getByRole("button", { name: "Turn sound off" })).toBeInTheDocument();
+    expect(window.localStorage.getItem("gridgo-web.notification-sound")).toBe("on");
+    expect(chime.play).toHaveBeenCalledTimes(1);
   });
 
   it("invites the next slip when the inbox is empty", async () => {

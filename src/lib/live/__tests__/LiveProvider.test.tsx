@@ -19,11 +19,22 @@ vi.mock("@/lib/auth/AuthProvider", () => ({
   useAuth: () => ({ user: currentUser, refresh: vi.fn() }),
 }));
 vi.mock("@/lib/api/client", () => ({ getAuthToken: async () => "token" }));
+const chime = vi.hoisted(() => ({ play: vi.fn(), dispose: vi.fn() }));
+vi.mock("@/lib/live/notificationSound", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/live/notificationSound")>()),
+  notificationChime: () => chime,
+}));
+const toastManager = vi.hoisted(() => ({
+  add: vi.fn<(options: unknown) => string>(() => "toast_1"),
+  update: vi.fn<(id: string, options: unknown) => void>(),
+}));
+vi.mock("@/components/ui/toast", () => ({ toast: toastManager }));
+const streamHandle = vi.hoisted(() => ({ close: vi.fn(), wake: vi.fn() }));
 vi.mock("@/lib/api/notifications", () => ({
   listNotificationInbox: (...args: unknown[]) => list(...args),
   openNotificationStream: (next: NotificationStreamHandlers) => {
     handlers = next;
-    return { close: vi.fn(), wake: vi.fn() };
+    return { ...streamHandle, isLive: () => false };
   },
   markNotificationRead: vi.fn(),
   markAllNotificationsRead: vi.fn(),
@@ -32,6 +43,11 @@ vi.mock("@/lib/api/notifications", () => ({
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  chime.play.mockReset();
+  toastManager.add.mockClear();
+  toastManager.update.mockClear();
+  streamHandle.wake.mockClear();
+  window.localStorage.clear();
   currentUser = { id: "a" };
   list.mockReset();
   vi.mocked(markNotificationRead).mockReset();
@@ -251,4 +267,125 @@ it("accepts authoritative inbox changes fetched after a completed mutation", asy
     await inbox.refreshInbox();
   });
   expect(inbox.unreadCount).toBe(1);
+});
+
+it("chimes once for fresh unread arrivals and never for replayed or read rows", async () => {
+  const fresh = () => new Date().toISOString();
+  const existing = { ...notification("existing"), at: fresh() };
+  const before = deferred<{ notifications: Notification[]; snapshot: string }>();
+  list.mockReturnValueOnce(before.promise);
+  render(
+    <LiveProvider>
+      <MutationInbox />
+    </LiveProvider>,
+  );
+  await waitFor(() => expect(handlers).toBeDefined());
+  // Arrivals before the first inbox fetch lands are page-load history, not news.
+  await act(async () => {
+    handlers.onNotification({ ...notification("early"), at: fresh() });
+  });
+  expect(chime.play).not.toHaveBeenCalled();
+  await act(async () => {
+    before.resolve({ notifications: [existing], snapshot: existing.id });
+  });
+  // The stream replays what the list already showed.
+  await act(async () => {
+    handlers.onNotification(existing);
+  });
+  expect(chime.play).not.toHaveBeenCalled();
+  await act(async () => {
+    handlers.onNotification({ ...notification("paid"), at: fresh() });
+  });
+  expect(chime.play).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    handlers.onNotification({ ...notification("paid"), at: fresh() });
+    handlers.onNotification({ ...notification("seen"), at: fresh(), read: true });
+    handlers.onNotification({
+      ...notification("stale"),
+      at: new Date(Date.now() - 60 * 60_000).toISOString(),
+    });
+  });
+  expect(chime.play).toHaveBeenCalledTimes(1);
+  window.localStorage.setItem("gridgo-web.notification-sound", "off");
+  await act(async () => {
+    handlers.onNotification({ ...notification("muted"), at: fresh() });
+  });
+  expect(chime.play).toHaveBeenCalledTimes(1);
+});
+
+it("shows one desk toast per fresh unread arrival, folds a burst, and stays quiet on replay", async () => {
+  const fresh = () => new Date().toISOString();
+  const existing = { ...notification("existing"), at: fresh() };
+  const before = deferred<{ notifications: Notification[]; snapshot: string }>();
+  list.mockReturnValueOnce(before.promise);
+  const opened: string[] = [];
+  vi.mocked(markNotificationRead).mockImplementation(async (id) => ({
+    ...notification(id),
+    read: true,
+  }));
+  render(
+    <LiveProvider onOpenNotification={(row) => opened.push(row.id)}>
+      <MutationInbox />
+    </LiveProvider>,
+  );
+  await waitFor(() => expect(handlers).toBeDefined());
+  await act(async () => {
+    handlers.onNotification({ ...notification("early"), at: fresh() });
+  });
+  expect(toastManager.add).not.toHaveBeenCalled();
+  await act(async () => {
+    before.resolve({ notifications: [existing], snapshot: existing.id });
+  });
+  await act(async () => {
+    handlers.onNotification(existing);
+    handlers.onNotification({ ...notification("seen"), at: fresh(), read: true });
+  });
+  expect(toastManager.add).not.toHaveBeenCalled();
+  // Sound off must not silence the slip.
+  window.localStorage.setItem("gridgo-web.notification-sound", "off");
+  await act(async () => {
+    handlers.onNotification({ ...notification("paid"), at: fresh() });
+  });
+  expect(chime.play).not.toHaveBeenCalled();
+  expect(toastManager.add).toHaveBeenCalledTimes(1);
+  const slip = toastManager.add.mock.calls[0][0] as unknown as {
+    type: string;
+    data: { notification: Notification };
+    actionProps?: { onClick?: () => void };
+  };
+  expect(slip.type).toBe("arrival");
+  expect(slip.data.notification.id).toBe("paid");
+  // Two more inside the coalescing window fold into the open toast.
+  await act(async () => {
+    handlers.onNotification({ ...notification("packed"), at: fresh() });
+    handlers.onNotification({ ...notification("assigned"), at: fresh() });
+  });
+  expect(toastManager.add).toHaveBeenCalledTimes(1);
+  expect(toastManager.update).toHaveBeenCalledTimes(2);
+  expect(toastManager.update.mock.calls[1][1] as object).toMatchObject({
+    type: "arrival-burst",
+    title: "3 new updates on the desk",
+  });
+  // Open marks the row read and hands navigation to the shell.
+  await act(async () => {
+    slip.actionProps?.onClick?.();
+  });
+  expect(opened).toEqual(["paid"]);
+  await waitFor(() => expect(markNotificationRead).toHaveBeenCalledWith("paid", true));
+});
+
+it("reconciles the inbox on return to the tab without dropping a healthy stream", async () => {
+  list.mockResolvedValue({ notifications: [], snapshot: null });
+  render(
+    <LiveProvider>
+      <Inbox />
+    </LiveProvider>,
+  );
+  await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+  await act(async () => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  // The handle decides whether a reconnect is needed; the provider only asks.
+  expect(streamHandle.wake).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
 });

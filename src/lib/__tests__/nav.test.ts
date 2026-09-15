@@ -19,6 +19,7 @@ describe("ROLE_NAV", () => {
       "/supplier/schedule",
       "/supplier/capacity",
       "/supplier/payouts",
+      "/supplier/payout-account",
     ]);
   });
 
@@ -44,6 +45,7 @@ describe("ROLE_NAV", () => {
     const hrefs = ROLE_NAV.super_admin.map((n) => n.href);
     expect(hrefs).toEqual([
       "/admin/overview",
+      "/admin/riders",
       "/admin/verification",
       "/admin/roles",
       "/admin/catalogue",
@@ -69,6 +71,7 @@ describe("ROLE_NAV", () => {
       "/admin/finance",
       "/admin/overview",
       "/admin/planning",
+      "/admin/riders",
       "/admin/roles",
       "/admin/settings",
       "/admin/verification",
@@ -89,6 +92,7 @@ describe("ROLE_NAV", () => {
       "/supplier/catalogue",
       "/supplier/dashboard",
       "/supplier/jobs",
+      "/supplier/payout-account",
       "/supplier/payouts",
       "/supplier/schedule",
     ]);
@@ -190,7 +194,7 @@ describe("ROLE_NAV", () => {
       ROLE_NAV_GROUPS.supplier
         .find((g) => g.id === "supplier-money")
         ?.items.map((n) => n.href),
-    ).toEqual(["/supplier/payouts"]);
+    ).toEqual(["/supplier/payouts", "/supplier/payout-account"]);
 
     const grouped = Object.values(ROLE_NAV_GROUPS).flatMap((groups) =>
       groups.flatMap((group) => group.items.map((item) => item.href)),

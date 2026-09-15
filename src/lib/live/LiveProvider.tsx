@@ -20,6 +20,13 @@ import {
   type NotificationStreamHandle,
 } from "@/lib/api/notifications";
 import type { InvalidatePing, Notification, Role } from "@/lib/api/types";
+import {
+  isFreshArrival,
+  notificationChime,
+  readNotificationSoundEnabled,
+} from "@/lib/live/notificationSound";
+import { createArrivalAnnouncer, type ArrivalAnnouncer } from "@/lib/live/arrivalToast";
+import { toast } from "@/components/ui/toast";
 import { useAuth } from "@/lib/auth/AuthProvider";
 
 export type LiveContextValue = {
@@ -55,20 +62,39 @@ function applyInboxMutations(
     );
 }
 
-export function LiveProvider({ children, role }: { children: ReactNode; role?: Role }) {
+type LiveProviderProps = {
+  children: ReactNode;
+  role?: Role;
+  /**
+   * Where "Open" on an arrival toast goes. The shell supplies navigation;
+   * the provider itself never touches the router.
+   */
+  onOpenNotification?: (notification: Notification) => void;
+};
+
+export function LiveProvider({ children, role, onOpenNotification }: LiveProviderProps) {
   const { user } = useAuth();
   return (
-    <AccountLiveProvider key={`${user?.id ?? "signed-out"}:${role ?? ""}`} role={role}>
+    <AccountLiveProvider
+      key={`${user?.id ?? "signed-out"}:${role ?? ""}`}
+      role={role}
+      onOpenNotification={onOpenNotification}
+    >
       {children}
     </AccountLiveProvider>
   );
 }
 
-function AccountLiveProvider({ children, role }: { children: ReactNode; role?: Role }) {
+function AccountLiveProvider({ children, role, onOpenNotification }: LiveProviderProps) {
   const { user, refresh: refreshIdentity } = useAuth();
   const userId = user?.id;
   const identityRefresh = useRef(refreshIdentity);
   identityRefresh.current = refreshIdentity;
+  const openNotification = useRef(onOpenNotification);
+  openNotification.current = onOpenNotification;
+  // The toast announcer outlives any one stream: a reconnect must not reset
+  // an open burst, and "Open" must still mark the row read after a remount.
+  const announcer = useRef<ArrivalAnnouncer | null>(null);
   const active = useRef(true);
   const inboxGeneration = useRef(0);
   const arrivalRevision = useRef(0);
@@ -77,6 +103,10 @@ function AccountLiveProvider({ children, role }: { children: ReactNode; role?: R
     new Map<string, { kind: "read" | "deleted"; revision: number }>(),
   );
   const arrivals = useRef(new Map<string, { revision: number; row: Notification }>());
+  // Chime bookkeeping: ids this tab has already shown, and whether the first inbox
+  // fetch landed. The stream replays history on connect; none of that is news.
+  const knownIds = useRef(new Set<string>());
+  const inboxLoaded = useRef(false);
   useEffect(() => {
     active.current = true;
     return () => {
@@ -113,6 +143,8 @@ function AccountLiveProvider({ children, role }: { children: ReactNode; role?: R
     for (const [id, mutation] of mutations.current) {
       if (mutation.revision <= mutationAtStart) mutations.current.delete(id);
     }
+    for (const row of rows) knownIds.current.add(row.id);
+    inboxLoaded.current = true;
     setNotifications(applyInboxMutations(rows, mutations.current));
     if (revision === arrivalRevision.current) {
       snapshotRef.current = inbox.snapshot;
@@ -130,6 +162,13 @@ function AccountLiveProvider({ children, role }: { children: ReactNode; role?: R
 
     let cancelled = false;
     let handle: NotificationStreamHandle | null = null;
+    announcer.current ??= createArrivalAnnouncer({
+      manager: toast,
+      onOpen: (notification) => {
+        void markReadRef.current(notification.id).catch(() => undefined);
+        openNotification.current?.(notification);
+      },
+    });
 
     async function boot() {
       if (cancelled) return;
@@ -141,6 +180,21 @@ function AccountLiveProvider({ children, role }: { children: ReactNode; role?: R
         onNotification: (notification) => {
           if (cancelled) return;
           const row = applyInboxMutations([notification], mutations.current)[0];
+          const unseen = !knownIds.current.has(notification.id);
+          knownIds.current.add(notification.id);
+          // News is a row this tab has not shown, arriving after the first
+          // inbox fetch, still unread and still fresh. It gets said out loud
+          // (if the sound is on) and shown where the person is looking.
+          const news =
+            unseen &&
+            inboxLoaded.current &&
+            Boolean(row) &&
+            !row.read &&
+            isFreshArrival(notification.at);
+          if (news) {
+            if (readNotificationSoundEnabled()) notificationChime().play();
+            announcer.current?.announce(row);
+          }
           const revision = ++arrivalRevision.current;
           if (row) arrivals.current.set(notification.id, { revision, row });
           else arrivals.current.delete(notification.id);
@@ -191,9 +245,19 @@ function AccountLiveProvider({ children, role }: { children: ReactNode; role?: R
     };
   }, [refreshInbox, userId, role]);
 
+  useEffect(
+    () => () => {
+      announcer.current?.dispose();
+      announcer.current = null;
+    },
+    [],
+  );
+
   useEffect(() => {
     const onVis = () => {
       if (document.visibilityState !== "visible") return;
+      // A healthy stream is left alone (wake is a no-op while live); only a
+      // dropped one reconnects. The inbox is reconciled either way.
       handleRef.current?.wake();
       if (userId) void refreshInbox().catch(() => undefined);
     };
@@ -220,6 +284,9 @@ function AccountLiveProvider({ children, role }: { children: ReactNode; role?: R
       applyInboxMutations(upsertNotification(prev, next), mutations.current),
     );
   }, []);
+
+  const markReadRef = useRef(markRead);
+  markReadRef.current = markRead;
 
   const markAllRead = useCallback(async () => {
     const cursor = snapshotRef.current;

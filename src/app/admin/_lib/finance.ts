@@ -3,7 +3,7 @@
  * Only sums figures the ledger actually exposes — never invents rows.
  *
  * Operations and Super Admin are the only roles the server gives supplier price
- * and commission to, which is what makes reconciliation possible here and
+ * and the service fee to, which is what makes reconciliation possible here and
  * nowhere else.
  */
 
@@ -21,7 +21,7 @@ export type FinanceRollup = {
   awaitingConfirmation: MoneyFigure;
   /** Billed on live orders but not yet paid. */
   outstanding: MoneyFigure;
-  /** GRIDGO's 10% across orders that have a supplier price. */
+  /** GRIDGO's service fee across orders that have been priced. */
   commissionEarned: MoneyFigure;
   /** Milestone amounts already paid out to suppliers. */
   supplierReleased: MoneyFigure;
@@ -70,8 +70,8 @@ export function rollupFinance(orders: Order[], claims: Claim[]): FinanceRollup {
     ),
   );
 
-  const priced = live.filter((o) => o.commissionMinor !== undefined);
-  const commission = sum(priced.map((o) => o.commissionMinor ?? 0));
+  const priced = live.filter((o) => o.serviceFeeMinor !== undefined);
+  const commission = sum(priced.map((o) => o.serviceFeeMinor ?? 0));
 
   const milestones = live.flatMap((o) => o.payoutMilestones ?? []);
   const released = sum(
@@ -116,7 +116,7 @@ export type OrderMoneySplit = {
 
 /**
  * Per-order split of what the client pays into supplier earnings, GRIDGO's
- * commission and delivery. Only orders the server priced appear — an estimate
+ * service fee and delivery. Only orders the server priced appear — an estimate
  * has no supplier price to split.
  */
 export function orderMoneySplits(orders: Order[]): OrderMoneySplit[] {
@@ -124,14 +124,14 @@ export function orderMoneySplits(orders: Order[]): OrderMoneySplit[] {
     .filter(
       (order) =>
         order.supplierPriceMinor !== undefined &&
-        order.commissionMinor !== undefined &&
+        order.serviceFeeMinor !== undefined &&
         !DEAD_STATES.has(order.state),
     )
     .map((order) => ({
       orderId: order.id,
       label: order.title,
       supplierPriceMinor: order.supplierPriceMinor!,
-      commissionMinor: order.commissionMinor!,
+      commissionMinor: order.serviceFeeMinor!,
       deliveryFeeMinor: order.deliveryFeeMinor,
       totalMinor: order.totalMinor,
     }))

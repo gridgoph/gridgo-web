@@ -188,7 +188,7 @@ export function buildOverviewBuckets(
     {
       id: "in_production",
       label: "In production",
-      description: "Assigned through supplier self-QC — monitor, not queue.",
+      description: "Printing and packing at the shop — monitor, not queue.",
       count: production.length,
       href: "/ops/orders",
       urgent: false,

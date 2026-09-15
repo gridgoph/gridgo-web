@@ -75,13 +75,14 @@ describe("LoginPage", () => {
     expect(screen.queryByRole("button", { name: /sign up/i })).not.toBeInTheDocument();
   });
 
-  it("does not restore a leftover Clerk session via the home fallback", () => {
+  it("lets an already-signed-in operator continue or switch accounts", () => {
     clerkSignedIn.current = true;
     render(<LoginPage />);
 
     expect(screen.queryByTestId("clerk-sign-in")).not.toBeInTheDocument();
     expect(signInPropsMock).not.toHaveBeenCalled();
-    expect(screen.getByText(/previous session is still active/i)).toBeVisible();
+    expect(screen.getByText(/already signed in/i)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Continue to portal" })).toBeVisible();
     expect(screen.getByTestId("clerk-sign-out")).toHaveAttribute(
       "data-redirect-url",
       "/login",

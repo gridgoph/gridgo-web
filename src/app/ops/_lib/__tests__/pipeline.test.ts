@@ -10,6 +10,7 @@ import {
   stageNeedsOperations,
   stageOf,
   stepsFor,
+  waitingOnOperationsCount,
 } from "../pipeline";
 
 function order(state: string, extra: Partial<Order> = {}): Order {
@@ -90,5 +91,20 @@ describe("the order pipeline", () => {
     expect(stepsFor(order("out_for_delivery")).map((step) => step.status))
       .toEqual(["done", "done", "done", "current"]);
     expect(stepsFor(order("completed")).every((step) => step.status === "done")).toBe(true);
+  });
+
+  it("sums what is waiting on Operations across every stage for the rail pill", () => {
+    const transfer = order("initial_payment_review", {
+      payments: { downpayment: { status: "pending_confirmation" } },
+    } as Partial<Order>);
+    const paid = order("initial_payment_review", {
+      payments: { downpayment: { status: "confirmed" } },
+    } as Partial<Order>);
+    const artwork = order("needs_qa");
+    const withClient = order("client_correction");
+    const withShop = order("production");
+
+    expect(waitingOnOperationsCount([transfer, paid, artwork, withClient, withShop])).toBe(2);
+    expect(waitingOnOperationsCount([])).toBe(0);
   });
 });

@@ -63,10 +63,20 @@ explains why and what asserts it.
   - Supplier: job inbox + order workspace (`GET /jobs`, `POST /orders/:id/transition`)
   - Operations: order queue and workspace for payment confirmations and QA, shared
     sign-up and service-line approvals, and rider locations under Field → Riders.
-    Riders appear only while sharing location on an active trip; the list shows the last
-    ping and links to the order. Location updates preserve map zoom, pan, and open popups.
-  - Super Admin: platform overview from live orders + credit balances, with order and
-    pickup-escalation workspaces reachable from the inbox
+    Riders appear only while sharing location on an active trip. Each pin is the vehicle
+    on the rider's profile (motorcycle, car, van, truck or bicycle), the trip's pickup and
+    drop-off are marked, and the road route from the rider to the drop-off is drawn from
+    the public OSRM router with a dashed direct line when routing is unavailable. The
+    basemap is the same OpenStreetMap the rider app uses, toned to GRIDGO greys and
+    inverted for the dark theme, so the yellow route is the only colour on it. The
+    roster below repeats every pin in text with the route distance and time, and the
+    dispatch board shows the same vehicle beside each assigned rider with a link to the
+    map. Location updates preserve map zoom, pan, and open popups.
+  - Theme: the portal follows the device's light or dark preference until the header
+    toggle (left of the bell) picks one, which is remembered per browser.
+  - Super Admin: platform overview from live orders + credit balances, the same live
+    rider map under Riders, and order and pickup-escalation workspaces reachable from
+    the inbox
 
 The header bell opens the **Desk** inbox. Its connection status and refresh behavior are
 described in [Live resource updates](docs/REALTIME_UPDATES.md).

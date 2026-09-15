@@ -153,7 +153,14 @@ export type NotificationStreamHandlers = {
 
 export type NotificationStreamHandle = {
   close: () => void;
+  /**
+   * Reconnect if the stream is down. A healthy connection is left alone, so
+   * returning to the tab never drops the frames already flowing; the
+   * provider refreshes the inbox separately on return.
+   */
   wake: () => void;
+  /** Whether frames are currently flowing. */
+  isLive: () => boolean;
 };
 
 export function openNotificationStream(
@@ -167,6 +174,11 @@ export function openNotificationStream(
   let refreshed401 = false;
   let sequence = 0;
   let watchdog: ReturnType<typeof setTimeout> | null = null;
+  let live = false;
+  const setStatus = (next: boolean) => {
+    live = next;
+    handlers.onStatus?.(next);
+  };
 
   const stopRequest = () => {
     if (watchdog) clearTimeout(watchdog);
@@ -189,9 +201,9 @@ export function openNotificationStream(
     if (closed) return;
     const ticket = ++sequence;
     stopRequest();
-    handlers.onStatus?.(false);
+    setStatus(false);
     watchdog = setTimeout(() => {
-      handlers.onStatus?.(false);
+      setStatus(false);
       scheduleRetry(null);
     }, 45_000);
     const token = await getAuthToken(
@@ -199,7 +211,7 @@ export function openNotificationStream(
     ).catch(() => null);
     if (closed || ticket !== sequence) return;
     if (!token) {
-      handlers.onStatus?.(false);
+      setStatus(false);
       scheduleRetry(null);
       return;
     }
@@ -228,7 +240,7 @@ export function openNotificationStream(
       );
     } catch {
       if (closed || controller.signal.aborted) return;
-      handlers.onStatus?.(false);
+      setStatus(false);
       scheduleRetry(null);
       return;
     }
@@ -237,33 +249,33 @@ export function openNotificationStream(
 
     if (res.status === 401 && !refreshed401) {
       refreshed401 = true;
-      handlers.onStatus?.(false);
+      setStatus(false);
       void connect();
       return;
     }
     if (res.status === 401) {
-      handlers.onStatus?.(false);
+      setStatus(false);
       scheduleRetry(null);
       return;
     }
     if (res.status === 409) {
       lastEventId = null;
       refreshed401 = false;
-      handlers.onStatus?.(false);
+      setStatus(false);
       void Promise.resolve(handlers.onResumeUnavailable?.()).finally(() => {
         if (!closed) scheduleRetry(null);
       });
       return;
     }
     if (!res.ok || !res.body) {
-      handlers.onStatus?.(false);
+      setStatus(false);
       scheduleRetry(null);
       return;
     }
 
     refreshed401 = false;
     attempt = 0;
-    handlers.onStatus?.(true);
+    setStatus(true);
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -274,7 +286,7 @@ export function openNotificationStream(
         if (done || ticket !== sequence || closed) break;
         if (watchdog) clearTimeout(watchdog);
         watchdog = setTimeout(() => {
-          handlers.onStatus?.(false);
+          setStatus(false);
           scheduleRetry(null);
         }, 45_000);
         buffer += decoder.decode(value, { stream: true });
@@ -292,7 +304,7 @@ export function openNotificationStream(
       // Abort or a dropped socket — reconnect below unless we closed on purpose.
     }
     if (!closed && ticket === sequence) {
-      handlers.onStatus?.(false);
+      setStatus(false);
       scheduleRetry(null);
     }
   }
@@ -302,13 +314,15 @@ export function openNotificationStream(
   return {
     close: () => {
       closed = true;
+      live = false;
       sequence++;
       stopRequest();
     },
     wake: () => {
-      if (closed) return;
+      if (closed || live) return;
       attempt = 0;
       void connect();
     },
+    isLive: () => live,
   };
 }

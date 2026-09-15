@@ -5,9 +5,15 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
 /**
- * Platform settings held in configuration rather than code: how long a
- * client has to raise an issue after delivery, what delivery costs at each
- * distance, and the GCash plate checkout scans.
+ * Platform settings held in configuration rather than code: GRIDGO's service
+ * fee on top of every shop price, how long a client has to raise an issue
+ * after delivery, what delivery costs at each distance, and the GCash plate
+ * checkout scans.
+ *
+ * The service fee is the one figure here the client must never see as a
+ * line. It is folded into their total; Operations and Super Admin see it on
+ * every order. The screen shows both receipts side by side so a change can be
+ * read as money before it is saved.
  *
  * The band figures shipped as Firstmate's suggestion, not the captain's — the
  * screen says so, because someone has to decide the real ones. One
@@ -19,6 +25,12 @@ import { Plus, Trash2 } from "lucide-react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { pesosToMinor } from "@/app/admin/_lib/errors";
+import {
+  bpsToPercentInput,
+  formatRatePercent,
+  percentInputToBps,
+  workedExample,
+} from "@/components/settings/service-fee";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -26,6 +38,7 @@ import { Input } from "@/components/ui/input";
 import { SkeletonLines } from "@/components/ui/loading";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  ApiError,
   getApiBase,
   getSettings,
   updateSettings,
@@ -39,6 +52,28 @@ import { formatPhp } from "@/lib/format";
  * Section copy is the same whether or not the values have arrived, so both the
  * form and its loading view read it from here.
  */
+const SERVICE_FEE_COPY = (
+  <>
+    GRIDGO&rsquo;s charge on every order, as a percentage of the shop&rsquo;s own price. It
+    is added on top, so the shop is paid its price in full and the client pays the price
+    plus the fee plus delivery.
+  </>
+);
+
+const SERVICE_FEE_VISIBILITY = (
+  <>
+    Clients are never shown the fee as a line &mdash; it sits inside the price of the work
+    on their receipt. Operations and Super Admin see it on every order.
+  </>
+);
+
+const RATE_HELP = (
+  <>
+    0 to 100, up to two decimals. Applies to orders placed from now on &mdash; every order
+    already placed keeps the rate it was priced at.
+  </>
+);
+
 const ISSUE_WINDOW_COPY = (
   <>
     How long a client has after delivery to raise a problem. While it is open a claim can
@@ -107,6 +142,7 @@ export function OperationalSettings() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState<string | null>(null);
 
+  const [rate, setRate] = useState("");
   const [hours, setHours] = useState("");
   const [bands, setBands] = useState<BandDraft[]>([]);
   const [qrBusy, setQrBusy] = useState(false);
@@ -120,6 +156,13 @@ export function OperationalSettings() {
       try {
         const next = await getSettings();
         const previous = settingsRef.current;
+        setRate((current) =>
+          preserveDraft &&
+          previous &&
+          current !== bpsToPercentInput(previous.serviceFeeRateBps)
+            ? current
+            : bpsToPercentInput(next.serviceFeeRateBps),
+        );
         setHours((current) =>
           preserveDraft && previous && current !== String(previous.issueWindowHours)
             ? current
@@ -204,6 +247,14 @@ export function OperationalSettings() {
   }
 
   async function save() {
+    if (!settings) return;
+    const parsedRate = percentInputToBps(rate);
+    if (parsedRate === null) {
+      setSaveError(
+        "The service fee is a percentage from 0 to 100 with up to two decimals, like 10 or 12.5.",
+      );
+      return;
+    }
     const parsedHours = Number(hours.trim());
     if (
       !Number.isInteger(parsedHours) ||
@@ -226,18 +277,30 @@ export function OperationalSettings() {
     setSaveOk(null);
     try {
       const next = await updateSettings({
+        expectedVersion: settings.version,
+        serviceFeeRateBps: parsedRate,
         issueWindowHours: parsedHours,
         deliveryFeeBands: parsedBands.bands,
         reason: "Updated from the portal",
       });
       setSettings(next);
+      setRate(bpsToPercentInput(next.serviceFeeRateBps));
       setHours(String(next.issueWindowHours));
       setBands(toDraft(next.deliveryFeeBands));
       setSaveOk(
-        "Saved. New orders price delivery from these bands, and issue windows opened from now use the new length. Orders already delivered keep the window they were given.",
+        `Saved. Orders placed from now on carry a ${formatRatePercent(next.serviceFeeRateBps)} service fee and price delivery from these bands, and issue windows opened from now use the new length. Orders already placed keep the figures they were given.`,
       );
     } catch (err) {
-      setSaveError(opsErrorMessage(err, "Could not save these settings. Try again."));
+      if (err instanceof ApiError && err.code === "settings_version_conflict") {
+        // Someone saved first. Their values load in underneath; the draft the
+        // person here typed is kept so they can compare and save again.
+        setSaveError(
+          "Someone else saved these settings a moment ago. Their values are now shown as in force — check your changes against them, then save again.",
+        );
+        await load(true);
+      } else {
+        setSaveError(opsErrorMessage(err, "Could not save these settings. Try again."));
+      }
     } finally {
       setBusy(false);
     }
@@ -286,8 +349,14 @@ export function OperationalSettings() {
   }
 
   const dirty =
+    rate !== bpsToPercentInput(settings.serviceFeeRateBps) ||
     hours !== String(settings.issueWindowHours) ||
     JSON.stringify(bands) !== JSON.stringify(toDraft(settings.deliveryFeeBands));
+
+  // The example follows the field as it is typed; an unreadable draft shows
+  // the rate in force so the receipts never go blank mid-edit.
+  const draftRateBps = percentInputToBps(rate) ?? settings.serviceFeeRateBps;
+  const rateInvalid = rate.trim() !== "" && percentInputToBps(rate) === null;
 
   return (
     <div className="flex w-full flex-col gap-3">
@@ -295,6 +364,67 @@ export function OperationalSettings() {
         Platform-wide numbers and the GCash plate checkout scans, changed here rather than
         in a release.
       </p>
+
+      <section className="gg-card p-3" aria-labelledby="service-fee-heading">
+        <h2 id="service-fee-heading" className="text-h3 text-text-primary m-0">
+          Service fee
+        </h2>
+        <p className="text-body text-text-secondary m-0 mt-1 max-w-prose">
+          {SERVICE_FEE_COPY}
+        </p>
+        <p className="text-body text-text-primary m-0 mt-2 max-w-prose">
+          {SERVICE_FEE_VISIBILITY}
+        </p>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+          <FieldGroup>
+            <Field data-invalid={rateInvalid || undefined}>
+              <FieldLabel htmlFor="service-fee-rate">Rate on the shop price</FieldLabel>
+              <div className="relative max-w-40">
+                <Input
+                  id="service-fee-rate"
+                  inputMode="decimal"
+                  className="pr-9"
+                  value={rate}
+                  aria-invalid={rateInvalid || undefined}
+                  aria-describedby="service-fee-help"
+                  onChange={(e) => setRate(e.target.value)}
+                />
+                <span
+                  aria-hidden
+                  className="text-body text-text-muted pointer-events-none absolute inset-y-0 right-3 flex items-center"
+                >
+                  %
+                </span>
+              </div>
+              <FieldDescription id="service-fee-help">{RATE_HELP}</FieldDescription>
+            </Field>
+            <p className="text-body text-text-secondary m-0" data-testid="rate-in-force">
+              In force right now:{" "}
+              <span
+                className="text-text-primary tabular-nums"
+                style={{ fontFamily: "var(--font-medium)" }}
+              >
+                {formatRatePercent(settings.serviceFeeRateBps)}
+              </span>
+              {draftRateBps !== settings.serviceFeeRateBps ? (
+                <>
+                  {" "}
+                  &middot; after saving:{" "}
+                  <span
+                    className="text-text-primary tabular-nums"
+                    style={{ fontFamily: "var(--font-medium)" }}
+                  >
+                    {formatRatePercent(draftRateBps)}
+                  </span>
+                </>
+              ) : null}
+            </p>
+          </FieldGroup>
+
+          <WorkedReceipts rateBps={draftRateBps} />
+        </div>
+      </section>
 
       <div className="grid w-full gap-3 lg:grid-cols-2 lg:items-start">
         <section className="gg-card p-3" aria-labelledby="window-heading">
@@ -512,6 +642,7 @@ export function OperationalSettings() {
           variant="secondary"
           disabled={busy || !dirty}
           onClick={() => {
+            setRate(bpsToPercentInput(settings.serviceFeeRateBps));
             setHours(String(settings.issueWindowHours));
             setBands(toDraft(settings.deliveryFeeBands));
             setSaveError(null);
@@ -520,6 +651,107 @@ export function OperationalSettings() {
         >
           Discard changes
         </Button>
+      </div>
+    </div>
+  );
+}
+
+type ReceiptLine = {
+  label: string;
+  value: string;
+  /** The one line that is the point: present on one receipt, absent on the other. */
+  emphasis?: boolean;
+  total?: boolean;
+};
+
+function Receipt({
+  title,
+  note,
+  lines,
+  testId,
+}: {
+  title: string;
+  note: string;
+  lines: ReceiptLine[];
+  testId: string;
+}) {
+  return (
+    <div
+      className="rounded-card bg-surface-variant flex min-w-0 flex-col gap-2 p-3"
+      data-testid={testId}
+    >
+      <p className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+        {title}
+      </p>
+      <dl className="m-0 flex flex-col gap-1">
+        {lines.map((line) => (
+          <div
+            key={line.label}
+            className={`flex items-baseline justify-between gap-x-3 ${
+              line.total ? "border-outline mt-1 border-t pt-2" : ""
+            }`}
+          >
+            <dt
+              className={`text-body m-0 min-w-0 ${
+                line.emphasis || line.total ? "text-text-primary" : "text-text-secondary"
+              }`}
+              style={line.emphasis || line.total ? { fontFamily: "var(--font-medium)" } : undefined}
+            >
+              {line.label}
+            </dt>
+            <dd
+              className="text-body text-text-primary m-0 tabular-nums whitespace-nowrap"
+              style={{ fontFamily: line.total ? "var(--font-bold)" : "var(--font-medium)" }}
+            >
+              {line.value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      <p className="text-caption text-text-muted m-0 mt-auto">{note}</p>
+    </div>
+  );
+}
+
+/**
+ * One sample order, twice: as the client's receipt shows it and as Operations
+ * sees it. Same total on both. The fee line is the only difference, which is
+ * exactly the rule this setting has to make visible.
+ */
+function WorkedReceipts({ rateBps }: { rateBps: number }) {
+  const example = workedExample(rateBps);
+  return (
+    <div aria-label="Worked example" className="flex min-w-0 flex-col gap-2">
+      <p className="text-caption text-text-muted m-0">
+        A {formatPhp(example.shopPriceMinor)} job with {formatPhp(example.deliveryFeeMinor)}{" "}
+        delivery, at {formatRatePercent(rateBps)}
+      </p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Receipt
+          testId="receipt-client"
+          title="What the client sees"
+          note="No fee line. The fee is inside the price of the work."
+          lines={[
+            { label: "Items", value: formatPhp(example.clientItemsMinor) },
+            { label: "Delivery", value: formatPhp(example.deliveryFeeMinor) },
+            { label: "Total", value: formatPhp(example.clientTotalMinor), total: true },
+          ]}
+        />
+        <Receipt
+          testId="receipt-ops"
+          title="What Operations sees"
+          note="The shop is paid its price in full. The fee is GRIDGO's."
+          lines={[
+            { label: "Shop price", value: formatPhp(example.shopPriceMinor) },
+            {
+              label: `Service fee (${formatRatePercent(rateBps)})`,
+              value: formatPhp(example.serviceFeeMinor),
+              emphasis: true,
+            },
+            { label: "Delivery", value: formatPhp(example.deliveryFeeMinor) },
+            { label: "Client total", value: formatPhp(example.clientTotalMinor), total: true },
+          ]}
+        />
       </div>
     </div>
   );
@@ -538,6 +770,27 @@ function SettingsSkeleton() {
         Platform-wide numbers and the GCash plate checkout scans, changed here rather than
         in a release.
       </p>
+
+      <section className="gg-card p-3">
+        <h2 className="text-h3 text-text-primary m-0">Service fee</h2>
+        <p className="text-body text-text-secondary m-0 mt-1 max-w-prose">
+          {SERVICE_FEE_COPY}
+        </p>
+        <p className="text-body text-text-primary m-0 mt-2 max-w-prose">
+          {SERVICE_FEE_VISIBILITY}
+        </p>
+        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+          <div>
+            <p className="text-caption text-text-secondary m-0 mb-1">Rate on the shop price</p>
+            <Skeleton className="h-11 max-w-40 rounded-field" aria-hidden />
+            <p className="text-caption text-text-muted m-0 mt-2 max-w-prose">{RATE_HELP}</p>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2" aria-hidden>
+            <Skeleton className="h-36 w-full rounded-card" />
+            <Skeleton className="h-36 w-full rounded-card" />
+          </div>
+        </div>
+      </section>
 
       <div className="grid w-full gap-3 lg:grid-cols-2 lg:items-start">
         <section className="gg-card p-3">

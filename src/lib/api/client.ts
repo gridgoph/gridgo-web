@@ -52,8 +52,10 @@ import type {
   User,
   VerificationStatus,
   Zone,
+  SupplierPayoutAccount,
+  SupplierPayoutAccountPatch,
 } from "@/lib/api/types";
-import { normalizeOrder, normalizeOrders } from "@/lib/payments";
+import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
 
 const DEFAULT_API_BASE = "http://127.0.0.1:8787";
 
@@ -411,7 +413,7 @@ export async function confirmPayment(
   input: { note?: string } = {},
 ): Promise<Order> {
   const result = await request<{ order: Order }>(
-    `/orders/${orderId}/payments/${installment}/confirm`,
+    `/orders/${orderId}/payments/${apiInstallment(installment)}/confirm`,
     { method: "POST", body: JSON.stringify(input) },
   );
   return normalizeOrder(result.order);
@@ -428,7 +430,7 @@ export async function rejectPayment(
   input: { reason: string },
 ): Promise<Order> {
   const result = await request<{ order: Order }>(
-    `/orders/${orderId}/payments/${installment}/reject`,
+    `/orders/${orderId}/payments/${apiInstallment(installment)}/reject`,
     { method: "POST", body: JSON.stringify(input) },
   );
   return normalizeOrder(result.order);
@@ -444,10 +446,51 @@ export async function rejectPayment(
  * `409 milestone_not_reached` when production has not got there yet,
  * `409 payout_held` while a claim holds the order.
  */
+export type ReleaseMilestoneInput = {
+  note?: string;
+  /** The wallet's reference number, as shown on the receipt. Optional. */
+  reference?: string;
+  /** A ready `payout_receipt` upload from `uploadPayoutReceipt`. Optional. */
+  receiptFileId?: string;
+};
+
+/**
+ * Ops / Super Admin. JPEG, PNG or WebP, 15 MiB. Stores the wallet receipt
+ * screenshot; it is bound to a share by passing its id to `releaseMilestone`.
+ */
+export async function uploadPayoutReceipt(file: File): Promise<StoredFile> {
+  const body = new FormData();
+  body.append("purpose", "payout_receipt");
+  body.append("file", file);
+  const uploaded = await request<{ file: StoredFile }>("/files", {
+    method: "POST",
+    body,
+  });
+  return uploaded.file;
+}
+
+/**
+ * Ops / Super Admin. Stores the receipt screenshot first, then releases the
+ * share with its id and the reference, so a refused screenshot never leaves
+ * a released share with no proof behind it.
+ */
+export async function releaseMilestoneWithReceipt(
+  orderId: string,
+  code: PayoutMilestoneCode | string,
+  decision: { note: string; reference: string; receipt: File | null },
+): Promise<{ order: Order; milestone: PayoutMilestone }> {
+  const receipt = decision.receipt ? await uploadPayoutReceipt(decision.receipt) : null;
+  return releaseMilestone(orderId, code, {
+    note: decision.note,
+    ...(decision.reference ? { reference: decision.reference } : {}),
+    ...(receipt ? { receiptFileId: receipt.fileId } : {}),
+  });
+}
+
 export async function releaseMilestone(
   orderId: string,
   code: PayoutMilestoneCode | string,
-  input: { note?: string } = {},
+  input: ReleaseMilestoneInput = {},
 ): Promise<{ order: Order; milestone: PayoutMilestone }> {
   const result = await request<{ order: Order; milestone: PayoutMilestone }>(
     `/orders/${orderId}/milestones/${code}/release`,
@@ -481,20 +524,35 @@ export async function health(): Promise<HealthResult> {
 // Platform settings — issue window length and delivery distance bands
 // ---------------------------------------------------------------------------
 
-export async function getSettings(): Promise<PlatformSettings> {
-  const result = await request<{ settings: PlatformSettings }>("/settings");
-  return result.settings;
+/**
+ * The API answers `{ version, settings }`. The version rides along on the
+ * settings object because every write has to quote it back: `PATCH /settings`
+ * is a compare-and-swap and refuses a stale `expectedVersion` with 409.
+ */
+type SettingsEnvelope = { version: number; settings: Omit<PlatformSettings, "version"> };
+
+function withVersion(result: SettingsEnvelope): PlatformSettings {
+  return { ...result.settings, version: result.version };
 }
 
-/** Ops / Super Admin. Either field may be sent on its own. */
+export async function getSettings(): Promise<PlatformSettings> {
+  return withVersion(await request<SettingsEnvelope>("/settings"));
+}
+
+/**
+ * Ops / Super Admin. Any field may be sent on its own; `expectedVersion` is
+ * the version the caller last read, so two people cannot overwrite each other.
+ * A 409 `settings_version_conflict` means reload and look again.
+ */
 export async function updateSettings(
-  input: UpdateSettingsInput,
+  input: UpdateSettingsInput & { expectedVersion: number },
 ): Promise<PlatformSettings> {
-  const result = await request<{ settings: PlatformSettings }>("/settings", {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  });
-  return result.settings;
+  return withVersion(
+    await request<SettingsEnvelope>("/settings", {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  );
 }
 
 /** Hosted payment-QR path checkout and this portal fetch without a signed URL. */
@@ -516,14 +574,81 @@ export async function uploadPaymentQr(file: File): Promise<PlatformSettings> {
     method: "POST",
     body,
   });
-  const result = await request<{ settings: PlatformSettings }>("/settings/payment-qr", {
-    method: "POST",
-    body: JSON.stringify({
-      fileId: uploaded.file.fileId,
-      reason: "Replaced the payment QR from the portal",
+  return withVersion(
+    await request<SettingsEnvelope>("/settings/payment-qr", {
+      method: "POST",
+      body: JSON.stringify({
+        fileId: uploaded.file.fileId,
+        reason: "Replaced the payment QR from the portal",
+      }),
     }),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Where a shop gets paid — the receiving QR the release desk scans
+// ---------------------------------------------------------------------------
+
+/** Supplier. `null` until the shop has set one up. */
+export async function getMyPayoutAccount(): Promise<SupplierPayoutAccount | null> {
+  const result = await request<{ payoutAccount: SupplierPayoutAccount | null }>(
+    "/me/payout-account",
+  );
+  return result.payoutAccount;
+}
+
+/**
+ * Supplier. Creates the account on a first save (`version` null) and updates
+ * it afterwards against the version it was read at; a stale one is
+ * `409 payout_account_stale`, never a silent overwrite.
+ */
+export async function updateMyPayoutAccount(
+  version: number | null,
+  patch: SupplierPayoutAccountPatch,
+): Promise<SupplierPayoutAccount> {
+  const result = await request<{ payoutAccount: SupplierPayoutAccount }>(
+    "/me/payout-account",
+    {
+      method: "PATCH",
+      headers: version != null ? { "If-Match": String(version) } : undefined,
+      body: JSON.stringify({ ...patch, expectedVersion: version }),
+    },
+  );
+  return result.payoutAccount;
+}
+
+/** Supplier. Removes the account and retires its plate. */
+export async function removeMyPayoutAccount(version: number): Promise<void> {
+  await request<{ payoutAccount: null }>("/me/payout-account", {
+    method: "DELETE",
+    headers: { "If-Match": String(version) },
   });
-  return result.settings;
+}
+
+/**
+ * Supplier. JPEG, PNG or WebP, 5 MiB. Stores the plate only; it becomes the
+ * one Operations scans when its `fileId` is saved as `qrFileId`.
+ */
+export async function uploadPayoutQr(file: File): Promise<StoredFile> {
+  const body = new FormData();
+  body.append("purpose", "supplier_payout_qr");
+  body.append("file", file);
+  const uploaded = await request<{ file: StoredFile }>("/files", {
+    method: "POST",
+    body,
+  });
+  return uploaded.file;
+}
+
+/** Ops / Super Admin, or the owning supplier. */
+export async function getSupplierPayoutAccount(
+  userId: string,
+): Promise<SupplierPayoutAccount | null> {
+  const result = await request<{
+    userId: string;
+    payoutAccount: SupplierPayoutAccount | null;
+  }>(`/users/${encodeURIComponent(userId)}/payout-account`);
+  return result.payoutAccount;
 }
 
 // ---------------------------------------------------------------------------

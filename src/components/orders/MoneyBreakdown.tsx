@@ -1,8 +1,8 @@
 /**
- * The full money breakdown on an order — supplier price, GRIDGO's commission,
- * and what the client pays, on one line of sight.
+ * The full money breakdown on an order — supplier price, GRIDGO's service
+ * fee, and what the client pays, on one line of sight.
  *
- * OPERATIONS AND SUPER ADMIN ONLY. Commission is an authorization rule, not a
+ * OPERATIONS AND SUPER ADMIN ONLY. The fee is an authorization rule, not a
  * layout preference: the client never learns it exists and the supplier never
  * sees it either. Do not import this into a supplier route or any client-facing
  * view — `src/components/orders/__tests__/money-visibility.test.ts` enforces it.
@@ -11,6 +11,7 @@
  * missing here is rendered as unavailable rather than guessed at.
  */
 
+import { formatRatePercent } from "@/components/settings/service-fee";
 import type { Order } from "@/lib/api/types";
 import { formatPhp } from "@/lib/format";
 
@@ -45,14 +46,12 @@ export function MoneyBreakdown({ order, headingId }: Props) {
       hint: "What the supplier asked for and keeps in full",
     });
   }
-  if (order.commissionMinor !== undefined) {
+  if (order.serviceFeeMinor !== undefined) {
     supplierRows.push({
-      label: `GRIDGO commission${
-        order.commissionRatePercent !== undefined
-          ? ` (${order.commissionRatePercent}%)`
-          : ""
+      label: `GRIDGO service fee${
+        order.serviceFeeRateBps != null ? ` (${formatRatePercent(order.serviceFeeRateBps)})` : ""
       }`,
-      value: formatPhp(order.commissionMinor),
+      value: formatPhp(order.serviceFeeMinor),
       hint: "Added on top of the supplier price. Never shown to the client.",
     });
   }
@@ -86,7 +85,7 @@ export function MoneyBreakdown({ order, headingId }: Props) {
         <MoneyRows rows={supplierRows} />
       ) : (
         <p className="text-body text-text-secondary m-0">
-          The supplier price and commission appear once a supplier has accepted
+          The supplier price and service fee appear once a supplier has accepted
           this order and named its price.
         </p>
       )}

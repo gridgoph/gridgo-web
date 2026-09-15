@@ -1,6 +1,6 @@
 /**
- * Commission secrecy is an authorization rule, and the easiest way to break it
- * from the portal is to reuse the Operations money component on a supplier
+ * Service-fee secrecy is an authorization rule, and the easiest way to break
+ * it from the portal is to reuse the Operations money component on a supplier
  * screen. This walks the supplier route tree and fails if that ever happens.
  */
 
@@ -37,11 +37,15 @@ describe("supplier route tree", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("never reads commission fields off an order", () => {
+  it("never reads service-fee fields off an order", () => {
     const offenders = files.filter((file) => {
       const src = readFileSync(file, "utf8");
       return (
-        src.includes("commissionMinor") || src.includes("commissionRatePercent")
+        src.includes("serviceFeeMinor") ||
+        src.includes("serviceFeeRateBps") ||
+        src.includes("platformRevenue") ||
+        src.includes("commissionMinor") ||
+        src.includes("commissionRatePercent")
       );
     });
     expect(offenders).toEqual([]);

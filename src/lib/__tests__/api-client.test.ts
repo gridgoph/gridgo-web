@@ -12,13 +12,13 @@ import {
   allMilestonesReleased,
   canReportIssue,
   claimBlocksPayout,
-  COMMISSION_PERCENT,
   DOWNPAYMENT_PERCENT,
   milestoneReleaseBlocker,
   orderHasPayoutHold,
   paymentAwaitsConfirmation,
   paymentIsSettled,
   PLATFORM_CONSTRAINT_COPY,
+  SERVICE_FEE_MAX_BPS,
 } from "@/lib/api/constraints";
 import type {
   AdminPortalRoleProjection,
@@ -224,9 +224,10 @@ describe("API bearer tokens", () => {
 });
 
 describe("platform constraints", () => {
-  it("encodes the split payment and commission shares", () => {
+  it("encodes the split payment shares and bounds the service fee", () => {
     expect(DOWNPAYMENT_PERCENT).toBe(75);
-    expect(COMMISSION_PERCENT).toBe(10);
+    // The fee itself is not a constant: Operations sets it in settings.
+    expect(SERVICE_FEE_MAX_BPS).toBe(10_000);
   });
 
   it("reads an installment by where it stands, not by its wording", () => {

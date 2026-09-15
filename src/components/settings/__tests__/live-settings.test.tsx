@@ -19,11 +19,15 @@ afterEach(cleanup);
 it("updates clean settings fields and retains edited fields on live refresh", async () => {
   getSettings
     .mockResolvedValueOnce({
+      version: 1,
       issueWindowHours: 24,
+      serviceFeeRateBps: 1000,
       deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 2500 }],
     })
     .mockResolvedValueOnce({
+      version: 2,
       issueWindowHours: 36,
+      serviceFeeRateBps: 1250,
       deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 5000 }],
     });
   let listener!: (ping: InvalidatePing) => void;
@@ -55,4 +59,6 @@ it("updates clean settings fields and retains edited fields on live refresh", as
   });
   await waitFor(() => expect(screen.getByLabelText("Fee (₱)")).toHaveValue("50.00"));
   expect(screen.getByLabelText("Hours after delivery")).toHaveValue("48");
+  // Untouched, so the live refresh is allowed to move it.
+  expect(screen.getByLabelText("Rate on the shop price")).toHaveValue("12.5");
 });

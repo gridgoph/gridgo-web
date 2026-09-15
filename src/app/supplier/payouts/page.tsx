@@ -100,9 +100,9 @@ export default function SupplierPayoutsPage() {
         <div className="max-w-prose">
           <p className="text-body text-text-secondary m-0">
             You are paid in four parts of your own price: half when printing is under way,
-            15% on packaging and quality check, a quarter on delivery, and the last 10%
-            once the client&rsquo;s issue window closes. Each part needs a Proof of
-            Fulfilment before Operations can release it.
+            15% on packaging, a quarter on delivery, and the last 10% once the
+            client&rsquo;s issue window closes. Each part needs a Proof of Fulfilment
+            before Operations can release it.
           </p>
           {pending ? null : (
             <p className="text-caption text-text-muted m-0 mt-1">
