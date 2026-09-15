@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { History, ListChecks, Wallet } from "lucide-react";
@@ -78,28 +80,28 @@ export default function SupplierJobDetailPage() {
   const [pricePesos, setPricePesos] = useState("");
   const [promisedDate, setPromisedDate] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setJob(await getOrder(orderId));
-    } catch (err) {
-      setJob(null);
-      if (err instanceof ApiError) {
-        setError(
-          err.status === 404
-            ? "This job is not in your inbox. It may have been given to another supplier."
-            : "Could not load this job. Retry when the API responds.",
-        );
-      } else {
-        setError(
-          "Network error loading this job. Retry when the API is reachable.",
-        );
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        setJob(await getOrder(orderId));
+      } catch (err) {
+        setJob(null);
+        if (err instanceof ApiError) {
+          setError(
+            err.status === 404
+              ? "This job is not in your inbox. It may have been given to another supplier."
+              : "Could not load this job. Retry when the API responds.",
+          );
+        } else {
+          setError("Network error loading this job. Retry when the API is reachable.");
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [orderId]);
+    }, [orderId]),
+  );
 
   useLiveReload("jobs", load, { matchId: orderId });
 
@@ -149,9 +151,7 @@ export default function SupplierJobDetailPage() {
     try {
       const updated = await transitionOrder(job.id, "supplier_accepted", {
         supplierPriceMinor,
-        promisedDate: promisedDate
-          ? new Date(promisedDate).toISOString()
-          : undefined,
+        promisedDate: promisedDate ? new Date(promisedDate).toISOString() : undefined,
         note: "Accepted and priced",
       });
       setJob(updated);
@@ -177,10 +177,7 @@ export default function SupplierJobDetailPage() {
             <Button variant="secondary" onClick={() => void load()}>
               Retry
             </Button>
-            <Button
-              variant="secondary"
-              onClick={() => router.push("/supplier/jobs")}
-            >
+            <Button variant="secondary" onClick={() => router.push("/supplier/jobs")}>
               Back to inbox
             </Button>
           </div>
@@ -203,6 +200,7 @@ export default function SupplierJobDetailPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-h2 text-text-primary m-0">{job.title}</h2>
+            <p className="text-caption text-text-muted m-0 mt-1">Order {job.id}</p>
             {job.supplierPriceMinor !== undefined ? (
               <p className="text-caption text-text-muted m-0 mt-1">
                 You earn {formatPhp(job.supplierPriceMinor)} on this job
@@ -304,9 +302,7 @@ export default function SupplierJobDetailPage() {
               <History size={18} strokeWidth={1.75} aria-hidden />
               Timeline
             </h3>
-            <p className="text-caption text-text-muted m-0 mb-3">
-              Most recent first.
-            </p>
+            <p className="text-caption text-text-muted m-0 mb-3">Most recent first.</p>
             <Timeline entries={job.timeline} newestFirst />
           </section>
         </div>
@@ -351,10 +347,9 @@ export default function SupplierJobDetailPage() {
           <DialogHeader>
             <DialogTitle>Accept this job at your price</DialogTitle>
             <DialogDescription>
-              Name what you want for the work. The client is told the final
-              price straight away and sends a 75% downpayment; you start
-              production once Operations confirms it arrived. You keep your
-              price in full.
+              Name what you want for the work. The client is told the final price straight
+              away and sends a 75% downpayment; you start production once Operations
+              confirms it arrived. You keep your price in full.
             </DialogDescription>
           </DialogHeader>
 
@@ -376,9 +371,7 @@ export default function SupplierJobDetailPage() {
               </FieldDescription>
             </Field>
             <Field>
-              <FieldLabel htmlFor="promised-date">
-                Promise it by (optional)
-              </FieldLabel>
+              <FieldLabel htmlFor="promised-date">Promise it by (optional)</FieldLabel>
               <Input
                 id="promised-date"
                 type="datetime-local"
@@ -386,8 +379,8 @@ export default function SupplierJobDetailPage() {
                 onChange={(e) => setPromisedDate(e.target.value)}
               />
               <FieldDescription>
-                Shown to Operations on the schedule. Leave blank to use the
-                client&rsquo;s deadline.
+                Shown to Operations on the schedule. Leave blank to use the client&rsquo;s
+                deadline.
               </FieldDescription>
             </Field>
           </FieldGroup>
@@ -427,8 +420,8 @@ export default function SupplierJobDetailPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Decline this job?</AlertDialogTitle>
             <AlertDialogDescription>
-              It goes back to Operations to be given to another supplier, and
-              you lose this assignment.
+              It goes back to Operations to be given to another supplier, and you lose
+              this assignment.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {actionError ? (

@@ -1,12 +1,11 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
-import {
-  buildPayoutRows,
-  formatMoneyOrUnavailable,
-} from "@/app/supplier/_lib/payouts";
+import { buildPayoutRows, formatMoneyOrUnavailable } from "@/app/supplier/_lib/payouts";
 import { MilestoneList } from "@/components/orders/MilestoneList";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -29,41 +28,43 @@ export default function SupplierPayoutsPage() {
   const [loading, setLoading] = useState(true);
   const [issuesNote, setIssuesNote] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setIssuesNote(null);
-    try {
-      const jobs = await listJobs();
-      let issues: Issue[] = [];
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      setIssuesNote(null);
       try {
-        issues = await listIssues();
+        const jobs = await listJobs();
+        let issues: Issue[] = [];
+        try {
+          issues = await listIssues();
+        } catch (err) {
+          // Claims are Operations-only; issues can fail on their own.
+          if (err instanceof ApiError) {
+            setIssuesNote(
+              "The reason behind a hold could not be loaded. Each job still shows whether it is held.",
+            );
+          }
+        }
+        setData({ jobs, issues });
       } catch (err) {
-        // Claims are Operations-only; issues can fail on their own.
+        setData(null);
         if (err instanceof ApiError) {
-          setIssuesNote(
-            "The reason behind a hold could not be loaded. Each job still shows whether it is held.",
+          setError(
+            err.status === 403
+              ? "Payout history is only available to supplier accounts."
+              : "Could not load payouts. Retry when the API responds.",
+          );
+        } else {
+          setError(
+            "Network error loading payouts. Confirm the demo API is running, then retry.",
           );
         }
+      } finally {
+        setLoading(false);
       }
-      setData({ jobs, issues });
-    } catch (err) {
-      setData(null);
-      if (err instanceof ApiError) {
-        setError(
-          err.status === 403
-            ? "Payout history is only available to supplier accounts."
-            : "Could not load payouts. Retry when the API responds.",
-        );
-      } else {
-        setError(
-          "Network error loading payouts. Confirm the demo API is running, then retry.",
-        );
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    }, []),
+  );
 
   useLiveReload(["payouts", "jobs"], load);
 
@@ -98,11 +99,10 @@ export default function SupplierPayoutsPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="max-w-prose">
           <p className="text-body text-text-secondary m-0">
-            You are paid in four parts of your own price: half when printing is
-            under way, 15% on packaging and quality check, a quarter on
-            delivery, and the last 10% once the client&rsquo;s issue window
-            closes. Each part needs a Proof of Fulfilment before Operations can
-            release it.
+            You are paid in four parts of your own price: half when printing is under way,
+            15% on packaging and quality check, a quarter on delivery, and the last 10%
+            once the client&rsquo;s issue window closes. Each part needs a Proof of
+            Fulfilment before Operations can release it.
           </p>
           {pending ? null : (
             <p className="text-caption text-text-muted m-0 mt-1">
@@ -111,11 +111,7 @@ export default function SupplierPayoutsPage() {
             </p>
           )}
         </div>
-        <Button
-          variant="secondary"
-          disabled={loading}
-          onClick={() => void load()}
-        >
+        <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
         </Button>
       </div>
@@ -155,6 +151,9 @@ export default function SupplierPayoutsPage() {
                     {row.order.title}
                   </p>
                   <p className="text-caption text-text-muted m-0 mt-0.5">
+                    Order {row.order.id}
+                  </p>
+                  <p className="text-caption text-text-muted m-0 mt-0.5">
                     Updated {formatDateTime(row.order.updatedAt)}
                   </p>
                 </div>
@@ -165,9 +164,7 @@ export default function SupplierPayoutsPage() {
                 />
               </div>
 
-              <p className="text-body text-text-secondary m-0">
-                {row.settlement.detail}
-              </p>
+              <p className="text-body text-text-secondary m-0">{row.settlement.detail}</p>
 
               <dl className="m-0 grid grid-cols-1 gap-3 border-t border-outline-subtle pt-3 sm:grid-cols-3">
                 <Figure
@@ -180,17 +177,12 @@ export default function SupplierPayoutsPage() {
                 />
                 <Figure
                   label="Still to come"
-                  value={formatMoneyOrUnavailable(
-                    row.outstandingMinor,
-                    formatPhp,
-                  )}
+                  value={formatMoneyOrUnavailable(row.outstandingMinor, formatPhp)}
                 />
               </dl>
 
               {row.holdReason ? (
-                <p className="text-body text-warning m-0">
-                  On hold: {row.holdReason}
-                </p>
+                <p className="text-body text-warning m-0">On hold: {row.holdReason}</p>
               ) : null}
 
               <MilestoneList order={row.order} />

@@ -1,5 +1,9 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { addDays, format, isSameDay, parseISO } from "date-fns";
@@ -57,24 +61,28 @@ export default function OpsSchedulePage() {
   const [anchor, setAnchor] = useState(() => new Date());
   const [kinds, setKinds] = useState<Set<ScheduleKind>>(() => new Set(ALL_KINDS));
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [o, c] = await Promise.all([listOrders(), listClaims()]);
-      setOrders(o);
-      setClaims(c);
-    } catch (err) {
-      setOrders(null);
-      if (err instanceof ApiError) {
-        setError(`Could not load schedule (${err.code}).`);
-      } else {
-        setError("Network error loading schedule.");
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [o, c] = await Promise.all([listOrders(), listClaims()]);
+        setOrders(o);
+        setClaims(c);
+      } catch (err) {
+        setOrders(null);
+        if (err instanceof ApiError) {
+          setError(`Could not load schedule (${err.code}).`);
+        } else {
+          setError("Network error loading schedule.");
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    }, []),
+  );
+
+  useLiveReload(["orders", "claims"], load);
 
   useEffect(() => {
     void load();
@@ -139,11 +147,7 @@ export default function OpsSchedulePage() {
           delivery, recovery, cash reconciliation, and payout holds. Selecting an event
           opens the existing workspace; nothing new is created here.
         </p>
-        <Button
-          variant="secondary"
-          disabled={loading}
-          onClick={() => void load()}
-        >
+        <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
         </Button>
       </div>
@@ -285,6 +289,9 @@ function WeekGrid({ start, events }: { start: Date; events: ScheduleEvent[] }) {
                     >
                       {ev.orderTitle}
                     </span>
+                    <span className="text-caption text-text-muted block">
+                      Order {ev.orderId}
+                    </span>
                   </Link>
                 </li>
               ))}
@@ -339,6 +346,7 @@ function AgendaList({
                     >
                       {ev.orderTitle}
                     </p>
+                    <p className="text-caption text-text-muted m-0">Order {ev.orderId}</p>
                     <p className="text-caption text-text-secondary m-0">{ev.detail}</p>
                   </div>
                   <span className="text-body text-text-secondary inline-flex items-center gap-1 shrink-0">

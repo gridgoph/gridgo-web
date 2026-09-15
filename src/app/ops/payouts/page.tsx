@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
@@ -62,24 +64,26 @@ export default function OpsPayoutsPage() {
   } | null>(null);
   const [note, setNote] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [orders, claims] = await Promise.all([listOrders(), listClaims()]);
-      setData({ orders, claims });
-    } catch (err) {
-      setData(null);
-      setError(
-        opsErrorMessage(
-          err,
-          "Could not load payouts. Confirm the demo API is running, then retry.",
-        ),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [orders, claims] = await Promise.all([listOrders(), listClaims()]);
+        setData({ orders, claims });
+      } catch (err) {
+        setData(null);
+        setError(
+          opsErrorMessage(
+            err,
+            "Could not load payouts. Confirm the demo API is running, then retry.",
+          ),
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, []),
+  );
 
   useLiveReload(["payouts", "orders"], load);
 
@@ -89,19 +93,18 @@ export default function OpsPayoutsPage() {
 
   const rows = useMemo(() => {
     if (!data) return [];
-    return data.orders
-      .filter(
-        (order) =>
-          PAYOUT_STATES.has(order.state) && order.payoutMilestones?.length,
-      )
-      .map((order) => ({
-        order,
-        holds: data.claims.filter(
-          (claim) =>
-            claim.orderId === order.id && claimBlocksPayout(claim.status),
-        ),
-      }))
-      /*
+    return (
+      data.orders
+        .filter(
+          (order) => PAYOUT_STATES.has(order.state) && order.payoutMilestones?.length,
+        )
+        .map((order) => ({
+          order,
+          holds: data.claims.filter(
+            (claim) => claim.orderId === order.id && claimBlocksPayout(claim.status),
+          ),
+        }))
+        /*
        Longest wait first.
 
        Every stage now waits for somebody here, which means a shop can sit
@@ -109,11 +112,12 @@ export default function OpsPayoutsPage() {
        outstanding buries the one job that has been waiting three days under
        four fresh ones, so the wait leads and the amount only breaks its ties.
       */
-      .sort((a, b) => {
-        const waited = (a.order.updatedAt || "").localeCompare(b.order.updatedAt || "");
-        if (waited !== 0) return waited;
-        return outstandingCount(b.order) - outstandingCount(a.order);
-      });
+        .sort((a, b) => {
+          const waited = (a.order.updatedAt || "").localeCompare(b.order.updatedAt || "");
+          if (waited !== 0) return waited;
+          return outstandingCount(b.order) - outstandingCount(a.order);
+        })
+    );
   }, [data]);
 
   async function apply() {
@@ -165,15 +169,11 @@ export default function OpsPayoutsPage() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          A supplier is paid in four parts, and each one releases only against a
-          Proof of Fulfilment. The shares are of what the supplier earns — the
-          commission and the delivery fee sit outside them.
+          A supplier is paid in four parts, and each one releases only against a Proof of
+          Fulfilment. The shares are of what the supplier earns — the commission and the
+          delivery fee sit outside them.
         </p>
-        <Button
-          variant="secondary"
-          disabled={loading}
-          onClick={() => void load()}
-        >
+        <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
         </Button>
       </div>
@@ -190,12 +190,7 @@ export default function OpsPayoutsPage() {
       ) : null}
 
       {pending ? (
-        <SkeletonCards
-          count={2}
-          lines={4}
-          label="Loading payouts"
-          className="gap-4"
-        />
+        <SkeletonCards count={2} lines={4} label="Loading payouts" className="gap-4" />
       ) : !rows.length ? (
         <EmptyState
           title="No payouts in play"
@@ -220,10 +215,12 @@ export default function OpsPayoutsPage() {
                     >
                       {order.title}
                     </p>
+                    <p className="text-caption text-text-muted m-0 mt-0.5">
+                      Order {order.id}
+                    </p>
                     {order.supplierPriceMinor !== undefined ? (
                       <p className="text-caption text-text-muted m-0 mt-0.5">
-                        Supplier earns {formatPhp(order.supplierPriceMinor)} on
-                        this order
+                        Supplier earns {formatPhp(order.supplierPriceMinor)} on this order
                       </p>
                     ) : null}
                   </div>
@@ -249,17 +246,14 @@ export default function OpsPayoutsPage() {
                     </p>
                     <ul className="m-0 mt-1 flex list-none flex-col gap-1 p-0">
                       {holds.map((claim) => (
-                        <li
-                          key={claim.id}
-                          className="text-body text-text-secondary"
-                        >
+                        <li key={claim.id} className="text-body text-text-secondary">
                           {claim.holdReason || claim.reason}
                         </li>
                       ))}
                     </ul>
                     <p className="text-caption text-text-muted m-0 mt-2">
-                      Nothing releases until the hold is lifted on Claims and
-                      payout holds.
+                      Nothing releases until the hold is lifted on Claims and payout
+                      holds.
                     </p>
                   </div>
                 ) : null}
@@ -349,6 +343,5 @@ export default function OpsPayoutsPage() {
 }
 
 function outstandingCount(order: Order): number {
-  return (order.payoutMilestones ?? []).filter((m) => m.status !== "released")
-    .length;
+  return (order.payoutMilestones ?? []).filter((m) => m.status !== "released").length;
 }

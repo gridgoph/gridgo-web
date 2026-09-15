@@ -1,5 +1,9 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
@@ -39,9 +43,9 @@ import {
   deleteCatalogOptionGroup,
   getCatalogItem,
   getTaxonomy,
+  isApiError,
   listAcceptedFileFormats,
   listCatalogItemPrepSteps,
-
   putCatalogItemFileFormats,
   updateCatalogItem,
   updateCatalogItemPrepStep,
@@ -79,6 +83,7 @@ import {
 } from "@/lib/listings";
 
 type Draft = {
+  version: Listing["version"];
   name: string;
   description: string;
   price: string;
@@ -93,6 +98,7 @@ type Draft = {
 
 function draftFrom(listing: Listing): Draft {
   return {
+    version: listing.version,
     name: listing.name,
     description: listing.description,
     price: listing.basePriceMinor ? minorToPesosInput(listing.basePriceMinor) : "",
@@ -116,7 +122,9 @@ export default function ListingEditorPage() {
   const [services, setServices] = useState<ServiceLine[]>([]);
   const [taxonomy, setTaxonomy] = useState<Taxonomy | null>(null);
   const [prepSteps, setPrepSteps] = useState<PrepStep[]>([]);
-  const [formats, setFormats] = useState<Array<{ code: string; displayName: string; inputKind: "file" | "url" }>>([]);
+  const [formats, setFormats] = useState<
+    Array<{ code: string; displayName: string; inputKind: "file" | "url" }>
+  >([]);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -128,59 +136,82 @@ export default function ListingEditorPage() {
 
   const working = draft ?? (listing ? draftFrom(listing) : null);
 
-  const load = useCallback(async () => {
-    try {
-      const [itemBody, servicesBody, tax, stepsBody, formatList] = await Promise.all([
-        getCatalogItem(id),
-        loadShopServiceLines().catch(() => ({ services: [] })),
-        getTaxonomy(),
-        listCatalogItemPrepSteps(id).catch(() => ({ prepSteps: [] })),
-        listAcceptedFileFormats().catch(() => []),
-      ]);
-      const next = normalizeListing(itemBody);
-      if (!next) throw new Error("unreadable");
-      setListing(next);
-      setServices(normalizeServiceLines(servicesBody));
-      setTaxonomy(tax);
-      setPrepSteps(normalizePrepSteps(stepsBody));
-      setFormats(formatList);
-      setError(null);
-      if (!dirtyRef.current) setDraft(draftFrom(next));
-    } catch (err) {
-      setError(listingErrorMessage(err, "Could not open this listing."));
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      try {
+        const [itemBody, servicesBody, tax, stepsBody, formatList] = await Promise.all([
+          getCatalogItem(id),
+          loadShopServiceLines().catch(() => ({ services: [] })),
+          getTaxonomy(),
+          listCatalogItemPrepSteps(id).catch(() => ({ prepSteps: [] })),
+          listAcceptedFileFormats().catch(() => []),
+        ]);
+        const next = normalizeListing(itemBody);
+        if (!next) throw new Error("unreadable");
+        setListing(next);
+        setServices(normalizeServiceLines(servicesBody));
+        setTaxonomy(tax);
+        setPrepSteps(normalizePrepSteps(stepsBody));
+        setFormats(formatList);
+        setError(null);
+        if (!dirtyRef.current) setDraft(draftFrom(next));
+      } catch (err) {
+        if (
+          isApiError(err) &&
+          ["unauthorized", "forbidden", "not_found"].includes(err.kind)
+        ) {
+          setListing(null);
+          setDraft(null);
+          dirtyRef.current = false;
+        }
+        setError(listingErrorMessage(err, "Could not open this listing."));
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    }, [id]),
+  );
+
+  useLiveReload(["catalog", "services"], load);
 
   useEffect(() => {
-    void load();
+    void load().catch(() => undefined);
   }, [load]);
 
-  const dirty = Boolean(listing && working && JSON.stringify(working) !== JSON.stringify(draftFrom(listing)));
+  const dirty = Boolean(
+    listing && working && JSON.stringify(working) !== JSON.stringify(draftFrom(listing)),
+  );
   dirtyRef.current = dirty;
 
   const context = listing ? boardContextFor(listing, services) : null;
-  const merged = listing && working
-    ? {
-        ...listing,
-        name: working.name,
-        description: working.description,
-        pricingUnit: working.pricingUnit,
-        packageQty: working.pricingUnit === "per_package" ? working.packageQty : listing.packageQty,
-        turnaroundMode: working.turnaroundMode,
-        turnaroundHours: working.turnaroundHours,
-        subcategoryCode: working.subcategoryCode,
-        printerMaxWidthFeet: needsPrinterMaxWidth(working.subcategoryCode)
-          ? working.printerMaxWidthFeet
-          : null,
-      }
-    : listing;
+  const merged =
+    listing && working
+      ? {
+          ...listing,
+          name: working.name,
+          description: working.description,
+          pricingUnit: working.pricingUnit,
+          packageQty:
+            working.pricingUnit === "per_package"
+              ? working.packageQty
+              : listing.packageQty,
+          turnaroundMode: working.turnaroundMode,
+          turnaroundHours: working.turnaroundHours,
+          subcategoryCode: working.subcategoryCode,
+          printerMaxWidthFeet: needsPrinterMaxWidth(working.subcategoryCode)
+            ? working.printerMaxWidthFeet
+            : null,
+        }
+      : listing;
   const blockers = merged && context ? boardBlockers(merged, context) : [];
-  const standing = merged && context ? boardStanding(merged, context, shopApproved) : null;
+  const standing =
+    merged && context ? boardStanding(merged, context, shopApproved) : null;
   const inheritedHours = context?.inheritedTurnaroundHours ?? null;
   const covers = listing
-    ? coversFor(taxonomy, services.find((line) => line.id === listing.serviceLineId)?.categoryCode ?? "")
+    ? coversFor(
+        taxonomy,
+        services.find((line) => line.id === listing.serviceLineId)?.categoryCode ?? "",
+      )
     : [];
 
   async function persist(onTheBoard?: boolean) {
@@ -202,7 +233,7 @@ export default function ListingEditorPage() {
     setActionError(null);
     try {
       const saved = normalizeListing(
-        await updateCatalogItem(listing.id, listing.version, {
+        await updateCatalogItem(listing.id, working.version, {
           name: working.name.trim(),
           description: working.description.trim(),
           basePriceMinor: money,
@@ -246,7 +277,10 @@ export default function ListingEditorPage() {
       await attachCatalogItemPhoto(
         uploaded.fileId,
         listing.id,
-        nextFreeSlot(listing.photos.map((photo) => photo.sortOrder), LISTING_CAPS.photos),
+        nextFreeSlot(
+          listing.photos.map((photo) => photo.sortOrder),
+          LISTING_CAPS.photos,
+        ),
       );
       await load();
     } catch (err) {
@@ -267,7 +301,10 @@ export default function ListingEditorPage() {
         name: label,
         kind,
         required: kind === "spec",
-        sortOrder: nextFreeSlot(listing.groups.map((group) => group.sortOrder), LISTING_CAPS.specGroups),
+        sortOrder: nextFreeSlot(
+          listing.groups.map((group) => group.sortOrder),
+          LISTING_CAPS.specGroups,
+        ),
         options: [{ label: first, priceModifierMinor: 0, sortOrder: 0 }],
       });
       await load();
@@ -285,7 +322,10 @@ export default function ListingEditorPage() {
       await createCatalogOption(group.id, group.version, {
         label: "New choice",
         priceModifierMinor: 0,
-        sortOrder: nextFreeSlot(group.options.map((option) => option.sortOrder), LISTING_CAPS.optionsPerGroup),
+        sortOrder: nextFreeSlot(
+          group.options.map((option) => option.sortOrder),
+          LISTING_CAPS.optionsPerGroup,
+        ),
       });
       await load();
     } catch (err) {
@@ -297,12 +337,23 @@ export default function ListingEditorPage() {
 
   async function saveOptionPrice(group: SpecGroup, optionId: string, pesos: string) {
     const minor = pesosToMinor(pesos) ?? 0;
+    let priceSaved = false;
     setBusy(true);
+    setActionError(null);
     try {
-      await updateCatalogOption(group.id, optionId, group.version, { priceModifierMinor: minor });
+      await updateCatalogOption(group.id, optionId, group.version, {
+        priceModifierMinor: minor,
+      });
+      priceSaved = true;
       await load();
+      return true;
     } catch (err) {
-      setActionError(listingErrorMessage(err, "Could not save that price."));
+      setActionError(
+        priceSaved
+          ? "Price saved, but its refresh failed. Your entered price was kept."
+          : listingErrorMessage(err, "Could not save that price."),
+      );
+      return false;
     } finally {
       setBusy(false);
     }
@@ -340,7 +391,10 @@ export default function ListingEditorPage() {
       await createCatalogItemPrepStep(listing.id, listing.version, {
         title: "Before they send work",
         body: "",
-        sortOrder: nextFreeSlot(prepSteps.map((step) => step.sortOrder), LISTING_CAPS.prepSteps),
+        sortOrder: nextFreeSlot(
+          prepSteps.map((step) => step.sortOrder),
+          LISTING_CAPS.prepSteps,
+        ),
       });
       await load();
     } catch (err) {
@@ -404,7 +458,7 @@ export default function ListingEditorPage() {
   if (loading && !listing) {
     return <p className="text-body text-text-muted m-0">Opening this listing…</p>;
   }
-  if (error || !listing || !working) {
+  if (!listing || !working) {
     return (
       <ErrorState
         title="This listing could not open"
@@ -413,9 +467,10 @@ export default function ListingEditorPage() {
     );
   }
 
-  const fileCodes = listing.fileFormatMode === "override"
-    ? listing.formatCodes
-    : (context?.inheritedFormatCodes ?? []);
+  const fileCodes =
+    listing.fileFormatMode === "override"
+      ? listing.formatCodes
+      : (context?.inheritedFormatCodes ?? []);
 
   const saveBar = (
     <div className="flex flex-col gap-2">
@@ -435,17 +490,25 @@ export default function ListingEditorPage() {
     <div className="flex flex-col gap-6 pb-24 lg:pb-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-h3 text-text-primary m-0">{working.name || "Untitled listing"}</h2>
+          <h2 className="text-h3 text-text-primary m-0">
+            {working.name || "Untitled listing"}
+          </h2>
           {standing ? (
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              <StatusChip tone={standing.tone} label={standing.label} icon={standing.icon} />
+              <StatusChip
+                tone={standing.tone}
+                label={standing.label}
+                icon={standing.icon}
+              />
               {standing.note ? (
                 <p className="text-caption text-text-secondary m-0">{standing.note}</p>
               ) : null}
             </div>
           ) : null}
         </div>
-        {actionError ? <p className="text-body text-destructive m-0">{actionError}</p> : null}
+        {actionError ? (
+          <p className="text-body text-destructive m-0">{actionError}</p>
+        ) : null}
         {notice ? <p className="text-body text-text-secondary m-0">{notice}</p> : null}
       </div>
 
@@ -490,7 +553,9 @@ export default function ListingEditorPage() {
           {blockers.length ? (
             <EmptyState title="Not ready yet" body={blockers[0]} />
           ) : listing.onTheBoard ? (
-            <p className="text-caption text-text-secondary m-0">Clients can see this listing now.</p>
+            <p className="text-caption text-text-secondary m-0">
+              Clients can see this listing now.
+            </p>
           ) : (
             <p className="text-caption text-text-secondary m-0">
               Ready to go up. Clients cannot see it while it is hidden.
@@ -515,7 +580,9 @@ export default function ListingEditorPage() {
                     id="listing-name"
                     value={working.name}
                     maxLength={LISTING_CAPS.nameChars}
-                    onChange={(event) => setDraft({ ...working, name: event.target.value })}
+                    onChange={(event) =>
+                      setDraft({ ...working, name: event.target.value })
+                    }
                   />
                 </Field>
                 <Field>
@@ -524,7 +591,9 @@ export default function ListingEditorPage() {
                     id="listing-body"
                     value={working.description}
                     maxLength={LISTING_CAPS.descriptionChars}
-                    onChange={(event) => setDraft({ ...working, description: event.target.value })}
+                    onChange={(event) =>
+                      setDraft({ ...working, description: event.target.value })
+                    }
                     placeholder="Single-sheet colour printing on 70gsm or 80gsm bond."
                   />
                 </Field>
@@ -532,15 +601,19 @@ export default function ListingEditorPage() {
                   <Field>
                     <FieldLabel>Kind of work</FieldLabel>
                     <p className="text-caption text-text-muted m-0 mb-2">
-                      Filed under {subcategoryName(taxonomy, working.subcategoryCode)}. You can move
-                      it within that category, not out of it.
+                      Filed under {subcategoryName(taxonomy, working.subcategoryCode)}.
+                      You can move it within that category, not out of it.
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {covers.map((cover) => (
                         <Button
                           key={cover.code}
-                          variant={working.subcategoryCode === cover.code ? "default" : "outline"}
-                          onClick={() => setDraft({ ...working, subcategoryCode: cover.code })}
+                          variant={
+                            working.subcategoryCode === cover.code ? "default" : "outline"
+                          }
+                          onClick={() =>
+                            setDraft({ ...working, subcategoryCode: cover.code })
+                          }
                         >
                           {cover.name}
                         </Button>
@@ -562,7 +635,8 @@ export default function ListingEditorPage() {
             <div className="mt-8 xl:mt-0">
               <p className="text-overline text-text-muted m-0 uppercase">Price</p>
               <p className="text-caption text-text-secondary m-0 mt-1">
-                Your own asking price. What GRIDGO charges the client on top is not yours to set.
+                Your own asking price. What GRIDGO charges the client on top is not yours
+                to set.
               </p>
               <FieldGroup className="mt-3">
                 <div className="flex flex-wrap gap-2">
@@ -583,7 +657,9 @@ export default function ListingEditorPage() {
                       id="price"
                       inputMode="decimal"
                       value={working.price}
-                      onChange={(event) => setDraft({ ...working, price: event.target.value })}
+                      onChange={(event) =>
+                        setDraft({ ...working, price: event.target.value })
+                      }
                     />
                   </Field>
                   {working.pricingUnit === "per_package" ? (
@@ -595,7 +671,10 @@ export default function ListingEditorPage() {
                         min={2}
                         value={working.packageQty}
                         onChange={(event) =>
-                          setDraft({ ...working, packageQty: Number(event.target.value) || 0 })
+                          setDraft({
+                            ...working,
+                            packageQty: Number(event.target.value) || 0,
+                          })
                         }
                       />
                     </Field>
@@ -649,7 +728,10 @@ export default function ListingEditorPage() {
                     min={1}
                     value={working.turnaroundHours}
                     onChange={(event) =>
-                      setDraft({ ...working, turnaroundHours: Number(event.target.value) || 0 })
+                      setDraft({
+                        ...working,
+                        turnaroundHours: Number(event.target.value) || 0,
+                      })
                     }
                   />
                 </Field>
@@ -662,7 +744,9 @@ export default function ListingEditorPage() {
               )}
             </div>
             <div className="mt-8 xl:mt-0">
-              <p className="text-overline text-text-muted m-0 uppercase">Artwork you accept</p>
+              <p className="text-overline text-text-muted m-0 uppercase">
+                Artwork you accept
+              </p>
               <p className="text-caption text-text-secondary m-0 mt-1">
                 What a client may send you for this listing.
               </p>
@@ -714,7 +798,9 @@ export default function ListingEditorPage() {
 
           <section className="flex flex-col gap-3">
             <div>
-              <p className="text-overline text-text-muted m-0 uppercase">What a client picks</p>
+              <p className="text-overline text-text-muted m-0 uppercase">
+                What a client picks
+              </p>
               <p className="text-caption text-text-secondary m-0 mt-1">
                 In this order, the way they will see it. Each one saves as you add it.
               </p>
@@ -726,7 +812,7 @@ export default function ListingEditorPage() {
                   group={group}
                   index={index + 1}
                   onAddChoice={() => void addOption(group)}
-                  onSavePrice={(optionId, pesos) => void saveOptionPrice(group, optionId, pesos)}
+                  onSavePrice={saveOptionPrice}
                   onRemoveChoice={(optionId) => void dropOption(group, optionId)}
                   onRemoveGroup={() => void dropGroup(group)}
                 />
@@ -750,7 +836,7 @@ export default function ListingEditorPage() {
                   key={group.id}
                   group={group}
                   onAddChoice={() => void addOption(group)}
-                  onSavePrice={(optionId, pesos) => void saveOptionPrice(group, optionId, pesos)}
+                  onSavePrice={saveOptionPrice}
                   onRemoveChoice={(optionId) => void dropOption(group, optionId)}
                   onRemoveGroup={() => void dropGroup(group)}
                 />
@@ -763,15 +849,18 @@ export default function ListingEditorPage() {
 
           <section className="flex flex-col gap-3">
             <div>
-              <p className="text-overline text-text-muted m-0 uppercase">Before they order</p>
+              <p className="text-overline text-text-muted m-0 uppercase">
+                Before they order
+              </p>
               <p className="text-caption text-text-secondary m-0 mt-1">
-                What a client should do before sending work. Numbered — they read it in order.
+                What a client should do before sending work. Numbered — they read it in
+                order.
               </p>
             </div>
             {prepSteps.length === 0 ? (
               <p className="text-body text-text-secondary m-0 max-w-prose">
-                Nothing yet. On specialised work this is where a job is won or lost — flatten the
-                art, outline the fonts, export the 3MF at the right scale.
+                Nothing yet. On specialised work this is where a job is won or lost —
+                flatten the art, outline the fonts, export the 3MF at the right scale.
               </p>
             ) : (
               <div className="grid gap-3 xl:grid-cols-2">
@@ -828,8 +917,9 @@ export default function ListingEditorPage() {
               Remove “{listing.name || "this listing"}” from your shop?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              It comes off your board and its samples, steps and prices go with it. A listing a
-              client has already ordered from is kept for that job&apos;s history instead.
+              It comes off your board and its samples, steps and prices go with it. A
+              listing a client has already ordered from is kept for that job&apos;s
+              history instead.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -853,7 +943,7 @@ function GroupEditor({
   group: SpecGroup;
   index?: number;
   onAddChoice: () => void;
-  onSavePrice: (optionId: string, pesos: string) => void;
+  onSavePrice: (group: SpecGroup, optionId: string, pesos: string) => Promise<boolean>;
   onRemoveChoice: (optionId: string) => void;
   onRemoveGroup: () => void;
 }) {
@@ -872,19 +962,19 @@ function GroupEditor({
           )}
           <p className="text-caption text-text-muted m-0">{pickLine(group)}</p>
         </div>
-        <Button variant="ghost" size="icon" aria-label="Remove this step" onClick={onRemoveGroup}>
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label="Remove this step"
+          onClick={onRemoveGroup}
+        >
           <Trash2 aria-hidden />
         </Button>
       </div>
       {group.options.map((option) => (
         <div key={option.id} className="flex flex-wrap items-center gap-2">
-          <Input defaultValue={option.label} readOnly className="min-w-40 flex-1" />
-          <Input
-            className="w-28"
-            defaultValue={minorToPesosInput(option.priceModifierMinor)}
-            aria-label={`${option.label} extra pesos`}
-            onBlur={(event) => onSavePrice(option.id, event.target.value)}
-          />
+          <Input value={option.label} readOnly className="min-w-40 flex-1" />
+          <OptionPriceInput group={group} option={option} onSave={onSavePrice} />
           <Button
             variant="ghost"
             size="icon"
@@ -897,5 +987,44 @@ function GroupEditor({
       ))}
       <Button onClick={onAddChoice}>Add choice</Button>
     </div>
+  );
+}
+
+function OptionPriceInput({
+  group,
+  option,
+  onSave,
+}: {
+  group: SpecGroup;
+  option: SpecGroup["options"][number];
+  onSave: (group: SpecGroup, optionId: string, pesos: string) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState<{ group: SpecGroup; pesos: string } | null>(null);
+  useEffect(() => {
+    setDraft((current) =>
+      current &&
+      group.version !== current.group.version &&
+      pesosToMinor(current.pesos) === option.priceModifierMinor
+        ? null
+        : current,
+    );
+  }, [group.version, option.priceModifierMinor]);
+  return (
+    <Input
+      className="w-28"
+      value={draft?.pesos ?? minorToPesosInput(option.priceModifierMinor)}
+      aria-label={`${option.label} extra pesos`}
+      onChange={(event) => {
+        const pesos = event.target.value;
+        setDraft((current) => ({ group: current?.group ?? group, pesos }));
+      }}
+      onBlur={() => {
+        if (!draft) return;
+        const submitted = draft;
+        void onSave(submitted.group, option.id, submitted.pesos).then((saved) => {
+          if (saved) setDraft((current) => (current === submitted ? null : current));
+        });
+      }}
+    />
   );
 }

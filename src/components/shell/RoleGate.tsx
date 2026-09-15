@@ -95,7 +95,7 @@ export function RoleGate({ allow, children }: Props) {
     return () => {
       active = false;
     };
-  }, [allow, attempt, auth.status, pathname, router]);
+  }, [allow, attempt, auth.status, auth.revision, pathname, router]);
 
   if (auth.status === "unmapped") {
     return (

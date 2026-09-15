@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Banknote, CircleAlert, Clock3, Eye } from "lucide-react";
 
@@ -61,30 +63,32 @@ export default function SupplierJobsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // Order is the table's own concern now: it opens on last movement,
-      // descending, and every other order is one click on a header away.
-      setJobs(await listJobs());
-    } catch (err) {
-      setJobs(null);
-      if (err instanceof ApiError) {
-        setError(
-          err.status === 403
-            ? "This inbox is only available to supplier accounts."
-            : `Could not load jobs (${err.code}). Check the API and try again.`,
-        );
-      } else {
-        setError(
-          "Network error loading jobs. Confirm the demo API is running, then retry.",
-        );
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        // Order is the table's own concern now: it opens on last movement,
+        // descending, and every other order is one click on a header away.
+        setJobs(await listJobs());
+      } catch (err) {
+        setJobs(null);
+        if (err instanceof ApiError) {
+          setError(
+            err.status === 403
+              ? "This inbox is only available to supplier accounts."
+              : `Could not load jobs (${err.code}). Check the API and try again.`,
+          );
+        } else {
+          setError(
+            "Network error loading jobs. Confirm the demo API is running, then retry.",
+          );
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    }, []),
+  );
 
   useLiveReload("jobs", load);
 
@@ -100,8 +104,7 @@ export default function SupplierJobsPage() {
         primary: true,
         alwaysVisible: true,
         sortValue: (job) => job.title,
-        filterValue: (job) =>
-          `${job.title} ${job.size} ${job.material} ${job.id}`,
+        filterValue: (job) => `${job.title} ${job.size} ${job.material} ${job.id}`,
         cell: (job) => (
           <div className="min-w-0">
             <p
@@ -109,6 +112,9 @@ export default function SupplierJobsPage() {
               style={{ fontFamily: "var(--font-medium)" }}
             >
               {job.title}
+            </p>
+            <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
+              Order {job.id}
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
               {job.size || "—"} · {job.material || "—"}
@@ -124,11 +130,7 @@ export default function SupplierJobsPage() {
         cell: (job) => {
           const status = presentOrderState(job.state);
           return (
-            <StatusChip
-              tone={status.tone}
-              label={status.label}
-              icon={status.icon}
-            />
+            <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
           );
         },
       },
@@ -195,9 +197,7 @@ export default function SupplierJobsPage() {
         sortValue: nextStepLabel,
         filterValue: nextStepLabel,
         cell: (job) => (
-          <span className="text-body text-text-secondary">
-            {nextStepLabel(job)}
-          </span>
+          <span className="text-body text-text-secondary">{nextStepLabel(job)}</span>
         ),
       },
     ],
@@ -252,10 +252,7 @@ export default function SupplierJobsPage() {
 
   const actionRequired = rows.filter((j) => needsSupplierAction(j.state)).length;
   const dueSoon = rows.filter((j) => isDueWithin(j.readyBy ?? j.deadline, 24)).length;
-  const onTheBoard = rows.reduce(
-    (total, j) => total + (j.supplierSubtotalMinor ?? 0),
-    0,
-  );
+  const onTheBoard = rows.reduce((total, j) => total + (j.supplierSubtotalMinor ?? 0), 0);
 
   return (
     <div className="flex flex-col gap-4">
@@ -315,11 +312,7 @@ export default function SupplierJobsPage() {
           </Button>
         }
         rowActions={(job) => (
-          <DataTableRowAction
-            label="Open"
-            icon={Eye}
-            href={`/supplier/jobs/${job.id}`}
-          />
+          <DataTableRowAction label="Open" icon={Eye} href={`/supplier/jobs/${job.id}`} />
         )}
       />
     </div>

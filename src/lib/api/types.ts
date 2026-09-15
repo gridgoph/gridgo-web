@@ -376,7 +376,15 @@ export type InvalidateResource =
   | "escalations"
   | "claims"
   | "dispatch"
-  | "payouts";
+  | "payouts"
+  | "notifications"
+  | "identity"
+  | "catalog"
+  | "services"
+  | "availability"
+  | "settings"
+  | "location"
+  | "credits";
 
 export type InvalidatePing = {
   resource: InvalidateResource;
@@ -770,6 +778,19 @@ export type LocationPing = {
   id: string;
   orderId: string;
   riderId: string;
+  lat: number;
+  lng: number;
+  accuracy: number | null;
+  at: string;
+};
+
+/** Latest shared GPS fix for a rider on an active trip. */
+export type RiderLocation = {
+  riderId: string;
+  name: string;
+  orderId: string;
+  orderTitle: string | null;
+  state: string;
   lat: number;
   lng: number;
   accuracy: number | null;

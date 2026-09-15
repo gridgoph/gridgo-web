@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronRight, CirclePause, Eye, Unlock } from "lucide-react";
 
@@ -85,24 +87,26 @@ export default function OpsClaimsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [c, o] = await Promise.all([listClaims(), listOrders()]);
-      setClaims(c);
-      setOrders(o);
-    } catch (err) {
-      setClaims(null);
-      if (err instanceof ApiError) {
-        setError(`Could not load claims (${err.code}).`);
-      } else {
-        setError("Network error loading claims.");
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [c, o] = await Promise.all([listClaims(), listOrders()]);
+        setClaims(c);
+        setOrders(o);
+      } catch (err) {
+        setClaims(null);
+        if (err instanceof ApiError) {
+          setError(`Could not load claims (${err.code}).`);
+        } else {
+          setError("Network error loading claims.");
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    }, []),
+  );
 
   useLiveReload(["claims", "orders"], load);
 
@@ -197,6 +201,7 @@ export default function OpsClaimsPage() {
             >
               {orderTitle(c.orderId)}
             </p>
+            <p className="text-caption text-text-muted m-0 mt-0.5">Order {c.orderId}</p>
             <p className="text-caption text-text-muted m-0 mt-0.5">
               Raised by {presentTimelineActor(c.raisedBy)}
             </p>
@@ -270,11 +275,7 @@ export default function OpsClaimsPage() {
           visible, attributable, and timestamped.
         </p>
         <div className="flex flex-wrap gap-2">
-          <Button
-            variant="secondary"
-            disabled={loading}
-            onClick={() => void load()}
-          >
+          <Button variant="secondary" disabled={loading} onClick={() => void load()}>
             Refresh
           </Button>
           {/* Sole page-surface yellow CTA. Dialog footer submit is a separate panel. */}
@@ -370,6 +371,9 @@ export default function OpsClaimsPage() {
               <h2 id="claim-detail-heading" className="text-h3 text-text-primary m-0">
                 {orderTitle(detail.orderId)}
               </h2>
+              <p className="text-caption text-text-muted m-0 mt-1">
+                Order {detail.orderId}
+              </p>
               <p className="text-caption text-text-muted m-0 mt-1">
                 Claim record · {formatDateTime(detail.createdAt)}
               </p>
@@ -478,9 +482,7 @@ export default function OpsClaimsPage() {
               >
                 <SelectTrigger id="claim-order" className="min-h-11 w-full">
                   <SelectValue placeholder="Choose an order">
-                    {(v) =>
-                      orders.find((o) => o.id === v)?.title ?? "Choose an order"
-                    }
+                    {(v) => orders.find((o) => o.id === v)?.title ?? "Choose an order"}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>

@@ -5,7 +5,7 @@ One Next.js application serving three role-gated experiences against the GRIDGO 
 | Role             | Home              |
 | ---------------- | ----------------- |
 | Supplier partner | `/supplier/jobs`  |
-| Operations       | `/ops/qa`         |
+| Operations       | `/ops/orders`     |
 | Super Admin      | `/admin/overview` |
 
 Clerk authenticates the person; Postgres memberships returned by the GRIDGO API authorize
@@ -61,8 +61,15 @@ explains why and what asserts it.
   memberships, never Clerk claims, decide which tree is reachable
 - **Screens in this foundation**
   - Supplier: job inbox + order workspace (`GET /jobs`, `POST /orders/:id/transition`)
-  - Operations: QA / action queue + workspace
-  - Super Admin: platform overview from live orders + credit balances
+  - Operations: order queue and workspace for payment confirmations and QA, shared
+    sign-up and service-line approvals, and rider locations under Field → Riders.
+    Riders appear only while sharing location on an active trip; the list shows the last
+    ping and links to the order. Location updates preserve map zoom, pan, and open popups.
+  - Super Admin: platform overview from live orders + credit balances, with order and
+    pickup-escalation workspaces reachable from the inbox
+
+The header bell opens the **Desk** inbox. Its connection status and refresh behavior are
+described in [Live resource updates](docs/REALTIME_UPDATES.md).
 
 ## Design rules (binding)
 

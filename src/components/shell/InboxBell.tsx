@@ -42,6 +42,29 @@ function waitingCopy(count: number): string {
   return `${count} waiting`;
 }
 
+function CropMarks() {
+  return (
+    <>
+      <span
+        aria-hidden
+        className="pointer-events-none absolute top-1 left-1 z-10 size-2.5 border-t border-l border-foreground"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute top-1 right-1 z-10 size-2.5 border-t border-r border-foreground"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute bottom-1 left-1 z-10 size-2.5 border-b border-l border-foreground"
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute right-1 bottom-1 z-10 size-2.5 border-r border-b border-foreground"
+      />
+    </>
+  );
+}
+
 function InboxList({
   notifications,
   onOpen,
@@ -59,10 +82,10 @@ function InboxList({
           className="text-body text-text-primary m-0"
           style={{ fontFamily: "var(--font-medium)" }}
         >
-          You&apos;re all caught up
+          The desk is clear
         </p>
         <p className="text-caption text-text-muted m-0">
-          New jobs and payments will land here
+          Payments, sign-ups, pickup holds, and shop progress land here
         </p>
       </div>
     );
@@ -174,7 +197,7 @@ function bellTrigger(unreadCount: number) {
 export function InboxBell({ role }: { role: Role }) {
   const router = useRouter();
   const isMobile = useIsMobile();
-  const { notifications, unreadCount, markRead, markAllRead } = useLive();
+  const { notifications, unreadCount, live, markRead, markAllRead } = useLive();
   const [open, setOpen] = useState(false);
   const [markError, setMarkError] = useState<string | null>(null);
 
@@ -212,6 +235,7 @@ export function InboxBell({ role }: { role: Role }) {
   );
 
   const trigger = bellTrigger(unreadCount);
+  const floorStatus = live ? "Floor live" : "Reconnecting";
 
   if (isMobile) {
     return (
@@ -223,11 +247,12 @@ export function InboxBell({ role }: { role: Role }) {
         }}
       >
         <SheetTrigger render={trigger} />
-        <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-sm">
+        <SheetContent side="right" className="relative w-full gap-0 p-0 sm:max-w-sm">
+          <CropMarks />
           <SheetHeader className="border-outline gap-1 border-b border-dashed px-3 py-3">
-            <SheetTitle className="text-h3 m-0">Notifications</SheetTitle>
-            <SheetDescription className="sr-only">
-              Job slips and payment notices for this shop
+            <SheetTitle className="text-h3 m-0">Desk</SheetTitle>
+            <SheetDescription className="text-caption text-text-muted">
+              {floorStatus}
             </SheetDescription>
           </SheetHeader>
           {panel}
@@ -248,12 +273,13 @@ export function InboxBell({ role }: { role: Role }) {
       <PopoverContent
         align="end"
         sideOffset={8}
-        className="w-96 gap-0 rounded-[var(--radius-card)] p-0"
+        className="relative w-96 gap-0 overflow-hidden rounded-[var(--radius-card)] p-0"
       >
+        <CropMarks />
         <PopoverHeader className="border-outline gap-1 border-b border-dashed px-3 py-3">
-          <PopoverTitle className="text-h3 m-0">Notifications</PopoverTitle>
-          <PopoverDescription className="sr-only">
-            Job slips and payment notices for this shop
+          <PopoverTitle className="text-h3 m-0">Desk</PopoverTitle>
+          <PopoverDescription className="text-caption text-text-muted">
+            {floorStatus}
           </PopoverDescription>
         </PopoverHeader>
         {panel}

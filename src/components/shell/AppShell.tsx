@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   ArrowLeftRight,
   Banknote,
+  Bike,
   BookOpen,
   CalendarDays,
   CalendarRange,
@@ -112,6 +113,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   matching: UserSearch,
   recovery: AlertTriangle,
   dispatch: Truck,
+  riders: Bike,
   escalations: Siren,
   claims: Scale,
   settings: Settings,
@@ -224,10 +226,7 @@ function NavUser({ role }: { role: Role }) {
               </DropdownMenuLabel>
             </DropdownMenuGroup>
             <DropdownMenuGroup>
-              <DropdownMenuItem
-                className="min-h-11"
-                onClick={() => openUserProfile()}
-              >
+              <DropdownMenuItem className="min-h-11" onClick={() => openUserProfile()}>
                 <CircleUser aria-hidden />
                 Manage account
               </DropdownMenuItem>
@@ -423,7 +422,7 @@ export function AppShell({ role, children }: Props) {
   const isNested = Boolean(parentItem && pathname !== parentItem.href);
 
   return (
-    <LiveProvider>
+    <LiveProvider role={role}>
       <SidebarProvider
         // The rail has to clear GRIDGO's 44x44 control floor. shadcn's 3rem
         // assumes a 32px button, which leaves the label clipped mid-word.

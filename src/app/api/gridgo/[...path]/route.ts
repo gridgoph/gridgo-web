@@ -22,6 +22,8 @@ const FORWARDED_REQUEST_HEADERS = [
   "authorization",
   "content-type",
   "last-event-id",
+  "x-gridgo-role",
+  "idempotency-key",
 ];
 
 function localProxyEnabled(): boolean {

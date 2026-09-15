@@ -1,5 +1,9 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -55,6 +59,7 @@ function JobCard({ entry }: { entry: ScheduleEntry }) {
       >
         {entry.job.title}
       </p>
+      <p className="text-caption text-text-muted m-0">Order {entry.job.id}</p>
       <div className="flex flex-wrap items-center gap-2">
         <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
         <span className="text-caption text-text-muted">
@@ -77,28 +82,32 @@ export default function SupplierSchedulePage() {
   const [anchor, setAnchor] = useState(() => new Date());
   const isNarrow = useIsNarrow(768);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      setJobs(await listJobs());
-    } catch (err) {
-      setJobs(null);
-      if (err instanceof ApiError) {
-        setError(
-          err.status === 403
-            ? "Schedule is only available to supplier accounts."
-            : `Could not load schedule (${err.code}).`,
-        );
-      } else {
-        setError(
-          "Network error loading schedule. Confirm the demo API is running, then retry.",
-        );
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        setJobs(await listJobs());
+      } catch (err) {
+        setJobs(null);
+        if (err instanceof ApiError) {
+          setError(
+            err.status === 403
+              ? "Schedule is only available to supplier accounts."
+              : `Could not load schedule (${err.code}).`,
+          );
+        } else {
+          setError(
+            "Network error loading schedule. Confirm the demo API is running, then retry.",
+          );
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    }, []),
+  );
+
+  useLiveReload(["jobs", "availability"], load);
 
   useEffect(() => {
     void load();
@@ -139,11 +148,7 @@ export default function SupplierSchedulePage() {
           Accepted jobs by promised date. Open any entry for the existing job workspace —
           this view never creates a parallel record.
         </p>
-        <Button
-          variant="secondary"
-          disabled={loading}
-          onClick={() => void load()}
-        >
+        <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
         </Button>
       </div>
@@ -250,11 +255,7 @@ export default function SupplierSchedulePage() {
                   ) : null}
                 </h2>
                 {pending ? (
-                  <SkeletonCards
-                    count={1}
-                    lines={1}
-                    label="Loading jobs due"
-                  />
+                  <SkeletonCards count={1} lines={1} label="Loading jobs due" />
                 ) : !dayEntries.length ? (
                   <p className="text-caption text-text-muted m-0">No jobs due</p>
                 ) : (

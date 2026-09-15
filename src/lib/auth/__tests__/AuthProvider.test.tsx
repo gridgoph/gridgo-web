@@ -212,7 +212,9 @@ describe("AuthProvider refresh ownership", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     await waitFor(() => expect(getAuthMeMock).toHaveBeenCalledTimes(2));
-    expect(screen.getByTestId("status")).toHaveTextContent("checking");
+    // Routine revalidation keeps the authorized screen mounted; a settled
+    // denial still removes it, and a session change cannot adopt this response.
+    expect(screen.getByTestId("status")).toHaveTextContent("mapped");
 
     fireEvent.click(screen.getByRole("button", { name: "Sign out" }));
     await waitFor(() =>
@@ -333,4 +335,27 @@ describe("AuthProvider refresh ownership", () => {
     expect(screen.getByTestId("user")).toHaveTextContent("none");
     expect(screen.queryByText("Authorized workspace")).not.toBeInTheDocument();
   });
+});
+
+it("settles a failed retry after a mapped identity is denied", async () => {
+  getAuthMeMock
+    .mockResolvedValueOnce(authMe("user_first", "ops_admin"))
+    .mockRejectedValueOnce(new ApiError(403, { error: "forbidden" }))
+    .mockRejectedValueOnce(new TypeError("Network unavailable"));
+  render(
+    <AuthProvider clerkSession={clerkSession("clerk_first", "session_first")}>
+      <AuthProbe />
+    </AuthProvider>,
+  );
+  expect(await screen.findByText("Authorized workspace")).toBeVisible();
+  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  await waitFor(() =>
+    expect(screen.getByTestId("status")).toHaveTextContent("unavailable"),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+  await waitFor(() => expect(getAuthMeMock).toHaveBeenCalledTimes(3));
+  await waitFor(() =>
+    expect(screen.getByTestId("status")).toHaveTextContent("unavailable"),
+  );
+  expect(screen.getByTestId("user")).toHaveTextContent("none");
 });

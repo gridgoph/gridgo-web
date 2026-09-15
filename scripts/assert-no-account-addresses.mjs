@@ -31,8 +31,10 @@ import { join, relative, resolve } from "node:path";
  * must fail this too. The Gmail is the one named address that is not on
  * those domains, so it is hunted by exact match.
  */
+// Start only at the beginning of a local-part run. Without this boundary, a
+// long minified identifier makes the engine retry the same suffix quadratically.
 const ACCOUNT_ADDRESS =
-  /(?:[A-Za-z0-9._%+-]+@gridgo\.(?:ph|local)|markdavidprado@gmail\.com)\b/g;
+  /(?:(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@gridgo\.(?:ph|local)|markdavidprado@gmail\.com)\b/g;
 
 /** Emitted output that can reach a browser, directly or as rendered HTML. */
 const SCANNED_EXTENSIONS = [".js", ".mjs", ".cjs", ".json", ".html", ".rsc", ".txt"];

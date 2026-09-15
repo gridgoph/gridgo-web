@@ -1,5 +1,9 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { LayoutGrid, List, Plus } from "lucide-react";
@@ -63,33 +67,37 @@ export default function SupplierCataloguesPage() {
 
   const listQuery = useMemo(() => toListQuery(query), [query]);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [pageBody, servicesBody, tax] = await Promise.all([
-        listCatalogItems(listQuery),
-        loadShopServiceLines().catch(() => ({ services: [] })),
-        getTaxonomy(),
-      ]);
-      const page = normalizeBoardPage(pageBody);
-      setListings(page.listings);
-      setTotal(page.total);
-      setServices(normalizeServiceLines(servicesBody));
-      setTaxonomy(tax);
-      if (!listQuery.q && !listQuery.subcategoryCode && listQuery.active == null) {
-        setKindSource(page.listings);
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [pageBody, servicesBody, tax] = await Promise.all([
+          listCatalogItems(listQuery),
+          loadShopServiceLines().catch(() => ({ services: [] })),
+          getTaxonomy(),
+        ]);
+        const page = normalizeBoardPage(pageBody);
+        setListings(page.listings);
+        setTotal(page.total);
+        setServices(normalizeServiceLines(servicesBody));
+        setTaxonomy(tax);
+        if (!listQuery.q && !listQuery.subcategoryCode && listQuery.active == null) {
+          setKindSource(page.listings);
+        }
+      } catch (err) {
+        setListings([]);
+        setError(listingErrorMessage(err, "Could not load your board."));
+        if (err instanceof ApiError && err.status === 403) {
+          setError("Listings are only available to supplier accounts.");
+        }
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      setListings([]);
-      setError(listingErrorMessage(err, "Could not load your board."));
-      if (err instanceof ApiError && err.status === 403) {
-        setError("Listings are only available to supplier accounts.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [listQuery]);
+    }, [listQuery]),
+  );
+
+  useLiveReload(["catalog", "services"], load);
 
   useEffect(() => {
     void load();
@@ -109,10 +117,14 @@ export default function SupplierCataloguesPage() {
     <div className="flex flex-col gap-5 xl:gap-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <p className="text-body text-text-secondary m-0 max-w-2xl">
-          GRIDGO still decides which shop a job goes to. This is what a client is choosing when it
-          comes to you.
+          GRIDGO still decides which shop a job goes to. This is what a client is choosing
+          when it comes to you.
         </p>
-        <Button variant="primary" nativeButton={false} render={<Link href="/supplier/catalogue/new" />}>
+        <Button
+          variant="primary"
+          nativeButton={false}
+          render={<Link href="/supplier/catalogue/new" />}
+        >
           <Plus data-icon="inline-start" aria-hidden />
           Add listing
         </Button>
@@ -120,7 +132,10 @@ export default function SupplierCataloguesPage() {
 
       {!shopApproved ? (
         <div className="rounded-card border-outline bg-surface flex flex-col gap-1 border p-4">
-          <p className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+          <p
+            className="text-body text-text-primary m-0"
+            style={{ fontFamily: "var(--font-medium)" }}
+          >
             Operations is still reviewing your shop
           </p>
           <p className="text-body text-text-secondary m-0">
@@ -151,7 +166,8 @@ export default function SupplierCataloguesPage() {
                 <SelectValue>
                   {query.kind === "all"
                     ? "All work"
-                    : kinds.find((entry) => entry.code === query.kind)?.name ?? "All work"}
+                    : (kinds.find((entry) => entry.code === query.kind)?.name ??
+                      "All work")}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -182,7 +198,8 @@ export default function SupplierCataloguesPage() {
             >
               <SelectTrigger className="w-auto min-w-40" aria-label="Sort">
                 <SelectValue>
-                  Sort: {CATALOGUE_SORTS.find((entry) => entry.value === query.sort)?.label}
+                  Sort:{" "}
+                  {CATALOGUE_SORTS.find((entry) => entry.value === query.sort)?.label}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
@@ -220,9 +237,11 @@ export default function SupplierCataloguesPage() {
       ) : null}
 
       {error ? (
-        <ErrorState title="Your board could not load" body={error} action={
-          <Button onClick={() => void load()}>Refresh</Button>
-        } />
+        <ErrorState
+          title="Your board could not load"
+          body={error}
+          action={<Button onClick={() => void load()}>Refresh</Button>}
+        />
       ) : null}
 
       {loading ? (
@@ -250,9 +269,15 @@ export default function SupplierCataloguesPage() {
           }
           action={
             hunting || query.onBoard !== "all" || query.kind !== "all" ? (
-              <Button onClick={() => setQuery(DEFAULT_BOARD_QUERY)}>Show everything</Button>
+              <Button onClick={() => setQuery(DEFAULT_BOARD_QUERY)}>
+                Show everything
+              </Button>
             ) : (
-              <Button variant="primary" nativeButton={false} render={<Link href="/supplier/catalogue/new" />}>
+              <Button
+                variant="primary"
+                nativeButton={false}
+                render={<Link href="/supplier/catalogue/new" />}
+              >
                 Add a listing
               </Button>
             )
@@ -287,7 +312,9 @@ export default function SupplierCataloguesPage() {
       )}
 
       {!loading && listings.length > 0 ? (
-        <p className="text-caption text-text-muted m-0">{boardCountLine(total)} on this shop.</p>
+        <p className="text-caption text-text-muted m-0">
+          {boardCountLine(total)} on this shop.
+        </p>
       ) : null}
     </div>
   );

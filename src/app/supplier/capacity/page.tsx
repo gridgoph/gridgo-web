@@ -1,5 +1,9 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Eye } from "lucide-react";
@@ -38,33 +42,37 @@ export default function SupplierCapacityPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [services, jobs, taxonomy] = await Promise.all([
-        listSupplierServices(),
-        listJobs(),
-        getTaxonomy(),
-      ]);
-      setData({ services, jobs, taxonomy });
-    } catch (err) {
-      setData(null);
-      if (err instanceof ApiError) {
-        setError(
-          err.status === 403
-            ? "Capacity is only available to supplier accounts."
-            : `Could not load capacity (${err.code}).`,
-        );
-      } else {
-        setError(
-          "Network error loading capacity. Confirm the demo API is running, then retry.",
-        );
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [services, jobs, taxonomy] = await Promise.all([
+          listSupplierServices(),
+          listJobs(),
+          getTaxonomy(),
+        ]);
+        setData({ services, jobs, taxonomy });
+      } catch (err) {
+        setData(null);
+        if (err instanceof ApiError) {
+          setError(
+            err.status === 403
+              ? "Capacity is only available to supplier accounts."
+              : `Could not load capacity (${err.code}).`,
+          );
+        } else {
+          setError(
+            "Network error loading capacity. Confirm the demo API is running, then retry.",
+          );
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    }, []),
+  );
+
+  useLiveReload(["jobs", "services", "catalog", "availability"], load);
 
   useEffect(() => {
     void load();
@@ -257,11 +265,7 @@ export default function SupplierCapacityPage() {
           >
             Edit on catalogue
           </Button>
-          <Button
-            variant="secondary"
-            disabled={loading}
-            onClick={() => void load()}
-          >
+          <Button variant="secondary" disabled={loading} onClick={() => void load()}>
             Refresh
           </Button>
         </div>

@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Bike, Eye, MapPin, PackageCheck, RefreshCw } from "lucide-react";
@@ -64,29 +66,31 @@ export default function OpsDispatchPage() {
   const [collector, setCollector] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [all, offerList] = await Promise.all([
-        listOrders(),
-        listDispatchOffers().catch(() => [] as Order[]),
-      ]);
-      setOrders(all);
-      setOffers(offerList);
-      // Locations are session-memory only — never localStorage / never treated as durable.
-      setLocations({});
-    } catch (err) {
-      setOrders(null);
-      if (err instanceof ApiError) {
-        setError(`Could not load dispatch board (${err.code}).`);
-      } else {
-        setError("Network error loading dispatch.");
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [all, offerList] = await Promise.all([
+          listOrders(),
+          listDispatchOffers().catch(() => [] as Order[]),
+        ]);
+        setOrders(all);
+        setOffers(offerList);
+        // Locations are session-memory only — never localStorage / never treated as durable.
+        setLocations({});
+      } catch (err) {
+        setOrders(null);
+        if (err instanceof ApiError) {
+          setError(`Could not load dispatch board (${err.code}).`);
+        } else {
+          setError("Network error loading dispatch.");
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    }, []),
+  );
 
   useLiveReload(["dispatch", "orders"], load);
 
@@ -94,43 +98,44 @@ export default function OpsDispatchPage() {
     void load();
   }, [load]);
 
-  const board = useMemo(
-    () => (orders ? filterDispatchOrders(orders) : []),
-    [orders],
-  );
+  const board = useMemo(() => (orders ? filterDispatchOrders(orders) : []), [orders]);
 
-  const refreshLocations = useCallback(async (list: Order[]) => {
-    const trackable = list.filter(
-      (o) =>
-        o.riderId &&
-        (o.state === "picked_up" ||
-          o.state === "out_for_delivery" ||
-          o.state === "rider_assigned"),
-    );
-    if (!trackable.length) {
-      setLocations({});
-      return;
-    }
-    setLocLoading(true);
-    const next: LocationMap = {};
-    await Promise.all(
-      trackable.map(async (o) => {
-        try {
-          const ping = await getDispatchLocation(o.id);
-          next[o.id] = presentLocation(ping, o.state);
-        } catch {
-          next[o.id] = presentLocation(null, o.state);
-        }
-      }),
-    );
-    // In-memory only for this view refresh.
-    setLocations(next);
-    setLocLoading(false);
-  }, []);
+  const refreshLocations = useSerializedLoad(
+    useCallback(async (list: Order[]) => {
+      const trackable = list.filter(
+        (o) =>
+          o.riderId &&
+          (o.state === "picked_up" ||
+            o.state === "out_for_delivery" ||
+            o.state === "rider_assigned"),
+      );
+      if (!trackable.length) {
+        setLocations({});
+        return;
+      }
+      setLocLoading(true);
+      const next: LocationMap = {};
+      await Promise.all(
+        trackable.map(async (o) => {
+          try {
+            const ping = await getDispatchLocation(o.id);
+            next[o.id] = presentLocation(ping, o.state);
+          } catch {
+            next[o.id] = presentLocation(null, o.state);
+          }
+        }),
+      );
+      // In-memory only for this view refresh.
+      setLocations(next);
+      setLocLoading(false);
+    }, []),
+  );
 
   useEffect(() => {
     if (board.length) void refreshLocations(board);
   }, [board, refreshLocations]);
+
+  useLiveReload("location", () => refreshLocations(board));
 
   /*
     Releasing a collected order at the counter.
@@ -192,8 +197,7 @@ export default function OpsDispatchPage() {
         header: "Order",
         primary: true,
         sortValue: (o) => o.title,
-        filterValue: (o) =>
-          `${o.title} ${o.id} ${o.riderId ?? ""} ${o.zone}`,
+        filterValue: (o) => `${o.title} ${o.id} ${o.riderId ?? ""} ${o.zone}`,
         cell: (o) => (
           <div>
             <p
@@ -202,6 +206,7 @@ export default function OpsDispatchPage() {
             >
               {o.title}
             </p>
+            <p className="text-caption text-text-muted m-0 mt-0.5">Order {o.id}</p>
             <p className="text-caption text-text-muted m-0 mt-0.5">
               {presentZone(o.zone)}
               {focusOrder === o.id ? " · focused" : ""}
@@ -215,9 +220,7 @@ export default function OpsDispatchPage() {
         sortValue: (o) => presentOrderState(o.state).label,
         cell: (o) => {
           const s = presentOrderState(o.state);
-          return (
-            <StatusChip tone={s.tone} label={s.label} icon={s.icon} />
-          );
+          return <StatusChip tone={s.tone} label={s.label} icon={s.icon} />;
         },
       },
       {
@@ -226,9 +229,7 @@ export default function OpsDispatchPage() {
         sortValue: (o) => o.riderId ?? "",
         cell: (o) => (
           <span className="text-body text-text-secondary">
-            {o.riderId
-              ? presentTimelineActor(o.riderId)
-              : "Unassigned"}
+            {o.riderId ? presentTimelineActor(o.riderId) : "Unassigned"}
           </span>
         ),
       },
@@ -298,9 +299,8 @@ export default function OpsDispatchPage() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Riders and orders in delivery states. Location is re-fetched only —
-          stale pings are never shown as live, and nothing is stored on this
-          device.
+          Riders and orders in delivery states. Location is re-fetched only — stale pings
+          are never shown as live, and nothing is stored on this device.
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -311,11 +311,7 @@ export default function OpsDispatchPage() {
             <RefreshCw size={16} aria-hidden />
             {locLoading ? "Refreshing location…" : "Refresh location"}
           </Button>
-          <Button
-            variant="secondary"
-            disabled={loading}
-            onClick={() => void load()}
-          >
+          <Button variant="secondary" disabled={loading} onClick={() => void load()}>
             Refresh board
           </Button>
         </div>
@@ -328,10 +324,7 @@ export default function OpsDispatchPage() {
       ) : null}
 
       {offers.length > 0 ? (
-        <section
-          className="gg-card"
-          aria-labelledby="offers-heading"
-        >
+        <section className="gg-card" aria-labelledby="offers-heading">
           <h2 id="offers-heading" className="text-h3 text-text-primary m-0 mb-2">
             Open dispatch offers ({offers.length})
           </h2>
@@ -344,7 +337,10 @@ export default function OpsDispatchPage() {
                 key={o.id}
                 className="flex flex-wrap items-center justify-between gap-2 border-t border-outline-subtle pt-2 first:border-0 first:pt-0"
               >
-                <span className="text-body text-text-primary">{o.title}</span>
+                <span className="min-w-0">
+                  <span className="text-body text-text-primary block">{o.title}</span>
+                  <span className="text-caption text-text-muted">Order {o.id}</span>
+                </span>
                 <StatusChip
                   tone={presentOrderState(o.state).tone}
                   label={presentOrderState(o.state).label}
@@ -397,11 +393,7 @@ export default function OpsDispatchPage() {
                   }}
                 />
               ) : null}
-              <DataTableRowAction
-                label="Open"
-                icon={Eye}
-                href={`/ops/orders/${o.id}`}
-              />
+              <DataTableRowAction label="Open" icon={Eye} href={`/ops/orders/${o.id}`} />
             </>
           )}
         />
@@ -417,9 +409,9 @@ export default function OpsDispatchPage() {
           <DialogHeader>
             <DialogTitle>Release at the counter</DialogTitle>
             <DialogDescription>
-              {releasing?.title} is on the GRIDGO Office counter. Recording this
-              hands it to the client, releases the shop&apos;s final payout and
-              starts the issue window.
+              {releasing?.title} is on the GRIDGO Office counter. Recording this hands it
+              to the client, releases the shop&apos;s final payout and starts the issue
+              window.
             </DialogDescription>
           </DialogHeader>
           <Field>
@@ -432,8 +424,8 @@ export default function OpsDispatchPage() {
               placeholder="Name of the person at the counter"
             />
             <FieldDescription>
-              Written into the order&apos;s record. It is the only proof of who
-              took this package.
+              Written into the order&apos;s record. It is the only proof of who took this
+              package.
             </FieldDescription>
           </Field>
           <DialogFooter>
@@ -453,9 +445,9 @@ export default function OpsDispatchPage() {
       <p className="text-caption text-text-muted m-0 flex items-start gap-2">
         <MapPin size={14} className="mt-0.5 shrink-0" aria-hidden />
         <span>
-          Assign rider uses the demo rider when no directory endpoint exists.
-          Tracking becomes active after pickup; before that the board shows
-          “Tracking starts at pickup”, not a fake live pin.
+          Assign rider uses the demo rider when no directory endpoint exists. Tracking
+          becomes active after pickup; before that the board shows “Tracking starts at
+          pickup”, not a fake live pin.
         </span>
       </p>
     </div>

@@ -1,5 +1,9 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 /**
  * Platform settings held in configuration rather than code: how long a
  * client has to raise an issue after delivery, what delivery costs at each
@@ -10,27 +14,24 @@
  * implementation, mounted for Operations and Super Admin alike.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { pesosToMinor } from "@/app/admin/_lib/errors";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { SkeletonLines } from "@/components/ui/loading";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getApiBase, getSettings, updateSettings, uploadPaymentQr } from "@/lib/api/client";
 import {
-  ISSUE_WINDOW_MAX_HOURS,
-  ISSUE_WINDOW_MIN_HOURS,
-} from "@/lib/api/constraints";
+  getApiBase,
+  getSettings,
+  updateSettings,
+  uploadPaymentQr,
+} from "@/lib/api/client";
+import { ISSUE_WINDOW_MAX_HOURS, ISSUE_WINDOW_MIN_HOURS } from "@/lib/api/constraints";
 import type { DeliveryFeeBand, PlatformSettings } from "@/lib/api/types";
 import { formatPhp } from "@/lib/format";
 
@@ -40,33 +41,32 @@ import { formatPhp } from "@/lib/format";
  */
 const ISSUE_WINDOW_COPY = (
   <>
-    How long a client has after delivery to raise a problem. While it is open a
-    claim can hold the supplier&rsquo;s payout; when it closes with nothing
-    raised, the order completes and the final 10% retention releases.
+    How long a client has after delivery to raise a problem. While it is open a claim can
+    hold the supplier&rsquo;s payout; when it closes with nothing raised, the order
+    completes and the final 10% retention releases.
   </>
 );
 
 const BANDS_COPY = (
   <>
-    A fixed fee per distance band, measured from the supplier&rsquo;s shop to
-    the delivery address. Each band reaches further than the one above it, and
-    the last one covers everything beyond.
+    A fixed fee per distance band, measured from the supplier&rsquo;s shop to the delivery
+    address. Each band reaches further than the one above it, and the last one covers
+    everything beyond.
   </>
 );
 
 const QR_COPY = (
   <>
-    The GCash InstaPay plate clients scan at checkout. One receiving wallet for
-    the platform. Replacing it here is live — phones pick it up the next time
-    checkout loads settings, without an app rebuild.
+    The GCash InstaPay plate clients scan at checkout. One receiving wallet for the
+    platform. Replacing it here is live — phones pick it up the next time checkout loads
+    settings, without an app rebuild.
   </>
 );
 
 const HOURS_HELP = (
   <>
-    Whole hours, {ISSUE_WINDOW_MIN_HOURS} to {ISSUE_WINDOW_MAX_HOURS}. Applies
-    to windows opened from now on — orders already delivered keep the length
-    they were given.
+    Whole hours, {ISSUE_WINDOW_MIN_HOURS} to {ISSUE_WINDOW_MAX_HOURS}. Applies to windows
+    opened from now on — orders already delivered keep the length they were given.
   </>
 );
 
@@ -99,6 +99,8 @@ function describeBand(band: DeliveryFeeBand, previous: number | null): string {
 
 export function OperationalSettings() {
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -111,30 +113,47 @@ export function OperationalSettings() {
   const [qrError, setQrError] = useState<string | null>(null);
   const [qrOk, setQrOk] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const next = await getSettings();
-      setSettings(next);
-      setHours(String(next.issueWindowHours));
-      setBands(toDraft(next.deliveryFeeBands));
-    } catch (err) {
-      setSettings(null);
-      setError(
-        opsErrorMessage(
-          err,
-          "Could not load platform settings. Confirm the demo API is running, then retry.",
-        ),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const load = useSerializedLoad(
+    useCallback(async (preserveDraft = false) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const next = await getSettings();
+        const previous = settingsRef.current;
+        setHours((current) =>
+          preserveDraft && previous && current !== String(previous.issueWindowHours)
+            ? current
+            : String(next.issueWindowHours),
+        );
+        setBands((current) =>
+          preserveDraft &&
+          previous &&
+          JSON.stringify(current) !== JSON.stringify(toDraft(previous.deliveryFeeBands))
+            ? current
+            : toDraft(next.deliveryFeeBands),
+        );
+        settingsRef.current = next;
+        setSettings(next);
+      } catch (err) {
+        if (preserveDraft) return;
+        setSettings(null);
+        setError(
+          opsErrorMessage(
+            err,
+            "Could not load platform settings. Confirm the demo API is running, then retry.",
+          ),
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, []),
+  );
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  useLiveReload("settings", () => load(true));
 
   /** Turn the drafts into what the API wants, or explain what is wrong. */
   function readBands(): { bands: DeliveryFeeBand[] } | { problem: string } {
@@ -218,9 +237,7 @@ export function OperationalSettings() {
         "Saved. New orders price delivery from these bands, and issue windows opened from now use the new length. Orders already delivered keep the window they were given.",
       );
     } catch (err) {
-      setSaveError(
-        opsErrorMessage(err, "Could not save these settings. Try again."),
-      );
+      setSaveError(opsErrorMessage(err, "Could not save these settings. Try again."));
     } finally {
       setBusy(false);
     }
@@ -275,150 +292,143 @@ export function OperationalSettings() {
   return (
     <div className="flex w-full flex-col gap-3">
       <p className="text-body text-text-secondary m-0 max-w-prose">
-        Platform-wide numbers and the GCash plate checkout scans, changed here
-        rather than in a release.
+        Platform-wide numbers and the GCash plate checkout scans, changed here rather than
+        in a release.
       </p>
 
       <div className="grid w-full gap-3 lg:grid-cols-2 lg:items-start">
-      <section className="gg-card p-3" aria-labelledby="window-heading">
-        <h2 id="window-heading" className="text-h3 text-text-primary m-0">
-          Issue window
-        </h2>
-        <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
-          {ISSUE_WINDOW_COPY}
-        </p>
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="issue-hours">Hours after delivery</FieldLabel>
-            <Input
-              id="issue-hours"
-              inputMode="numeric"
-              className="max-w-40"
-              value={hours}
-              onChange={(e) => setHours(e.target.value)}
-            />
-            <FieldDescription>{HOURS_HELP}</FieldDescription>
-          </Field>
-        </FieldGroup>
-      </section>
+        <section className="gg-card p-3" aria-labelledby="window-heading">
+          <h2 id="window-heading" className="text-h3 text-text-primary m-0">
+            Issue window
+          </h2>
+          <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
+            {ISSUE_WINDOW_COPY}
+          </p>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="issue-hours">Hours after delivery</FieldLabel>
+              <Input
+                id="issue-hours"
+                inputMode="numeric"
+                className="max-w-40"
+                value={hours}
+                onChange={(e) => setHours(e.target.value)}
+              />
+              <FieldDescription>{HOURS_HELP}</FieldDescription>
+            </Field>
+          </FieldGroup>
+        </section>
 
-      <section className="gg-card p-3" aria-labelledby="bands-heading">
-        <h2 id="bands-heading" className="text-h3 text-text-primary m-0">
-          Delivery distance bands
-        </h2>
-        <p className="text-body text-text-secondary m-0 mt-1 max-w-prose">
-          {BANDS_COPY}
-        </p>
-        <p className="text-body text-warning m-0 mt-2 max-w-prose">
-          The figures below are Firstmate&rsquo;s starting suggestion, not
-          prices the captain set. Replace them with the real ones.
-        </p>
+        <section className="gg-card p-3" aria-labelledby="bands-heading">
+          <h2 id="bands-heading" className="text-h3 text-text-primary m-0">
+            Delivery distance bands
+          </h2>
+          <p className="text-body text-text-secondary m-0 mt-1 max-w-prose">
+            {BANDS_COPY}
+          </p>
+          <p className="text-body text-warning m-0 mt-2 max-w-prose">
+            The figures below are Firstmate&rsquo;s starting suggestion, not prices the
+            captain set. Replace them with the real ones.
+          </p>
 
-        <div className="mt-4 flex flex-col gap-3">
-          {bands.map((band, index) => {
-            const isLast = index === bands.length - 1;
-            return (
-              <div
-                key={index}
-                className="flex flex-wrap items-end gap-3 rounded-card border border-outline-subtle p-3"
-              >
-                <Field className="min-w-32 flex-1">
-                  <FieldLabel htmlFor={`band-km-${index}`}>
-                    Up to (km)
-                  </FieldLabel>
-                  <Input
-                    id={`band-km-${index}`}
-                    inputMode="decimal"
-                    value={band.maxKm}
-                    disabled={isLast}
-                    placeholder={isLast ? "No limit" : "5"}
-                    onChange={(e) =>
-                      setBands((prev) =>
-                        prev.map((b, i) =>
-                          i === index ? { ...b, maxKm: e.target.value } : b,
-                        ),
-                      )
-                    }
-                  />
-                </Field>
-                <Field className="min-w-32 flex-1">
-                  <FieldLabel htmlFor={`band-fee-${index}`}>Fee (₱)</FieldLabel>
-                  <Input
-                    id={`band-fee-${index}`}
-                    inputMode="decimal"
-                    value={band.feePesos}
-                    onChange={(e) =>
-                      setBands((prev) =>
-                        prev.map((b, i) =>
-                          i === index
-                            ? { ...b, feePesos: e.target.value }
-                            : b,
-                        ),
-                      )
-                    }
-                  />
-                </Field>
-                <Button
-                  variant="danger"
-                  aria-label={`Remove band ${index + 1}`}
-                  disabled={bands.length <= 1}
-                  onClick={() =>
-                    setBands((prev) => prev.filter((_, i) => i !== index))
-                  }
+          <div className="mt-4 flex flex-col gap-3">
+            {bands.map((band, index) => {
+              const isLast = index === bands.length - 1;
+              return (
+                <div
+                  key={index}
+                  className="flex flex-wrap items-end gap-3 rounded-card border border-outline-subtle p-3"
                 >
-                  <Trash2 aria-hidden />
-                </Button>
-              </div>
-            );
-          })}
+                  <Field className="min-w-32 flex-1">
+                    <FieldLabel htmlFor={`band-km-${index}`}>Up to (km)</FieldLabel>
+                    <Input
+                      id={`band-km-${index}`}
+                      inputMode="decimal"
+                      value={band.maxKm}
+                      disabled={isLast}
+                      placeholder={isLast ? "No limit" : "5"}
+                      onChange={(e) =>
+                        setBands((prev) =>
+                          prev.map((b, i) =>
+                            i === index ? { ...b, maxKm: e.target.value } : b,
+                          ),
+                        )
+                      }
+                    />
+                  </Field>
+                  <Field className="min-w-32 flex-1">
+                    <FieldLabel htmlFor={`band-fee-${index}`}>Fee (₱)</FieldLabel>
+                    <Input
+                      id={`band-fee-${index}`}
+                      inputMode="decimal"
+                      value={band.feePesos}
+                      onChange={(e) =>
+                        setBands((prev) =>
+                          prev.map((b, i) =>
+                            i === index ? { ...b, feePesos: e.target.value } : b,
+                          ),
+                        )
+                      }
+                    />
+                  </Field>
+                  <Button
+                    variant="danger"
+                    aria-label={`Remove band ${index + 1}`}
+                    disabled={bands.length <= 1}
+                    onClick={() => setBands((prev) => prev.filter((_, i) => i !== index))}
+                  >
+                    <Trash2 aria-hidden />
+                  </Button>
+                </div>
+              );
+            })}
 
-          <div>
-            <Button
-              variant="secondary"
-              onClick={() =>
-                setBands((prev) => {
-                  const next = [...prev];
-                  const last = next[next.length - 1];
-                  // The open-ended band always stays last; the new one goes above it.
-                  next.splice(next.length - 1, 0, {
-                    maxKm: "",
-                    feePesos: last?.feePesos ?? "0.00",
-                  });
-                  return next;
-                })
-              }
-            >
-              <Plus data-icon="inline-start" aria-hidden />
-              Add a band
-            </Button>
-          </div>
-        </div>
-
-        <div className="mt-4 border-t border-outline-subtle pt-4">
-          <h3 className="text-caption text-text-muted m-0">In force right now</h3>
-          <ul className="m-0 mt-2 flex list-none flex-col gap-1 p-0">
-            {settings.deliveryFeeBands.map((band, index) => (
-              <li
-                key={index}
-                className="text-body text-text-secondary flex flex-wrap justify-between gap-x-4"
+            <div>
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  setBands((prev) => {
+                    const next = [...prev];
+                    const last = next[next.length - 1];
+                    // The open-ended band always stays last; the new one goes above it.
+                    next.splice(next.length - 1, 0, {
+                      maxKm: "",
+                      feePesos: last?.feePesos ?? "0.00",
+                    });
+                    return next;
+                  })
+                }
               >
-                <span>
-                  {describeBand(
-                    band,
-                    index === 0
-                      ? null
-                      : settings.deliveryFeeBands[index - 1]
-                          .maxDistanceMeters,
-                  )}
-                </span>
-                <span className="text-text-primary tabular-nums">
-                  {formatPhp(band.feeMinor)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
+                <Plus data-icon="inline-start" aria-hidden />
+                Add a band
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-4 border-t border-outline-subtle pt-4">
+            <h3 className="text-caption text-text-muted m-0">In force right now</h3>
+            <ul className="m-0 mt-2 flex list-none flex-col gap-1 p-0">
+              {settings.deliveryFeeBands.map((band, index) => (
+                <li
+                  key={index}
+                  className="text-body text-text-secondary flex flex-wrap justify-between gap-x-4"
+                >
+                  <span>
+                    {describeBand(
+                      band,
+                      index === 0
+                        ? null
+                        : settings.deliveryFeeBands[index - 1].maxDistanceMeters,
+                    )}
+                  </span>
+                  <span className="text-text-primary tabular-nums">
+                    {formatPhp(band.feeMinor)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
       </div>
 
       <section className="gg-card p-3" aria-labelledby="payment-qr-heading">
@@ -439,8 +449,8 @@ export function OperationalSettings() {
               />
             ) : (
               <p className="text-caption text-text-muted m-0 p-3">
-                No plate uploaded yet. Checkout uses the bundled GCash
-                screenshot until you add one here.
+                No plate uploaded yet. Checkout uses the bundled GCash screenshot until
+                you add one here.
               </p>
             )}
           </div>
@@ -460,8 +470,8 @@ export function OperationalSettings() {
                 }}
               />
               <FieldDescription>
-                JPEG, PNG or WebP, up to 5 MB. A phone screenshot of the GCash
-                InstaPay plate is the right shape — do not square-crop it.
+                JPEG, PNG or WebP, up to 5 MB. A phone screenshot of the GCash InstaPay
+                plate is the right shape — do not square-crop it.
               </FieldDescription>
             </Field>
             {qrBusy ? (
@@ -522,15 +532,11 @@ export function OperationalSettings() {
  */
 function SettingsSkeleton() {
   return (
-    <div
-      className="flex w-full flex-col gap-3"
-      role="status"
-      aria-busy="true"
-    >
+    <div className="flex w-full flex-col gap-3" role="status" aria-busy="true">
       <span className="sr-only">Loading platform settings</span>
       <p className="text-body text-text-secondary m-0 max-w-prose">
-        Platform-wide numbers and the GCash plate checkout scans, changed here
-        rather than in a release.
+        Platform-wide numbers and the GCash plate checkout scans, changed here rather than
+        in a release.
       </p>
 
       <div className="grid w-full gap-3 lg:grid-cols-2 lg:items-start">
@@ -549,9 +555,7 @@ function SettingsSkeleton() {
         </section>
 
         <section className="gg-card p-3">
-          <h2 className="text-h3 text-text-primary m-0">
-            Delivery distance bands
-          </h2>
+          <h2 className="text-h3 text-text-primary m-0">Delivery distance bands</h2>
           <p className="text-body text-text-secondary m-0 mt-1 max-w-prose">
             {BANDS_COPY}
           </p>
@@ -562,15 +566,11 @@ function SettingsSkeleton() {
                 className="flex flex-wrap items-end gap-3 rounded-card border border-outline-subtle p-3"
               >
                 <div className="min-w-32 flex-1">
-                  <p className="text-caption text-text-secondary m-0 mb-1">
-                    Up to (km)
-                  </p>
+                  <p className="text-caption text-text-secondary m-0 mb-1">Up to (km)</p>
                   <Skeleton className="h-11 w-full rounded-field" />
                 </div>
                 <div className="min-w-32 flex-1">
-                  <p className="text-caption text-text-secondary m-0 mb-1">
-                    Fee (₱)
-                  </p>
+                  <p className="text-caption text-text-secondary m-0 mb-1">Fee (₱)</p>
                   <Skeleton className="h-11 w-full rounded-field" />
                 </div>
                 <Skeleton className="h-11 w-11 rounded-field" />
@@ -578,9 +578,7 @@ function SettingsSkeleton() {
             ))}
           </div>
           <div className="mt-4 border-t border-outline-subtle pt-4">
-            <h3 className="text-caption text-text-muted m-0">
-              In force right now
-            </h3>
+            <h3 className="text-caption text-text-muted m-0">In force right now</h3>
             <SkeletonLines lines={3} className="mt-2" />
           </div>
         </section>
@@ -594,9 +592,7 @@ function SettingsSkeleton() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
           <Skeleton className="h-40 w-40 max-w-full rounded-card" aria-hidden />
           <div className="min-w-0 flex-1">
-            <p className="text-caption text-text-secondary m-0 mb-1">
-              Replace the plate
-            </p>
+            <p className="text-caption text-text-secondary m-0 mb-1">Replace the plate</p>
             <Skeleton className="h-9 w-64 max-w-full rounded-field" aria-hidden />
           </div>
         </div>

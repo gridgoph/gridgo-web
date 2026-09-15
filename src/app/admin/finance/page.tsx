@@ -1,5 +1,9 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
@@ -9,10 +13,7 @@ import {
   rollupFinance,
   type MoneyFigure,
 } from "@/app/admin/_lib/finance";
-import {
-  presentClaimStatus,
-  presentPaymentStatus,
-} from "@/app/admin/_lib/present";
+import { presentClaimStatus, presentPaymentStatus } from "@/app/admin/_lib/present";
 import { Button } from "@/components/ui/button";
 import {
   ChartContainer,
@@ -30,7 +31,9 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { listClaims, listOrders } from "@/lib/api/client";
 import type { Claim, Order } from "@/lib/api/types";
 import { formatDateTime, formatPhp } from "@/lib/format";
-import { presentOrderState, presentPaymentProgress,
+import {
+  presentOrderState,
+  presentPaymentProgress,
   presentZone,
 } from "@/lib/order-state";
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
@@ -66,26 +69,30 @@ export default function AdminFinancePage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [o, c] = await Promise.all([listOrders(), listClaims()]);
-      setOrders(o);
-      setClaims(c);
-    } catch (err) {
-      setOrders(null);
-      setClaims(null);
-      setError(
-        adminErrorMessage(
-          err,
-          "Could not load finance data. Confirm the demo API is running.",
-        ),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [o, c] = await Promise.all([listOrders(), listClaims()]);
+        setOrders(o);
+        setClaims(c);
+      } catch (err) {
+        setOrders(null);
+        setClaims(null);
+        setError(
+          adminErrorMessage(
+            err,
+            "Could not load finance data. Confirm the demo API is running.",
+          ),
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, []),
+  );
+
+  useLiveReload(["orders", "claims", "payouts", "credits"], load);
 
   useEffect(() => {
     void load();
@@ -96,14 +103,8 @@ export default function AdminFinancePage() {
     return rollupFinance(orders, claims);
   }, [orders, claims]);
 
-  const rows = useMemo(
-    () => (orders ? reconciliationRows(orders) : []),
-    [orders],
-  );
-  const splits = useMemo(
-    () => (orders ? orderMoneySplits(orders) : []),
-    [orders],
-  );
+  const rows = useMemo(() => (orders ? reconciliationRows(orders) : []), [orders]);
+  const splits = useMemo(() => (orders ? orderMoneySplits(orders) : []), [orders]);
 
   const orderColumns = useMemo<DataTableColumn<Order>[]>(
     () => [
@@ -168,9 +169,7 @@ export default function AdminFinancePage() {
         sortValue: (o) => o.commissionMinor ?? -1,
         cell: (o) => (
           <span className="text-body text-text-secondary tabular-nums whitespace-nowrap">
-            {o.commissionMinor !== undefined
-              ? formatPhp(o.commissionMinor)
-              : "—"}
+            {o.commissionMinor !== undefined ? formatPhp(o.commissionMinor) : "—"}
           </span>
         ),
       },
@@ -277,15 +276,11 @@ export default function AdminFinancePage() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          What clients have paid, what GRIDGO has earned, and what suppliers are
-          still owed. Every order is paid in two digital installments and every
-          supplier in four milestones, so both sides are counted separately.
+          What clients have paid, what GRIDGO has earned, and what suppliers are still
+          owed. Every order is paid in two digital installments and every supplier in four
+          milestones, so both sides are counted separately.
         </p>
-        <Button
-          variant="secondary"
-          disabled={loading}
-          onClick={() => void load()}
-        >
+        <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
         </Button>
       </div>
@@ -366,8 +361,8 @@ export default function AdminFinancePage() {
           Where each order&rsquo;s money goes
         </h2>
         <p className="text-body text-text-secondary m-0 mb-3 max-w-prose">
-          The client total split three ways. The supplier keeps its asking price
-          in full; commission sits on top of it, and delivery on top of that.
+          The client total split three ways. The supplier keeps its asking price in full;
+          commission sits on top of it, and delivery on top of that.
         </p>
         {pending ? (
           <Skeleton className="h-72 w-full rounded-card" aria-hidden />
@@ -402,9 +397,7 @@ export default function AdminFinancePage() {
               <ChartTooltip
                 cursor={false}
                 content={
-                  <ChartTooltipContent
-                    formatter={(value) => formatPhp(Number(value))}
-                  />
+                  <ChartTooltipContent formatter={(value) => formatPhp(Number(value))} />
                 }
               />
               <ChartLegend content={<ChartLegendContent />} />
@@ -435,8 +428,8 @@ export default function AdminFinancePage() {
           Order by order
         </h2>
         <p className="text-body text-text-secondary m-0 mb-3">
-          Supplier price and commission are shown here because Operations and
-          Super Admin are the only roles allowed to see them.
+          Supplier price and commission are shown here because Operations and Super Admin
+          are the only roles allowed to see them.
         </p>
         {!pending && !rows.length ? (
           <EmptyState
@@ -460,8 +453,8 @@ export default function AdminFinancePage() {
           Claims holding payout
         </h2>
         <p className="text-body text-text-secondary m-0 mb-3">
-          An active hold stops every remaining milestone on that order. Released
-          holds are history.
+          An active hold stops every remaining milestone on that order. Released holds are
+          history.
         </p>
         {!pending && !claims?.length ? (
           <EmptyState

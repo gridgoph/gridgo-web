@@ -1,5 +1,9 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
+import { useLiveReload } from "@/lib/live/useLiveReload";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
@@ -9,10 +13,7 @@ import {
   presentAuditEntityType,
 } from "@/app/admin/_lib/present";
 import { Button } from "@/components/ui/button";
-import {
-  DataTable,
-  type DataTableColumn,
-} from "@/components/ui/data-table";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -47,27 +48,31 @@ export default function AdminAuditPage() {
   const [actionQuery, setActionQuery] = useState("");
   const [actorQuery, setActorQuery] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await listAudit({
-        entityType: entityType === "all" ? undefined : entityType,
-        limit: 200,
-      });
-      setEntries(data);
-    } catch (err) {
-      setEntries(null);
-      setError(
-        adminErrorMessage(
-          err,
-          "Could not load the audit log. Confirm the demo API is running.",
-        ),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [entityType]);
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await listAudit({
+          entityType: entityType === "all" ? undefined : entityType,
+          limit: 200,
+        });
+        setEntries(data);
+      } catch (err) {
+        setEntries(null);
+        setError(
+          adminErrorMessage(
+            err,
+            "Could not load the audit log. Confirm the demo API is running.",
+          ),
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, [entityType]),
+  );
+
+  useLiveReload(["orders", "claims", "payouts", "identity", "settings"], load);
 
   useEffect(() => {
     void load();
@@ -123,9 +128,7 @@ export default function AdminAuditPage() {
               {presentAuditAction(e.action)}
             </p>
             {e.reason ? (
-              <p className="text-caption text-text-muted m-0 mt-0.5">
-                {e.reason}
-              </p>
+              <p className="text-caption text-text-muted m-0 mt-0.5">{e.reason}</p>
             ) : null}
           </div>
         ),
@@ -143,9 +146,7 @@ export default function AdminAuditPage() {
               {/* The account line only earns its place when it is not the role
                   label repeated back. */}
               {account && account.toLowerCase() !== role.toLowerCase() ? (
-                <p className="text-caption text-text-muted m-0 mt-0.5">
-                  {account}
-                </p>
+                <p className="text-caption text-text-muted m-0 mt-0.5">{account}</p>
               ) : null}
             </div>
           );
@@ -161,9 +162,7 @@ export default function AdminAuditPage() {
               {presentAuditEntityType(e.entityType)}
             </p>
             {e.entityId ? (
-              <p className="text-caption text-text-muted m-0 mt-0.5">
-                {e.entityId}
-              </p>
+              <p className="text-caption text-text-muted m-0 mt-0.5">{e.entityId}</p>
             ) : null}
           </div>
         ),
@@ -173,9 +172,7 @@ export default function AdminAuditPage() {
         header: "Order",
         sortValue: (e) => e.orderId ?? "",
         cell: (e) => (
-          <span className="text-body text-text-secondary">
-            {e.orderId ?? "—"}
-          </span>
+          <span className="text-body text-text-secondary">{e.orderId ?? "—"}</span>
         ),
       },
     ],
@@ -202,20 +199,16 @@ export default function AdminAuditPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="max-w-prose">
           <p className="text-body text-text-secondary m-0">
-            Platform-wide audit trail for role changes, verification, grants,
-            zones, taxonomy, claims, and issues. Per-order history stays on each
-            order’s timeline.
+            Platform-wide audit trail for role changes, verification, grants, zones,
+            taxonomy, claims, and issues. Per-order history stays on each order’s
+            timeline.
           </p>
           <p className="text-caption text-text-muted m-0 mt-2">
-            Policy configuration is not exposed by the demo API, so this screen
-            is the audit log only — no silent policy controls.
+            Policy configuration is not exposed by the demo API, so this screen is the
+            audit log only — no silent policy controls.
           </p>
         </div>
-        <Button
-          variant="secondary"
-          disabled={loading}
-          onClick={() => void load()}
-        >
+        <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
         </Button>
       </div>

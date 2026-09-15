@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -53,43 +55,43 @@ export default function OpsOverviewPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [orders, claims, issues, escalations, suppliers, riders] =
-        await Promise.all([
-          listOrders(),
-          listClaims(),
-          listIssues(),
-          listEscalations({ status: "open" }),
-          listUsers("supplier"),
-          listUsers("rider"),
-        ]);
-      setData({
-        orders,
-        claims,
-        issues,
-        pendingSignups: [...suppliers, ...riders].filter(
-          (u) => u.verificationStatus === "pending",
-        ).length,
-        openEscalations: escalations.length,
-      });
-    } catch (err) {
-      setData(null);
-      if (err instanceof ApiError) {
-        setError(
-          `Could not load the operations picture (${err.code}). Retry when the API responds.`,
-        );
-      } else {
-        setError(
-          "Network error loading overview. Confirm the demo API is running.",
-        );
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [orders, claims, issues, escalations, suppliers, riders] =
+          await Promise.all([
+            listOrders(),
+            listClaims(),
+            listIssues(),
+            listEscalations({ status: "open" }),
+            listUsers("supplier"),
+            listUsers("rider"),
+          ]);
+        setData({
+          orders,
+          claims,
+          issues,
+          pendingSignups: [...suppliers, ...riders].filter(
+            (u) => u.verificationStatus === "pending",
+          ).length,
+          openEscalations: escalations.length,
+        });
+      } catch (err) {
+        setData(null);
+        if (err instanceof ApiError) {
+          setError(
+            `Could not load the operations picture (${err.code}). Retry when the API responds.`,
+          );
+        } else {
+          setError("Network error loading overview. Confirm the demo API is running.");
+        }
+      } finally {
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    }, []),
+  );
 
   useLiveReload(["orders", "claims", "escalations", "approvals"], load);
 
@@ -119,13 +121,9 @@ export default function OpsOverviewPage() {
   const next = useMemo(
     () =>
       data
-        ? pickOverviewNextAction(
-            data.orders,
-            data.claims,
-            data.issues,
-            Date.now(),
-            { openEscalations: data.openEscalations },
-          )
+        ? pickOverviewNextAction(data.orders, data.claims, data.issues, Date.now(), {
+            openEscalations: data.openEscalations,
+          })
         : null,
     [data],
   );
@@ -144,9 +142,7 @@ export default function OpsOverviewPage() {
   }
 
   const pending = loading && !data;
-  const activeCount = data
-    ? data.orders.filter((o) => o.state !== "draft").length
-    : 0;
+  const activeCount = data ? data.orders.filter((o) => o.state !== "draft").length : 0;
 
   return (
     <div className="flex flex-col gap-3">
@@ -158,11 +154,7 @@ export default function OpsOverviewPage() {
               ? `${activeCount} active order${activeCount === 1 ? "" : "s"} across queues. Focus the next action first — not every counter at once.`
               : "No active orders yet. Queues fill as clients submit work."}
         </p>
-        <Button
-          variant="secondary"
-          disabled={loading}
-          onClick={() => void load()}
-        >
+        <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
         </Button>
       </div>
@@ -172,9 +164,7 @@ export default function OpsOverviewPage() {
         // only the recommendation itself is reserved.
         <section className="gg-card flex flex-col gap-3" aria-busy>
           <span className="sr-only">Working out the next action</span>
-          <p className="text-overline text-text-muted m-0 uppercase">
-            Next action
-          </p>
+          <p className="text-overline text-text-muted m-0 uppercase">Next action</p>
           <Skeleton className="h-7 w-1/2" aria-hidden />
           <SkeletonLines lines={2} />
           <Skeleton className="h-11 w-40 rounded-field" aria-hidden />
@@ -186,24 +176,18 @@ export default function OpsOverviewPage() {
         >
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="text-overline text-text-muted m-0 uppercase">
-                Next action
-              </p>
-              <h2
-                id="next-action-heading"
-                className="text-h3 text-text-primary m-0 mt-1"
-              >
+              <p className="text-overline text-text-muted m-0 uppercase">Next action</p>
+              <h2 id="next-action-heading" className="text-h3 text-text-primary m-0 mt-1">
                 {next.title}
               </h2>
-              <p className="text-body text-text-secondary m-0 mt-1">
-                {next.body}
-              </p>
+              {next.orderId ? (
+                <p className="text-caption text-text-muted m-0 mt-1">
+                  Order {next.orderId}
+                </p>
+              ) : null}
+              <p className="text-body text-text-secondary m-0 mt-1">{next.body}</p>
             </div>
-            <StatusChip
-              tone="warning"
-              label="Action required"
-              icon="triangle-alert"
-            />
+            <StatusChip tone="warning" label="Action required" icon="triangle-alert" />
           </div>
           <div>
             <Button
@@ -293,10 +277,7 @@ function BucketCard({
               <Skeleton className="h-6 w-8" />
             </div>
           ) : (
-            <p
-              className="text-h2 text-text-primary m-0 tabular-nums"
-              aria-hidden
-            >
+            <p className="text-h2 text-text-primary m-0 tabular-nums" aria-hidden>
               {bucket.count}
             </p>
           )}

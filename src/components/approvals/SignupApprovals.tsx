@@ -1,5 +1,7 @@
 "use client";
 
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+
 /**
  * Supplier and rider sign-up approvals.
  *
@@ -71,32 +73,34 @@ export function SignupApprovals({ intro }: Props) {
   } | null>(null);
   const [reason, setReason] = useState("");
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [suppliers, riders, taxonomy] = await Promise.all([
-        listUsers("supplier"),
-        listUsers("rider"),
-        getTaxonomy().catch(() => null as Taxonomy | null),
-      ]);
-      const categoryNames: Record<string, string> = {};
-      for (const category of taxonomy?.categories ?? []) {
-        categoryNames[category.code] = category.name;
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const [suppliers, riders, taxonomy] = await Promise.all([
+          listUsers("supplier"),
+          listUsers("rider"),
+          getTaxonomy().catch(() => null as Taxonomy | null),
+        ]);
+        const categoryNames: Record<string, string> = {};
+        for (const category of taxonomy?.categories ?? []) {
+          categoryNames[category.code] = category.name;
+        }
+        setData({ people: [...suppliers, ...riders], categoryNames });
+      } catch (err) {
+        setData(null);
+        setError(
+          opsErrorMessage(
+            err,
+            "Could not load sign-ups. Confirm the demo API is running, then retry.",
+          ),
+        );
+      } finally {
+        setLoading(false);
       }
-      setData({ people: [...suppliers, ...riders], categoryNames });
-    } catch (err) {
-      setData(null);
-      setError(
-        opsErrorMessage(
-          err,
-          "Could not load sign-ups. Confirm the demo API is running, then retry.",
-        ),
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    }, []),
+  );
 
   useLiveReload("approvals", load);
 
@@ -131,9 +135,7 @@ export function SignupApprovals({ intro }: Props) {
   async function apply() {
     if (!confirm) return;
     if (confirm.action.status === "rejected" && !reason.trim()) {
-      setActionError(
-        "Give a reason. It is the only explanation this person receives.",
-      );
+      setActionError("Give a reason. It is the only explanation this person receives.");
       return;
     }
     setBusy(true);
@@ -154,9 +156,7 @@ export function SignupApprovals({ intro }: Props) {
       setReason("");
       await load();
     } catch (err) {
-      setActionError(
-        opsErrorMessage(err, "Could not save that decision. Try again."),
-      );
+      setActionError(opsErrorMessage(err, "Could not save that decision. Try again."));
     } finally {
       setBusy(false);
     }
@@ -184,11 +184,7 @@ export function SignupApprovals({ intro }: Props) {
           {intro ??
             "Suppliers and riders sign themselves up. Until someone approves them they cannot be matched to an order or accept a delivery, so this queue is where new capacity comes from."}
         </p>
-        <Button
-          variant="secondary"
-          disabled={loading}
-          onClick={() => void load()}
-        >
+        <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
         </Button>
       </div>
@@ -275,9 +271,7 @@ export function SignupApprovals({ intro }: Props) {
             <AlertDialogTitle>
               {confirm?.action.label} {confirm?.user.name}?
             </AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirm?.action.consequence}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{confirm?.action.consequence}</AlertDialogDescription>
           </AlertDialogHeader>
           <FieldGroup>
             <Field>
@@ -343,9 +337,7 @@ function ApplicantCard({
 }) {
   const status = presentVerification(person.verificationStatus);
   const actions = verificationActions(person.verificationStatus);
-  const ranks = [...(person.categoryRanks ?? [])].sort(
-    (a, b) => a.rank - b.rank,
-  );
+  const ranks = [...(person.categoryRanks ?? [])].sort((a, b) => a.rank - b.rank);
 
   return (
     <li className="gg-card flex flex-col gap-3">
@@ -367,19 +359,12 @@ function ApplicantCard({
       </div>
 
       <dl className="m-0 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {person.phone ? (
-          <Detail label="Phone" value={person.phone} />
-        ) : null}
-        {person.shop?.label ? (
-          <Detail label="Shop" value={person.shop.label} />
-        ) : null}
+        {person.phone ? <Detail label="Phone" value={person.phone} /> : null}
+        {person.shop?.label ? <Detail label="Shop" value={person.shop.label} /> : null}
         {person.riderProfile?.vehicleType ? (
           <Detail
             label="Vehicle"
-            value={[
-              person.riderProfile.vehicleType,
-              person.riderProfile.vehiclePlate,
-            ]
+            value={[person.riderProfile.vehicleType, person.riderProfile.vehiclePlate]
               .filter(Boolean)
               .join(" · ")}
           />
@@ -391,18 +376,13 @@ function ApplicantCard({
           <Detail label="Signed up" value={formatDateTime(person.createdAt)} />
         ) : null}
         {person.verifiedAt ? (
-          <Detail
-            label="Last decision"
-            value={formatDateTime(person.verifiedAt)}
-          />
+          <Detail label="Last decision" value={formatDateTime(person.verifiedAt)} />
         ) : null}
       </dl>
 
       {person.role === "supplier" ? (
         <div>
-          <p className="text-caption text-text-muted m-0">
-            What they say they do best
-          </p>
+          <p className="text-caption text-text-muted m-0">What they say they do best</p>
           {ranks.length ? (
             <ol className="text-body text-text-primary m-0 mt-1 list-decimal pl-5">
               {ranks.map((rank) => (
@@ -414,8 +394,8 @@ function ApplicantCard({
             </ol>
           ) : (
             <p className="text-body text-text-secondary m-0 mt-1">
-              They ranked no categories at sign-up, so matching has nothing to
-              go on. Ask them to complete their profile before approving.
+              They ranked no categories at sign-up, so matching has nothing to go on. Ask
+              them to complete their profile before approving.
             </p>
           )}
         </div>
@@ -448,9 +428,7 @@ function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
       <dt className="text-caption text-text-muted m-0">{label}</dt>
-      <dd className="text-body text-text-primary m-0 mt-0.5 break-words">
-        {value}
-      </dd>
+      <dd className="text-body text-text-primary m-0 mt-0.5 break-words">{value}</dd>
     </div>
   );
 }

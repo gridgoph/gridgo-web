@@ -36,6 +36,7 @@ export type NavIconKey =
   | "matching"
   | "recovery"
   | "dispatch"
+  | "riders"
   | "escalations"
   | "claims"
   | "settings"
@@ -175,17 +176,17 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
       id: "ops-queue",
       label: "Queue",
       items: [
-      {
-        // One queue. Payments and QA were the same order at two moments of the
-        // same job, and matching is gone -- GRIDGO chooses the press.
-        id: "ops-orders",
-        href: "/ops/orders",
-        label: "Orders",
-        title: "Orders",
-        icon: "qa",
-        ready: true,
-        placeholderBody: "",
-      },
+        {
+          // One queue. Payments and QA were the same order at two moments of the
+          // same job, and matching is gone -- GRIDGO chooses the press.
+          id: "ops-orders",
+          href: "/ops/orders",
+          label: "Orders",
+          title: "Orders",
+          icon: "qa",
+          ready: true,
+          placeholderBody: "",
+        },
         {
           id: "ops-approvals",
           href: "/ops/approvals",
@@ -207,6 +208,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Dispatch",
           title: "Dispatch",
           icon: "dispatch",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "ops-riders",
+          href: "/ops/riders",
+          label: "Riders",
+          title: "Rider locations",
+          icon: "riders",
           ready: true,
           placeholderBody: "",
         },
@@ -471,6 +481,10 @@ export function contextTitleForPath(
   if (pathname.startsWith("/admin/catalogue/categories/")) return "Category";
   if (pathname.startsWith("/ops/orders/")) return "Order workspace";
   if (pathname.startsWith("/ops/payouts/")) return "Payout review";
+  if (pathname.startsWith("/admin/orders/")) return "Order workspace";
+  if (pathname === "/admin/escalations" || pathname.startsWith("/admin/escalations/")) {
+    return "Pickup escalations";
+  }
 
   const item = navItemForPath(pathname, role);
   if (item) return item.title;
