@@ -552,6 +552,26 @@ export function unitChoiceLabel(unit: PricingUnit): string {
   }
 }
 
+/** Short unit that sits inside the price field: "per piece", "per sq.ft". */
+export function priceSuffix(
+  listing: Pick<Listing, "pricingUnit" | "measureUnit">,
+): string {
+  switch (listing.pricingUnit) {
+    case "per_package":
+      return "per pack";
+    case "per_page":
+      return "per page";
+    case "per_area":
+      return listing.measureUnit ? `per sq.${listing.measureUnit}` : "per area";
+    case "per_length":
+      return listing.measureUnit ? `per ${listing.measureUnit}` : "per length";
+    case "whole_job":
+      return "whole job";
+    default:
+      return "per piece";
+  }
+}
+
 export function fromPriceMinor(listing: Listing): number {
   const required = specs(listing).filter((group) => group.required);
   const additions = required.reduce((total, group) => {
@@ -598,65 +618,140 @@ export type BoardContext = {
   inheritedFormatCodes: string[];
 };
 
-export function boardBlockers(listing: Listing, context: BoardContext): string[] {
-  const out: string[] = [];
-  if (!listing.photos.length) {
-    out.push("Add at least one sample photo before it can go on the board.");
+/** Where a board requirement is fixed; the editor maps each one to a field. */
+export type BoardField =
+  | "photos"
+  | "name"
+  | "description"
+  | "price"
+  | "packageQty"
+  | "measureUnit"
+  | "billableSize"
+  | "printerMaxWidth"
+  | "turnaround"
+  | "groups"
+  | "formats";
+
+export type BoardRequirement = {
+  key: BoardField;
+  /** Short name of the requirement, shown once it is met. */
+  label: string;
+  /** What is still missing — the sentence `boardBlockers` reports. */
+  sentence: string;
+  done: boolean;
+};
+
+/**
+ * Every requirement the board checks, in fill order, each marked done or not.
+ * Conditional requirements (pack size, measure unit, printer cap, choices under
+ * a step) only appear when the listing's shape makes them apply.
+ */
+export function boardChecklist(listing: Listing, context: BoardContext): BoardRequirement[] {
+  const out: BoardRequirement[] = [];
+  out.push({
+    key: "photos",
+    label: "A sample photo",
+    sentence: "Add at least one sample photo before it can go on the board.",
+    done: listing.photos.length > 0,
+  });
+  out.push({
+    key: "name",
+    label: "A name",
+    sentence: "Give this listing a name a client would recognise.",
+    done: Boolean(listing.name.trim()),
+  });
+  out.push({
+    key: "description",
+    label: "A description",
+    sentence: "Say what this is, so a client knows what they are ordering.",
+    done: Boolean(listing.description.trim()),
+  });
+  if (needsPrinterMaxWidth(listing.subcategoryCode)) {
+    out.push({
+      key: "printerMaxWidth",
+      label: "Max printer width",
+      sentence:
+        listing.printerMaxWidthFeet == null
+          ? "Set the max printer width in feet before it can go on the board."
+          : "Max printer width must be a whole number of feet from 1 to 20.",
+      done: parsePrinterMaxWidthFeet(listing.printerMaxWidthFeet) != null,
+    });
   }
-  if (!listing.name.trim()) {
-    out.push("Give this listing a name a client would recognise.");
-  }
-  if (!listing.description.trim()) {
-    out.push("Say what this is, so a client knows what they are ordering.");
-  }
-  if (listing.basePriceMinor <= 0) {
-    out.push("Set your price before it can go on the board.");
-  }
-  if (listing.pricingUnit === "per_package" && (listing.packageQty ?? 0) < 2) {
-    out.push("Say how many pieces are in a pack.");
+  out.push({
+    key: "price",
+    label: "Your price",
+    sentence: "Set your price before it can go on the board.",
+    done: listing.basePriceMinor > 0,
+  });
+  if (listing.pricingUnit === "per_package") {
+    out.push({
+      key: "packageQty",
+      label: "Pieces in a pack",
+      sentence: "Say how many pieces are in a pack.",
+      done: (listing.packageQty ?? 0) >= 2,
+    });
   }
   if (
     measurementKind(listing.pricingUnit) === "area" ||
     measurementKind(listing.pricingUnit) === "length"
   ) {
-    if (!listing.measureUnit) {
-      out.push("Say what you measure in — feet, inches, metres — so a client can be asked for a size.");
-    }
+    out.push({
+      key: "measureUnit",
+      label: "What you measure in",
+      sentence:
+        "Say what you measure in — feet, inches, metres — so a client can be asked for a size.",
+      done: Boolean(listing.measureUnit),
+    });
   }
-  if ((listing.minimumWidthMilli == null) !== (listing.minimumHeightMilli == null)) {
-    out.push("A smallest billable size needs both a width and a height.");
+  if (listing.minimumWidthMilli != null || listing.minimumHeightMilli != null) {
+    out.push({
+      key: "billableSize",
+      label: "Smallest billable size",
+      sentence: "A smallest billable size needs both a width and a height.",
+      done: (listing.minimumWidthMilli == null) === (listing.minimumHeightMilli == null),
+    });
   }
-  if (needsPrinterMaxWidth(listing.subcategoryCode)) {
-    if (parsePrinterMaxWidthFeet(listing.printerMaxWidthFeet) == null) {
-      out.push(
-        listing.printerMaxWidthFeet == null
-          ? "Set the max printer width in feet before it can go on the board."
-          : "Max printer width must be a whole number of feet from 1 to 20.",
-      );
-    }
-  }
-  if (
+  const overrideWithoutHours =
     listing.turnaroundMode === "override" &&
-    (listing.turnaroundHours == null || listing.turnaroundHours <= 0)
-  ) {
-    out.push("Set how many hours this takes, or use your shop's usual time.");
-  } else if (effectiveTurnaroundHours(listing, context.inheritedTurnaroundHours) == null) {
-    out.push("Your shop has no usual turnaround yet. Set the hours for this listing.");
-  }
+    (listing.turnaroundHours == null || listing.turnaroundHours <= 0);
+  out.push({
+    key: "turnaround",
+    label: "Ready-in time",
+    sentence: overrideWithoutHours
+      ? "Set how many hours this takes, or use your shop's usual time."
+      : "Your shop has no usual turnaround yet. Set the hours for this listing.",
+    done:
+      !overrideWithoutHours &&
+      effectiveTurnaroundHours(listing, context.inheritedTurnaroundHours) != null,
+  });
+  out.push({
+    key: "formats",
+    label: "Artwork you accept",
+    sentence: "Say which artwork files you accept for this listing.",
+    done: effectiveFormatCodes(listing, context.inheritedFormatCodes).length > 0,
+  });
   const emptyGroup = listing.groups.find(
     (group) => !group.options.filter((option) => option.active).length,
   );
-  if (emptyGroup) {
-    out.push(
-      emptyGroup.kind === "addon"
-        ? `Add at least one choice under the add-on “${emptyGroup.name}”, or remove it.`
-        : `Add at least one option under “${emptyGroup.name}”, or remove that step.`,
-    );
-  }
-  if (!effectiveFormatCodes(listing, context.inheritedFormatCodes).length) {
-    out.push("Say which artwork files you accept for this listing.");
+  if (listing.groups.length) {
+    out.push({
+      key: "groups",
+      label: "A choice under every step and add-on",
+      sentence: emptyGroup
+        ? emptyGroup.kind === "addon"
+          ? `Add at least one choice under the add-on “${emptyGroup.name}”, or remove it.`
+          : `Add at least one option under “${emptyGroup.name}”, or remove that step.`
+        : "",
+      done: !emptyGroup,
+    });
   }
   return out;
+}
+
+export function boardBlockers(listing: Listing, context: BoardContext): string[] {
+  return boardChecklist(listing, context)
+    .filter((requirement) => !requirement.done)
+    .map((requirement) => requirement.sentence);
 }
 
 export type BoardStanding = {

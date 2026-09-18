@@ -22,6 +22,11 @@ type Props = {
   services: ServiceLine[];
   shopApproved: boolean;
   layout?: "tile" | "row";
+  /**
+   * Draw the tile without its link — the editor shows the shop what a client
+   * will see, fed from the unsaved draft, and that picture must not navigate.
+   */
+  preview?: boolean;
 };
 
 export function ListingCard({
@@ -30,6 +35,7 @@ export function ListingCard({
   services,
   shopApproved,
   layout = "tile",
+  preview = false,
 }: Props) {
   const context = boardContextFor(listing, services);
   const standing = boardStanding(listing, context, shopApproved);
@@ -81,11 +87,8 @@ export function ListingCard({
     );
   }
 
-  return (
-    <Link
-      href={`/supplier/catalogue/${listing.id}`}
-      className="rounded-card border-outline bg-surface hover:bg-overlay-hover flex flex-col overflow-hidden border no-underline transition-colors"
-    >
+  const tile = (
+    <>
       <SamplePhoto
         fileId={first?.fileId}
         alt={first?.altText ?? listing.name}
@@ -108,6 +111,26 @@ export function ListingCard({
           <StatusChip tone={standing.tone} label={standing.label} icon={standing.icon} />
         ) : null}
       </div>
+    </>
+  );
+
+  if (preview) {
+    return (
+      <div
+        data-testid="listing-preview"
+        className="rounded-card border-outline bg-surface flex flex-col overflow-hidden border"
+      >
+        {tile}
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      href={`/supplier/catalogue/${listing.id}`}
+      className="rounded-card border-outline bg-surface hover:bg-overlay-hover flex flex-col overflow-hidden border no-underline transition-colors"
+    >
+      {tile}
     </Link>
   );
 }

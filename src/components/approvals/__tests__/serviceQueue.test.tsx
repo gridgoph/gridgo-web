@@ -8,8 +8,13 @@ import type { InvalidatePing, SupplierService } from "@/lib/api/types";
 import OpsApprovals from "@/app/ops/approvals/page";
 vi.stubGlobal("React", React);
 const list = vi.hoisted(() => vi.fn<() => Promise<SupplierService[]>>(async () => []));
+const listUsers = vi.hoisted(() => vi.fn(async () => []));
+const getTaxonomy = vi.hoisted(() =>
+  vi.fn(async () => ({ categories: [], materials: [], finishes: [] })),
+);
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams("tab=services"),
+  usePathname: () => "/ops/approvals",
   useRouter: () => ({ replace: vi.fn() }),
 }));
 vi.mock("@/components/approvals/SignupApprovals", () => ({
@@ -18,11 +23,17 @@ vi.mock("@/components/approvals/SignupApprovals", () => ({
 vi.mock("@/lib/api/client", async () => ({
   ...(await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client")),
   listSupplierServices: list,
+  listUsers,
+  getTaxonomy,
 }));
 afterEach(() => {
   cleanup();
   list.mockReset();
   list.mockResolvedValue([]);
+  listUsers.mockReset();
+  listUsers.mockResolvedValue([]);
+  getTaxonomy.mockReset();
+  getTaxonomy.mockResolvedValue({ categories: [], materials: [], finishes: [] });
 });
 it("opens the real service review queue within the Operations route", async () => {
   render(<OpsApprovals />);
@@ -90,7 +101,8 @@ it.each(["approvals", "services", "identity"] as const)(
       listener({ resource });
     });
     await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
-    expect(await screen.findAllByText("Supplier new_shop")).not.toHaveLength(0);
+    expect(await screen.findByText("user_new_shop")).toBeInTheDocument();
+    expect(screen.getByText("Shop details unavailable")).toBeInTheDocument();
     expect(screen.queryByText("No service lines")).not.toBeInTheDocument();
   },
 );

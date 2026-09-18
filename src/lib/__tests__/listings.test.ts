@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   boardBlockers,
+  boardChecklist,
   boardCountLine,
   nextFreeSlot,
   normalizeListing,
   priceLine,
   printerCapLine,
   printerMaxWidthFeetWrite,
+  priceSuffix,
   unitChoiceLabel,
 } from "@/lib/listings";
 
@@ -64,6 +66,51 @@ describe("listings", () => {
       { inheritedTurnaroundHours: 48, inheritedFormatCodes: ["pdf"] },
     );
     expect(blockers[0]).toMatch(/sample photo/i);
+  });
+
+  it("checks every board requirement, done or not, and blockers are the missing ones", () => {
+    const context = { inheritedTurnaroundHours: 48, inheritedFormatCodes: ["pdf"] };
+    const ready = boardChecklist(listing!, context);
+    expect(ready.every((requirement) => requirement.done)).toBe(true);
+    expect(ready.map((requirement) => requirement.key)).toEqual([
+      "photos",
+      "name",
+      "description",
+      "price",
+      "packageQty",
+      "turnaround",
+      "formats",
+      "groups",
+    ]);
+
+    const missing = boardChecklist({ ...listing!, photos: [], basePriceMinor: 0 }, context);
+    expect(missing.filter((requirement) => !requirement.done).map((r) => r.key)).toEqual([
+      "photos",
+      "price",
+    ]);
+    expect(boardBlockers({ ...listing!, photos: [], basePriceMinor: 0 }, context)).toEqual(
+      missing.filter((requirement) => !requirement.done).map((r) => r.sentence),
+    );
+  });
+
+  it("only asks for a pack size, a measure unit or a printer cap when the shape needs it", () => {
+    const context = { inheritedTurnaroundHours: 48, inheritedFormatCodes: ["pdf"] };
+    const keys = (partial: Record<string, unknown>) =>
+      boardChecklist({ ...listing!, ...partial }, context).map((r) => r.key);
+    expect(keys({ pricingUnit: "per_unit" })).not.toContain("packageQty");
+    expect(keys({ pricingUnit: "per_area", measureUnit: null })).toContain("measureUnit");
+    expect(keys({ subcategoryCode: "tarpaulins_outdoor_banners" })).toContain(
+      "printerMaxWidth",
+    );
+    expect(keys({ groups: [] })).not.toContain("groups");
+  });
+
+  it("names the unit that sits inside the price field", () => {
+    expect(priceSuffix({ pricingUnit: "per_unit", measureUnit: null })).toBe("per piece");
+    expect(priceSuffix({ pricingUnit: "per_package", measureUnit: null })).toBe("per pack");
+    expect(priceSuffix({ pricingUnit: "per_area", measureUnit: "ft" })).toBe("per sq.ft");
+    expect(priceSuffix({ pricingUnit: "per_length", measureUnit: null })).toBe("per length");
+    expect(priceSuffix({ pricingUnit: "whole_job", measureUnit: null })).toBe("whole job");
   });
 
   it("puts a new step in the first free slot after a gap", () => {

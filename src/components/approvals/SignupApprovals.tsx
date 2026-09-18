@@ -29,11 +29,15 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  ApplicantHeader,
+  Detail,
+  SupplierCategoryRanks,
+} from "@/components/approvals/applicant-identity";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { SkeletonCards } from "@/components/ui/loading";
-import { StatusChip } from "@/components/ui/StatusChip";
 import { Textarea } from "@/components/ui/textarea";
 import { listUsers, setUserVerification } from "@/lib/api/client";
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
@@ -337,26 +341,20 @@ function ApplicantCard({
 }) {
   const status = presentVerification(person.verificationStatus);
   const actions = verificationActions(person.verificationStatus);
-  const ranks = [...(person.categoryRanks ?? [])].sort((a, b) => a.rank - b.rank);
 
   return (
     <li className="gg-card flex flex-col gap-3">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p
-            className="text-body text-text-primary m-0"
-            style={{ fontFamily: "var(--font-medium)" }}
-          >
-            {person.supplierName || person.name}
-          </p>
-          <p className="text-caption text-text-muted m-0 mt-0.5">
-            {person.role === "supplier" ? "Supplier" : "Rider"} ·{" "}
-            {person.supplierName ? `${person.name} · ` : ""}
-            {person.email}
-          </p>
-        </div>
-        <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
-      </div>
+      <ApplicantHeader
+        title={person.supplierName || person.name}
+        caption={[
+          person.role === "supplier" ? "Supplier" : "Rider",
+          person.supplierName ? person.name : null,
+          person.email,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+        status={status}
+      />
 
       <dl className="m-0 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {person.phone ? <Detail label="Phone" value={person.phone} /> : null}
@@ -381,24 +379,16 @@ function ApplicantCard({
       </dl>
 
       {person.role === "supplier" ? (
-        <div>
-          <p className="text-caption text-text-muted m-0">What they say they do best</p>
-          {ranks.length ? (
-            <ol className="text-body text-text-primary m-0 mt-1 list-decimal pl-5">
-              {ranks.map((rank) => (
-                <li key={rank.categoryCode}>
-                  {categoryNames[rank.categoryCode] ??
-                    rank.categoryCode.replace(/_/g, " ")}
-                </li>
-              ))}
-            </ol>
-          ) : (
+        <SupplierCategoryRanks
+          ranks={person.categoryRanks}
+          categoryNames={categoryNames}
+          empty={
             <p className="text-body text-text-secondary m-0 mt-1">
               They ranked no categories at sign-up, so matching has nothing to go on. Ask
               them to complete their profile before approving.
             </p>
-          )}
-        </div>
+          }
+        />
       ) : null}
 
       {person.verificationNote ? (
@@ -421,14 +411,5 @@ function ApplicantCard({
         </div>
       ) : null}
     </li>
-  );
-}
-
-function Detail({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-caption text-text-muted m-0">{label}</dt>
-      <dd className="text-body text-text-primary m-0 mt-0.5 break-words">{value}</dd>
-    </div>
   );
 }

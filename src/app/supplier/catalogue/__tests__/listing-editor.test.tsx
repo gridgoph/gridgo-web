@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { AUTOSAVE_DELAY_MS } from "@/app/supplier/_components/SaveStatus";
 import { LiveContext, type LiveContextValue } from "@/lib/live/LiveProvider";
 import { LIVE_RELOAD_COALESCE_MS } from "@/lib/live/useLiveReload";
 import { ApiError } from "@/lib/api/client";
@@ -64,6 +65,9 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
+
+/** Autosave fires once the shop pauses; give it that pause plus slack. */
+const AUTOSAVE_WAIT = { timeout: AUTOSAVE_DELAY_MS + 2000 };
 
 const taxonomy: Taxonomy = {
   categories: [
@@ -211,9 +215,8 @@ describe("listing editor printer cap", () => {
     const cap = await screen.findByLabelText("Max printer width");
     await user.clear(cap);
     await user.type(cap, "5");
-    await user.click(screen.getAllByRole("button", { name: "Save" })[0]!);
 
-    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled());
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled(), AUTOSAVE_WAIT);
     const tarpBody = mocks.updateCatalogItem.mock.calls[0]?.[2] as Record<
       string,
       unknown
@@ -222,11 +225,13 @@ describe("listing editor printer cap", () => {
     expect(Object.keys(tarpBody)).toContain("printerMaxWidthFeet");
     expect(tarpBody.printerMaxWidthFeet).not.toBeUndefined();
 
-    await user.click(screen.getByRole("button", { name: "Flyers" }));
+    await user.click(screen.getByRole("radio", { name: "Flyers" }));
     expect(screen.queryByLabelText("Max printer width")).not.toBeInTheDocument();
-    await user.click(screen.getAllByRole("button", { name: "Save" })[0]!);
 
-    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalledTimes(2));
+    await waitFor(
+      () => expect(mocks.updateCatalogItem).toHaveBeenCalledTimes(2),
+      AUTOSAVE_WAIT,
+    );
     const flyersBody = mocks.updateCatalogItem.mock.calls[1]?.[2] as Record<
       string,
       unknown
@@ -262,6 +267,10 @@ it("preserves an edited listing draft when a live catalogue refresh arrives", as
     </LiveContext.Provider>,
   );
   expect(await screen.findByLabelText("Name")).toHaveValue("Flyers");
+  // The autosave that follows the edit meets a stale version; the draft stays.
+  mocks.updateCatalogItem.mockRejectedValueOnce(
+    new ApiError(409, { error: "version_conflict" }),
+  );
   fireEvent.change(screen.getByLabelText("Name"), {
     target: { value: "My unsaved draft" },
   });
@@ -273,18 +282,133 @@ it("preserves an edited listing draft when a live catalogue refresh arrives", as
   });
   await waitFor(() => expect(mocks.getCatalogItem).toHaveBeenCalledTimes(2));
   expect(screen.getByLabelText("Name")).toHaveValue("My unsaved draft");
-  mocks.updateCatalogItem.mockRejectedValueOnce(
-    new ApiError(409, { error: "version_conflict" }),
-  );
-  fireEvent.click(screen.getAllByRole("button", { name: "Save" })[0]);
-  await waitFor(() =>
-    expect(mocks.updateCatalogItem).toHaveBeenCalledWith(
-      "sci_1",
-      3,
-      expect.objectContaining({ name: "My unsaved draft", basePriceMinor: 40000 }),
-    ),
+  await waitFor(
+    () =>
+      expect(mocks.updateCatalogItem).toHaveBeenCalledWith(
+        "sci_1",
+        3,
+        expect.objectContaining({ name: "My unsaved draft", basePriceMinor: 40000 }),
+      ),
+    AUTOSAVE_WAIT,
   );
   expect(screen.getByLabelText("Name")).toHaveValue("My unsaved draft");
+  expect(await screen.findByText(/Could not save/)).toBeVisible();
+  expect(screen.getByRole("button", { name: "Retry" })).toBeVisible();
+  // Retry sends the same draft again; nothing else fired in between.
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalledTimes(2));
+  expect(await screen.findByText("Saved just now")).toBeVisible();
+});
+
+describe("listing editor autosave", () => {
+  it("saves a paused edit on its own and says so, without a Save button", async () => {
+    stubLoad(catalogItem());
+    render(<ListingEditorPage />);
+    expect(await screen.findByLabelText("Name")).toHaveValue("Flyers");
+    expect(screen.queryByRole("button", { name: /^Save/ })).not.toBeInTheDocument();
+    expect(screen.queryByText("Saved")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers A5" } });
+    await waitFor(
+      () =>
+        expect(mocks.updateCatalogItem).toHaveBeenCalledWith(
+          "sci_1",
+          3,
+          expect.objectContaining({ name: "Flyers A5" }),
+        ),
+      AUTOSAVE_WAIT,
+    );
+    expect(await screen.findByText("Saved just now")).toBeVisible();
+    expect(mocks.updateCatalogItem).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps keystrokes typed while a save is in flight and saves them next", async () => {
+    stubLoad(catalogItem());
+    let release!: () => void;
+    mocks.updateCatalogItem.mockImplementationOnce(
+      (_id, _version, body) =>
+        new Promise((resolve) => {
+          release = () =>
+            resolve({ item: { ...catalogItem().item, ...body, version: 4 } });
+        }),
+    );
+    render(<ListingEditorPage />);
+    const name = await screen.findByLabelText("Name");
+    fireEvent.change(name, { target: { value: "Business " } });
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalledTimes(1), AUTOSAVE_WAIT);
+    expect(screen.getByText("Saving…")).toBeVisible();
+    fireEvent.change(name, { target: { value: "Business cards" } });
+    await act(async () => {
+      release();
+    });
+    expect(name).toHaveValue("Business cards");
+    await waitFor(
+      () =>
+        expect(mocks.updateCatalogItem).toHaveBeenLastCalledWith(
+          "sci_1",
+          4,
+          expect.objectContaining({ name: "Business cards" }),
+        ),
+      AUTOSAVE_WAIT,
+    );
+    expect(name).toHaveValue("Business cards");
+  });
+
+  it("holds a draft the API would refuse instead of sending it", async () => {
+    stubLoad(catalogItem());
+    render(<ListingEditorPage />);
+    const price = await screen.findByLabelText("Your price");
+    fireEvent.change(price, { target: { value: "" } });
+    expect(await screen.findByText(/Not saved yet — enter a price/)).toBeVisible();
+    await new Promise((resolve) => setTimeout(resolve, AUTOSAVE_DELAY_MS + 200));
+    expect(mocks.updateCatalogItem).not.toHaveBeenCalled();
+  });
+});
+
+describe("listing editor readiness checklist", () => {
+  it("lists what is missing once, previews the board tile, and takes you to the field", async () => {
+    stubLoad(catalogItem({ description: "", active: false }));
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    render(<ListingEditorPage />);
+    expect(await screen.findByLabelText("Name")).toHaveValue("Flyers");
+
+    // The preview tile carries the standing chip; the header does not repeat it.
+    const preview = screen.getByTestId("listing-preview");
+    expect(preview).toHaveTextContent("Flyers");
+    expect(preview).toHaveTextContent("₱400.00 per pack of 100");
+    expect(preview).toHaveTextContent("Not ready yet");
+    expect(screen.getAllByText("Not ready yet")).toHaveLength(1);
+    expect(screen.getByText("1 thing before it can go up")).toBeVisible();
+
+    const row = screen.getByRole("button", {
+      name: /Missing: Say what this is, so a client knows what they are ordering\./,
+    });
+    const cta = screen.getByRole("button", { name: "Put it on the board" });
+    expect(cta).toBeDisabled();
+    expect(cta).toHaveAttribute("aria-describedby", row.id);
+
+    fireEvent.click(row);
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(screen.getByLabelText("Description")).toHaveFocus();
+
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "Single-sheet colour printing." },
+    });
+    expect(await screen.findByText("Ready for the board")).toBeVisible();
+    expect(screen.queryByText("Not ready yet")).not.toBeInTheDocument();
+    await waitFor(() => expect(cta).toBeEnabled(), AUTOSAVE_WAIT);
+  });
+
+  it("shows the standing chip in the header only for a live or hidden listing", async () => {
+    stubLoad(catalogItem());
+    render(<ListingEditorPage />);
+    expect(await screen.findByLabelText("Name")).toHaveValue("Flyers");
+    expect(screen.getByRole("heading", { level: 2, name: "Flyers" })).toBeVisible();
+    // The board tile does not chip a live listing, so the header chip is the one.
+    expect(screen.getAllByText("On the board")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Take it off the board" })).toBeEnabled();
+  });
 });
 
 it.each([true, false])(
