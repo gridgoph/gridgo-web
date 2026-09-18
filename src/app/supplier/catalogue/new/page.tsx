@@ -172,15 +172,21 @@ export default function NewListingPage() {
   return (
     <div className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-10">
       <div className="flex flex-col gap-5">
-        <div>
-          <p className="text-overline text-text-muted m-0 uppercase">New listing</p>
-          <p className="text-body text-text-secondary m-0 mt-1 max-w-prose">
-            File it under a category you are accredited for, name it the way a client would ask,
-            then pick a GRIDGO starter if you do not want to invent the steps.
+        <div className="flex flex-col gap-1">
+          <p className="text-overline text-text-muted m-0 uppercase">01</p>
+          <h3
+            className="text-body-lg text-text-primary m-0"
+            style={{ fontFamily: "var(--font-bold)" }}
+          >
+            What it is
+          </h3>
+          <p className="text-caption text-text-secondary m-0 max-w-prose">
+            File it under a category you are accredited for and name it the way a client
+            would ask for it.
           </p>
         </div>
 
-        <FieldGroup>
+        <FieldGroup className="gap-4">
           {targets.length > 1 ? (
             <Field>
               <FieldLabel>Category</FieldLabel>
@@ -238,7 +244,9 @@ export default function NewListingPage() {
               </SelectContent>
             </Select>
             <FieldDescription>
-              Filed under this category. You can move it within that category, not out of it.
+              {target
+                ? `Filed under ${target.categoryName}. You can move it within that category, not out of it.`
+                : "Filed under the category above. You can move it within that category, not out of it."}
             </FieldDescription>
           </Field>
 
@@ -263,11 +271,17 @@ export default function NewListingPage() {
       </div>
 
       <div className="flex flex-col gap-4">
-        <div>
-          <p className="text-overline text-text-muted m-0 uppercase">Start from</p>
-          <p className="text-caption text-text-secondary m-0 mt-1">
+        <div className="flex flex-col gap-1">
+          <p className="text-overline text-text-muted m-0 uppercase">02</p>
+          <h3
+            className="text-body-lg text-text-primary m-0"
+            style={{ fontFamily: "var(--font-bold)" }}
+          >
+            Start from
+          </h3>
+          <p className="text-caption text-text-secondary m-0">
             A starter is a copy, not a link. Its steps and add-ons become yours the moment
-            the listing exists.
+            the listing exists. Photos, price and the rest come next, on the listing itself.
           </p>
         </div>
         {startersLoading ? (
