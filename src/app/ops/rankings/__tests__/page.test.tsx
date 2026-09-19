@@ -5,7 +5,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import OpsRankingsPage, { orderRows } from "@/app/ops/rankings/page";
+import { orderRows } from "@/app/ops/rankings/_lib/rankings";
+import OpsRankingsPage from "@/app/ops/rankings/page";
 import { setTokenProvider } from "@/lib/api/client";
 import type { ShopRankingRow, ShopRankings } from "@/lib/api/types";
 
