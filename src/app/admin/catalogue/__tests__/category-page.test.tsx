@@ -41,6 +41,7 @@ vi.mock("next/link", () => ({
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ code: mocks.code }),
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
 }));
 
 vi.mock("@/lib/api/client", async () => {
