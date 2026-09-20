@@ -4,6 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.stubGlobal("React", React);
 
+vi.mock("@/components/orders/ReceiptReferenceOcr", () => ({
+  ReceiptReferenceOcr: () => null,
+}));
+
 import { PaymentSummary } from "@/components/orders/PaymentSummary";
 import type { Order, OrderPayments, PaymentRecord } from "@/lib/api/types";
 

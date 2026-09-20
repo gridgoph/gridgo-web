@@ -2,9 +2,11 @@
 
 /**
  * The four payout shares as an accordion, each row readable without opening:
- * the share, its amount, and where it stands. Opening a row shows the Proof
- * of Fulfilment that backs it — the picture, who filed it and when — plus the
- * one reason it cannot go out yet, or the release action when it can.
+ * the share, its amount, and where it stands. Opening a row shows who filed
+ * the Proof of Fulfilment and when, the one reason it cannot go out yet, or
+ * the release action when it can. Pictures of those proofs live on Production
+ * (and the dedicated payout desk when `emphasizeProof` is on). Wallet
+ * receipts stay here.
  *
  * Amounts are shares of the supplier's own price, so this is safe on the
  * supplier's surfaces too. Pass `onRelease` only from Operations; the API
@@ -131,23 +133,30 @@ export function PayoutMilestones({
             <AccordionContent>
               <div className="flex flex-col gap-3 sm:pl-9">
                 {proofs.length > 0 ? (
-                  <ul
-                    className={cn(
-                      "m-0 grid list-none gap-3 p-0",
-                      emphasizeProof
-                        ? "grid-cols-1 md:grid-cols-2"
-                        : "grid-cols-1 sm:grid-cols-2",
-                    )}
-                  >
-                    {proofs.map((proof) => (
-                      <li key={proof.fileId} className="min-w-0">
-                        <EvidencePlate fileId={proof.fileId} label={proof.label} />
-                        <p className="text-caption text-text-muted m-0 mt-1">
-                          {describeProof(proof, formatDateTime)}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
+                  emphasizeProof ? (
+                    <ul
+                      className="m-0 grid list-none grid-cols-1 gap-3 p-0 md:grid-cols-2"
+                    >
+                      {proofs.map((proof) => (
+                        <li key={proof.fileId} className="min-w-0">
+                          <EvidencePlate fileId={proof.fileId} label={proof.label} />
+                          <p className="text-caption text-text-muted m-0 mt-1">
+                            {describeProof(proof, formatDateTime)}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <ul className="m-0 flex list-none flex-col gap-1 p-0">
+                      {proofs.map((proof) => (
+                        <li key={proof.fileId}>
+                          <p className="text-caption text-text-secondary m-0">
+                            {proof.label}. {describeProof(proof, formatDateTime)}.
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  )
                 ) : (
                   <p className="text-body text-text-secondary m-0">
                     No proof on file yet. {milestoneProofSource(milestone.code)}.

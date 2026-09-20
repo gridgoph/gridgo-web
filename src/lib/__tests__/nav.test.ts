@@ -27,6 +27,7 @@ describe("ROLE_NAV", () => {
     const hrefs = ROLE_NAV.ops_admin.map((n) => n.href);
     expect(hrefs).toEqual([
       "/ops/overview",
+      "/ops/chat",
       "/ops/orders",
       "/ops/approvals",
       "/ops/dispatch",
@@ -45,6 +46,7 @@ describe("ROLE_NAV", () => {
     const hrefs = ROLE_NAV.super_admin.map((n) => n.href);
     expect(hrefs).toEqual([
       "/admin/overview",
+      "/admin/chat",
       "/admin/riders",
       "/admin/verification",
       "/admin/roles",
@@ -68,6 +70,7 @@ describe("ROLE_NAV", () => {
       "/admin/audit",
       "/admin/broadcast",
       "/admin/catalogue",
+      "/admin/chat",
       "/admin/finance",
       "/admin/overview",
       "/admin/planning",
@@ -78,6 +81,7 @@ describe("ROLE_NAV", () => {
       "/admin/zones",
       "/ops/approvals",
       "/ops/audit",
+      "/ops/chat",
       "/ops/claims",
       "/ops/dispatch",
       "/ops/escalations",
@@ -142,6 +146,7 @@ describe("ROLE_NAV", () => {
     expect(ROLE_NAV_GROUPS.ops_admin[0]?.label).toBeUndefined();
     expect(ROLE_NAV_GROUPS.ops_admin[0]?.items.map((n) => n.href)).toEqual([
       "/ops/overview",
+      "/ops/chat",
     ]);
     expect(
       ROLE_NAV_GROUPS.ops_admin
@@ -164,6 +169,11 @@ describe("ROLE_NAV", () => {
         ?.items.map((n) => n.href),
     ).toEqual(["/ops/settings", "/ops/audit"]);
 
+    expect(
+      ROLE_NAV_GROUPS.super_admin
+        .find((g) => g.id === "admin-top")
+        ?.items.map((n) => n.href),
+    ).toEqual(["/admin/overview", "/admin/chat", "/admin/riders"]);
     expect(
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-people")

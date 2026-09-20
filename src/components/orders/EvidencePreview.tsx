@@ -16,13 +16,15 @@ import {
 import { getFile, getFileDownloadUrl } from "@/lib/api/client";
 import type { StoredFile } from "@/lib/api/types";
 import type { EvidenceItem } from "@/lib/evidence";
-import { fileLooksLikeImage } from "@/lib/evidence";
+import { artworkFileFacts, fileLooksLikeImage } from "@/lib/evidence";
 
 type PlateProps = {
   fileId: string | null | undefined;
   label: string;
   caption?: string | null;
   empty?: string;
+  /** Print-desk facts under the picture. Artwork plates turn this on. */
+  showMetadata?: boolean;
 };
 
 type Loaded = {
@@ -30,7 +32,13 @@ type Loaded = {
   url: string;
 };
 
-export function EvidencePlate({ fileId, label, caption, empty }: PlateProps) {
+export function EvidencePlate({
+  fileId,
+  label,
+  caption,
+  empty,
+  showMetadata = false,
+}: PlateProps) {
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [failed, setFailed] = useState(false);
@@ -107,6 +115,7 @@ export function EvidencePlate({ fileId, label, caption, empty }: PlateProps) {
               {filename}
             </span>
           </button>
+          {showMetadata ? <ArtworkFacts file={loaded.file} /> : null}
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogContent
               className="max-h-[90vh] w-[min(960px,calc(100%-2rem))] max-w-none overflow-auto bg-black p-3 sm:max-w-none"
@@ -120,23 +129,48 @@ export function EvidencePlate({ fileId, label, caption, empty }: PlateProps) {
                 alt={filename}
                 className="mt-2 max-h-[75vh] w-full rounded-md object-contain"
               />
+              {showMetadata ? (
+                <ArtworkFacts
+                  file={loaded.file}
+                  className="text-caption text-white/70 m-0 mt-2"
+                />
+              ) : null}
             </DialogContent>
           </Dialog>
         </>
       ) : loaded ? (
-        <p className="text-body text-text-primary m-0 mt-1">
-          <a
-            href={loaded.url}
-            target="_blank"
-            rel="noreferrer"
-            className="underline-offset-2 hover:underline"
-          >
-            {filename}
-          </a>
-          <span className="text-caption text-text-muted"> · open the file</span>
-        </p>
+        <>
+          <p className="text-body text-text-primary m-0 mt-1">
+            <a
+              href={loaded.url}
+              target="_blank"
+              rel="noreferrer"
+              className="underline-offset-2 hover:underline"
+            >
+              {filename}
+            </a>
+            <span className="text-caption text-text-muted"> · open the file</span>
+          </p>
+          {showMetadata ? <ArtworkFacts file={loaded.file} /> : null}
+        </>
       ) : null}
     </div>
+  );
+}
+
+function ArtworkFacts({
+  file,
+  className,
+}: {
+  file: StoredFile;
+  className?: string;
+}) {
+  const facts = artworkFileFacts(file);
+  if (facts.length === 0) return null;
+  return (
+    <p className={className ?? "text-caption text-text-muted m-0 mt-1.5 max-w-sm"}>
+      {facts.join(" · ")}
+    </p>
   );
 }
 
@@ -150,6 +184,7 @@ export function EvidenceStrip({ items }: { items: EvidenceItem[] }) {
           fileId={item.fileId}
           label={item.label}
           caption={item.caption}
+          showMetadata={item.kind === "artwork"}
         />
       ))}
     </div>

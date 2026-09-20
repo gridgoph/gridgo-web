@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppProviders } from "@/components/providers/AppProviders";
 import "./globals.css";
+import { DEV_WEB_HOST_BOUNCE_SCRIPT } from "@/lib/devWebHost";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 
 export const metadata: Metadata = {
@@ -25,6 +26,9 @@ export default function RootLayout({
     // server markup and the first client render legitimately differ here.
     <html lang="en" suppressHydrationWarning>
       <head>
+        {process.env.NODE_ENV === "development" ? (
+          <script dangerouslySetInnerHTML={{ __html: DEV_WEB_HOST_BOUNCE_SCRIPT }} />
+        ) : null}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
       <body className="font-sans antialiased">

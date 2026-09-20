@@ -20,6 +20,52 @@ export type ApprovalCaseSummary = {
   updatedAt: string;
 };
 
+export type ApprovalCaseQueueItem = ApprovalCaseSummary & {
+  applicant: PortalIdentity | null;
+  decidedBy?: string | null;
+};
+
+export type ApprovalCaseQueue = {
+  approvalCases: ApprovalCaseQueueItem[];
+  nextCursor: string | null;
+};
+
+export type ApprovalCaseHistoryEntry = {
+  id: string;
+  applicationRevision: number;
+  fromStatus: ApprovalCaseSummary["status"] | null;
+  toStatus: ApprovalCaseSummary["status"];
+  actorUserId: string | null;
+  actorKind: string;
+  reason: string | null;
+  requestId: string;
+  snapshot: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type ClientProfile = {
+  clientKind: "personal" | "business";
+  businessName: string | null;
+  businessNature: string | null;
+  updatedAt: string;
+};
+
+export type BusinessApplication = {
+  businessName: string | null;
+  businessNature: string | null;
+  accountType: "business" | "organization";
+};
+
+export type ApprovalCaseDetail = {
+  approvalCase: ApprovalCaseSummary & { decidedBy?: string | null };
+  applicant: PortalIdentity | null;
+  history: ApprovalCaseHistoryEntry[];
+  clientProfile?: ClientProfile | null;
+  application?: BusinessApplication;
+};
+
+export type ApprovalDecisionAction = "approve" | "reject" | "suspend" | "restore";
+
 export type VerificationStatus =
   "unverified" | "pending" | "approved" | "suspended" | "rejected";
 
@@ -547,6 +593,31 @@ export type SupplierPayoutAccountPatch = {
   qrFileId?: string | null;
 };
 
+/**
+ * What the file said about itself, read by GRIDGO when it was uploaded.
+ *
+ * Every field is advisory. A scan at 96 DPI and the same scan at 300 DPI are
+ * the same pixels and different pieces of paper. Absent entirely when the file
+ * said nothing readable — a PNG with no declared density has a pixel size and
+ * no physical one.
+ */
+export type DetectedArtwork = {
+  kind: "pdf" | "raster";
+  /** Pages in a PDF; 1 for an image; null when the file would not say. */
+  pageCount: number | null;
+  pixelWidth: number | null;
+  pixelHeight: number | null;
+  dpi: number | null;
+  /** Always "mm" when a physical size was read at all. */
+  measureUnit: "mm" | null;
+  /** Thousandths of a millimetre, so no float carries a measurement. */
+  widthMilli: number | null;
+  heightMilli: number | null;
+  /** "A4", "Letter" — null when the size matches no name GRIDGO knows. */
+  pageSize: string | null;
+  orientation: "portrait" | "landscape" | "square" | null;
+};
+
 export type StoredFile = {
   fileId: string;
   purpose: string;
@@ -561,6 +632,8 @@ export type StoredFile = {
   deleteRequestedAt: string | null;
   deletedAt: string | null;
   references: FileReference[];
+  /** Present only when the bytes carried something worth reading. */
+  detected?: DetectedArtwork;
 };
 
 export type CreditLedgerEntry = {
@@ -946,4 +1019,38 @@ export type HealthResult = {
 export type ApiErrorBody = {
   error: string;
   [key: string]: unknown;
+};
+
+export type SupportChatPartyRole = "client" | "supplier" | "rider";
+export type SupportChatSenderRole = SupportChatPartyRole | "ops_admin" | "super_admin";
+
+export type SupportChatThread = {
+  id: string;
+  partyUserId: string;
+  partyRole: SupportChatPartyRole;
+  partyName?: string | null;
+  partyEmail?: string | null;
+  lastMessageAt?: string | null;
+  lastMessagePreview?: string | null;
+  lastMessageSenderRole?: SupportChatSenderRole | null;
+  unreadCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SupportChatMessage = {
+  id: string;
+  threadId: string;
+  senderUserId: string;
+  senderRole: SupportChatSenderRole;
+  senderName?: string | null;
+  body: string;
+  createdAt: string;
+  mine: boolean;
+};
+
+export type SupportChatEvent = {
+  type: "message";
+  thread: SupportChatThread;
+  message: SupportChatMessage;
 };

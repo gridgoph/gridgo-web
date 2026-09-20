@@ -4,7 +4,8 @@
  * installment (including live API `initial` / `final_online` keys).
  */
 
-import type { Order } from "@/lib/api/types";
+import type { DetectedArtwork, Order, StoredFile } from "@/lib/api/types";
+import { formatDateTime } from "@/lib/format";
 import { listedInstallments, paymentOf } from "@/lib/payments";
 import { presentInstallment } from "@/lib/order-state";
 
@@ -127,4 +128,68 @@ export function fileLooksLikeImage(file: {
     .toLowerCase();
   if (IMAGE_TYPES.has(type) || type.startsWith("image/")) return true;
   return IMAGE_EXT.test(file.originalFilename || "");
+}
+
+/** File size for the plate under artwork — "3 MB", "420 KB". */
+export function formatFileBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "—";
+  if (bytes < 1024) return `${bytes} B`;
+  const format = (value: number, unit: string) => {
+    const label =
+      value >= 10 || Number.isInteger(value) ? String(Math.round(value)) : value.toFixed(1);
+    return `${label} ${unit}`;
+  };
+  if (bytes < 1024 * 1024) return format(bytes / 1024, "KB");
+  return format(bytes / (1024 * 1024), "MB");
+}
+
+/** Millimetres from the thousandths the platform stores. */
+function mmFromMilli(milli: number): number {
+  return Math.round(milli / 100) / 10;
+}
+
+/**
+ * Print-desk size line: named paper first, then mm, then pixels, plus DPI.
+ * Null when the file said nothing — do not show an empty confident sentence.
+ */
+export function detectedPrintSummary(
+  detected: DetectedArtwork | null | undefined,
+): string | null {
+  if (!detected) return null;
+
+  const parts: string[] = [];
+  if (detected.pageSize) {
+    parts.push(
+      detected.orientation === "landscape"
+        ? `${detected.pageSize} landscape`
+        : detected.pageSize,
+    );
+  } else if (detected.widthMilli && detected.heightMilli) {
+    parts.push(
+      `${mmFromMilli(detected.widthMilli)} × ${mmFromMilli(detected.heightMilli)} mm`,
+    );
+  } else if (detected.pixelWidth && detected.pixelHeight) {
+    parts.push(`${detected.pixelWidth} × ${detected.pixelHeight} px`);
+  }
+
+  if (detected.dpi && detected.dpi > 0) {
+    parts.push(`${detected.dpi} DPI`);
+  }
+  if (detected.pageCount && detected.pageCount > 1) {
+    parts.push(`${detected.pageCount} pages`);
+  }
+
+  return parts.length ? parts.join(" · ") : null;
+}
+
+/**
+ * Facts under an artwork plate: print size / DPI, file size, date created.
+ */
+export function artworkFileFacts(file: Pick<StoredFile, "size" | "createdAt" | "detected">): string[] {
+  const facts: string[] = [];
+  const print = detectedPrintSummary(file.detected);
+  if (print) facts.push(print);
+  if (typeof file.size === "number") facts.push(formatFileBytes(file.size));
+  if (file.createdAt) facts.push(formatDateTime(file.createdAt));
+  return facts;
 }
