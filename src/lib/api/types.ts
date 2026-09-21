@@ -314,6 +314,29 @@ export type PriceRange = {
   deliveryFeeStatus: "pending_supplier_assignment" | "final" | string;
 };
 
+/** How big a checkout line is, in thousandths of `unit` (not millimetres). */
+export type OrderLineMeasurement = {
+  pages?: number;
+  widthMilli?: number;
+  heightMilli?: number;
+  lengthMilli?: number;
+  unit?: string | null;
+};
+
+/** One print line on a placed order. */
+export type ProductionItem = {
+  id: string;
+  itemName: string;
+  quantity: number;
+  pricingUnit?: string | null;
+  packageQty?: number | null;
+  measurement: OrderLineMeasurement | null;
+  structuredSpec?: Record<string, unknown>;
+  options?: Array<{ groupName: string; label: string }>;
+  artworkFileId?: string | null;
+  mockupFileId?: string | null;
+};
+
 export type Order = {
   id: string;
   clientId: string;
@@ -416,6 +439,11 @@ export type Order = {
 
   artworkName: string | null;
   artworkFileIds?: string[];
+  /**
+   * Checkout lines as the API projects them. Size can live on `structuredSpec.size`
+   * or on `measurement` when the listing is billed by area (tarpaulins).
+   */
+  productionItems?: ProductionItem[];
   /** Shop mockup from the checkout line, when the client attached one. */
   mockupFileIds?: string[];
   /** Retired supplier-proof files, preserved by the migration. */

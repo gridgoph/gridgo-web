@@ -115,6 +115,60 @@ Sep 8, 2026 9:48 PM
       extractPaymentReference("Sent via GCash\n+63 975 942 4438\nSep 8, 2026"),
     ).toBeNull();
   });
+
+  it.each([
+    ["Reference 9044838604781", "9044838604781"],
+    ["Reference Number 9044838604781", "9044838604781"],
+    ["Reference No. 9044838604781", "9044838604781"],
+    ["Reference ID 9044838604781", "9044838604781"],
+    ["Reference ID: 9044838604781", "9044838604781"],
+    ["Ref ID 9044838604781", "9044838604781"],
+    ["Ref. ID: 9044838604781", "9044838604781"],
+    ["Reference ID MYA9K2P4Q8R1", "MYA9K2P4Q8R1"],
+  ])("reads a %s label on the same line", (text, reference) => {
+    expect(extractPaymentReference(text)).toBe(reference);
+  });
+
+  it("reads a Reference ID when the number is on the next line", () => {
+    expect(
+      extractPaymentReference("Maya\nReference ID\nMYA9K2P4Q8R1\n₱200.00"),
+    ).toBe("MYA9K2P4Q8R1");
+  });
+
+  it("reads a 9-digit Reference ID without a GCash prefix", () => {
+    expect(extractPaymentReference("Reference ID: 965373469")).toBe("965373469");
+    expect(extractPaymentReference("Reference ID\n965373469")).toBe("965373469");
+  });
+
+  it("does not treat Refund as a reference label", () => {
+    expect(
+      extractPaymentReference("Refund ID 965373469\n₱51.75\nSep 4, 2026"),
+    ).toBeNull();
+  });
+
+  it("reads the alphanumeric id on a GCash Pay QR Destination / Purpose receipt", () => {
+    const merchant = `
+Destination
+G-Xchange Inc. / GCash
+SA**Y M** S.
+DWQM4TK3JDNXOL69U
+Purpose
+Mark David
+`.trim();
+    expect(extractPaymentReference(merchant)).toBe("DWQM4TK3JDNXOL69U");
+  });
+
+  it("still prefers a 13-digit Ref. No. when a Destination id is also on the receipt", () => {
+    const both = `
+Destination
+G-Xchange Inc. / GCash
+DWQM4TK3JDNXOL69U
+Purpose
+Mark David
+Ref. No. 1234567890123
+`.trim();
+    expect(extractPaymentReference(both)).toBe("1234567890123");
+  });
 });
 
 describe("referenceFromOcr", () => {

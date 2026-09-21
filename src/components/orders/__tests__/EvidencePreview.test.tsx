@@ -90,4 +90,89 @@ describe("EvidencePlate artwork metadata", () => {
     expect(screen.queryByText(/DPI/)).toBeNull();
     expect(screen.queryByText(/3 MB/)).toBeNull();
   });
+
+  it("warns when the file millimetres are not the product size", async () => {
+    getFile.mockResolvedValue(
+      artworkFile({
+        originalFilename: "WorkHard.png",
+        detected: {
+          kind: "raster",
+          pageCount: 1,
+          pixelWidth: 720,
+          pixelHeight: 1600,
+          dpi: 96,
+          measureUnit: "mm",
+          widthMilli: 190500,
+          heightMilli: 423300,
+          pageSize: null,
+          orientation: "portrait",
+        },
+      }),
+    );
+    getFileDownloadUrl.mockResolvedValue("https://files.test/WorkHard.png");
+    render(
+      <EvidencePlate
+        fileId="file_art"
+        label="Artwork"
+        caption="WorkHard.png"
+        showMetadata
+        productSize="A5"
+      />,
+    );
+    expect(await screen.findByRole("img", { name: "WorkHard.png" })).toBeInTheDocument();
+    expect(screen.getByText(/190\.5 × 423\.3 mm · 96 DPI/)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "File size not match on the product size",
+    );
+  });
+
+  it("warns when a banner file is not the ordered feet", async () => {
+    getFile.mockResolvedValue(
+      artworkFile({
+        originalFilename: "storefront.png",
+        detected: {
+          kind: "raster",
+          pageCount: 1,
+          pixelWidth: 720,
+          pixelHeight: 1600,
+          dpi: 96,
+          measureUnit: "mm",
+          widthMilli: 190500,
+          heightMilli: 423300,
+          pageSize: null,
+          orientation: "portrait",
+        },
+      }),
+    );
+    getFileDownloadUrl.mockResolvedValue("https://files.test/storefront.png");
+    render(
+      <EvidencePlate
+        fileId="file_art"
+        label="Artwork"
+        caption="storefront.png"
+        showMetadata
+        productSize="3x6 ft"
+      />,
+    );
+    expect(await screen.findByRole("img", { name: "storefront.png" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "File size not match on the product size",
+    );
+  });
+
+  it("does not warn when the file is the product paper", async () => {
+    getFile.mockResolvedValue(artworkFile());
+    getFileDownloadUrl.mockResolvedValue("https://files.test/flyers.jpg");
+    render(
+      <EvidencePlate
+        fileId="file_art"
+        label="Artwork"
+        caption="flyers.jpg"
+        showMetadata
+        productSize="A4"
+      />,
+    );
+    expect(await screen.findByRole("img", { name: "flyers.jpg" })).toBeInTheDocument();
+    expect(screen.queryByText("File size not match on the product size")).toBeNull();
+  });
 });

@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import type { Order, OrderPayments, PaymentRecord } from "@/lib/api/types";
 import {
+  ARTWORK_SIZE_MISMATCH,
   artworkEvidence,
   artworkFileFacts,
+  artworkSizeMismatchWarning,
+  artworkSizeMismatchesProduct,
   detectedPrintSummary,
   fileLooksLikeImage,
   formatFileBytes,
@@ -83,6 +86,40 @@ describe("artwork metadata", () => {
     ).toBe("101.6 × 101.6 mm · 300 DPI");
   });
 
+  it("carries the product size onto artwork evidence", () => {
+    expect(
+      artworkEvidence({
+        artworkFileIds: ["file_art"],
+        artworkName: "WorkHard.png",
+        size: "A5",
+      })[0].productSize,
+    ).toBe("A5");
+  });
+
+  it("prefers the checkout line size and measurement over the order label", () => {
+    const item = artworkEvidence({
+      artworkFileIds: ["file_banner"],
+      artworkName: "storefront.png",
+      size: "",
+      productionItems: [
+        {
+          id: "line1",
+          itemName: "Tarpaulin",
+          quantity: 1,
+          measurement: { widthMilli: 3_000, heightMilli: 6_000, unit: "ft" },
+          structuredSpec: { size: "3x6 ft" },
+          artworkFileId: "file_banner",
+        },
+      ],
+    })[0];
+    expect(item.productSize).toBe("3x6 ft");
+    expect(item.productMeasurement).toEqual({
+      widthMilli: 3_000,
+      heightMilli: 6_000,
+      unit: "ft",
+    });
+  });
+
   it("joins print size, file size and created date for the plate", () => {
     expect(
       artworkFileFacts({
@@ -109,6 +146,148 @@ describe("artwork metadata", () => {
   });
 });
 
+describe("artwork vs product size", () => {
+  const screenshot = {
+    kind: "raster" as const,
+    pageCount: 1,
+    pixelWidth: 720,
+    pixelHeight: 1600,
+    dpi: 96,
+    measureUnit: "mm" as const,
+    widthMilli: 190500,
+    heightMilli: 423300,
+    pageSize: null,
+    orientation: "portrait" as const,
+  };
+
+  const a5 = {
+    kind: "raster" as const,
+    pageCount: 1,
+    pixelWidth: 1748,
+    pixelHeight: 2480,
+    dpi: 300,
+    measureUnit: "mm" as const,
+    widthMilli: 148000,
+    heightMilli: 210000,
+    pageSize: "A5",
+    orientation: "portrait" as const,
+  };
+
+  it("warns when a screenshot's millimetres are not the product size", () => {
+    expect(artworkSizeMismatchesProduct(screenshot, "A5")).toBe(true);
+    expect(artworkSizeMismatchWarning(screenshot, "A5")).toBe(ARTWORK_SIZE_MISMATCH);
+  });
+
+  it("compares banners, cards and stickers by their labelled sides", () => {
+    expect(artworkSizeMismatchesProduct(screenshot, "3x6 ft")).toBe(true);
+    expect(artworkSizeMismatchesProduct(screenshot, "3.5x2 in")).toBe(true);
+    expect(artworkSizeMismatchesProduct(screenshot, "2x2 in")).toBe(true);
+    expect(
+      artworkSizeMismatchesProduct(
+        {
+          ...screenshot,
+          widthMilli: 914400,
+          heightMilli: 1828800,
+          dpi: 100,
+        },
+        "3 × 6 ft",
+      ),
+    ).toBe(false);
+    expect(
+      artworkSizeMismatchesProduct(
+        {
+          ...screenshot,
+          widthMilli: 88900,
+          heightMilli: 50800,
+          pageSize: null,
+        },
+        "3.5x2 in",
+      ),
+    ).toBe(false);
+  });
+
+  it("reads a tarpaulin the client typed rather than picked from a list", () => {
+    const measurement = { widthMilli: 3_000, heightMilli: 5_000, unit: "ft" };
+    expect(artworkSizeMismatchesProduct(screenshot, { measurement })).toBe(true);
+    expect(
+      artworkSizeMismatchesProduct(
+        {
+          ...screenshot,
+          widthMilli: 914400,
+          heightMilli: 1524000,
+        },
+        { measurement },
+      ),
+    ).toBe(false);
+  });
+
+  it("knows DL as well as the A-series", () => {
+    expect(
+      artworkSizeMismatchesProduct(
+        {
+          ...a5,
+          pageSize: "DL",
+          widthMilli: 99000,
+          heightMilli: 210000,
+        },
+        "DL",
+      ),
+    ).toBe(false);
+    expect(artworkSizeMismatchesProduct(a5, "DL")).toBe(true);
+  });
+
+  it("does not invent a size for apparel or an unmeasured custom", () => {
+    expect(artworkSizeMismatchesProduct(screenshot, "M")).toBe(false);
+    expect(artworkSizeMismatchesProduct(screenshot, "custom")).toBe(false);
+    expect(artworkSizeMismatchesProduct(screenshot, "2x4")).toBe(false);
+  });
+
+  it("accepts the same named paper in either orientation", () => {
+    expect(
+      artworkSizeMismatchesProduct(
+        { ...a5, orientation: "landscape", pageSize: "A5" },
+        "A5",
+      ),
+    ).toBe(false);
+    expect(
+      artworkSizeMismatchesProduct(
+        { ...a5, pageSize: null, widthMilli: 210000, heightMilli: 148000 },
+        "A5 landscape",
+      ),
+    ).toBe(false);
+  });
+
+  it("warns when the file is a different named paper", () => {
+    expect(
+      artworkSizeMismatchesProduct(
+        {
+          ...a5,
+          pageSize: "A4",
+          widthMilli: 210000,
+          heightMilli: 297000,
+        },
+        "A5",
+      ),
+    ).toBe(true);
+  });
+
+  it("stays quiet when either side cannot be measured", () => {
+    expect(artworkSizeMismatchesProduct(null, "A5")).toBe(false);
+    expect(artworkSizeMismatchesProduct(a5, null)).toBe(false);
+    expect(
+      artworkSizeMismatchesProduct(
+        {
+          ...screenshot,
+          widthMilli: null,
+          heightMilli: null,
+          pageSize: null,
+        },
+        "A5",
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("order evidence", () => {
   it("lists artwork from checkout line ids", () => {
     const items = artworkEvidence({
@@ -121,6 +300,8 @@ describe("order evidence", () => {
         kind: "artwork",
         label: "Artwork",
         caption: "received_2134633887480308.jpeg",
+        productSize: null,
+        productMeasurement: null,
       },
     ]);
   });

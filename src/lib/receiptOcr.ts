@@ -19,16 +19,27 @@ export const OCR_READING = "Reading the reference from your screenshot…";
 /** Overall Tesseract confidence below this, with a short unlabeled token, is discarded. */
 export const OCR_LOW_CONFIDENCE = 25;
 
-const LABEL =
-  /(?:instapay\s+)?ref(?:erence)?\.?\s*(?:no\.?|number|#)?/i;
+/**
+ * Wallet receipts print Ref / Reference, then optionally No, Number, ID or #.
+ * Word-bounded so "Refund" is not a reference label. "ID" is what Maya and
+ * several bank / QR Ph screenshots use instead of "No."
+ */
+const LABEL_CORE =
+  String.raw`(?:instapay\s+)?\bref(?:erence)?\b\.?\s*(?:no\.?|n[o0]\.?|numbers?|id|#)?`;
 
-const LABELED_CAPTURE =
-  /(?:instapay\s+)?ref(?:erence)?\.?\s*(?:no\.?|number|#)?[:.\s-]*([A-Z0-9][A-Z0-9 \-]{6,})/i;
+const LABEL = new RegExp(LABEL_CORE, "i");
+
+const LABELED_CAPTURE = new RegExp(
+  LABEL_CORE + String.raw`[:.\s-]*([A-Z0-9][A-Z0-9 \-]{6,})`,
+  "i",
+);
 
 // A complete printed number ends before a neighbouring date or copy icon.
 // Never join those OCR tokens onto it, or truncate a longer PAN/mobile.
-const LABELED_NUMBER =
-  /(?:instapay\s+)?ref(?:erence)?\.?\s*(?:no\.?|number|#)?[:.,\s-]*(\d+(?:[ \t]+\d+)*)(?=$|\s|[)])/i;
+const LABELED_NUMBER = new RegExp(
+  LABEL_CORE + String.raw`[:.,\s-]*(\d+(?:[ \t]+\d+)*)(?=$|\s|[)])`,
+  "i",
+);
 
 const NUMBER_SUFFIX =
   /^(?:\)|(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?)?)?$/i;
@@ -118,6 +129,27 @@ function numberNearLabel(lines: string[], labelIndex: number): string | null | t
   return null;
 }
 
+/**
+ * GCash Pay QR / merchant receipts print Destination, a masked name, then a
+ * long alphanumeric id, then Purpose — with no "Ref. No." label at all.
+ * The id is the last accept() hit in that block.
+ */
+function referenceFromDestinationBlock(lines: string[]): string | null {
+  let hit: string | null = null;
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!/^destination\b/i.test(lines[i])) continue;
+    hit = null;
+    for (let j = i + 1; j < lines.length; j += 1) {
+      if (/^purpose\b/i.test(lines[j])) break;
+      if (looksLikeDate(lines[j]) || looksLikeAmount(lines[j])) continue;
+      const next = accept(lines[j]);
+      if (next) hit = next;
+    }
+    if (hit) return hit;
+  }
+  return null;
+}
+
 function accept(raw: string): string | null {
   const parts = raw.trim().split(/\s+/);
   if (!parts.every((part) => /^(?=.*\d)[A-Z0-9-]+$/i.test(part))) return null;
@@ -163,6 +195,8 @@ export function extractPaymentReference(text: string): string | null {
   }
 
   const unlabeled: string[] = [];
+  const fromDestination = referenceFromDestinationBlock(lines);
+  if (fromDestination) unlabeled.push(fromDestination);
   for (const match of source.match(TOKEN) ?? []) {
     const hit = accept(match);
     if (hit) unlabeled.push(hit);
