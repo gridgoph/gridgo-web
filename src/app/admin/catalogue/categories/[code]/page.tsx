@@ -5,7 +5,7 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import { groupJobsByCategory, parseSortOrder } from "@/app/admin/_lib/catalogue-chart";
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
@@ -14,13 +14,16 @@ import {
   CategoryFields,
   type CategoryValues,
 } from "@/app/admin/catalogue/_components/CategoryFields";
+import { DangerZone } from "@/app/admin/catalogue/_components/DangerZone";
 import { ShopFloor } from "@/app/admin/catalogue/_components/ShopFloor";
 import { loadPublicShopListings } from "@/app/admin/catalogue/_lib/load-floor";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/ui/StatusChip";
+import { toast } from "@/components/ui/toast";
 import {
+  deleteTaxonomyCategory,
   getTaxonomy,
   isApiError,
   listSupplierServices,
@@ -36,6 +39,7 @@ import type {
 
 export default function EditCategoryPage() {
   const { code } = useParams<{ code: string }>();
+  const router = useRouter();
   const [taxonomy, setTaxonomy] = useState<Taxonomy | null>(null);
   const [services, setServices] = useState<SupplierService[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -168,6 +172,24 @@ export default function EditCategoryPage() {
     }
   }
 
+  async function remove() {
+    if (!values) return;
+    const { name } = values;
+    await deleteTaxonomyCategory(values.code);
+    toast.add({
+      type: "success",
+      title: `Deleted ${name}.`,
+      description: "It is off the chart; the audit log keeps the record.",
+    });
+    router.replace("/admin/catalogue");
+  }
+
+  async function retire() {
+    if (!values) return;
+    const category = await updateTaxonomyCategory(values.code, { active: false });
+    setValues((current) => (current ? { ...current, active: category.active } : current));
+  }
+
   if (loading) {
     return (
       <div className="flex flex-col gap-4">
@@ -239,12 +261,22 @@ export default function EditCategoryPage() {
       </header>
 
       <div className="flex flex-col gap-8 xl:grid xl:grid-cols-[minmax(20rem,24rem)_minmax(0,1fr)] xl:items-start xl:gap-10">
-        <div className="gg-card flex flex-col gap-5">
-          <p className="text-overline text-text-muted m-0 uppercase">On the chart</p>
-          <CategoryFields
-            values={values}
-            onChange={setValues}
-            codeLocked
+        <div className="flex flex-col gap-4">
+          <div className="gg-card flex flex-col gap-5">
+            <p className="text-overline text-text-muted m-0 uppercase">On the chart</p>
+            <CategoryFields
+              values={values}
+              onChange={setValues}
+              codeLocked
+              disabled={saving}
+            />
+          </div>
+          <DangerZone
+            kind="category"
+            name={values.name}
+            code={values.code}
+            onDelete={remove}
+            onRetire={retire}
             disabled={saving}
           />
         </div>

@@ -736,6 +736,26 @@ export type TaxonomySubcategory = {
   sortOrder?: number;
 };
 
+/**
+ * Who stands on a category or print job, from a `409 catalog_entry_in_use`
+ * (DELETE /taxonomy/categories/:code, DELETE /taxonomy/subcategories/:code).
+ * Category figures add the print jobs, accreditations and legacy codes under it.
+ */
+export type CatalogEntryUsage = {
+  listings: number;
+  shops: { supplierId: string; shopName: string }[];
+  orders: number;
+  starters: number;
+  printJobs?: number;
+  services?: number;
+  aliases?: number;
+};
+
+export type TaxonomyDeleteResult = {
+  ok: true;
+  deleted: { kind: "category" | "subcategory"; id: string; code: string; name: string };
+};
+
 /** Retired pre-chart category code still accepted on input. */
 export type TaxonomyCategoryAlias = {
   code: string;
@@ -1081,4 +1101,32 @@ export type SupportChatEvent = {
   type: "message";
   thread: SupportChatThread;
   message: SupportChatMessage;
+};
+
+/* --------------------------------------------------------------------------
+ * Shop rankings: what clients said about each shop, read back for Operations.
+ * ------------------------------------------------------------------------ */
+
+export type ShopRankingRow = {
+  supplierId: string;
+  shopName: string;
+  /** Rank by `overall`, ties broken by review count. Null when never reviewed in scope. */
+  position: number | null;
+  count: number;
+  quality: number | null;
+  speed: number | null;
+  value: number | null;
+  /** The plain mean of the three star averages. */
+  overall: number | null;
+  /** Whether the shop hit its own ready-by date, across finished jobs. */
+  onTime: { count: number; rate: number } | null;
+  /** The shop's cheapest listing in the chosen category; null without a category. */
+  fromPriceMinor: number | null;
+};
+
+export type ShopRankings = {
+  categories: Array<{ code: string; name: string }>;
+  categoryCode: string | null;
+  rankedCount: number;
+  rows: ShopRankingRow[];
 };

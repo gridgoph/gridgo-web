@@ -41,8 +41,10 @@ import type {
   SupplierService,
   PublicCatalogShop,
   PublicCatalogShopSummary,
+  ShopRankings,
   Taxonomy,
   TaxonomyCategory,
+  TaxonomyDeleteResult,
   TaxonomyFinish,
   TaxonomyMaterial,
   TaxonomySubcategory,
@@ -901,6 +903,15 @@ export async function listAllCatalogShops(
   return shops;
 }
 
+/**
+ * Every shop ranked by what clients said — overall, or within one category,
+ * where the shop's cheapest listing price rides beside the stars.
+ */
+export async function getShopRankings(categoryCode?: string | null): Promise<ShopRankings> {
+  const q = buildQuery({ categoryCode: categoryCode || undefined });
+  return request<ShopRankings>(`/admin/shop-rankings${q}`);
+}
+
 export async function getCatalogShop(supplierId: string): Promise<PublicCatalogShop> {
   const result = await request<{ shop: PublicCatalogShop }>(
     `/catalog/shops/${encodeURIComponent(supplierId)}`,
@@ -940,6 +951,20 @@ export async function updateTaxonomyCategory(
   return result.category;
 }
 
+/**
+ * Super Admin only. The API refuses (409) an entry the build ships
+ * (`catalog_entry_shipped`) or one shops, orders, or legacy codes still stand
+ * on (`catalog_entry_in_use`, with `usage: CatalogEntryUsage`); nothing cascades.
+ */
+export async function deleteTaxonomyCategory(
+  idOrCode: string,
+): Promise<TaxonomyDeleteResult> {
+  return request<TaxonomyDeleteResult>(
+    `/taxonomy/categories/${encodeURIComponent(idOrCode)}`,
+    { method: "DELETE" },
+  );
+}
+
 export async function createTaxonomySubcategory(input: {
   code: string;
   name: string;
@@ -970,6 +995,16 @@ export async function updateTaxonomySubcategory(
     { method: "PATCH", body: JSON.stringify(input) },
   );
   return result.subcategory;
+}
+
+/** Super Admin only; same refusals as `deleteTaxonomyCategory`. */
+export async function deleteTaxonomySubcategory(
+  idOrCode: string,
+): Promise<TaxonomyDeleteResult> {
+  return request<TaxonomyDeleteResult>(
+    `/taxonomy/subcategories/${encodeURIComponent(idOrCode)}`,
+    { method: "DELETE" },
+  );
 }
 
 export async function createTaxonomyMaterial(input: {

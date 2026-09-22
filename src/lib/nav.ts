@@ -37,6 +37,7 @@ export type NavIconKey =
   | "recovery"
   | "dispatch"
   | "riders"
+  | "rankings"
   | "escalations"
   | "claims"
   | "settings"
@@ -237,6 +238,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Riders",
           title: "Rider locations",
           icon: "riders",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "ops-rankings",
+          href: "/ops/rankings",
+          label: "Shop rankings",
+          title: "Shop rankings",
+          icon: "rankings",
           ready: true,
           placeholderBody: "",
         },

@@ -5,11 +5,12 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 import { parseSortOrder } from "@/app/admin/_lib/catalogue-chart";
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
 import { assembleFloorShops, type FloorShop } from "@/app/admin/_lib/shop-floor";
+import { DangerZone } from "@/app/admin/catalogue/_components/DangerZone";
 import {
   PrintJobFields,
   type PrintJobValues,
@@ -20,7 +21,9 @@ import { starterNamesForJobs } from "@/app/admin/catalogue/_lib/starter-names";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "@/components/ui/toast";
 import {
+  deleteTaxonomySubcategory,
   getTaxonomy,
   isApiError,
   listSupplierServices,
@@ -31,6 +34,7 @@ import type { TaxonomyCategory, User } from "@/lib/api/types";
 
 export default function EditPrintJobPage() {
   const { code } = useParams<{ code: string }>();
+  const router = useRouter();
   const [categories, setCategories] = useState<TaxonomyCategory[]>([]);
   const [values, setValues] = useState<PrintJobValues | null>(null);
   const [starterName, setStarterName] = useState<string | null>(null);
@@ -142,6 +146,24 @@ export default function EditPrintJobPage() {
     }
   }
 
+  async function remove() {
+    if (!values) return;
+    const { name } = values;
+    await deleteTaxonomySubcategory(values.code);
+    toast.add({
+      type: "success",
+      title: `Deleted ${name}.`,
+      description: "It is off the chart; the audit log keeps the record.",
+    });
+    router.replace("/admin/catalogue");
+  }
+
+  async function retire() {
+    if (!values) return;
+    const job = await updateTaxonomySubcategory(values.code, { active: false });
+    setValues((current) => (current ? { ...current, active: job.active } : current));
+  }
+
   if (loading && (!values || values.code !== code)) {
     return (
       <div className="flex flex-col gap-4">
@@ -235,6 +257,14 @@ export default function EditPrintJobPage() {
               No GRIDGO starter is seeded. Shops still file a blank listing.
             </p>
           )}
+          <DangerZone
+            kind="print job"
+            name={values.name}
+            code={values.code}
+            onDelete={remove}
+            onRetire={retire}
+            disabled={saving}
+          />
         </div>
 
         <ShopFloor shops={floor} jobName={values.name} loading={floorLoading} />

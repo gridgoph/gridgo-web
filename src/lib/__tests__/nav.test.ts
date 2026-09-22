@@ -32,6 +32,7 @@ describe("ROLE_NAV", () => {
       "/ops/approvals",
       "/ops/dispatch",
       "/ops/riders",
+      "/ops/rankings",
       "/ops/escalations",
       "/ops/schedule",
       "/ops/payouts",
@@ -88,6 +89,7 @@ describe("ROLE_NAV", () => {
       "/ops/orders",
       "/ops/overview",
       "/ops/payouts",
+      "/ops/rankings",
       "/ops/recovery",
       "/ops/riders",
       "/ops/schedule",
@@ -157,7 +159,7 @@ describe("ROLE_NAV", () => {
       ROLE_NAV_GROUPS.ops_admin
         .find((g) => g.id === "ops-field")
         ?.items.map((n) => n.href),
-    ).toEqual(["/ops/dispatch", "/ops/riders", "/ops/escalations", "/ops/schedule"]);
+    ).toEqual(["/ops/dispatch", "/ops/riders", "/ops/rankings", "/ops/escalations", "/ops/schedule"]);
     expect(
       ROLE_NAV_GROUPS.ops_admin
         .find((g) => g.id === "ops-money")
