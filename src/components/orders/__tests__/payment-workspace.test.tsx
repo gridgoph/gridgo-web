@@ -15,6 +15,9 @@ vi.mock("@/components/orders/EvidencePreview", () => ({
   EvidencePlate: ({ fileId }: { fileId: string }) => <div>Receipt {fileId}</div>,
   EvidenceStrip: () => null,
 }));
+vi.mock("@/components/orders/ReceiptReferenceOcr", () => ({
+  ReceiptReferenceOcr: () => null,
+}));
 const record = (status: PaymentRecord["status"], amountMinor: number): PaymentRecord => ({ status, amountMinor, method: "qr_manual", reference: "REFERENCE", submittedAt: "2026-09-15T10:00:00Z", confirmedAt: status === "confirmed" ? "2026-09-15T10:01:00Z" : null, confirmedBy: null, confirmationSource: null });
 function fixture(initialStatus: PaymentRecord["status"] = "confirmed", finalStatus: PaymentRecord["status"] = "pending_confirmation"): Order {
   return { id: "order1", clientId: "client1", supplierId: "shop1", riderId: "rider1", state: "out_for_delivery", title: "Flyers", quantity: 2, size: "A4", material: "Paper", deadline: null, address: "Davao", totalMinor: 55020, deliveryFeeMinor: 0, paymentMethod: "qr_manual", paymentStatus: "initial_payment_confirmed", promisedDate: null, artworkName: null, createdAt: "2026-09-15T10:00:00Z", updatedAt: "2026-09-15T10:00:00Z", timeline: [], payments: { initial: record(initialStatus, 41265), final_online: { ...record(finalStatus, 13755), proofFileId: "final-receipt" } } as unknown as OrderPayments };

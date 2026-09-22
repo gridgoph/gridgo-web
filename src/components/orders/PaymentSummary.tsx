@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
  */
 
 import { EvidencePlate } from "@/components/orders/EvidencePreview";
+import { ReceiptReferenceOcr } from "@/components/orders/ReceiptReferenceOcr";
 import { StatusChip } from "@/components/ui/StatusChip";
 import type { Order, PaymentInstallment } from "@/lib/api/types";
 import { formatDateTime, formatPhp } from "@/lib/format";
@@ -70,20 +71,29 @@ export function PaymentSummary({ order, renderActions }: Props) {
               ) : null}
             </div>
 
-            {payment.reference ? (
+            {payment.reference || payment.proofFileId ? (
               <dl className="mt-2 m-0 flex flex-col gap-1">
-                <div className="flex flex-wrap gap-x-2">
-                  <dt className="text-caption text-text-muted m-0">Client reference</dt>
-                  <dd className="text-caption text-text-primary m-0 font-mono break-all">
-                    {payment.reference}
-                  </dd>
-                </div>
-                <div className="flex flex-wrap gap-x-2">
-                  <dt className="text-caption text-text-muted m-0">Submitted</dt>
-                  <dd className="text-caption text-text-secondary m-0">
-                    {formatDateTime(payment.submittedAt)}
-                  </dd>
-                </div>
+                {payment.proofFileId ? (
+                  <ReceiptReferenceOcr
+                    fileId={payment.proofFileId}
+                    submittedReference={payment.reference}
+                  />
+                ) : (
+                  <div className="flex flex-wrap gap-x-2">
+                    <dt className="text-caption text-text-muted m-0">Client reference</dt>
+                    <dd className="text-caption text-text-primary m-0 font-mono break-all">
+                      {payment.reference}
+                    </dd>
+                  </div>
+                )}
+                {payment.submittedAt ? (
+                  <div className="flex flex-wrap gap-x-2">
+                    <dt className="text-caption text-text-muted m-0">Submitted</dt>
+                    <dd className="text-caption text-text-secondary m-0">
+                      {formatDateTime(payment.submittedAt)}
+                    </dd>
+                  </div>
+                ) : null}
                 {payment.confirmedAt ? (
                   <div className="flex flex-wrap gap-x-2">
                     <dt className="text-caption text-text-muted m-0">Confirmed</dt>

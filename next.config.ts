@@ -2,6 +2,11 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /**
+   * `next dev` rejects unknown Host headers. The portal bounces loopback
+   * onto `portal.localhost` so Clerk cookies are not shared with Expo.
+   */
+  allowedDevOrigins: ["portal.localhost"],
+  /**
    * Standalone output traces the exact server files this app imports and emits
    * them, with a minimal `node_modules`, into `.next/standalone`. The production
    * image copies that instead of the full dependency tree, so the runtime layer

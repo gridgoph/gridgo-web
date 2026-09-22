@@ -22,6 +22,7 @@ import {
   LogOut,
   MapPinned,
   Megaphone,
+  MessageSquare,
   Package,
   QrCode,
   Scale,
@@ -130,6 +131,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   finance: Banknote,
   planning: CalendarRange,
   broadcast: Megaphone,
+  chat: MessageSquare,
 };
 
 function isActive(pathname: string, href: string): boolean {

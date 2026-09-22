@@ -51,4 +51,16 @@ describe("AppProviders", () => {
       }),
     );
   });
+
+  it("always mounts Clerk on first paint so SSR and hydration share one tree", () => {
+    const { getByTestId, getByText } = render(
+      <AppProviders>
+        <a href="#main-content">Skip to main content</a>
+      </AppProviders>,
+    );
+
+    expect(getByTestId("clerk-provider")).toBeInTheDocument();
+    expect(getByText("Skip to main content")).toBeInTheDocument();
+    expect(clerkProviderPropsMock).toHaveBeenCalledTimes(1);
+  });
 });

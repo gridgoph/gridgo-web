@@ -51,6 +51,9 @@ import type {
   UpdateSettingsInput,
   UpdateSupplierServiceInput,
   UpdateZoneInput,
+  ApprovalCaseDetail,
+  ApprovalCaseQueue,
+  ApprovalDecisionAction,
   User,
   VerificationStatus,
   Zone,
@@ -789,6 +792,34 @@ export async function updateUserRole(
     body: JSON.stringify(input),
   });
   return result.user;
+}
+
+export async function listApprovalCases(params?: {
+  status?: string;
+  kind?: string;
+  cursor?: string;
+}): Promise<ApprovalCaseQueue> {
+  const q = buildQuery({
+    status: params?.status,
+    kind: params?.kind,
+    cursor: params?.cursor,
+  });
+  return request<ApprovalCaseQueue>(`/approval-cases${q}`);
+}
+
+export async function getApprovalCase(caseId: string): Promise<ApprovalCaseDetail> {
+  return request<ApprovalCaseDetail>(`/approval-cases/${encodeURIComponent(caseId)}`);
+}
+
+export async function decideApprovalCase(
+  caseId: string,
+  action: ApprovalDecisionAction,
+  input: { expectedVersion: number; requestId: string; reason?: string; note?: string },
+): Promise<ApprovalCaseDetail> {
+  return request<ApprovalCaseDetail>(
+    `/approval-cases/${encodeURIComponent(caseId)}/${action}`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
 }
 
 /** Ops / Super Admin — supplier or rider only. */
