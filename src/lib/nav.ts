@@ -48,7 +48,8 @@ export type NavIconKey =
   | "credits"
   | "finance"
   | "planning"
-  | "broadcast";
+  | "broadcast"
+  | "chat";
 
 export type NavItem = {
   /** Stable id for tests / analytics. */
@@ -178,6 +179,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Overview",
           title: "Operations overview",
           icon: "overview",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "ops-chat",
+          href: "/ops/chat",
+          label: "Chat",
+          title: "Support chat",
+          icon: "chat",
           ready: true,
           placeholderBody: "",
         },
@@ -329,6 +339,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Overview",
           title: "Platform overview",
           icon: "overview",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-chat",
+          href: "/admin/chat",
+          label: "Chat",
+          title: "Support chat",
+          icon: "chat",
           ready: true,
           placeholderBody: "",
         },

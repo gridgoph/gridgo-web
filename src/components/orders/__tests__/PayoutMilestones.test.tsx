@@ -78,18 +78,25 @@ const fourShares = () => [
 ];
 
 describe("PayoutMilestones", () => {
-  it("opens every share that can be released and shows the picture behind it", () => {
+  it("opens every share that can be released and names the proof without a picture", () => {
     render(<PayoutMilestones order={order(fourShares())} onRelease={() => {}} />);
+    expect(screen.queryByRole("img", { name: "Proof of fulfilment" })).toBeNull();
+    expect(screen.getByText(/Proof of fulfilment\. Filed .* by Supplier/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Release ₱500.00" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Release ₱150.00" })).toBeEnabled();
+    // The two waiting shares stay closed: nothing to look at yet.
+    expect(screen.queryByText(/No proof on file yet/)).toBeNull();
+  });
+
+  it("still shows the pictures when the payout desk asks to emphasize them", () => {
+    render(
+      <PayoutMilestones order={order(fourShares())} emphasizeProof onRelease={() => {}} />,
+    );
     const plates = screen.getAllByRole("img", { name: "Proof of fulfilment" });
     expect(plates.map((img) => img.getAttribute("src"))).toEqual([
       "plate:pof_printing",
       "plate:pof_packing",
     ]);
-    expect(screen.getByText(/Filed .* by Supplier/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Release ₱500.00" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Release ₱150.00" })).toBeEnabled();
-    // The two waiting shares stay closed: nothing to look at yet.
-    expect(screen.queryByText(/No proof on file yet/)).toBeNull();
   });
 
   it("reads each share's state from its header without opening it", () => {

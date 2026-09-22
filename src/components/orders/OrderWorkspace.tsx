@@ -81,8 +81,8 @@ type SectionId = "payment" | "qa" | "production" | "delivery" | "payout" | "hist
  * decision lives. The rows that need Operations open themselves.
  *
  * After the four production steps comes the supplier's payout: the four shares
- * of the shop's price, each with the Proof of Fulfilment behind it, so the
- * picture that justifies the money is on the same page as the order.
+ * of the shop's price. The pictures that justify those shares live on
+ * Production; the payout row keeps the wallet receipt and the release.
  *
  * On the right, the whole specification, always visible and never behind a
  * tab, because the one thing a quality check needs is to read the spec and

@@ -3,12 +3,12 @@
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 /**
- * Supplier and rider sign-up approvals.
+ * Supplier, rider, and business-client sign-up approvals.
  *
- * Both roles now create their own accounts and can do nothing until someone
- * says yes: a pending supplier cannot be matched, and a pending rider cannot
- * accept a dispatch. This is the one implementation of that queue — Operations
- * mounts it at /ops/approvals and Super Admin inside /admin/verification.
+ * Suppliers and riders cannot work until someone says yes. A personal client
+ * who asks to become a business or organization stays personal until this
+ * queue converts them. Operations mounts it at /ops/approvals and Super Admin
+ * inside /admin/verification.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -39,9 +39,21 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { SkeletonCards } from "@/components/ui/loading";
 import { Textarea } from "@/components/ui/textarea";
-import { listUsers, setUserVerification } from "@/lib/api/client";
+import {
+  decideApprovalCase,
+  getApprovalCase,
+  listApprovalCases,
+  listUsers,
+  setUserVerification,
+} from "@/lib/api/client";
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
-import type { Taxonomy, User } from "@/lib/api/types";
+import type {
+  ApprovalCaseDetail,
+  ApprovalCaseSummary,
+  ApprovalDecisionAction,
+  Taxonomy,
+  User,
+} from "@/lib/api/types";
 import { getTaxonomy } from "@/lib/api/client";
 import { formatDateTime } from "@/lib/format";
 import { useLiveReload } from "@/lib/live/useLiveReload";
@@ -53,8 +65,15 @@ type Props = {
 
 type Loaded = {
   people: User[];
+  business: ApprovalCaseDetail[];
   categoryNames: Record<string, string>;
 };
+
+type ConfirmTarget =
+  | { kind: "member"; user: User; action: VerificationAction }
+  | { kind: "business"; detail: ApprovalCaseDetail; action: VerificationAction };
+
+const BUSINESS_STATUSES = ["pending", "approved", "rejected", "suspended"] as const;
 
 const ORDER: Record<string, number> = {
   pending: 0,
@@ -71,10 +90,7 @@ export function SignupApprovals({ intro }: Props) {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionOk, setActionOk] = useState<string | null>(null);
-  const [confirm, setConfirm] = useState<{
-    user: User;
-    action: VerificationAction;
-  } | null>(null);
+  const [confirm, setConfirm] = useState<ConfirmTarget | null>(null);
   const [reason, setReason] = useState("");
 
   const load = useSerializedLoad(
@@ -82,16 +98,23 @@ export function SignupApprovals({ intro }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const [suppliers, riders, taxonomy] = await Promise.all([
+        const [suppliers, riders, taxonomy, ...businessPages] = await Promise.all([
           listUsers("supplier"),
           listUsers("rider"),
           getTaxonomy().catch(() => null as Taxonomy | null),
+          ...BUSINESS_STATUSES.map((status) =>
+            listApprovalCases({ kind: "business_client", status }),
+          ),
         ]);
         const categoryNames: Record<string, string> = {};
         for (const category of taxonomy?.categories ?? []) {
           categoryNames[category.code] = category.name;
         }
-        setData({ people: [...suppliers, ...riders], categoryNames });
+        const summaries = businessPages.flatMap((page) => page.approvalCases);
+        const business = await Promise.all(
+          summaries.map((item) => getApprovalCase(item.id)),
+        );
+        setData({ people: [...suppliers, ...riders], business, categoryNames });
       } catch (err) {
         setData(null);
         setError(
@@ -112,7 +135,7 @@ export function SignupApprovals({ intro }: Props) {
     void load();
   }, [load]);
 
-  const { waiting, decided } = useMemo(() => {
+  const { waiting, decided, waitingBusiness, decidedBusiness } = useMemo(() => {
     const people = [...(data?.people ?? [])].sort((a, b) => {
       const rank =
         (ORDER[a.verificationStatus ?? "unverified"] ?? 9) -
@@ -120,6 +143,11 @@ export function SignupApprovals({ intro }: Props) {
       if (rank !== 0) return rank;
       return (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
     });
+    const business = [...(data?.business ?? [])].sort((left, right) =>
+      (left.approvalCase.submittedAt ?? left.approvalCase.updatedAt).localeCompare(
+        right.approvalCase.submittedAt ?? right.approvalCase.updatedAt,
+      ),
+    );
     return {
       waiting: people.filter(
         (u) =>
@@ -133,6 +161,8 @@ export function SignupApprovals({ intro }: Props) {
           u.verificationStatus === "suspended" ||
           u.verificationStatus === "rejected",
       ),
+      waitingBusiness: business.filter((item) => item.approvalCase.status === "pending"),
+      decidedBusiness: business.filter((item) => item.approvalCase.status !== "pending"),
     };
   }, [data]);
 
@@ -146,16 +176,48 @@ export function SignupApprovals({ intro }: Props) {
     setActionError(null);
     setActionOk(null);
     try {
-      await setUserVerification(confirm.user.id, {
-        status: confirm.action.status,
-        reason: reason.trim() || undefined,
-        note: reason.trim() || undefined,
-      });
-      setActionOk(
-        confirm.action.status === "approved"
-          ? `${confirm.user.name} can start taking work.`
-          : `${confirm.user.name}: ${confirm.action.label.toLowerCase()} applied.`,
-      );
+      if (confirm.kind === "business") {
+        const decision = caseDecision(confirm.action.status, confirm.detail.approvalCase.status);
+        if (!decision) {
+          setActionError("That decision is not available for this application.");
+          setBusy(false);
+          return;
+        }
+        if (decision === "restore" && !reason.trim()) {
+          setActionError("Add a note for the record before restoring this account.");
+          setBusy(false);
+          return;
+        }
+        const note = reason.trim();
+        await decideApprovalCase(confirm.detail.approvalCase.id, decision, {
+          expectedVersion: confirm.detail.approvalCase.version,
+          requestId: crypto.randomUUID(),
+          ...(decision === "approve" ? { note: note || undefined } : {}),
+          ...(decision === "restore" ? { note } : {}),
+          ...(decision === "reject" || decision === "suspend" ? { reason: note } : {}),
+        });
+        const name =
+          confirm.detail.application?.businessName ||
+          confirm.detail.clientProfile?.businessName ||
+          confirm.detail.applicant?.name ||
+          "This application";
+        setActionOk(
+          decision === "approve"
+            ? `${name} is now a ${confirm.detail.application?.accountType === "organization" ? "organization" : "business"} client.`
+            : `${name}: ${confirm.action.label.toLowerCase()} applied.`,
+        );
+      } else {
+        await setUserVerification(confirm.user.id, {
+          status: confirm.action.status,
+          reason: reason.trim() || undefined,
+          note: reason.trim() || undefined,
+        });
+        setActionOk(
+          confirm.action.status === "approved"
+            ? `${confirm.user.name} can start taking work.`
+            : `${confirm.user.name}: ${confirm.action.label.toLowerCase()} applied.`,
+        );
+      }
       setConfirm(null);
       setReason("");
       await load();
@@ -186,7 +248,7 @@ export function SignupApprovals({ intro }: Props) {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
           {intro ??
-            "Suppliers and riders sign themselves up. Until someone approves them they cannot be matched to an order or accept a delivery, so this queue is where new capacity comes from."}
+            "Suppliers and riders wait here before they can take work. Personal clients who apply for a business or organization account also wait here — they keep ordering as themselves until someone converts the account."}
         </p>
         <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
@@ -206,14 +268,14 @@ export function SignupApprovals({ intro }: Props) {
 
       <section aria-labelledby="waiting-heading" className="flex flex-col gap-3">
         <h2 id="waiting-heading" className="text-h3 text-text-primary m-0">
-          Waiting for a decision{data ? ` (${waiting.length})` : ""}
+          Waiting for a decision{data ? ` (${waiting.length + waitingBusiness.length})` : ""}
         </h2>
         {pending ? (
           <SkeletonCards count={2} lines={2} label="Loading sign-ups" />
-        ) : !waiting.length ? (
+        ) : !waiting.length && !waitingBusiness.length ? (
           <EmptyState
             title="Nobody is waiting"
-            body="Every supplier and rider who has signed up has had a decision. New sign-ups land here the moment they finish registering."
+            body="Every supplier, rider, and business application has had a decision. New sign-ups and client conversions land here the moment they are submitted."
             action={
               <Button variant="secondary" onClick={() => void load()}>
                 Check again
@@ -222,6 +284,17 @@ export function SignupApprovals({ intro }: Props) {
           />
         ) : (
           <ul className="m-0 flex list-none flex-col gap-3 p-0">
+            {waitingBusiness.map((detail) => (
+              <BusinessApplicationCard
+                key={detail.approvalCase.id}
+                detail={detail}
+                onAction={(action) => {
+                  setActionError(null);
+                  setReason("");
+                  setConfirm({ kind: "business", detail, action });
+                }}
+              />
+            ))}
             {waiting.map((person) => (
               <ApplicantCard
                 key={person.id}
@@ -230,7 +303,7 @@ export function SignupApprovals({ intro }: Props) {
                 onAction={(action) => {
                   setActionError(null);
                   setReason("");
-                  setConfirm({ user: person, action });
+                  setConfirm({ kind: "member", user: person, action });
                 }}
               />
             ))}
@@ -238,12 +311,23 @@ export function SignupApprovals({ intro }: Props) {
         )}
       </section>
 
-      {decided.length ? (
+      {decided.length || decidedBusiness.length ? (
         <section aria-labelledby="decided-heading" className="flex flex-col gap-3">
           <h2 id="decided-heading" className="text-h3 text-text-primary m-0">
-            Already decided ({decided.length})
+            Already decided ({decided.length + decidedBusiness.length})
           </h2>
           <ul className="m-0 flex list-none flex-col gap-3 p-0">
+            {decidedBusiness.map((detail) => (
+              <BusinessApplicationCard
+                key={detail.approvalCase.id}
+                detail={detail}
+                onAction={(action) => {
+                  setActionError(null);
+                  setReason("");
+                  setConfirm({ kind: "business", detail, action });
+                }}
+              />
+            ))}
             {decided.map((person) => (
               <ApplicantCard
                 key={person.id}
@@ -252,7 +336,7 @@ export function SignupApprovals({ intro }: Props) {
                 onAction={(action) => {
                   setActionError(null);
                   setReason("");
-                  setConfirm({ user: person, action });
+                  setConfirm({ kind: "member", user: person, action });
                 }}
               />
             ))}
@@ -273,7 +357,7 @@ export function SignupApprovals({ intro }: Props) {
         <AlertDialogContent className="sm:max-w-md">
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {confirm?.action.label} {confirm?.user.name}?
+              {confirm?.action.label} {confirmName(confirm)}?
             </AlertDialogTitle>
             <AlertDialogDescription>{confirm?.action.consequence}</AlertDialogDescription>
           </AlertDialogHeader>
@@ -412,4 +496,144 @@ function ApplicantCard({
       ) : null}
     </li>
   );
+}
+
+function BusinessApplicationCard({
+  detail,
+  onAction,
+}: {
+  detail: ApprovalCaseDetail;
+  onAction: (action: VerificationAction) => void;
+}) {
+  const status = presentVerification(detail.approvalCase.status);
+  const actions = businessApplicationActions(detail.approvalCase.status);
+  const requested =
+    detail.application?.accountType === "organization" ? "Organization" : "Business";
+  const title =
+    detail.application?.businessName ||
+    detail.clientProfile?.businessName ||
+    detail.applicant?.name ||
+    "Business application";
+
+  return (
+    <li className="gg-card flex flex-col gap-3">
+      <ApplicantHeader
+        title={title}
+        caption={[requested + " client", detail.applicant?.name, detail.applicant?.email]
+          .filter(Boolean)
+          .join(" · ")}
+        status={status}
+      />
+
+      <dl className="m-0 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {detail.application?.businessNature || detail.clientProfile?.businessNature ? (
+          <Detail
+            label="What they do"
+            value={
+              detail.application?.businessNature ||
+              detail.clientProfile?.businessNature ||
+              ""
+            }
+          />
+        ) : null}
+        {detail.applicant?.phone ? <Detail label="Phone" value={detail.applicant.phone} /> : null}
+        {detail.approvalCase.submittedAt ? (
+          <Detail label="Submitted" value={formatDateTime(detail.approvalCase.submittedAt)} />
+        ) : null}
+        {detail.approvalCase.decidedAt ? (
+          <Detail label="Last decision" value={formatDateTime(detail.approvalCase.decidedAt)} />
+        ) : null}
+      </dl>
+
+      {detail.approvalCase.rejectionReason ? (
+        <p className="text-caption text-text-secondary m-0">
+          Last note: {detail.approvalCase.rejectionReason}
+        </p>
+      ) : null}
+      {detail.approvalCase.suspensionReason ? (
+        <p className="text-caption text-text-secondary m-0">
+          Last note: {detail.approvalCase.suspensionReason}
+        </p>
+      ) : null}
+
+      {actions.length ? (
+        <div className="flex flex-wrap gap-2 border-t border-outline-subtle pt-3">
+          {actions.map((action) => (
+            <Button
+              key={action.status}
+              variant={action.danger ? "danger" : "secondary"}
+              onClick={() => onAction(action)}
+            >
+              {action.label}
+            </Button>
+          ))}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+function confirmName(confirm: ConfirmTarget | null): string {
+  if (!confirm) return "";
+  if (confirm.kind === "member") return confirm.user.name;
+  return (
+    confirm.detail.application?.businessName ||
+    confirm.detail.clientProfile?.businessName ||
+    confirm.detail.applicant?.name ||
+    "this application"
+  );
+}
+
+function caseDecision(
+  next: VerificationAction["status"],
+  current: ApprovalCaseSummary["status"],
+): ApprovalDecisionAction | null {
+  if (next === "approved" && current === "suspended") return "restore";
+  if (next === "approved") return "approve";
+  if (next === "rejected") return "reject";
+  if (next === "suspended") return "suspend";
+  return null;
+}
+
+function businessApplicationActions(
+  status: ApprovalCaseSummary["status"],
+): VerificationAction[] {
+  switch (status) {
+    case "pending":
+      return [
+        {
+          status: "approved",
+          label: "Approve",
+          consequence:
+            "Converts this personal client into the requested business or organization. They keep personal ordering until this decision is made.",
+        },
+        {
+          status: "rejected",
+          label: "Reject",
+          danger: true,
+          consequence:
+            "Leaves them as a personal client. Give a reason — it is the only explanation they receive.",
+        },
+      ];
+    case "approved":
+      return [
+        {
+          status: "suspended",
+          label: "Suspend",
+          danger: true,
+          consequence:
+            "Stops business ordering on this account. Personal orders continue.",
+        },
+      ];
+    case "suspended":
+      return [
+        {
+          status: "approved",
+          label: "Reinstate",
+          consequence: "Restores business ordering on this account.",
+        },
+      ];
+    default:
+      return [];
+  }
 }
