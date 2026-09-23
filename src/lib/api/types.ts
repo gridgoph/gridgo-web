@@ -525,6 +525,18 @@ export type PaymentQr = {
   imageUrl?: string;
 };
 
+/** Live cadence for a shop that has not moved a job waiting on production. */
+export type ProductionNudgeUnit = "hours" | "days";
+
+export type ProductionNudge = {
+  enabled: boolean;
+  afterValue: number;
+  afterUnit: ProductionNudgeUnit;
+  repeatValue: number;
+  repeatUnit: ProductionNudgeUnit;
+  maxCount: number;
+};
+
 export type PlatformSettings = {
   /**
    * The settings row's version, quoted back as `expectedVersion` on every
@@ -533,6 +545,12 @@ export type PlatformSettings = {
   version: number;
   /** Whole hours, 1–720. One global value — never per order. */
   issueWindowHours: number;
+  /**
+   * How long a shop may stay silent on a production job, and how often GRIDGO
+   * reminds them. Absent on an older settings row; the screen then shows the
+   * published defaults.
+   */
+  productionNudge?: ProductionNudge;
   /**
    * GRIDGO's service fee in basis points of the shop's price (1,000 = 10%),
    * 0–10,000. Added on top of the shop price and folded into the client's
@@ -549,6 +567,7 @@ export type UpdateSettingsInput = {
   issueWindowHours?: number;
   serviceFeeRateBps?: number;
   deliveryFeeBands?: DeliveryFeeBand[];
+  productionNudge?: ProductionNudge;
   reason?: string;
 };
 
