@@ -44,8 +44,9 @@ import {
   updateSettings,
   uploadPaymentQr,
 } from "@/lib/api/client";
-import { ISSUE_WINDOW_MAX_HOURS, ISSUE_WINDOW_MIN_HOURS } from "@/lib/api/constraints";
-import type { DeliveryFeeBand, PlatformSettings } from "@/lib/api/types";
+import { ISSUE_WINDOW_MAX_HOURS, ISSUE_WINDOW_MIN_HOURS, productionNudgeValueBounds, PRODUCTION_NUDGE_MAX_COUNT, PRODUCTION_NUDGE_MIN_COUNT } from "@/lib/api/constraints";
+import type { DeliveryFeeBand, PlatformSettings, ProductionNudge, ProductionNudgeUnit } from "@/lib/api/types";
+import { Switch } from "@/components/ui/switch";
 import { formatPhp } from "@/lib/format";
 
 /**
@@ -98,6 +99,97 @@ const QR_COPY = (
   </>
 );
 
+const NUDGE_COPY = (
+  <>
+    If a shop has not moved a job that is waiting on them — start production, file proof, or
+    mark it ready — GRIDGO reminds that shop on this cadence. Changing it here is live.
+    Phones pick it up on the next check. No app release.
+  </>
+);
+
+const DEFAULT_PRODUCTION_NUDGE: ProductionNudge = {
+  enabled: true,
+  afterValue: 4,
+  afterUnit: "hours",
+  repeatValue: 4,
+  repeatUnit: "hours",
+  maxCount: 3,
+};
+
+type NudgeDraft = {
+  enabled: boolean;
+  afterValue: string;
+  afterUnit: ProductionNudgeUnit;
+  repeatValue: string;
+  repeatUnit: ProductionNudgeUnit;
+  maxCount: string;
+};
+
+function nudgeFrom(settings: PlatformSettings): ProductionNudge {
+  return settings.productionNudge ?? DEFAULT_PRODUCTION_NUDGE;
+}
+
+function toNudgeDraft(settings: PlatformSettings): NudgeDraft {
+  const nudge = nudgeFrom(settings);
+  return {
+    enabled: nudge.enabled,
+    afterValue: String(nudge.afterValue),
+    afterUnit: nudge.afterUnit,
+    repeatValue: String(nudge.repeatValue),
+    repeatUnit: nudge.repeatUnit,
+    maxCount: String(nudge.maxCount),
+  };
+}
+
+function unitWord(value: number, unit: ProductionNudgeUnit): string {
+  if (unit === "days") return value === 1 ? "day" : "days";
+  return value === 1 ? "hour" : "hours";
+}
+
+/** One sentence from the saved policy, for the “in force” line. */
+export function productionNudgeInForce(nudge: ProductionNudge): string {
+  if (!nudge.enabled) return "Off. Shops are not reminded.";
+  return `First after ${nudge.afterValue} ${unitWord(nudge.afterValue, nudge.afterUnit)}, then every ${nudge.repeatValue} ${unitWord(nudge.repeatValue, nudge.repeatUnit)}, up to ${nudge.maxCount} times.`;
+}
+
+function parseNudge(draft: NudgeDraft): { nudge: ProductionNudge } | { problem: string } {
+  const after = readSpan(draft.afterValue, draft.afterUnit, "First reminder");
+  if ("problem" in after) return after;
+  const repeat = readSpan(draft.repeatValue, draft.repeatUnit, "The next reminder");
+  if ("problem" in repeat) return repeat;
+  const maxCount = Number(draft.maxCount.trim());
+  if (!Number.isInteger(maxCount) || maxCount < PRODUCTION_NUDGE_MIN_COUNT || maxCount > PRODUCTION_NUDGE_MAX_COUNT) {
+    return {
+      problem: `Stop after a whole number from ${PRODUCTION_NUDGE_MIN_COUNT} to ${PRODUCTION_NUDGE_MAX_COUNT}, including the first reminder.`,
+    };
+  }
+  return {
+    nudge: {
+      enabled: draft.enabled,
+      afterValue: after.value,
+      afterUnit: draft.afterUnit,
+      repeatValue: repeat.value,
+      repeatUnit: draft.repeatUnit,
+      maxCount,
+    },
+  };
+}
+
+function readSpan(
+  raw: string,
+  unit: ProductionNudgeUnit,
+  label: string,
+): { value: number } | { problem: string } {
+  const bounds = productionNudgeValueBounds(unit);
+  const value = Number(raw.trim());
+  if (!Number.isInteger(value) || value < bounds.min || value > bounds.max) {
+    return {
+      problem: `${label} is a whole number from ${bounds.min} to ${bounds.max} ${unit}.`,
+    };
+  }
+  return { value };
+}
+
 const HOURS_HELP = (
   <>
     Whole hours, {ISSUE_WINDOW_MIN_HOURS} to {ISSUE_WINDOW_MAX_HOURS}. Applies to windows
@@ -145,6 +237,7 @@ export function OperationalSettings() {
   const [rate, setRate] = useState("");
   const [hours, setHours] = useState("");
   const [bands, setBands] = useState<BandDraft[]>([]);
+  const [nudge, setNudge] = useState<NudgeDraft>(toNudgeDraft({ version: 0, issueWindowHours: 24, serviceFeeRateBps: 1000, deliveryFeeBands: [] }));
   const [qrBusy, setQrBusy] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
   const [qrOk, setQrOk] = useState<string | null>(null);
@@ -174,6 +267,13 @@ export function OperationalSettings() {
           JSON.stringify(current) !== JSON.stringify(toDraft(previous.deliveryFeeBands))
             ? current
             : toDraft(next.deliveryFeeBands),
+        );
+        setNudge((current) =>
+          preserveDraft &&
+          previous &&
+          JSON.stringify(current) !== JSON.stringify(toNudgeDraft(previous))
+            ? current
+            : toNudgeDraft(next),
         );
         settingsRef.current = next;
         setSettings(next);
@@ -271,6 +371,11 @@ export function OperationalSettings() {
       setSaveError(parsedBands.problem);
       return;
     }
+    const parsedNudge = parseNudge(nudge);
+    if ("problem" in parsedNudge) {
+      setSaveError(parsedNudge.problem);
+      return;
+    }
 
     setBusy(true);
     setSaveError(null);
@@ -281,12 +386,14 @@ export function OperationalSettings() {
         serviceFeeRateBps: parsedRate,
         issueWindowHours: parsedHours,
         deliveryFeeBands: parsedBands.bands,
+        productionNudge: parsedNudge.nudge,
         reason: "Updated from the portal",
       });
       setSettings(next);
       setRate(bpsToPercentInput(next.serviceFeeRateBps));
       setHours(String(next.issueWindowHours));
       setBands(toDraft(next.deliveryFeeBands));
+      setNudge(toNudgeDraft(next));
       setSaveOk(
         `Saved. Orders placed from now on carry a ${formatRatePercent(next.serviceFeeRateBps)} service fee and price delivery from these bands, and issue windows opened from now use the new length. Orders already placed keep the figures they were given.`,
       );
@@ -351,7 +458,8 @@ export function OperationalSettings() {
   const dirty =
     rate !== bpsToPercentInput(settings.serviceFeeRateBps) ||
     hours !== String(settings.issueWindowHours) ||
-    JSON.stringify(bands) !== JSON.stringify(toDraft(settings.deliveryFeeBands));
+    JSON.stringify(bands) !== JSON.stringify(toDraft(settings.deliveryFeeBands)) ||
+    JSON.stringify(nudge) !== JSON.stringify(toNudgeDraft(settings));
 
   // The example follows the field as it is typed; an unreadable draft shows
   // the rate in force so the receipts never go blank mid-edit.
@@ -561,6 +669,60 @@ export function OperationalSettings() {
         </section>
       </div>
 
+      <section className="gg-card p-3" aria-labelledby="production-nudge-heading">
+        <h2 id="production-nudge-heading" className="text-h3 text-text-primary m-0">
+          Production inactivity reminders
+        </h2>
+        <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">{NUDGE_COPY}</p>
+        <FieldGroup>
+          <Field orientation="horizontal">
+            <FieldLabel htmlFor="production-nudge-enabled">Enabled</FieldLabel>
+            <Switch
+              id="production-nudge-enabled"
+              checked={nudge.enabled}
+              onCheckedChange={(checked) =>
+                setNudge((current) => ({ ...current, enabled: Boolean(checked) }))
+              }
+              aria-label="Enabled"
+            />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <NudgeSpan
+              id="production-nudge-after"
+              label="First reminder after"
+              value={nudge.afterValue}
+              unit={nudge.afterUnit}
+              onValue={(afterValue) => setNudge((current) => ({ ...current, afterValue }))}
+              onUnit={(afterUnit) => setNudge((current) => ({ ...current, afterUnit }))}
+            />
+            <NudgeSpan
+              id="production-nudge-repeat"
+              label="Then remind every"
+              value={nudge.repeatValue}
+              unit={nudge.repeatUnit}
+              onValue={(repeatValue) => setNudge((current) => ({ ...current, repeatValue }))}
+              onUnit={(repeatUnit) => setNudge((current) => ({ ...current, repeatUnit }))}
+            />
+          </div>
+          <Field>
+            <FieldLabel htmlFor="production-nudge-count">Stop after</FieldLabel>
+            <Input
+              id="production-nudge-count"
+              inputMode="numeric"
+              className="max-w-40"
+              value={nudge.maxCount}
+              onChange={(event) =>
+                setNudge((current) => ({ ...current, maxCount: event.target.value }))
+              }
+            />
+            <FieldDescription>Including the first reminder.</FieldDescription>
+          </Field>
+        </FieldGroup>
+        <p className="text-body text-text-secondary m-0 mt-3" data-testid="production-nudge-in-force">
+          In force right now: {productionNudgeInForce(nudgeFrom(settings))}
+        </p>
+      </section>
+
       <section className="gg-card p-3" aria-labelledby="payment-qr-heading">
         <h2 id="payment-qr-heading" className="text-h3 text-text-primary m-0">
           Payment QR
@@ -645,6 +807,7 @@ export function OperationalSettings() {
             setRate(bpsToPercentInput(settings.serviceFeeRateBps));
             setHours(String(settings.issueWindowHours));
             setBands(toDraft(settings.deliveryFeeBands));
+            setNudge(toNudgeDraft(settings));
             setSaveError(null);
             setSaveOk(null);
           }}
@@ -754,6 +917,50 @@ function WorkedReceipts({ rateBps }: { rateBps: number }) {
         />
       </div>
     </div>
+  );
+}
+
+function NudgeSpan({
+  id,
+  label,
+  value,
+  unit,
+  onValue,
+  onUnit,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  unit: ProductionNudgeUnit;
+  onValue: (value: string) => void;
+  onUnit: (unit: ProductionNudgeUnit) => void;
+}) {
+  const bounds = productionNudgeValueBounds(unit);
+  return (
+    <Field>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <div className="flex max-w-md gap-2">
+        <Input
+          id={id}
+          inputMode="numeric"
+          className="max-w-28"
+          value={value}
+          onChange={(event) => onValue(event.target.value)}
+        />
+        <select
+          aria-label={`${label} unit`}
+          className="h-12 rounded-[var(--radius-field)] border border-input bg-card px-3 text-body text-foreground"
+          value={unit}
+          onChange={(event) => onUnit(event.target.value === "days" ? "days" : "hours")}
+        >
+          <option value="hours">Hours</option>
+          <option value="days">Days</option>
+        </select>
+      </div>
+      <FieldDescription>
+        Whole {unit}, {bounds.min} to {bounds.max}.
+      </FieldDescription>
+    </Field>
   );
 }
 
