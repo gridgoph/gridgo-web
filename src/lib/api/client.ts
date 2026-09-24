@@ -348,7 +348,7 @@ export type TransitionExtra = {
    * Required with `state: "supplier_accepted"`. The supplier's own asking price
    * in minor units; the server derives commission, totals and the installments.
    */
-  supplierPriceMinor?: number;
+  supplierSubtotalMinor?: number;
   promisedDate?: string | null;
   reason?: string;
   note?: string;

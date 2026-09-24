@@ -37,7 +37,7 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, getOrder, transitionOrder } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
-import { formatDateTime, formatPhp } from "@/lib/format";
+import { formatDateTime, formatPhp, minorToPesosInput } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
 import {
   actionsForJob,
@@ -113,6 +113,8 @@ export default function SupplierJobDetailPage() {
     if (!job) return;
     if (action.needsPrice) {
       setActionError(null);
+      const shopPriceMinor = job.supplierSubtotalMinor ?? job.supplierPriceMinor;
+      setPricePesos(shopPriceMinor == null ? "" : minorToPesosInput(shopPriceMinor));
       setAcceptOpen(true);
       return;
     }
@@ -141,8 +143,8 @@ export default function SupplierJobDetailPage() {
 
   async function acceptWithPrice() {
     if (!job) return;
-    const supplierPriceMinor = pesosToMinor(pricePesos);
-    if (supplierPriceMinor === null || supplierPriceMinor <= 0) {
+    const supplierSubtotalMinor = pesosToMinor(pricePesos);
+    if (supplierSubtotalMinor === null || supplierSubtotalMinor <= 0) {
       setActionError("Enter your price in pesos, like 1000 or 1000.50.");
       return;
     }
@@ -150,7 +152,7 @@ export default function SupplierJobDetailPage() {
     setActionError(null);
     try {
       const updated = await transitionOrder(job.id, "supplier_accepted", {
-        supplierPriceMinor,
+        supplierSubtotalMinor,
         promisedDate: promisedDate ? new Date(promisedDate).toISOString() : undefined,
         note: "Accepted and priced",
       });
@@ -361,7 +363,6 @@ export default function SupplierJobDetailPage() {
                 inputMode="decimal"
                 value={pricePesos}
                 onChange={(e) => setPricePesos(e.target.value)}
-                placeholder="1000.00"
                 autoComplete="off"
               />
               <FieldDescription>
