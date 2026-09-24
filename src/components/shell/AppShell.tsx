@@ -23,6 +23,7 @@ import {
   MapPinned,
   Megaphone,
   MessageSquare,
+  MessageSquareWarning,
   Package,
   QrCode,
   Scale,
@@ -132,6 +133,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   planning: CalendarRange,
   broadcast: Megaphone,
   chat: MessageSquare,
+  reports: MessageSquareWarning,
 };
 
 function isActive(pathname: string, href: string): boolean {
