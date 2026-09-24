@@ -389,3 +389,71 @@ it("reconciles the inbox on return to the tab without dropping a healthy stream"
   expect(streamHandle.wake).toHaveBeenCalledTimes(1);
   await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
 });
+
+it("sends a fresh slip to the desktop while the person is away, and to the toast while they are here", async () => {
+  const fresh = () => new Date().toISOString();
+  const created: Array<{ title: string; onclick: (() => void) | null }> = [];
+  class GrantedNotification {
+    static permission = "granted";
+    onclick: (() => void) | null = null;
+    close = vi.fn();
+    constructor(public title: string) {
+      created.push(this);
+    }
+  }
+  vi.stubGlobal("Notification", GrantedNotification);
+  const hasFocus = vi.spyOn(document, "hasFocus").mockReturnValue(false);
+  vi.spyOn(window, "focus").mockImplementation(() => undefined);
+  vi.mocked(markNotificationRead).mockImplementation(async (id) => ({
+    ...notification(id),
+    read: true,
+  }));
+  list.mockResolvedValue({ notifications: [], snapshot: null });
+  const opened: string[] = [];
+  try {
+    render(
+      <LiveProvider role="ops_admin" onOpenNotification={(row) => opened.push(row.id)}>
+        <MutationInbox />
+      </LiveProvider>,
+    );
+    await waitFor(() => expect(handlers).toBeDefined());
+    await waitFor(() => expect(list).toHaveBeenCalled());
+    await act(async () => {
+      handlers.onNotification({ ...notification("away"), at: fresh() });
+    });
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(created[0].title).toBe("away");
+    expect(toastManager.add).not.toHaveBeenCalled();
+    // Clicking the alert opens the row the way the inbox would.
+    await act(async () => {
+      created[0].onclick?.();
+    });
+    expect(opened).toEqual(["away"]);
+    await waitFor(() => expect(markNotificationRead).toHaveBeenCalledWith("away", true));
+
+    hasFocus.mockReturnValue(true);
+    await act(async () => {
+      handlers.onNotification({ ...notification("here"), at: fresh() });
+    });
+    expect(toastManager.add).toHaveBeenCalledTimes(1);
+    expect(created).toHaveLength(1);
+
+    // Switched off on the Desk: the toast carries it even while away.
+    hasFocus.mockReturnValue(false);
+    window.localStorage.setItem("gridgo-web.desktop-alerts", "off");
+    await act(async () => {
+      handlers.onNotification({
+        ...notification("muted"),
+        at: new Date(Date.now() + 5_000).toISOString(),
+      });
+    });
+    expect(created).toHaveLength(1);
+    expect(
+      toastManager.add.mock.calls.length + toastManager.update.mock.calls.length,
+    ).toBe(2);
+  } finally {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.stubGlobal("React", React);
+  }
+});
