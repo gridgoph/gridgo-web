@@ -526,7 +526,7 @@ export type PaymentQr = {
 };
 
 /** Live cadence for a shop that has not moved a job waiting on production. */
-export type ProductionNudgeUnit = "hours" | "days";
+export type ProductionNudgeUnit = "seconds" | "minutes" | "hours" | "days";
 
 export type ProductionNudge = {
   enabled: boolean;

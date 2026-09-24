@@ -103,7 +103,9 @@ const NUDGE_COPY = (
   <>
     If a shop has not moved a job that is waiting on them — start production, file proof, or
     mark it ready — GRIDGO reminds that shop on this cadence. Changing it here is live.
-    Phones pick it up on the next check. No app release.
+    Phones pick it up on the next check. No app release. Seconds and minutes are for
+    checking the reminder; the check itself runs about every 30 seconds, so a shorter
+    wait still lands on the next check.
   </>
 );
 
@@ -142,8 +144,13 @@ function toNudgeDraft(settings: PlatformSettings): NudgeDraft {
 }
 
 function unitWord(value: number, unit: ProductionNudgeUnit): string {
-  if (unit === "days") return value === 1 ? "day" : "days";
-  return value === 1 ? "hour" : "hours";
+  const words: Record<ProductionNudgeUnit, [string, string]> = {
+    seconds: ["second", "seconds"],
+    minutes: ["minute", "minutes"],
+    hours: ["hour", "hours"],
+    days: ["day", "days"],
+  };
+  return value === 1 ? words[unit][0] : words[unit][1];
 }
 
 /** One sentence from the saved policy, for the “in force” line. */
@@ -951,8 +958,17 @@ function NudgeSpan({
           aria-label={`${label} unit`}
           className="h-12 rounded-[var(--radius-field)] border border-input bg-card px-3 text-body text-foreground"
           value={unit}
-          onChange={(event) => onUnit(event.target.value === "days" ? "days" : "hours")}
+          onChange={(event) => {
+            const next = event.target.value;
+            onUnit(
+              next === "seconds" || next === "minutes" || next === "days" || next === "hours"
+                ? next
+                : "hours",
+            );
+          }}
         >
+          <option value="seconds">Seconds</option>
+          <option value="minutes">Minutes</option>
           <option value="hours">Hours</option>
           <option value="days">Days</option>
         </select>
