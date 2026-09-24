@@ -647,6 +647,7 @@ textarea:focus-visible,
 /* Registry controls inherit GRIDGO's 44px touch-target floor globally. */
 [data-slot="toggle"],
 [data-sidebar="menu-button"],
+[data-sidebar="menu-sub-button"],
 [data-slot="dropdown-menu-item"] {
   min-height: 44px;
   min-width: 44px;

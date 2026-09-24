@@ -50,7 +50,15 @@ export type NavIconKey =
   | "planning"
   | "broadcast"
   | "chat"
-  | "reports";
+  | "reports"
+  // Labeled rail groups: the parent row that folds a section's pages away.
+  | "group-shop"
+  | "group-money"
+  | "group-queue"
+  | "group-field"
+  | "group-system"
+  | "group-people"
+  | "group-catalog";
 
 export type NavItem = {
   /** Stable id for tests / analytics. */
@@ -72,12 +80,16 @@ export type NavItem = {
 };
 
 /**
- * One rail section. A missing `label` is a top-level cluster (Overview / Jobs).
- * Labeled groups are always open: quiet static label + items, no per-group collapse.
+ * One rail section. A missing `label` is a top-level cluster (Overview / Jobs)
+ * whose items sit on the rail as plain rows. A labeled group is a collapsible
+ * parent row (icon + label + chevron) with its pages indented beneath it; in
+ * the icon rail the parent opens its pages in a flyout. Every labeled group
+ * carries an `icon`.
  */
 export type NavGroup = {
   id: string;
   label?: string;
+  icon?: NavIconKey;
   items: readonly NavItem[];
 };
 
@@ -109,6 +121,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "supplier-shop",
       label: "Shop",
+      icon: "group-shop",
       items: [
         {
           id: "supplier-catalogue",
@@ -145,6 +158,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "supplier-money",
       label: "Money",
+      icon: "group-money",
       items: [
         {
           id: "supplier-payouts",
@@ -206,6 +220,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "ops-queue",
       label: "Queue",
+      icon: "group-queue",
       items: [
         {
           // One queue. Payments and QA were the same order at two moments of the
@@ -232,6 +247,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "ops-field",
       label: "Field",
+      icon: "group-field",
       items: [
         {
           id: "ops-dispatch",
@@ -283,6 +299,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "ops-money",
       label: "Money",
+      icon: "group-money",
       items: [
         {
           id: "ops-payouts",
@@ -316,6 +333,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "ops-system",
       label: "System",
+      icon: "group-system",
       items: [
         {
           id: "ops-settings",
@@ -384,6 +402,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "admin-people",
       label: "People",
+      icon: "group-people",
       items: [
         {
           id: "admin-verification",
@@ -408,6 +427,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "admin-catalog",
       label: "Catalog",
+      icon: "group-catalog",
       items: [
         {
           id: "admin-catalogue",
@@ -432,6 +452,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "admin-money",
       label: "Money",
+      icon: "group-money",
       items: [
         {
           id: "admin-finance",
@@ -447,6 +468,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     {
       id: "admin-system",
       label: "System",
+      icon: "group-system",
       items: [
         {
           id: "admin-settings",

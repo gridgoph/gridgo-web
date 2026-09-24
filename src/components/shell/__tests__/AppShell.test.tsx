@@ -8,6 +8,11 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppShell } from "@/components/shell/AppShell";
+import {
+  RAIL_GROUPS_STORAGE_KEY,
+  RAIL_OPEN_STORAGE_KEY,
+} from "@/components/shell/rail-state";
+import { navForRole, navGroupsForRole, type PortalRole } from "@/lib/nav";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 type ClerkProfileMock = {
@@ -159,6 +164,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
   membershipsRef.current = [];
   userRef.current = {
     id: "user_admin",
@@ -430,45 +436,30 @@ describe("AppShell chrome", () => {
     expect(nav.querySelector('[class*="inset-y-2"][class*="left-0"]')).toBeNull();
   });
 
-  it("groups ops, admin, and supplier rails with Overview/Jobs kept top-level", () => {
+  it("keeps unlabeled clusters as plain rows and turns labeled groups into disclosures", () => {
     renderShell("/ops/overview");
     const opsNav = screen.getByRole("navigation", { name: "Primary navigation" });
     expect(within(opsNav).getByRole("link", { name: "Overview" })).toHaveAttribute(
       "aria-current",
       "page",
     );
-    // Group labels are static text — never buttons or disclosure triggers.
-    expect(within(opsNav).queryByRole("button", { name: "Queue" })).toBeNull();
-    expect(within(opsNav).queryByRole("button", { name: "Field" })).toBeNull();
-    expect(within(opsNav).queryByRole("button", { name: "Money" })).toBeNull();
-    expect(within(opsNav).queryByRole("button", { name: "System" })).toBeNull();
-    expect(within(opsNav).getByText("Queue")).toBeInTheDocument();
-    expect(within(opsNav).getByText("Field")).toBeInTheDocument();
-    expect(within(opsNav).getByText("Money")).toBeInTheDocument();
-    expect(within(opsNav).getByText("System")).toBeInTheDocument();
-    // Items in every group stay visible without expanding.
-    expect(within(opsNav).getByRole("link", { name: "Dispatch" })).toHaveAttribute(
-      "href",
-      "/ops/dispatch",
-    );
-    expect(within(opsNav).getByRole("link", { name: "Riders" })).toHaveAttribute(
-      "href",
-      "/ops/riders",
-    );
+    expect(within(opsNav).getByRole("link", { name: "Chat" })).toBeInTheDocument();
+    expect(within(opsNav).getByRole("link", { name: "Issue reports" })).toBeInTheDocument();
+    for (const label of ["Queue", "Field", "Money", "System"]) {
+      const trigger = within(opsNav).getByRole("button", { name: label });
+      expect(trigger).toHaveAttribute("aria-expanded", "false");
+      expect(trigger.querySelector(".lucide-chevron-right")).not.toBeNull();
+    }
+    // A folded group's pages are out of the tab order until it opens.
+    expect(within(opsNav).queryByRole("link", { name: "Dispatch" })).toBeNull();
 
     cleanup();
     renderShell("/admin/overview");
     const adminNav = screen.getByRole("navigation", { name: "Primary navigation" });
     expect(within(adminNav).getByRole("link", { name: "Overview" })).toBeInTheDocument();
-    expect(within(adminNav).queryByRole("button", { name: "People" })).toBeNull();
-    expect(within(adminNav).queryByRole("button", { name: "Catalog" })).toBeNull();
-    expect(within(adminNav).queryByRole("button", { name: "Money" })).toBeNull();
-    expect(within(adminNav).queryByRole("button", { name: "System" })).toBeNull();
-    expect(within(adminNav).getByText("People")).toBeInTheDocument();
-    expect(within(adminNav).getByText("Catalog")).toBeInTheDocument();
-    expect(within(adminNav).getByText("Money")).toBeInTheDocument();
-    expect(within(adminNav).getByText("System")).toBeInTheDocument();
-    expect(within(adminNav).getByRole("link", { name: "Roles" })).toBeInTheDocument();
+    for (const label of ["People", "Catalog", "Money", "System"]) {
+      expect(within(adminNav).getByRole("button", { name: label })).toBeInTheDocument();
+    }
 
     cleanup();
     renderShell("/supplier/jobs");
@@ -477,41 +468,197 @@ describe("AppShell chrome", () => {
       "aria-current",
       "page",
     );
-    expect(within(supplierNav).queryByRole("button", { name: "Shop" })).toBeNull();
-    expect(within(supplierNav).queryByRole("button", { name: "Money" })).toBeNull();
-    expect(within(supplierNav).getByText("Shop")).toBeInTheDocument();
-    expect(within(supplierNav).getByText("Money")).toBeInTheDocument();
-    expect(within(supplierNav).getByRole("link", { name: "Payouts" })).toHaveAttribute(
-      "href",
-      "/supplier/payouts",
+    for (const label of ["Shop", "Money"]) {
+      expect(within(supplierNav).getByRole("button", { name: label })).toBeInTheDocument();
+    }
+  });
+
+  it("opens the group holding the current page and leaves the rest folded", () => {
+    renderShell("/ops/orders");
+    const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+    expect(within(nav).getByRole("button", { name: "Queue" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    const orders = within(nav).getByRole("link", { name: "Orders" });
+    expect(orders).toHaveAttribute("aria-current", "page");
+    expect(orders.className).toMatch(/action-yellow/);
+    expect(orders.closest('[data-slot="sidebar-menu-sub"]')).not.toBeNull();
+    expect(within(nav).getByRole("link", { name: "Sign-up approvals" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Field" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(within(nav).queryByRole("link", { name: "Dispatch" })).toBeNull();
+  });
+
+  it("opens the group of a nested page, even one the person folded", () => {
+    window.localStorage.setItem(
+      RAIL_GROUPS_STORAGE_KEY,
+      JSON.stringify({ "ops-money": false }),
+    );
+    renderShell("/ops/payouts/ord_demo");
+    const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+    expect(within(nav).getByRole("button", { name: "Money" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(within(nav).getByRole("link", { name: "Supplier payouts" })).toHaveAttribute(
+      "aria-current",
+      "page",
     );
   });
 
-  it("keeps every nav group open so items stay reachable without expanding", () => {
-    renderShell("/ops/orders");
+  it("opens a folded group when navigation lands inside it", () => {
+    const { rerender } = renderShell("/ops/overview");
     const nav = screen.getByRole("navigation", { name: "Primary navigation" });
-    const payments = within(nav).getByRole("link", { name: "Orders" });
-    expect(payments).toHaveAttribute("aria-current", "page");
-    expect(payments.className).toMatch(/action-yellow/);
-    expect(
-      within(nav).getByRole("link", { name: "Sign-up approvals" }),
-    ).toBeInTheDocument();
-    // Other groups stay expanded — no click required.
-    expect(within(nav).getByRole("link", { name: "Dispatch" })).toHaveAttribute(
-      "href",
-      "/ops/dispatch",
+    expect(within(nav).getByRole("button", { name: "Field" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
     );
-    expect(within(nav).getByRole("link", { name: "Riders" })).toHaveAttribute(
+    pathnameRef.current = "/ops/dispatch";
+    rerender(
+      <TooltipProvider>
+        <AppShell role="ops_admin">
+          <p>Workspace body</p>
+        </AppShell>
+      </TooltipProvider>,
+    );
+    expect(within(nav).getByRole("button", { name: "Field" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(within(nav).getByRole("link", { name: "Dispatch" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
+
+  it("remembers which groups the person opened and closed", async () => {
+    const user = userEvent.setup();
+    renderShell("/ops/orders");
+    let nav = screen.getByRole("navigation", { name: "Primary navigation" });
+    await user.click(within(nav).getByRole("button", { name: "Field" }));
+    expect(within(nav).getByRole("button", { name: "Field" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    await user.click(within(nav).getByRole("button", { name: "Queue" }));
+    expect(
+      JSON.parse(window.localStorage.getItem(RAIL_GROUPS_STORAGE_KEY) ?? "{}"),
+    ).toEqual({ "ops-field": true, "ops-queue": false });
+
+    cleanup();
+    renderShell("/ops/overview");
+    nav = screen.getByRole("navigation", { name: "Primary navigation" });
+    expect(within(nav).getByRole("button", { name: "Field" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(within(nav).getByRole("link", { name: "Dispatch" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Queue" })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
+  it("survives unreadable remembered state", () => {
+    window.localStorage.setItem(RAIL_GROUPS_STORAGE_KEY, "{not json");
+    window.localStorage.setItem(RAIL_OPEN_STORAGE_KEY, "sideways");
+    const { container } = renderShell("/ops/orders");
+    expect(container.querySelector('[data-slot="sidebar"]')).toHaveAttribute(
+      "data-state",
+      "expanded",
+    );
+    expect(screen.getByRole("button", { name: "Queue" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  });
+
+  it("remembers the folded icon rail across visits and toggles with Ctrl/Cmd+B", async () => {
+    const user = userEvent.setup();
+    const { container } = renderShell("/admin/overview");
+    await user.click(screen.getByRole("button", { name: "Toggle primary navigation" }));
+    expect(window.localStorage.getItem(RAIL_OPEN_STORAGE_KEY)).toBe("false");
+
+    cleanup();
+    const { container: again } = renderShell("/admin/overview");
+    const rail = again.querySelector('[data-slot="sidebar"]');
+    expect(rail).toHaveAttribute("data-state", "collapsed");
+    expect(rail).toHaveAttribute("data-collapsible", "icon");
+
+    await user.keyboard("{Control>}b{/Control}");
+    expect(rail).toHaveAttribute("data-state", "expanded");
+    expect(window.localStorage.getItem(RAIL_OPEN_STORAGE_KEY)).toBe("true");
+    await user.keyboard("{Meta>}b{/Meta}");
+    expect(rail).toHaveAttribute("data-state", "collapsed");
+    expect(container).toBeTruthy();
+  });
+
+  it("opens a folded group's pages in a flyout from the icon rail", async () => {
+    window.localStorage.setItem(RAIL_OPEN_STORAGE_KEY, "false");
+    const user = userEvent.setup();
+    renderShell("/ops/dispatch");
+    const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+    const field = within(nav).getByRole("button", { name: "Field" });
+    expect(field).toHaveAttribute("aria-expanded", "false");
+    expect(field).toHaveAttribute("data-active");
+    await user.click(field);
+    const dispatch = await screen.findByRole("menuitem", { name: "Dispatch" });
+    await vi.waitFor(() =>
+      expect(within(nav).getByRole("button", { name: "Field" })).toHaveAttribute(
+        "aria-expanded",
+        "true",
+      ),
+    );
+    expect(dispatch).toHaveAttribute("href", "/ops/dispatch");
+    expect(dispatch).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("menuitem", { name: "Riders" })).toHaveAttribute(
       "href",
       "/ops/riders",
     );
-    expect(within(nav).getByRole("link", { name: "Escalations" })).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: "Schedule" })).toBeInTheDocument();
-    expect(
-      within(nav).getByRole("link", { name: "Supplier payouts" }),
-    ).toBeInTheDocument();
-    expect(within(nav).getByRole("link", { name: "Audit" })).toBeInTheDocument();
-    expect(within(nav).queryByRole("button", { name: "Field" })).toBeNull();
+  });
+
+  describe("every rail page stays reachable", () => {
+    const cases: Array<[PortalRole, string]> = [
+      ["supplier", "/supplier/dashboard"],
+      ["ops_admin", "/ops/overview"],
+      ["super_admin", "/admin/overview"],
+    ];
+
+    it.each(cases)("%s: from the expanded rail", async (role, home) => {
+      const user = userEvent.setup();
+      renderShell(home);
+      const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+      for (const group of navGroupsForRole(role)) {
+        if (!group.label) continue;
+        const trigger = within(nav).getByRole("button", { name: group.label });
+        if (trigger.getAttribute("aria-expanded") !== "true") await user.click(trigger);
+      }
+      const hrefs = within(nav)
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("href"));
+      expect(hrefs.sort()).toEqual(navForRole(role).map((item) => item.href).sort());
+    });
+
+    it.each(cases)("%s: from the icon rail", async (role, home) => {
+      window.localStorage.setItem(RAIL_OPEN_STORAGE_KEY, "false");
+      const user = userEvent.setup();
+      renderShell(home);
+      const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+      const reached = within(nav)
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("href"));
+      for (const group of navGroupsForRole(role)) {
+        if (!group.label) continue;
+        await user.click(within(nav).getByRole("button", { name: group.label }));
+        const items = await screen.findAllByRole("menuitem");
+        reached.push(...items.map((item) => item.getAttribute("href")));
+        await user.keyboard("{Escape}");
+      }
+      expect(reached.sort()).toEqual(navForRole(role).map((item) => item.href).sort());
+    });
   });
 
   it("keeps a nested parent crumb as a same-tab link with a destination tooltip", async () => {
@@ -543,27 +690,60 @@ describe("AppShell chrome", () => {
       listOrdersMock.mockClear();
     });
 
+    const waiting = [
+      {
+        id: "ord_transfer",
+        state: "initial_payment_review",
+        payments: { downpayment: { status: "pending_confirmation" } },
+      },
+      { id: "ord_artwork", state: "needs_qa" },
+      { id: "ord_with_shop", state: "production" },
+    ];
+
     it("counts the orders waiting on Operations on the Orders row, in yellow", async () => {
-      ordersRef.current = [
-        {
-          id: "ord_transfer",
-          state: "initial_payment_review",
-          payments: { downpayment: { status: "pending_confirmation" } },
-        },
-        { id: "ord_artwork", state: "needs_qa" },
-        { id: "ord_with_shop", state: "production" },
-      ];
-      renderShell("/ops/overview");
+      ordersRef.current = waiting;
+      renderShell("/ops/orders");
 
       const pill = await screen.findByTestId("orders-queue-pill");
       expect(pill).toHaveTextContent("2");
       expect(pill).toHaveTextContent("2 orders waiting on you");
       expect(pill.className).toContain("--color-action-yellow");
-      const row = pill.closest('[data-slot="sidebar-menu-item"]') as HTMLElement;
+      const row = pill.closest('[data-slot="sidebar-menu-sub-item"]') as HTMLElement;
       expect(within(row).getByRole("link", { name: "Orders" })).toHaveAttribute(
         "href",
         "/ops/orders",
       );
+    });
+
+    it("moves the count onto the Queue row while that group is folded", async () => {
+      ordersRef.current = waiting;
+      renderShell("/ops/overview");
+
+      const pill = await screen.findByTestId("orders-queue-pill");
+      expect(pill).toHaveTextContent("2 orders waiting on you");
+      const row = pill.closest("[data-nav-group]") as HTMLElement;
+      expect(within(row).getByRole("button", { name: "Queue" })).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
+      expect(screen.getAllByTestId("orders-queue-pill")).toHaveLength(1);
+      expect(listOrdersMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("marks the Queue icon and names the count on the icon rail", async () => {
+      window.localStorage.setItem(RAIL_OPEN_STORAGE_KEY, "false");
+      ordersRef.current = waiting;
+      const user = userEvent.setup();
+      renderShell("/ops/overview");
+
+      await screen.findByTestId("orders-queue-dot");
+      const queue = screen.getByRole("button", {
+        name: "Queue, 2 orders waiting on you",
+      });
+      await user.click(queue);
+      expect(
+        await screen.findByRole("menuitem", { name: /Orders 2 orders waiting on you/ }),
+      ).toHaveAttribute("href", "/ops/orders");
     });
 
     it("draws nothing when no order is waiting on Operations", async () => {
