@@ -1187,3 +1187,32 @@ export type ShopRankings = {
   rankedCount: number;
   rows: ShopRankingRow[];
 };
+
+// ---------------------------------------------------------------------------
+// Public issue reports (landing /report) — gridgo-api docs/ISSUE_REPORTS_API.md
+// ---------------------------------------------------------------------------
+
+export type IssueReportCategory = "bug" | "feature" | "other";
+export type IssueReportStatus = "new" | "published" | "dismissed";
+
+export type IssueReportScreenshot = {
+  position: number;
+  contentType: string;
+  size: number;
+  /** Presigned and short-lived; reload the list for fresh links. */
+  url: string;
+  expiresAt: string;
+};
+
+export type IssueReport = {
+  id: string;
+  issue: string;
+  category: IssueReportCategory | null;
+  status: IssueReportStatus;
+  publishedIn: string | null;
+  createdAt: string;
+  updatedAt: string;
+  screenshots: IssueReportScreenshot[];
+};
+
+export type IssueReportCounts = Record<IssueReportStatus, number>;
