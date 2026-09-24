@@ -591,7 +591,7 @@ export function OperationalSettings() {
             </p>
           </FieldGroup>
 
-          <WorkedReceipts rateBps={draftRateBps} />
+          <WorkedReceipts rateBps={draftRateBps} feeVisible={feeVisible} />
         </div>
       </section>
 
@@ -963,10 +963,11 @@ function Receipt({
 
 /**
  * One sample order, twice: as the client's receipt shows it and as Operations
- * sees it. Same total on both. The fee line is the only difference, which is
- * exactly the rule this setting has to make visible.
+ * sees it. Same total on both. The client never sees the fee as pesos — at
+ * most, with "Show on client checkout" on, a named row with no amount, since
+ * its pesos are already inside the price of the work.
  */
-function WorkedReceipts({ rateBps }: { rateBps: number }) {
+function WorkedReceipts({ rateBps, feeVisible }: { rateBps: number; feeVisible: boolean }) {
   const example = workedExample(rateBps);
   return (
     <div aria-label="Worked example" className="flex min-w-0 flex-col gap-2">
@@ -978,9 +979,16 @@ function WorkedReceipts({ rateBps }: { rateBps: number }) {
         <Receipt
           testId="receipt-client"
           title="What the client sees"
-          note="No fee line. The fee is inside the price of the work."
+          note={
+            feeVisible
+              ? "The fee is named but not charged again. Its pesos are inside the price of the work."
+              : "No fee line. The fee is inside the price of the work."
+          }
           lines={[
             { label: "Items", value: formatPhp(example.clientItemsMinor) },
+            ...(feeVisible
+              ? [{ label: `Service fee · ${formatRatePercent(rateBps)}`, value: "Included" }]
+              : []),
             { label: "Delivery", value: formatPhp(example.deliveryFeeMinor) },
             { label: "Total", value: formatPhp(example.clientTotalMinor), total: true },
           ]}

@@ -47,7 +47,9 @@ it("shows the rate in force and a worked example with the fee on the Operations 
   const ops = within(screen.getByTestId("receipt-ops"));
   expect(client.getByText("Items")).toBeInTheDocument();
   expect(client.getByText("₱1,100.00")).toBeInTheDocument();
-  expect(client.queryByText(/service fee/i)).toBeNull();
+  // Named on checkout by default, but never as pesos: those are inside Items.
+  expect(client.getByText("Service fee · 10%")).toBeInTheDocument();
+  expect(client.queryByText("₱100.00")).toBeNull();
   expect(ops.getByText("Service fee (10%)")).toBeInTheDocument();
   expect(ops.getByText("₱100.00")).toBeInTheDocument();
   expect(client.getByText("₱1,150.00")).toBeInTheDocument();
@@ -113,6 +115,8 @@ it("saves whether the client checkout names the service fee", async () => {
   const toggle = await screen.findByRole("switch", { name: "Show on client checkout" });
   expect(toggle).toHaveAttribute("data-checked");
   fireEvent.click(toggle);
+  // The client's receipt preview follows the switch before it is saved.
+  expect(within(screen.getByTestId("receipt-client")).queryByText(/service fee/i)).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
 
   await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(1));
