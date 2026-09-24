@@ -231,6 +231,72 @@ describe("orderMoneySplits", () => {
   });
 });
 
+describe("delivery split", () => {
+  const split = {
+    supplierPriceMinor: 100000,
+    serviceFeeMinor: 10000,
+    deliveryFeeMinor: 2500,
+    riderCommissionBps: 8500,
+    riderPayoutMinor: 2125,
+    platformDeliveryShareMinor: 375,
+    totalMinor: 112500,
+  };
+
+  it("cuts each order's delivery into the rider's payout and GRIDGO's share", () => {
+    const [row] = orderMoneySplits([order({ id: "s", state: "production", ...split })]);
+    expect(row).toMatchObject({
+      deliveryFeeMinor: 2500,
+      riderPayoutMinor: 2125,
+      platformDeliveryShareMinor: 375,
+      unsplitDeliveryMinor: 0,
+    });
+    expect(
+      row.supplierPriceMinor +
+        row.commissionMinor +
+        row.riderPayoutMinor +
+        row.platformDeliveryShareMinor +
+        row.unsplitDeliveryMinor,
+    ).toBe(row.totalMinor);
+  });
+
+  it("keeps the gross fee whole when the API sent no split", () => {
+    const [row] = orderMoneySplits([
+      order({
+        id: "old",
+        state: "production",
+        supplierPriceMinor: 100000,
+        serviceFeeMinor: 10000,
+        deliveryFeeMinor: 2500,
+        totalMinor: 112500,
+      }),
+    ]);
+    expect(row).toMatchObject({
+      riderPayoutMinor: 0,
+      platformDeliveryShareMinor: 0,
+      unsplitDeliveryMinor: 2500,
+    });
+  });
+
+  it("totals GRIDGO's delivery share and the riders' payout across live orders", () => {
+    const r = rollupFinance(
+      [
+        order({ id: "a", state: "production", ...split }),
+        order({ id: "b", state: "delivered", ...split }),
+        order({ id: "d", state: "draft", ...split }),
+      ],
+      [],
+    );
+    expect(r.deliveryShareEarned).toEqual({ kind: "amount", minor: 750 });
+    expect(r.riderDeliveryPayout).toEqual({ kind: "amount", minor: 4250 });
+  });
+
+  it("says the split is unavailable rather than reporting zero against an older API", () => {
+    const r = rollupFinance([order({ id: "x", state: "production" })], []);
+    expect(r.deliveryShareEarned.kind).toBe("unavailable");
+    expect(r.riderDeliveryPayout.kind).toBe("unavailable");
+  });
+});
+
 describe("reconciliationRows", () => {
   it("drops drafts and puts the most recent activity first", () => {
     const rows = reconciliationRows([

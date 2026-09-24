@@ -26,6 +26,15 @@ import {
   readNotificationSoundEnabled,
 } from "@/lib/live/notificationSound";
 import { createArrivalAnnouncer, type ArrivalAnnouncer } from "@/lib/live/arrivalToast";
+import {
+  createBrowserDesktopAlertSurface,
+  createDesktopAnnouncer,
+  ensureDesktopAlertWorker,
+  readDesktopAlertClick,
+  readDesktopAlertStatus,
+  type DesktopAlertClick,
+  type DesktopAnnouncer,
+} from "@/lib/live/desktopAlerts";
 import { toast } from "@/components/ui/toast";
 import { useAuth } from "@/lib/auth/AuthProvider";
 
@@ -95,6 +104,9 @@ function AccountLiveProvider({ children, role, onOpenNotification }: LiveProvide
   // The toast announcer outlives any one stream: a reconnect must not reset
   // an open burst, and "Open" must still mark the row read after a remount.
   const announcer = useRef<ArrivalAnnouncer | null>(null);
+  // The desktop twin of the toast: the same fresh slip, raised by the OS while
+  // the person is in another tab or window. One or the other, never both.
+  const desktop = useRef<DesktopAnnouncer | null>(null);
   const active = useRef(true);
   const inboxGeneration = useRef(0);
   const arrivalRevision = useRef(0);
@@ -193,7 +205,7 @@ function AccountLiveProvider({ children, role, onOpenNotification }: LiveProvide
             isFreshArrival(notification.at);
           if (news) {
             if (readNotificationSoundEnabled()) notificationChime().play();
-            announcer.current?.announce(row);
+            if (!desktop.current?.announce(row)) announcer.current?.announce(row);
           }
           const revision = ++arrivalRevision.current;
           if (row) arrivals.current.set(notification.id, { revision, row });
@@ -252,6 +264,46 @@ function AccountLiveProvider({ children, role, onOpenNotification }: LiveProvide
     },
     [],
   );
+
+  const notificationsRef = useRef(notifications);
+  notificationsRef.current = notifications;
+
+  useEffect(() => {
+    if (!userId || !role) return;
+    const openClick = (click: DesktopAlertClick) => {
+      const row = click.notificationId
+        ? (desktop.current?.rowFor(click.notificationId) ??
+          notificationsRef.current.find((item) => item.id === click.notificationId))
+        : undefined;
+      if (click.notificationId)
+        void markReadRef.current(click.notificationId).catch(() => undefined);
+      if (row) openNotification.current?.(row);
+      // A slip this tab never held (reloaded since): the worker still knows where it goes.
+      else if (click.href) window.location.assign(click.href);
+    };
+    const announcerForRole = createDesktopAnnouncer({
+      role,
+      surface: createBrowserDesktopAlertSurface({ onClick: openClick }),
+    });
+    desktop.current = announcerForRole;
+    // Clicks on alerts raised through the worker come back as messages.
+    const container =
+      typeof navigator !== "undefined" && "serviceWorker" in navigator
+        ? navigator.serviceWorker
+        : null;
+    const onMessage = (event: MessageEvent) => {
+      const click = readDesktopAlertClick(event.data);
+      if (click) openClick(click);
+    };
+    container?.addEventListener("message", onMessage);
+    container?.startMessages?.();
+    if (readDesktopAlertStatus() === "on") void ensureDesktopAlertWorker();
+    return () => {
+      container?.removeEventListener("message", onMessage);
+      announcerForRole.dispose();
+      if (desktop.current === announcerForRole) desktop.current = null;
+    };
+  }, [role, userId]);
 
   useEffect(() => {
     const onVis = () => {

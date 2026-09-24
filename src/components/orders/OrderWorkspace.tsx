@@ -60,6 +60,7 @@ import {
 } from "@/lib/payouts";
 import { describeQuantity } from "@/lib/quantity";
 import { cn } from "@/lib/utils";
+import { orderDeliverySplit, platformShareBps } from "@/lib/delivery-split";
 
 type Props = {
   /** Parent queue the back link returns to. Super Admin has no orders rail. */
@@ -774,6 +775,7 @@ function DeliveryStep({ order, hint }: { order: Order; hint?: string }) {
 function SpecRail({ order, payoutsHref }: { order: Order; payoutsHref?: string }) {
   const { paidMinor, remainingMinor } = paymentProgress(order);
   const payout = payoutProgress(order);
+  const deliverySplit = orderDeliverySplit(order);
   const artwork = artworkEvidence(order);
   return (
     <aside
@@ -851,6 +853,33 @@ function SpecRail({ order, payoutsHref }: { order: Order; payoutsHref?: string }
               <dt className="text-caption text-text-muted">Delivery</dt>
               <dd className="text-body text-text-secondary m-0 tabular-nums">
                 {formatPhp(order.deliveryFeeMinor)}
+              </dd>
+            </>
+          ) : null}
+          {/*
+            Who the delivery fee belongs to, at the rate snapshotted on this
+            order. An API without the split sends none of it; the gross fee
+            above then stands alone.
+          */}
+          {deliverySplit ? (
+            <>
+              <dt className="text-caption text-text-muted pl-3">
+                Rider payout
+                {deliverySplit.riderCommissionBps != null
+                  ? ` (${formatRatePercent(deliverySplit.riderCommissionBps)})`
+                  : ""}
+              </dt>
+              <dd className="text-body text-text-secondary m-0 tabular-nums">
+                {formatPhp(deliverySplit.riderPayoutMinor)}
+              </dd>
+              <dt className="text-caption text-text-muted pl-3">
+                GRIDGO delivery share
+                {deliverySplit.riderCommissionBps != null
+                  ? ` (${formatRatePercent(platformShareBps(deliverySplit.riderCommissionBps))})`
+                  : ""}
+              </dt>
+              <dd className="text-body text-text-secondary m-0 tabular-nums">
+                {formatPhp(deliverySplit.platformDeliveryShareMinor)}
               </dd>
             </>
           ) : null}

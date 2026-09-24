@@ -29,6 +29,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { listClaims, listOrders } from "@/lib/api/client";
+import { orderDeliverySplit } from "@/lib/delivery-split";
 import type { Claim, Order } from "@/lib/api/types";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import {
@@ -52,11 +53,28 @@ const splitChartConfig = {
     label: "GRIDGO service fee",
     color: "var(--color-chart-2)",
   },
-  deliveryFeeMinor: {
-    label: "Delivery",
+  riderPayoutMinor: {
+    label: "Rider payout",
+    color: "var(--color-chart-3)",
+  },
+  platformDeliveryShareMinor: {
+    label: "GRIDGO delivery share",
+    color: "var(--color-chart-5)",
+  },
+  // Only an API without the split reports this, and then the whole fee is
+  // the rider's, so it wears the rider's colour. (chart-4 is action yellow.)
+  unsplitDeliveryMinor: {
+    label: "Delivery (not split)",
     color: "var(--color-chart-3)",
   },
 } satisfies ChartConfig;
+
+/** Stack order, bottom to top. The top bar carries the rounded cap. */
+const DELIVERY_BARS = [
+  "riderPayoutMinor",
+  "platformDeliveryShareMinor",
+  "unsplitDeliveryMinor",
+] as const;
 
 function formatFigure(fig: MoneyFigure): { value: string; hint?: string } {
   if (fig.kind === "amount") return { value: formatPhp(fig.minor) };
@@ -105,6 +123,10 @@ export default function AdminFinancePage() {
 
   const rows = useMemo(() => (orders ? reconciliationRows(orders) : []), [orders]);
   const splits = useMemo(() => (orders ? orderMoneySplits(orders) : []), [orders]);
+  // Only the delivery parts some order actually has get a bar and a legend entry.
+  const deliveryBars = DELIVERY_BARS.filter((key) =>
+    splits.some((split) => split[key] > 0),
+  );
 
   const orderColumns = useMemo<DataTableColumn<Order>[]>(
     () => [
@@ -172,6 +194,27 @@ export default function AdminFinancePage() {
             {o.serviceFeeMinor !== undefined ? formatPhp(o.serviceFeeMinor) : "—"}
           </span>
         ),
+      },
+      {
+        id: "delivery",
+        header: "Delivery",
+        sortValue: (o) => o.deliveryFeeMinor,
+        cell: (o) => {
+          const split = orderDeliverySplit(o);
+          return (
+            <span className="flex flex-col">
+              <span className="text-body text-text-secondary tabular-nums whitespace-nowrap">
+                {formatPhp(o.deliveryFeeMinor)}
+              </span>
+              {split ? (
+                <span className="text-caption text-text-muted tabular-nums whitespace-nowrap">
+                  Rider {formatPhp(split.riderPayoutMinor)}, GRIDGO{" "}
+                  {formatPhp(split.platformDeliveryShareMinor)}
+                </span>
+              ) : null}
+            </span>
+          );
+        },
       },
       {
         id: "total",
@@ -268,6 +311,8 @@ export default function AdminFinancePage() {
   const awaiting = rollup ? formatFigure(rollup.awaitingConfirmation) : blank;
   const outstanding = rollup ? formatFigure(rollup.outstanding) : blank;
   const commission = rollup ? formatFigure(rollup.commissionEarned) : blank;
+  const deliveryShare = rollup ? formatFigure(rollup.deliveryShareEarned) : blank;
+  const riderPayout = rollup ? formatFigure(rollup.riderDeliveryPayout) : blank;
   const released = rollup ? formatFigure(rollup.supplierReleased) : blank;
   const owed = rollup ? formatFigure(rollup.supplierOutstanding) : blank;
   const held = rollup ? formatFigure(rollup.heldOnOrders) : blank;
@@ -319,7 +364,7 @@ export default function AdminFinancePage() {
         <h2 id="out-heading" className="text-h3 text-text-primary m-0">
           GRIDGO and supplier earnings
         </h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <FigureCard
             label="Service fee earned"
             value={commission.value}
@@ -328,6 +373,17 @@ export default function AdminFinancePage() {
               (rollup?.unpricedOrderCount
                 ? `${rollup.unpricedOrderCount} order${rollup.unpricedOrderCount === 1 ? "" : "s"} not priced yet`
                 : "At the rate each order was priced at, on top of the supplier price")
+            }
+            loading={pending}
+          />
+          <FigureCard
+            label="GRIDGO delivery share"
+            value={deliveryShare.value}
+            hint={
+              deliveryShare.hint ??
+              (rollup?.riderDeliveryPayout.kind === "amount"
+                ? `Riders keep ${riderPayout.value} of the same delivery fees`
+                : undefined)
             }
             loading={pending}
           />
@@ -361,8 +417,9 @@ export default function AdminFinancePage() {
           Where each order&rsquo;s money goes
         </h2>
         <p className="text-body text-text-secondary m-0 mb-3 max-w-prose">
-          The client total split three ways. The supplier keeps its asking price in full;
-          the service fee sits on top of it, and delivery on top of that.
+          The client total, part by part. The supplier keeps its asking price in full; the
+          service fee sits on top of it, and delivery on top of that &mdash; cut between
+          the rider and GRIDGO at the rate each order was priced at.
         </p>
         {pending ? (
           <Skeleton className="h-72 w-full rounded-card" aria-hidden />
@@ -375,7 +432,7 @@ export default function AdminFinancePage() {
           <ChartContainer
             config={splitChartConfig}
             className="h-72 w-full"
-            aria-label="Client total split into supplier earnings, service fee and delivery"
+            aria-label="Client total split into supplier earnings, service fee, rider payout and GRIDGO delivery share"
           >
             <BarChart data={splits} accessibilityLayer>
               <CartesianGrid vertical={false} />
@@ -412,12 +469,15 @@ export default function AdminFinancePage() {
                 stackId="money"
                 fill="var(--color-commissionMinor)"
               />
-              <Bar
-                dataKey="deliveryFeeMinor"
-                stackId="money"
-                fill="var(--color-deliveryFeeMinor)"
-                radius={[8, 8, 0, 0]}
-              />
+              {deliveryBars.map((key, index) => (
+                <Bar
+                  key={key}
+                  dataKey={key}
+                  stackId="money"
+                  fill={`var(--color-${key})`}
+                  radius={index === deliveryBars.length - 1 ? [8, 8, 0, 0] : undefined}
+                />
+              ))}
             </BarChart>
           </ChartContainer>
         )}

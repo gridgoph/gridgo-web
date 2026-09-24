@@ -5,6 +5,7 @@
 
 import { isApiError } from "@/lib/api/client";
 import { PLATFORM_CONSTRAINT_COPY } from "@/lib/api/constraints";
+import { RIDER_SHARE_INVALID } from "@/lib/delivery-split";
 
 /** Codes worth naming precisely, because each has a different way out. */
 const CODE_COPY: Record<string, string> = {
@@ -44,6 +45,7 @@ const CODE_COPY: Record<string, string> = {
   payment_route_retired:
     "Pilot Credits can no longer pay for an order. Grants and balances still exist, but the client pays by QR transfer.",
   order_not_found: "That order was not found. Refresh the queue.",
+  invalid_rider_commission_rate: RIDER_SHARE_INVALID,
 };
 
 export function opsErrorMessage(err: unknown, fallback: string): string {
