@@ -58,6 +58,40 @@ read rows, and anything received before the first inbox fetch never toast, exact
 never chime. Returning to the tab now leaves a healthy stream connected (the handle's
 `wake` reconnects only a dropped one) while the inbox is still reconciled on return.
 
+## Desktop alerts
+
+The chime and the toast only reach someone looking at the tab. A desktop alert is the same
+fresh slip, raised by the operating system while the portal is hidden or behind another
+window. `src/lib/live/desktopAlerts.ts` owns the rules; `public/desk-alerts-sw.js` raises the
+alerts and routes their clicks.
+
+- **Opt in only.** The Desk shows a one-time "Get desktop alerts" invitation while the
+  browser has not been asked; "Not now" folds it into a standing footer line at the bottom
+  of the Desk (on / off / blocked / unavailable). Permission is requested only from a
+  "Turn on" press, never on load. Once granted, the footer's off/on switch is a per-browser
+  preference (`gridgo-web.desktop-alerts` in localStorage) that never re-asks. A first grant
+  raises one "Desktop alerts are on" alert, which also shows whether the OS is holding
+  browser notifications back.
+- **One announcement per slip.** `LiveProvider` offers each news arrival to the desktop
+  announcer first; if it goes to the desktop, the toast stays quiet, otherwise the toast
+  shows as before. The chime is unaffected (alerts are raised `silent`, so the Desk sound
+  toggle still decides whether anything is heard). The worker drops an alert when any
+  portal window has focus, and each alert is tagged by its row, so several open tabs raise
+  one alert. Bursts inside the toast's coalescing window replace the open alert with
+  "N new updates on the desk".
+- **Role.** Suppliers are alerted for jobs and order changes only (`orderId`, `shop_job_*`,
+  `supplier_assignment_*`); Operations and Super Admin for every row their inbox receives.
+- **Click.** The worker focuses a portal tab in the alert's own route tree (or opens one) and
+  posts the row back; the tab marks it read and navigates through `notificationHref`, the
+  same destination as the inbox row. Only same-origin paths are accepted.
+- **Degrading.** No Notification API or an insecure origin reads "unavailable"; a denied
+  permission reads "blocked" with the way out; no service worker falls back to a
+  page-level `Notification`, and a browser that refuses that constructor keeps the bell and
+  toast.
+
+Nothing arrives with the browser closed: that needs Web Push (VAPID keys, a subscription
+endpoint and sender in `gridgo-api`), a follow-up the worker is already shaped for.
+
 ## Inbox destinations
 
 `src/lib/live/notificationHref.ts` owns event-to-destination selection. Order rows open
