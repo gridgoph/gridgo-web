@@ -418,8 +418,11 @@ Commission secrecy is an **authorization rule**, not a layout preference. The se
 | `supplierPriceMinor`                                                                  | Operations, Super Admin, and the assigned supplier (its own) |
 | `commissionRatePercent` / `commissionMinor`                                           | **Operations and Super Admin only**                          |
 | `subtotalMinor`, `deliveryFeeMinor`, `totalMinor`, `downpaymentMinor`, `balanceMinor` | everyone on the order                                        |
+| `riderCommissionBps` / `riderPayoutMinor` / `platformDeliveryShareMinor`              | Operations, Super Admin and the rider — never the client     |
 
 `MoneyBreakdown` is the Operations/Super Admin view and must never be imported into `src/app/supplier/**`. `src/components/orders/__tests__/money-visibility.test.ts` walks the supplier route tree and fails the build if it is, if a commission field is read there, or if cash on delivery reappears.
+
+`deliveryFeeMinor` is the **gross** fee; the rider keeps `riderCommissionBps` of it (default 8,500 = 85%, half-up) and GRIDGO the remainder. The rate is snapshotted per order, so the settings control (`RiderDeliveryShare` in Operational settings) only moves new orders. Read the split through `orderDeliverySplit` (`src/lib/delivery-split.ts`), which returns null against an API without the fields so screens fall back to the gross fee. Contract: "Rider delivery split" in the API doc.
 
 `totalMinor` **already includes delivery** in v2. Never write `totalMinor + deliveryFeeMinor` — that was the v1 shape and it double-counts.
 
