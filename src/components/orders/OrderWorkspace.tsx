@@ -696,8 +696,16 @@ function PhysicalInvoicePanel({
   const [time, setTime] = useState("");
   if (!request) return null;
 
+  // Only times still ahead are offered: the API accepts any desk-window
+  // instant, including one that has already passed today.
+  const now = Date.now();
+  const ahead = (ymd: string, hm: string) => Date.parse(deskInstant(ymd, hm)) > now;
+  const allTimes = deskTimes();
+  const lastTime = allTimes[allTimes.length - 1].value;
+  const dates = upcomingDeskDates().filter((option) => ahead(option.value, lastTime));
+  const times = date ? allTimes.filter((option) => ahead(date, option.value)) : allTimes;
   const instant = date && time ? deskInstant(date, time) : "";
-  const ready = Boolean(instant) && isGridgoDeskInstant(instant);
+  const ready = Boolean(instant) && isGridgoDeskInstant(instant) && Date.parse(instant) > now;
   const saving = busy;
 
   return (
@@ -731,7 +739,7 @@ function PhysicalInvoicePanel({
             onChange={(event) => setDate(event.target.value)}
           >
             <option value="">Choose a weekday</option>
-            {upcomingDeskDates().map((option) => (
+            {dates.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
@@ -744,7 +752,7 @@ function PhysicalInvoicePanel({
             onChange={(event) => setTime(event.target.value)}
           >
             <option value="">Choose a time</option>
-            {deskTimes().map((option) => (
+            {times.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
               </option>
