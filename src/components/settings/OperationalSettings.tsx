@@ -6,7 +6,7 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
 
 /**
  * Platform settings held in configuration rather than code: GRIDGO's service
- * fee on top of every shop price, how long a client has to raise an issue
+ * fee on top of every shop price, the rider's share of each delivery fee, how long a client has to raise an issue
  * after delivery, what delivery costs at each distance, and the GCash plate
  * checkout scans.
  *
@@ -31,6 +31,11 @@ import {
   percentInputToBps,
   workedExample,
 } from "@/components/settings/service-fee";
+import {
+  RiderDeliveryShare,
+  RiderDeliveryShareSkeleton,
+  riderShareInput,
+} from "@/components/settings/RiderDeliveryShare";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -47,6 +52,7 @@ import {
 import { ISSUE_WINDOW_MAX_HOURS, ISSUE_WINDOW_MIN_HOURS, productionNudgeValueBounds, PRODUCTION_NUDGE_MAX_COUNT, PRODUCTION_NUDGE_MIN_COUNT } from "@/lib/api/constraints";
 import type { DeliveryFeeBand, PlatformSettings, ProductionNudge, ProductionNudgeUnit } from "@/lib/api/types";
 import { Switch } from "@/components/ui/switch";
+import { RIDER_SHARE_INVALID } from "@/lib/delivery-split";
 import { formatPhp } from "@/lib/format";
 
 /**
@@ -235,6 +241,7 @@ export function OperationalSettings() {
   const [saveOk, setSaveOk] = useState<string | null>(null);
 
   const [rate, setRate] = useState("");
+  const [riderShare, setRiderShare] = useState("");
   const [hours, setHours] = useState("");
   const [bands, setBands] = useState<BandDraft[]>([]);
   const [nudge, setNudge] = useState<NudgeDraft>(toNudgeDraft({ version: 0, issueWindowHours: 24, serviceFeeRateBps: 1000, deliveryFeeBands: [] }));
@@ -255,6 +262,11 @@ export function OperationalSettings() {
           current !== bpsToPercentInput(previous.serviceFeeRateBps)
             ? current
             : bpsToPercentInput(next.serviceFeeRateBps),
+        );
+        setRiderShare((current) =>
+          preserveDraft && previous && current !== riderShareInput(previous.riderCommissionBps)
+            ? current
+            : riderShareInput(next.riderCommissionBps),
         );
         setHours((current) =>
           preserveDraft && previous && current !== String(previous.issueWindowHours)
@@ -355,6 +367,13 @@ export function OperationalSettings() {
       );
       return;
     }
+    // An API without the split holds no rider rate; nothing is sent for it.
+    const riderSupported = settings.riderCommissionBps !== undefined;
+    const parsedRiderShare = riderSupported ? percentInputToBps(riderShare) : null;
+    if (riderSupported && parsedRiderShare === null) {
+      setSaveError(RIDER_SHARE_INVALID);
+      return;
+    }
     const parsedHours = Number(hours.trim());
     if (
       !Number.isInteger(parsedHours) ||
@@ -384,18 +403,24 @@ export function OperationalSettings() {
       const next = await updateSettings({
         expectedVersion: settings.version,
         serviceFeeRateBps: parsedRate,
+        ...(parsedRiderShare !== null ? { riderCommissionBps: parsedRiderShare } : {}),
         issueWindowHours: parsedHours,
         deliveryFeeBands: parsedBands.bands,
         productionNudge: parsedNudge.nudge,
-        reason: "Updated from the portal",
+        reason: settingsChangeReason(settings.riderCommissionBps, parsedRiderShare),
       });
       setSettings(next);
       setRate(bpsToPercentInput(next.serviceFeeRateBps));
+      setRiderShare(riderShareInput(next.riderCommissionBps));
       setHours(String(next.issueWindowHours));
       setBands(toDraft(next.deliveryFeeBands));
       setNudge(toNudgeDraft(next));
+      const riderPart =
+        next.riderCommissionBps !== undefined
+          ? `, give the rider ${formatRatePercent(next.riderCommissionBps)} of each delivery fee,`
+          : "";
       setSaveOk(
-        `Saved. Orders placed from now on carry a ${formatRatePercent(next.serviceFeeRateBps)} service fee and price delivery from these bands, and issue windows opened from now use the new length. Orders already placed keep the figures they were given.`,
+        `Saved. Orders placed from now on carry a ${formatRatePercent(next.serviceFeeRateBps)} service fee${riderPart} and price delivery from these bands, and issue windows opened from now use the new length. Orders already placed keep the figures they were given.`,
       );
     } catch (err) {
       if (err instanceof ApiError && err.code === "settings_version_conflict") {
@@ -457,6 +482,7 @@ export function OperationalSettings() {
 
   const dirty =
     rate !== bpsToPercentInput(settings.serviceFeeRateBps) ||
+    riderShare !== riderShareInput(settings.riderCommissionBps) ||
     hours !== String(settings.issueWindowHours) ||
     JSON.stringify(bands) !== JSON.stringify(toDraft(settings.deliveryFeeBands)) ||
     JSON.stringify(nudge) !== JSON.stringify(toNudgeDraft(settings));
@@ -465,6 +491,10 @@ export function OperationalSettings() {
   // the rate in force so the receipts never go blank mid-edit.
   const draftRateBps = percentInputToBps(rate) ?? settings.serviceFeeRateBps;
   const rateInvalid = rate.trim() !== "" && percentInputToBps(rate) === null;
+  const draftRiderBps =
+    percentInputToBps(riderShare) ?? settings.riderCommissionBps ?? 0;
+  const riderShareInvalid =
+    settings.riderCommissionBps !== undefined && percentInputToBps(riderShare) === null;
 
   return (
     <div className="flex w-full flex-col gap-3">
@@ -533,6 +563,14 @@ export function OperationalSettings() {
           <WorkedReceipts rateBps={draftRateBps} />
         </div>
       </section>
+
+      <RiderDeliveryShare
+        value={riderShare}
+        onChange={setRiderShare}
+        inForceBps={settings.riderCommissionBps}
+        draftBps={draftRiderBps}
+        invalid={riderShareInvalid}
+      />
 
       <div className="grid w-full gap-3 lg:grid-cols-2 lg:items-start">
         <section className="gg-card p-3" aria-labelledby="window-heading">
@@ -805,6 +843,7 @@ export function OperationalSettings() {
           disabled={busy || !dirty}
           onClick={() => {
             setRate(bpsToPercentInput(settings.serviceFeeRateBps));
+            setRiderShare(riderShareInput(settings.riderCommissionBps));
             setHours(String(settings.issueWindowHours));
             setBands(toDraft(settings.deliveryFeeBands));
             setNudge(toNudgeDraft(settings));
@@ -817,6 +856,20 @@ export function OperationalSettings() {
       </div>
     </div>
   );
+}
+
+/**
+ * The audit line saved with the change. The API requires one; a rider share
+ * change is named in it so the audit log says who moved rider money and to what.
+ */
+export function settingsChangeReason(
+  previousRiderBps: number | undefined,
+  nextRiderBps: number | null,
+): string {
+  if (previousRiderBps === undefined || nextRiderBps === null || previousRiderBps === nextRiderBps) {
+    return "Updated from the portal";
+  }
+  return `Updated from the portal: rider delivery share ${formatRatePercent(previousRiderBps)} to ${formatRatePercent(nextRiderBps)}`;
 }
 
 type ReceiptLine = {
@@ -998,6 +1051,8 @@ function SettingsSkeleton() {
           </div>
         </div>
       </section>
+
+      <RiderDeliveryShareSkeleton />
 
       <div className="grid w-full gap-3 lg:grid-cols-2 lg:items-start">
         <section className="gg-card p-3">

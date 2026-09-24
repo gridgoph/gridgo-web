@@ -9,6 +9,7 @@
 
 import type { Claim, Order, PaymentRecord } from "@/lib/api/types";
 import { claimBlocksPayout, paymentIsSettled } from "@/lib/api/constraints";
+import { orderDeliverySplit } from "@/lib/delivery-split";
 import { listedInstallments, paymentOf } from "@/lib/payments";
 
 export type MoneyFigure =
@@ -23,6 +24,13 @@ export type FinanceRollup = {
   outstanding: MoneyFigure;
   /** GRIDGO's service fee across orders that have been priced. */
   commissionEarned: MoneyFigure;
+  /**
+   * GRIDGO's part of the delivery fees on live orders, at each order's own
+   * snapshot rate. Unavailable when the API sends no split for any order.
+   */
+  deliveryShareEarned: MoneyFigure;
+  /** The riders' part of the same fees. */
+  riderDeliveryPayout: MoneyFigure;
   /** Milestone amounts already paid out to suppliers. */
   supplierReleased: MoneyFigure;
   /** Milestone amounts still owed to suppliers on live orders. */
@@ -73,6 +81,16 @@ export function rollupFinance(orders: Order[], claims: Claim[]): FinanceRollup {
   const priced = live.filter((o) => o.serviceFeeMinor !== undefined);
   const commission = sum(priced.map((o) => o.serviceFeeMinor ?? 0));
 
+  const deliverySplits = live.flatMap((o) => {
+    const split = orderDeliverySplit(o);
+    return split ? [split] : [];
+  });
+  const noSplit: MoneyFigure = {
+    kind: "unavailable",
+    reason:
+      "The API has not split any delivery fee yet, so the whole fee still reads as the rider's.",
+  };
+
   const milestones = live.flatMap((o) => o.payoutMilestones ?? []);
   const released = sum(
     milestones.filter((m) => m.status === "released").map((m) => m.amountMinor ?? 0),
@@ -96,6 +114,15 @@ export function rollupFinance(orders: Order[], claims: Claim[]): FinanceRollup {
           reason:
             "No order has a supplier price yet, so there is no commission to count.",
         },
+    deliveryShareEarned: deliverySplits.length
+      ? {
+          kind: "amount",
+          minor: sum(deliverySplits.map((d) => d.platformDeliveryShareMinor)),
+        }
+      : noSplit,
+    riderDeliveryPayout: deliverySplits.length
+      ? { kind: "amount", minor: sum(deliverySplits.map((d) => d.riderPayoutMinor)) }
+      : noSplit,
     supplierReleased: { kind: "amount", minor: released },
     supplierOutstanding: { kind: "amount", minor: stillOwed },
     heldOnOrders: { kind: "amount", minor: held },
@@ -110,13 +137,19 @@ export type OrderMoneySplit = {
   label: string;
   supplierPriceMinor: number;
   commissionMinor: number;
+  /** Gross delivery fee. Always equals the three parts below added together. */
   deliveryFeeMinor: number;
+  riderPayoutMinor: number;
+  platformDeliveryShareMinor: number;
+  /** Delivery on an order the API has not split; zero once it has. */
+  unsplitDeliveryMinor: number;
   totalMinor: number;
 };
 
 /**
  * Per-order split of what the client pays into supplier earnings, GRIDGO's
- * service fee and delivery. Only orders the server priced appear — an estimate
+ * service fee and delivery — the delivery itself cut into the rider's payout
+ * and GRIDGO's share where the API reports the split. Only orders the server priced appear — an estimate
  * has no supplier price to split.
  */
 export function orderMoneySplits(orders: Order[]): OrderMoneySplit[] {
@@ -127,14 +160,20 @@ export function orderMoneySplits(orders: Order[]): OrderMoneySplit[] {
         order.serviceFeeMinor !== undefined &&
         !DEAD_STATES.has(order.state),
     )
-    .map((order) => ({
-      orderId: order.id,
-      label: order.title,
-      supplierPriceMinor: order.supplierPriceMinor!,
-      commissionMinor: order.serviceFeeMinor!,
-      deliveryFeeMinor: order.deliveryFeeMinor,
-      totalMinor: order.totalMinor,
-    }))
+    .map((order) => {
+      const split = orderDeliverySplit(order);
+      return {
+        orderId: order.id,
+        label: order.title,
+        supplierPriceMinor: order.supplierPriceMinor!,
+        commissionMinor: order.serviceFeeMinor!,
+        deliveryFeeMinor: order.deliveryFeeMinor,
+        riderPayoutMinor: split?.riderPayoutMinor ?? 0,
+        platformDeliveryShareMinor: split?.platformDeliveryShareMinor ?? 0,
+        unsplitDeliveryMinor: split ? 0 : order.deliveryFeeMinor,
+        totalMinor: order.totalMinor,
+      };
+    })
     .sort((a, b) => b.totalMinor - a.totalMinor);
 }
 
