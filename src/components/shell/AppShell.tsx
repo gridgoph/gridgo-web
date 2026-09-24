@@ -1,6 +1,13 @@
 "use client";
 
-import { type CSSProperties, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useClerk, useUser } from "@clerk/nextjs";
@@ -12,25 +19,34 @@ import {
   BookOpen,
   CalendarDays,
   CalendarRange,
+  ChevronRight,
   ChevronsUpDown,
   CircleUser,
   ClipboardCheck,
   ClipboardList,
   Coins,
   Gauge,
+  HandCoins,
+  Inbox,
   LayoutDashboard,
+  Library,
   LogOut,
   MapPinned,
   Megaphone,
   MessageSquare,
+  MessageSquareWarning,
   Package,
   QrCode,
+  Route,
   Scale,
   Trophy,
   ScrollText,
   Settings,
   ShieldCheck,
   Siren,
+  SlidersHorizontal,
+  Store,
+  Contact,
   Truck,
   UserRoundCheck,
   UserSearch,
@@ -57,6 +73,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Logo } from "@/components/ui/Logo";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -65,13 +86,15 @@ import {
   SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
   SidebarMenu,
   SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   SidebarProvider,
   SidebarRail,
   SidebarSeparator,
@@ -80,10 +103,21 @@ import {
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { InboxBell } from "@/components/shell/InboxBell";
-import { OrdersQueuePill } from "@/components/shell/OrdersQueuePill";
+import { OrdersQueuePill, ordersWaitingLabel } from "@/components/shell/OrdersQueuePill";
+import {
+  groupHasActivePage,
+  initialGroupOpen,
+  isActiveHref,
+  readGroupOpenState,
+  readRailOpen,
+  writeGroupOpen,
+  writeRailOpen,
+  type GroupOpenState,
+} from "@/components/shell/rail-state";
 import { ThemeToggle } from "@/components/shell/ThemeToggle";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { LiveProvider } from "@/lib/live/LiveProvider";
+import { useOrdersWaitingCount } from "@/lib/live/useOrdersWaitingCount";
 import { notificationHref } from "@/lib/live/notificationHref";
 import {
   clerkProfileEmail,
@@ -132,11 +166,43 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   planning: CalendarRange,
   broadcast: Megaphone,
   chat: MessageSquare,
+  reports: MessageSquareWarning,
+  "group-shop": Store,
+  "group-money": HandCoins,
+  "group-queue": Inbox,
+  "group-field": Route,
+  "group-system": SlidersHorizontal,
+  "group-people": Contact,
+  "group-catalog": Library,
 };
 
-function isActive(pathname: string, href: string): boolean {
-  return pathname === href || pathname.startsWith(`${href}/`);
+/** The one live count on the rail: orders waiting on Operations. */
+const OrdersWaitingContext = createContext<number | null>(null);
+
+/**
+ * Reads the queue once for the whole rail, and only on a rail that has an
+ * Orders row — a supplier or Super Admin rail never asks for the list.
+ */
+function OrdersWaitingCount({ children }: { children: ReactNode }) {
+  const count = useOrdersWaitingCount();
+  return (
+    <OrdersWaitingContext.Provider value={count}>{children}</OrdersWaitingContext.Provider>
+  );
 }
+
+const ORDERS_NAV_ID = "ops-orders";
+
+function hasOrdersRow(items: readonly NavItem[]): boolean {
+  return items.some((item) => item.id === ORDERS_NAV_ID);
+}
+
+/** Icon-rail cell: a 44×44 target centred in the 60px column. */
+const ICON_CELL =
+  "group-data-[collapsible=icon]:size-11! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!";
+
+/** The selected page: yellow text and icon on the accent wash — never a bar or fill. */
+const ACTIVE_PAGE =
+  "text-[var(--color-action-yellow)] hover:text-[var(--color-action-yellow)] data-active:font-medium data-active:text-[var(--color-action-yellow)]";
 
 /** Operational settings only — suppliers have no settings route. */
 function settingsHrefForRole(role: Role): "/ops/settings" | "/admin/settings" | null {
@@ -291,8 +357,9 @@ function RailNavItem({
   pathname: string;
   onNavigate: () => void;
 }) {
-  const active = isActive(pathname, item.href);
+  const active = isActiveHref(pathname, item.href);
   const Icon = NAV_ICONS[item.icon];
+  const ordersWaiting = useContext(OrdersWaitingContext);
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
@@ -301,46 +368,20 @@ function RailNavItem({
         tooltip={item.label}
         onClick={onNavigate}
         aria-current={active ? "page" : undefined}
-        className={cn(
-          "group-data-[collapsible=icon]:size-11! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!",
-          active &&
-            "text-[var(--color-action-yellow)] hover:text-[var(--color-action-yellow)] data-active:font-medium data-active:text-[var(--color-action-yellow)]",
-        )}
+        className={cn(ICON_CELL, active && ACTIVE_PAGE)}
       >
         <Icon strokeWidth={active ? 2.25 : 1.75} aria-hidden />
         <span className="group-data-[collapsible=icon]:hidden">{item.label}</span>
       </SidebarMenuButton>
       {!item.ready ? <SidebarMenuBadge>Soon</SidebarMenuBadge> : null}
       {/* Only the Operations queue carries live work on the rail. */}
-      {item.id === "ops-orders" ? <OrdersQueuePill /> : null}
+      {item.id === ORDERS_NAV_ID ? <OrdersQueuePill count={ordersWaiting} /> : null}
     </SidebarMenuItem>
   );
 }
 
-function RailNavMenu({
-  items,
-  pathname,
-  onNavigate,
-}: {
-  items: readonly NavItem[];
-  pathname: string;
-  onNavigate: () => void;
-}) {
-  return (
-    <SidebarMenu>
-      {items.map((item) => (
-        <RailNavItem
-          key={item.id}
-          item={item}
-          pathname={pathname}
-          onNavigate={onNavigate}
-        />
-      ))}
-    </SidebarMenu>
-  );
-}
-
-function RailNavGroup({
+/** An unlabeled cluster (Overview / Jobs / Dashboard): plain rows, no parent. */
+function RailNavCluster({
   group,
   pathname,
   onNavigate,
@@ -349,15 +390,258 @@ function RailNavGroup({
   pathname: string;
   onNavigate: () => void;
 }) {
-  // Groups are sections, not disclosures: quiet label (when present) + items always open.
-  // Compact py keeps section rhythm tight without dividers or per-group collapse.
   return (
     <SidebarGroup className="px-2 py-1">
-      {group.label ? <SidebarGroupLabel>{group.label}</SidebarGroupLabel> : null}
       <SidebarGroupContent>
-        <RailNavMenu items={group.items} pathname={pathname} onNavigate={onNavigate} />
+        <SidebarMenu>
+          {group.items.map((item) => (
+            <RailNavItem
+              key={item.id}
+              item={item}
+              pathname={pathname}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </SidebarMenu>
       </SidebarGroupContent>
     </SidebarGroup>
+  );
+}
+
+function RailNavSubItem({
+  item,
+  pathname,
+  onNavigate,
+}: {
+  item: NavItem;
+  pathname: string;
+  onNavigate: () => void;
+}) {
+  const active = isActiveHref(pathname, item.href);
+  const ordersWaiting = useContext(OrdersWaitingContext);
+  const counted = item.id === ORDERS_NAV_ID && Boolean(ordersWaiting);
+  return (
+    <SidebarMenuSubItem>
+      <SidebarMenuSubButton
+        render={<Link href={item.href} />}
+        isActive={active}
+        onClick={onNavigate}
+        aria-current={active ? "page" : undefined}
+        className={cn("min-h-11", counted && "pr-10", active && ACTIVE_PAGE)}
+      >
+        <span>{item.label}</span>
+      </SidebarMenuSubButton>
+      {!item.ready ? <SidebarMenuBadge className="top-1/2! -translate-y-1/2">Soon</SidebarMenuBadge> : null}
+      {item.id === ORDERS_NAV_ID ? <OrdersQueuePill count={ordersWaiting} /> : null}
+    </SidebarMenuSubItem>
+  );
+}
+
+/**
+ * A labeled group on the expanded rail: icon + name + chevron, folding its
+ * pages under a thin guide line. Closed with the current page inside, the
+ * parent keeps the accent wash so the person still sees where they are, and
+ * the queue count climbs onto the parent so folding never hides work.
+ */
+function RailNavParent({
+  group,
+  pathname,
+  open,
+  onOpenChange,
+  onNavigate,
+}: {
+  group: NavGroup;
+  pathname: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onNavigate: () => void;
+}) {
+  const Icon = NAV_ICONS[group.icon ?? "overview"];
+  const ordersWaiting = useContext(OrdersWaitingContext);
+  const holdsCurrentPage = groupHasActivePage(group, pathname);
+  const showCountOnParent = !open && hasOrdersRow(group.items);
+  return (
+    <Collapsible
+      open={open}
+      onOpenChange={onOpenChange}
+      render={<SidebarMenuItem data-nav-group={group.id} />}
+    >
+      <CollapsibleTrigger
+        render={<SidebarMenuButton isActive={holdsCurrentPage && !open} />}
+        className={cn(showCountOnParent && ordersWaiting && "pr-16")}
+      >
+        <Icon strokeWidth={1.75} aria-hidden />
+        <span className="min-w-0 flex-1 truncate">{group.label}</span>
+        <ChevronRight
+          aria-hidden
+          className="ml-auto text-sidebar-foreground/60 transition-transform duration-200 ease-out group-data-[panel-open]/menu-button:rotate-90 motion-reduce:transition-none"
+        />
+      </CollapsibleTrigger>
+      {showCountOnParent ? (
+        <OrdersQueuePill count={ordersWaiting} className="right-8" />
+      ) : null}
+      <CollapsibleContent className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
+        <SidebarMenuSub className="mt-0.5 gap-0.5">
+          {group.items.map((item) => (
+            <RailNavSubItem
+              key={item.id}
+              item={item}
+              pathname={pathname}
+              onNavigate={onNavigate}
+            />
+          ))}
+        </SidebarMenuSub>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+/**
+ * A labeled group on the icon rail: the parent's icon opens its pages in a
+ * flyout beside the rail, so every page stays one click deep while folded.
+ */
+function RailNavFlyout({ group, pathname }: { group: NavGroup; pathname: string }) {
+  const Icon = NAV_ICONS[group.icon ?? "overview"];
+  const ordersWaiting = useContext(OrdersWaitingContext);
+  const holdsCurrentPage = groupHasActivePage(group, pathname);
+  const waiting = hasOrdersRow(group.items) && ordersWaiting ? ordersWaiting : null;
+  const label = group.label ?? "";
+  return (
+    <SidebarMenuItem data-nav-group={group.id}>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <SidebarMenuButton
+              isActive={holdsCurrentPage}
+              tooltip={label}
+              aria-label={waiting ? `${label}, ${ordersWaitingLabel(waiting)}` : label}
+              className={cn(
+                ICON_CELL,
+                "data-popup-open:bg-sidebar-accent data-popup-open:text-sidebar-accent-foreground",
+              )}
+            />
+          }
+        >
+          <Icon strokeWidth={holdsCurrentPage ? 2.25 : 1.75} aria-hidden />
+          {waiting ? (
+            <span
+              aria-hidden
+              data-testid="orders-queue-dot"
+              className="absolute top-2 right-2 size-2 rounded-pill bg-[var(--color-action-yellow)] ring-2 ring-sidebar"
+            />
+          ) : null}
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="right" align="start" sideOffset={10} className="min-w-56">
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>{label}</DropdownMenuLabel>
+            {group.items.map((item) => {
+              const active = isActiveHref(pathname, item.href);
+              const ItemIcon = NAV_ICONS[item.icon];
+              const count = item.id === ORDERS_NAV_ID ? waiting : null;
+              return (
+                <DropdownMenuItem
+                  key={item.id}
+                  render={<Link href={item.href} />}
+                  aria-current={active ? "page" : undefined}
+                  className={cn(
+                    "min-h-11",
+                    active &&
+                      "bg-accent text-[var(--color-action-yellow)] focus:text-[var(--color-action-yellow)]",
+                  )}
+                >
+                  <ItemIcon strokeWidth={active ? 2.25 : 1.75} aria-hidden />
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {count ? (
+                    <span className="ml-auto rounded-pill bg-[var(--color-action-yellow)] px-1.5 text-[var(--color-action-yellow-on)]">
+                      <span className="text-caption" aria-hidden>
+                        {count > 99 ? "99+" : count}
+                      </span>
+                      <span className="sr-only">{ordersWaitingLabel(count)}</span>
+                    </span>
+                  ) : null}
+                </DropdownMenuItem>
+              );
+            })}
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </SidebarMenuItem>
+  );
+}
+
+function RailNavGroups({
+  groups,
+  pathname,
+  onNavigate,
+}: {
+  groups: readonly NavGroup[];
+  pathname: string;
+  onNavigate: () => void;
+}) {
+  const { state, isMobile } = useSidebar();
+  // The mobile sheet is always the full rail, whatever the desktop fold says.
+  const iconRail = state === "collapsed" && !isMobile;
+  const parents = groups.filter((group) => group.label);
+
+  const [openGroups, setOpenGroups] = useState<GroupOpenState>(() => {
+    const remembered = readGroupOpenState();
+    return Object.fromEntries(
+      parents.map((group) => [group.id, initialGroupOpen(group, pathname, remembered)]),
+    );
+  });
+
+  // Arriving on a page inside a closed group opens it. Adjusted during render
+  // (not in an effect) so the new page never paints with its group folded.
+  // This is not the person's choice, so it is not remembered.
+  const [seenPathname, setSeenPathname] = useState(pathname);
+  if (seenPathname !== pathname) {
+    setSeenPathname(pathname);
+    const holding = parents.find((group) => groupHasActivePage(group, pathname));
+    if (holding && !openGroups[holding.id]) {
+      setOpenGroups((prev) => ({ ...prev, [holding.id]: true }));
+    }
+  }
+
+  const setGroupOpen = useCallback((groupId: string, open: boolean) => {
+    setOpenGroups((prev) => ({ ...prev, [groupId]: open }));
+    writeGroupOpen(groupId, open);
+  }, []);
+
+  return (
+    <>
+      {groups.map((group) =>
+        group.label ? null : (
+          <RailNavCluster
+            key={group.id}
+            group={group}
+            pathname={pathname}
+            onNavigate={onNavigate}
+          />
+        ),
+      )}
+      {parents.length > 0 ? (
+        <SidebarGroup className="px-2 py-1">
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {parents.map((group) =>
+                iconRail ? (
+                  <RailNavFlyout key={group.id} group={group} pathname={pathname} />
+                ) : (
+                  <RailNavParent
+                    key={group.id}
+                    group={group}
+                    pathname={pathname}
+                    open={Boolean(openGroups[group.id])}
+                    onOpenChange={(open) => setGroupOpen(group.id, open)}
+                    onNavigate={onNavigate}
+                  />
+                ),
+              )}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      ) : null}
+    </>
   );
 }
 
@@ -365,6 +649,10 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
   const pathname = usePathname();
   const { setOpenMobile } = useSidebar();
   const groups = navGroupsForRole(role);
+  const closeMobile = () => setOpenMobile(false);
+  const nav = (
+    <RailNavGroups groups={groups} pathname={pathname} onNavigate={closeMobile} />
+  );
 
   return (
     <Sidebar collapsible="icon">
@@ -375,10 +663,10 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              className="[&_svg]:size-6 group-data-[collapsible=icon]:size-11! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-0!"
+              className={cn("[&_svg]:size-6", ICON_CELL)}
               render={<Link href={homeForRole(role)} />}
               tooltip="GRIDGO home"
-              onClick={() => setOpenMobile(false)}
+              onClick={closeMobile}
             >
               <span className="flex size-6 shrink-0 items-center justify-center">
                 <Logo compact />
@@ -401,14 +689,11 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
 
       <SidebarContent className="pt-1">
         <nav aria-label="Primary navigation" className="flex min-h-0 flex-col gap-0">
-          {groups.map((group) => (
-            <RailNavGroup
-              key={group.id}
-              group={group}
-              pathname={pathname}
-              onNavigate={() => setOpenMobile(false)}
-            />
-          ))}
+          {groups.some((group) => hasOrdersRow(group.items)) ? (
+            <OrdersWaitingCount>{nav}</OrdersWaitingCount>
+          ) : (
+            nav
+          )}
         </nav>
       </SidebarContent>
 
@@ -426,6 +711,13 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
 
 export function AppShell({ role, children }: Props) {
   const pathname = usePathname();
+  // Folded or expanded is remembered per browser; Ctrl/Cmd+B, the header
+  // toggle and the rail edge all go through here.
+  const [railOpen, setRailOpen] = useState(readRailOpen);
+  const onRailOpenChange = useCallback((open: boolean) => {
+    setRailOpen(open);
+    writeRailOpen(open);
+  }, []);
   const router = useRouter();
   const title = contextTitleForPath(pathname, role);
   const parentItem = navItemForPath(pathname, role);
@@ -440,6 +732,8 @@ export function AppShell({ role, children }: Props) {
       }}
     >
       <SidebarProvider
+        open={railOpen}
+        onOpenChange={onRailOpenChange}
         // The rail has to clear GRIDGO's 44x44 control floor. shadcn's 3rem
         // assumes a 32px button, which leaves the label clipped mid-word.
         style={{ "--sidebar-width-icon": "3.75rem" } as CSSProperties}

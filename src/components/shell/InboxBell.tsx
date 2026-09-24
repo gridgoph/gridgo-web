@@ -29,6 +29,7 @@ import { notificationHref } from "@/lib/live/notificationHref";
 import { useNotificationSound } from "@/lib/live/useNotificationSound";
 import { FAMILY_ICON, presentSlip, slipFamily } from "@/components/shell/slip";
 import { isProductionReminder } from "@/lib/live/notificationSound";
+import { DesktopAlertsPrompt, DesktopAlertsRow } from "@/components/shell/DesktopAlerts";
 import { cn } from "@/lib/utils";
 
 /**
@@ -207,6 +208,7 @@ function FloorStatus({ live }: { live: boolean }) {
 }
 
 function InboxPanel({
+  role,
   notifications,
   unreadCount,
   markError,
@@ -214,6 +216,7 @@ function InboxPanel({
   onOpen,
   fill,
 }: {
+  role: Role;
   notifications: Notification[];
   unreadCount: number;
   markError: string | null;
@@ -251,9 +254,11 @@ function InboxPanel({
       {markError ? (
         <p className="text-caption text-error m-0 px-4 pb-2">{markError}</p>
       ) : null}
+      <DesktopAlertsPrompt role={role} />
       {/* The tear line: what is above is the desk, what is below are the slips. */}
       <div className="border-outline mx-4 border-t border-dashed" aria-hidden />
       <InboxList notifications={notifications} onOpen={onOpen} fill={fill} />
+      <DesktopAlertsRow role={role} />
     </div>
   );
 }
@@ -357,6 +362,7 @@ export function InboxBell({ role }: { role: Role }) {
             </SheetDescription>
           </SheetHeader>
           <InboxPanel
+            role={role}
             notifications={notifications}
             unreadCount={unreadCount}
             markError={markError}
@@ -395,6 +401,7 @@ export function InboxBell({ role }: { role: Role }) {
           </PopoverDescription>
         </PopoverHeader>
         <InboxPanel
+          role={role}
           notifications={notifications}
           unreadCount={unreadCount}
           markError={markError}

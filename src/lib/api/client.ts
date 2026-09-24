@@ -60,6 +60,9 @@ import type {
   Zone,
   SupplierPayoutAccount,
   SupplierPayoutAccountPatch,
+  IssueReport,
+  IssueReportCounts,
+  IssueReportStatus,
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
 
@@ -350,7 +353,7 @@ export type TransitionExtra = {
    * an assigned job already has its price. Older callers that still issue a
    * `supplier_accepted` quote may pass the asking price in minor units.
    */
-  supplierPriceMinor?: number;
+  supplierSubtotalMinor?: number;
   promisedDate?: string | null;
   reason?: string;
   note?: string;
@@ -1642,5 +1645,25 @@ export async function attachCatalogItemPhoto(
   return request<unknown>(`/files/${encodeURIComponent(fileId)}/attach`, {
     method: "POST",
     body: JSON.stringify(payload),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Public issue reports — Operations and Super Admin
+// ---------------------------------------------------------------------------
+
+export async function listIssueReports(
+  status: IssueReportStatus,
+): Promise<{ reports: IssueReport[]; counts: IssueReportCounts }> {
+  return request(`/ops/issue-reports${buildQuery({ status })}`);
+}
+
+export async function updateIssueReport(
+  id: string,
+  input: { status: IssueReportStatus; publishedIn?: string | null },
+): Promise<IssueReport> {
+  return request<IssueReport>(`/ops/issue-reports/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
   });
 }

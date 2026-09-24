@@ -13,6 +13,7 @@
 
 import { formatRatePercent } from "@/components/settings/service-fee";
 import type { Order } from "@/lib/api/types";
+import { orderDeliverySplit, platformShareBps } from "@/lib/delivery-split";
 import { formatPhp } from "@/lib/format";
 
 type Props = {
@@ -79,6 +80,27 @@ export function MoneyBreakdown({ order, headingId }: Props) {
 
   const hasSupplierLedger = supplierRows.length > 0;
 
+  // Who the delivery fee belongs to. Absent on an API without the split, and
+  // then the gross delivery line above is the whole story.
+  const split = orderDeliverySplit(order);
+  const rate = split?.riderCommissionBps;
+  const deliveryRows: Row[] = split
+    ? [
+        {
+          label: `Rider payout${rate != null ? ` (${formatRatePercent(rate)})` : ""}`,
+          value: formatPhp(split.riderPayoutMinor),
+          hint: "The rider's share of the delivery fee, at the rate this order was priced at",
+        },
+        {
+          label: `GRIDGO delivery share${
+            rate != null ? ` (${formatRatePercent(platformShareBps(rate))})` : ""
+          }`,
+          value: formatPhp(split.platformDeliveryShareMinor),
+          hint: "The rest of the delivery fee. Never shown to the client.",
+        },
+      ]
+    : [];
+
   return (
     <div className="flex flex-col gap-4" aria-labelledby={headingId}>
       {hasSupplierLedger ? (
@@ -97,6 +119,12 @@ export function MoneyBreakdown({ order, headingId }: Props) {
       ) : (
         <MoneyRows rows={clientRows} />
       )}
+
+      {deliveryRows.length ? (
+        <div className="border-t border-outline-subtle pt-4">
+          <MoneyRows rows={deliveryRows} />
+        </div>
+      ) : null}
 
       {order.downpaymentMinor !== undefined &&
       order.balanceMinor !== undefined ? (

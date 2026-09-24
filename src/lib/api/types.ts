@@ -271,6 +271,22 @@ export type SupplierSettlement = {
   [key: string]: number | undefined;
 };
 
+/**
+ * Ops / Super Admin only. The delivery fee on one order, who it belongs to,
+ * and how much of it has actually been collected. Collection is summed over
+ * confirmed payments before the snapshot rate is applied.
+ */
+export type DeliverySettlement = {
+  deliveryFeeMinor: number;
+  riderCommissionBps: number;
+  riderPayoutMinor: number;
+  platformDeliveryShareMinor: number;
+  /** Confirmed gross delivery collection, both shares. */
+  collectedMinor?: number;
+  riderCollectedMinor?: number;
+  platformCollectedMinor?: number;
+};
+
 // ---- Rider pickup checklist (v2) ----
 
 export type PickupCheckCode =
@@ -406,7 +422,20 @@ export type Order = {
   subtotalMinor?: number;
   /** Haversine metres, supplier shop → dropoff. Chooses the delivery band. */
   deliveryDistanceMeters?: number;
+  /** Gross delivery fee the client pays. */
   deliveryFeeMinor: number;
+  /**
+   * The rider's share of the delivery fee as snapshotted on this order, in
+   * basis points, and the two amounts it splits into (rider half-up, GRIDGO
+   * the remainder). Ops / Super Admin and the rider only; absent on an API
+   * that predates the split, and orders placed before it hold 10,000 (the
+   * whole fee to the rider).
+   */
+  riderCommissionBps?: number;
+  riderPayoutMinor?: number;
+  platformDeliveryShareMinor?: number;
+  /** Ops / Super Admin only. The split with what has been collected. */
+  deliverySettlement?: DeliverySettlement;
   /** Subtotal + delivery. What the client owes in full. */
   totalMinor: number;
   /** 75% of the total. */
@@ -578,6 +607,14 @@ export type PlatformSettings = {
    * as shown.
    */
   serviceFeeVisibleToClient?: boolean;
+  /**
+   * The share of each delivery fee the rider keeps, in basis points (8,500 =
+   * 85% rider, 15% GRIDGO), 0–10,000. Snapshotted on every order when its
+   * delivery fee is set. Absent on an API that predates the split — the
+   * settings screen then says so instead of offering a control that saves
+   * nothing.
+   */
+  riderCommissionBps?: number;
   deliveryFeeBands: DeliveryFeeBand[];
   /** Manual QR checkout. `imageUrl` is the replaceable plate. */
   paymentQr?: PaymentQr;
@@ -587,6 +624,7 @@ export type UpdateSettingsInput = {
   issueWindowHours?: number;
   serviceFeeRateBps?: number;
   serviceFeeVisibleToClient?: boolean;
+  riderCommissionBps?: number;
   deliveryFeeBands?: DeliveryFeeBand[];
   productionNudge?: ProductionNudge;
   reason?: string;
@@ -1170,3 +1208,32 @@ export type ShopRankings = {
   rankedCount: number;
   rows: ShopRankingRow[];
 };
+
+// ---------------------------------------------------------------------------
+// Public issue reports (landing /report) — gridgo-api docs/ISSUE_REPORTS_API.md
+// ---------------------------------------------------------------------------
+
+export type IssueReportCategory = "bug" | "feature" | "other";
+export type IssueReportStatus = "new" | "published" | "dismissed";
+
+export type IssueReportScreenshot = {
+  position: number;
+  contentType: string;
+  size: number;
+  /** Presigned and short-lived; reload the list for fresh links. */
+  url: string;
+  expiresAt: string;
+};
+
+export type IssueReport = {
+  id: string;
+  issue: string;
+  category: IssueReportCategory | null;
+  status: IssueReportStatus;
+  publishedIn: string | null;
+  createdAt: string;
+  updatedAt: string;
+  screenshots: IssueReportScreenshot[];
+};
+
+export type IssueReportCounts = Record<IssueReportStatus, number>;
