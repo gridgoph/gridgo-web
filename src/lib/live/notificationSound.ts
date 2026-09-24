@@ -65,8 +65,11 @@ export function subscribeNotificationSoundEnabled(listener: Listener): () => voi
 }
 
 export type NotificationChime = {
-  /** Play the chime unless one played within the coalescing window. */
-  play: () => void;
+  /**
+   * Play the chime (or `src`, e.g. the production-nudge sting) unless a sound
+   * played within the coalescing window.
+   */
+  play: (src?: string) => void;
   /** Stop listening for the priming gesture. */
   dispose: () => void;
 };
