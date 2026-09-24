@@ -337,6 +337,14 @@ export type ProductionItem = {
   mockupFileId?: string | null;
 };
 
+export type PhysicalInvoiceRequest = {
+  contactPerson: string;
+  officeAddress: string;
+  operatingHours: string;
+  requestedAt: string;
+  promisedDeliveryAt?: string | null;
+};
+
 export type Order = {
   id: string;
   clientId: string;
@@ -456,6 +464,13 @@ export type Order = {
   createdAt: string;
   updatedAt: string;
   timeline: TimelineEntry[];
+
+  /**
+   * Where to send a printed invoice, and when Operations promised it would
+   * arrive. Absent unless this client asked for one. Hidden from the shop
+   * and the rider.
+   */
+  physicalInvoiceRequest?: PhysicalInvoiceRequest | null;
 };
 
 export type Notification = {
@@ -554,10 +569,15 @@ export type PlatformSettings = {
   /**
    * GRIDGO's service fee in basis points of the shop's price (1,000 = 10%),
    * 0–10,000. Added on top of the shop price and folded into the client's
-   * total; the client is never shown it as a line. Operations and Super Admin
-   * change it here and see it on every order.
+   * total. Operations and Super Admin change it here and see it on every order.
    */
   serviceFeeRateBps: number;
+  /**
+   * Whether client checkout names the fee (`Service fee · N%`). The pesos
+   * stay inside Printing either way. Absent on an older settings row; treat
+   * as shown.
+   */
+  serviceFeeVisibleToClient?: boolean;
   deliveryFeeBands: DeliveryFeeBand[];
   /** Manual QR checkout. `imageUrl` is the replaceable plate. */
   paymentQr?: PaymentQr;
@@ -566,6 +586,7 @@ export type PlatformSettings = {
 export type UpdateSettingsInput = {
   issueWindowHours?: number;
   serviceFeeRateBps?: number;
+  serviceFeeVisibleToClient?: boolean;
   deliveryFeeBands?: DeliveryFeeBand[];
   productionNudge?: ProductionNudge;
   reason?: string;

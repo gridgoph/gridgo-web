@@ -10,10 +10,10 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
  * after delivery, what delivery costs at each distance, and the GCash plate
  * checkout scans.
  *
- * The service fee is the one figure here the client must never see as a
- * line. It is folded into their total; Operations and Super Admin see it on
- * every order. The screen shows both receipts side by side so a change can be
- * read as money before it is saved.
+ * The service fee is folded into the client's printing price. Operations can
+ * name that fee on checkout or hide the row; Operations and Super Admin still
+ * see the split on every order. The screen shows both receipts side by side
+ * so a rate change can be read as money before it is saved.
  *
  * The band figures shipped as Firstmate's suggestion, not the captain's — the
  * screen says so, because someone has to decide the real ones. One
@@ -63,8 +63,10 @@ const SERVICE_FEE_COPY = (
 
 const SERVICE_FEE_VISIBILITY = (
   <>
-    Clients are never shown the fee as a line &mdash; it sits inside the price of the work
-    on their receipt. Operations and Super Admin see it on every order.
+    The fee always sits inside the client&rsquo;s printing price. This switch only names
+    it on checkout &mdash; hide the row when you do not want clients to see
+    &ldquo;Service fee&rdquo;. Operations and Super Admin still see the split on every
+    order.
   </>
 );
 
@@ -129,6 +131,10 @@ type NudgeDraft = {
 
 function nudgeFrom(settings: PlatformSettings): ProductionNudge {
   return settings.productionNudge ?? DEFAULT_PRODUCTION_NUDGE;
+}
+
+function feeVisibleOf(settings: Pick<PlatformSettings, "serviceFeeVisibleToClient">): boolean {
+  return settings.serviceFeeVisibleToClient !== false;
 }
 
 function toNudgeDraft(settings: PlatformSettings): NudgeDraft {
@@ -245,6 +251,7 @@ export function OperationalSettings() {
   const [hours, setHours] = useState("");
   const [bands, setBands] = useState<BandDraft[]>([]);
   const [nudge, setNudge] = useState<NudgeDraft>(toNudgeDraft({ version: 0, issueWindowHours: 24, serviceFeeRateBps: 1000, deliveryFeeBands: [] }));
+  const [feeVisible, setFeeVisible] = useState(true);
   const [qrBusy, setQrBusy] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
   const [qrOk, setQrOk] = useState<string | null>(null);
@@ -281,6 +288,11 @@ export function OperationalSettings() {
           JSON.stringify(current) !== JSON.stringify(toNudgeDraft(previous))
             ? current
             : toNudgeDraft(next),
+        );
+        setFeeVisible((current) =>
+          preserveDraft && previous && current !== feeVisibleOf(previous)
+            ? current
+            : feeVisibleOf(next),
         );
         settingsRef.current = next;
         setSettings(next);
@@ -391,6 +403,7 @@ export function OperationalSettings() {
       const next = await updateSettings({
         expectedVersion: settings.version,
         serviceFeeRateBps: parsedRate,
+        serviceFeeVisibleToClient: feeVisible,
         issueWindowHours: parsedHours,
         deliveryFeeBands: parsedBands.bands,
         productionNudge: parsedNudge.nudge,
@@ -398,6 +411,7 @@ export function OperationalSettings() {
       });
       setSettings(next);
       setRate(bpsToPercentInput(next.serviceFeeRateBps));
+      setFeeVisible(feeVisibleOf(next));
       setHours(String(next.issueWindowHours));
       setBands(toDraft(next.deliveryFeeBands));
       setNudge(toNudgeDraft(next));
@@ -464,6 +478,7 @@ export function OperationalSettings() {
 
   const dirty =
     rate !== bpsToPercentInput(settings.serviceFeeRateBps) ||
+    feeVisible !== feeVisibleOf(settings) ||
     hours !== String(settings.issueWindowHours) ||
     JSON.stringify(bands) !== JSON.stringify(toDraft(settings.deliveryFeeBands)) ||
     JSON.stringify(nudge) !== JSON.stringify(toNudgeDraft(settings));
@@ -493,6 +508,15 @@ export function OperationalSettings() {
 
         <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
           <FieldGroup>
+            <Field orientation="horizontal">
+              <FieldLabel htmlFor="service-fee-visible">Show on client checkout</FieldLabel>
+              <Switch
+                id="service-fee-visible"
+                checked={feeVisible}
+                onCheckedChange={(checked) => setFeeVisible(Boolean(checked))}
+                aria-label="Show on client checkout"
+              />
+            </Field>
             <Field data-invalid={rateInvalid || undefined}>
               <FieldLabel htmlFor="service-fee-rate">Rate on the shop price</FieldLabel>
               <div className="relative max-w-40">
@@ -812,6 +836,7 @@ export function OperationalSettings() {
           disabled={busy || !dirty}
           onClick={() => {
             setRate(bpsToPercentInput(settings.serviceFeeRateBps));
+            setFeeVisible(feeVisibleOf(settings));
             setHours(String(settings.issueWindowHours));
             setBands(toDraft(settings.deliveryFeeBands));
             setNudge(toNudgeDraft(settings));

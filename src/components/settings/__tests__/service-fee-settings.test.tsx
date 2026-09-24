@@ -6,6 +6,15 @@ import React from "react";
 import { afterEach, expect, it, vi } from "vitest";
 
 vi.stubGlobal("React", React);
+
+// Base UI's switch dispatches a PointerEvent on click. jsdom does not implement it.
+class FakePointerEvent extends MouseEvent {
+  constructor(type: string, params: MouseEventInit = {}) {
+    super(type, params);
+  }
+}
+vi.stubGlobal("PointerEvent", FakePointerEvent);
+
 const { OperationalSettings } = await import("@/components/settings/OperationalSettings");
 const getSettings = vi.hoisted(() => vi.fn());
 const updateSettings = vi.hoisted(() => vi.fn());
@@ -68,6 +77,7 @@ it("re-prices the example as the rate is typed and saves it in basis points", as
   expect(updateSettings.mock.calls[0][0]).toMatchObject({
     expectedVersion: 7,
     serviceFeeRateBps: 1250,
+    serviceFeeVisibleToClient: true,
     issueWindowHours: 24,
   });
   expect(await screen.findByRole("status")).toHaveTextContent("12.5% service fee");
@@ -89,4 +99,26 @@ it("refuses a rate the API would refuse before sending anything", async () => {
   expect(updateSettings).not.toHaveBeenCalled();
   // The receipts hold the rate in force rather than going blank on a bad draft.
   expect(within(screen.getByTestId("receipt-ops")).getByText("Service fee (10%)")).toBeInTheDocument();
+});
+
+it("saves whether the client checkout names the service fee", async () => {
+  getSettings.mockResolvedValue(stored);
+  updateSettings.mockImplementation(async (input: { serviceFeeVisibleToClient?: boolean }) => ({
+    ...stored,
+    version: 8,
+    serviceFeeVisibleToClient: input.serviceFeeVisibleToClient,
+  }));
+  render(<OperationalSettings />);
+
+  const toggle = await screen.findByRole("switch", { name: "Show on client checkout" });
+  expect(toggle).toHaveAttribute("data-checked");
+  fireEvent.click(toggle);
+  fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+  await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(1));
+  expect(updateSettings.mock.calls[0][0]).toMatchObject({
+    expectedVersion: 7,
+    serviceFeeVisibleToClient: false,
+    serviceFeeRateBps: 1000,
+  });
 });

@@ -43,6 +43,7 @@ import { artworkEvidence, deliveryEvidenceItems, pickupEvidence } from "@/lib/ev
 import {
   confirmPayment,
   getOrder,
+  promisePhysicalInvoice,
   rejectPayment,
   releaseMilestoneWithReceipt,
   transitionOrder,
@@ -50,6 +51,13 @@ import {
 import type { Order, PaymentInstallment, PayoutMilestone } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
+import {
+  DESK_WINDOW_LABEL,
+  deskInstant,
+  deskTimes,
+  isGridgoDeskInstant,
+  upcomingDeskDates,
+} from "@/lib/physicalInvoiceDesk";
 import { presentOrderState } from "@/lib/order-state";
 import { paymentOf, paymentProgress } from "@/lib/payments";
 import {
@@ -70,7 +78,14 @@ type Props = {
 };
 
 /** The workspace's sections, in the order the work happens. */
-type SectionId = "payment" | "qa" | "production" | "delivery" | "payout" | "history";
+type SectionId =
+  | "payment"
+  | "qa"
+  | "production"
+  | "delivery"
+  | "payout"
+  | "physical-invoice"
+  | "history";
 
 /**
  * One order, as a sequence of steps with everything about it beside them.
@@ -322,6 +337,24 @@ export function OrderWorkspace({
               </SectionRow>
             ) : null}
 
+            {order.physicalInvoiceRequest ? (
+              <SectionRow
+                id="physical-invoice"
+                heading="Physical invoice"
+                summary={physicalInvoiceSummary(order)}
+                marker={physicalInvoiceMarker(order)}
+                trailing={order.physicalInvoiceRequest.promisedDeliveryAt ? "Promised" : "Your call"}
+              >
+                <PhysicalInvoicePanel
+                  order={order}
+                  busy={busy}
+                  onPromise={(instant) =>
+                    run("physical-invoice", () => promisePhysicalInvoice(order.id, instant))
+                  }
+                />
+              </SectionRow>
+            ) : null}
+
             <SectionRow
               id="history"
               heading="History"
@@ -369,9 +402,25 @@ export function defaultOpenSections(order: Order): SectionId[] {
   const current = stepsFor(order).find((step) => step.status === "current");
   if (current) ids.add(current.id as SectionId);
   if (installmentsAwaitingConfirmation(order).length > 0) ids.add("payment");
+  if (order.physicalInvoiceRequest && !order.physicalInvoiceRequest.promisedDeliveryAt) {
+    ids.add("physical-invoice");
+  }
   if (releasableMilestones(order).length > 0) ids.add("payout");
   if (isCancelled(order)) ids.add("history");
   return [...ids];
+}
+
+function physicalInvoiceSummary(order: Order): string {
+  const request = order.physicalInvoiceRequest;
+  if (!request) return "";
+  if (request.promisedDeliveryAt) return `Promised ${formatDateTime(request.promisedDeliveryAt)}.`;
+  return `Paper copy requested ${formatDateTime(request.requestedAt)}.`;
+}
+
+function physicalInvoiceMarker(order: Order): MarkerSpec {
+  return order.physicalInvoiceRequest?.promisedDeliveryAt
+    ? { icon: CircleCheck, tone: "success" }
+    : { icon: CircleDot, tone: "current" };
 }
 
 function historySummary(order: Order): string {
@@ -629,6 +678,89 @@ function StepRow({
         <DeliveryStep order={order} hint={definition?.hint} />
       ) : null}
     </SectionRow>
+  );
+}
+
+function PhysicalInvoicePanel({
+  order,
+  busy,
+  onPromise,
+}: {
+  order: Order;
+  busy: boolean;
+  onPromise: (instant: string) => void;
+}) {
+  const request = order.physicalInvoiceRequest;
+  const [date, setDate] = useState("");
+  const [time, setTime] = useState("");
+  if (!request) return null;
+
+  const instant = date && time ? deskInstant(date, time) : "";
+  const ready = Boolean(instant) && isGridgoDeskInstant(instant);
+  const saving = busy;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 m-0">
+        {(
+          [
+            ["Contact person", request.contactPerson],
+            ["Office address", request.officeAddress],
+            ["Operating hours", request.operatingHours],
+            ["Requested at", formatDateTime(request.requestedAt)],
+          ] as const
+        ).map(([label, value]) => (
+          <div key={label} className="contents">
+            <dt className="text-caption text-text-muted">{label}</dt>
+            <dd className="text-body text-text-secondary m-0">{value}</dd>
+          </div>
+        ))}
+      </dl>
+      <p className="text-body text-text-secondary m-0">Someone is there: {request.operatingHours}</p>
+      <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
+        <legend className="text-caption text-text-muted p-0">
+          Promise delivery
+          <span className="mt-0.5 block">{DESK_WINDOW_LABEL}</span>
+        </legend>
+        <div className="flex flex-wrap gap-2">
+          <select
+            aria-label="Promise delivery date"
+            className="h-12 min-w-0 flex-1 rounded-[var(--radius-field)] border border-input bg-card px-3 text-body text-foreground"
+            value={date}
+            onChange={(event) => setDate(event.target.value)}
+          >
+            <option value="">Choose a weekday</option>
+            {upcomingDeskDates().map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Promise delivery time"
+            className="h-12 min-w-0 rounded-[var(--radius-field)] border border-input bg-card px-3 text-body text-foreground"
+            value={time}
+            onChange={(event) => setTime(event.target.value)}
+          >
+            <option value="">Choose a time</option>
+            {deskTimes().map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </fieldset>
+      <div>
+        <Button
+          variant="primary"
+          disabled={saving || !ready}
+          onClick={() => onPromise(instant)}
+        >
+          Set promise date
+        </Button>
+      </div>
+    </div>
   );
 }
 

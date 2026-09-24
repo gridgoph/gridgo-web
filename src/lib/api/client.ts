@@ -31,6 +31,7 @@ import type {
   Notification,
   Order,
   PaymentInstallment,
+  PhysicalInvoiceRequest,
   PayoutMilestone,
   PayoutMilestoneCode,
   PlatformSettings,
@@ -345,8 +346,9 @@ export type TransitionExtra = {
   riderId?: string;
   matchingServiceIds?: string[];
   /**
-   * Required with `state: "supplier_accepted"`. The supplier's own asking price
-   * in minor units; the server derives commission, totals and the installments.
+   * Legacy quote field. The supplier portal accept path does not send this:
+   * an assigned job already has its price. Older callers that still issue a
+   * `supplier_accepted` quote may pass the asking price in minor units.
    */
   supplierPriceMinor?: number;
   promisedDate?: string | null;
@@ -406,6 +408,22 @@ export async function submitPayment(
     },
   );
   return normalizeOrder(result.order);
+}
+
+/**
+ * Ops / Super Admin — when the printed invoice will reach the office.
+ * The print job's promised date is a different field. This reloads the order
+ * because the promise route returns the request, not the order.
+ */
+export async function promisePhysicalInvoice(
+  orderId: string,
+  promisedDeliveryAt: string,
+): Promise<Order> {
+  await request<{ request: PhysicalInvoiceRequest }>(
+    `/orders/${orderId}/physical-invoice`,
+    { method: "PATCH", body: JSON.stringify({ promisedDeliveryAt }) },
+  );
+  return getOrder(orderId);
 }
 
 /**
@@ -472,6 +490,40 @@ export async function uploadPayoutReceipt(file: File): Promise<StoredFile> {
     body,
   });
   return uploaded.file;
+}
+
+/**
+ * Shop evidence for one payout part. JPEG, PNG, WebP, or PDF.
+ * The upload alone files nothing; `attachFulfilmentProof` binds it.
+ */
+export async function uploadFulfilmentProof(file: File): Promise<StoredFile> {
+  const body = new FormData();
+  body.append("purpose", "fulfilment_proof");
+  body.append("file", file);
+  const uploaded = await request<{ file: StoredFile }>("/files", {
+    method: "POST",
+    body,
+  });
+  return uploaded.file;
+}
+
+/**
+ * Bind an uploaded file to one payout milestone. The order state does not move.
+ * A file backs one milestone, so each part needs its own upload.
+ */
+export async function attachFulfilmentProof(
+  fileId: string,
+  orderId: string,
+  milestoneCode: "printing" | "packaging_qc",
+): Promise<{ file: StoredFile; order: Order }> {
+  const result = await request<{ file: StoredFile; order: Order }>(
+    `/files/${fileId}/attach`,
+    {
+      method: "POST",
+      body: JSON.stringify({ orderId, milestoneCode }),
+    },
+  );
+  return { ...result, order: normalizeOrder(result.order) };
 }
 
 /**

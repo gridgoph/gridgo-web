@@ -2,11 +2,10 @@
 
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { History, ListChecks, Wallet } from "lucide-react";
 
-import { pesosToMinor } from "@/app/admin/_lib/errors";
 import { MilestoneList } from "@/components/orders/MilestoneList";
 import { OrderMeta } from "@/components/orders/OrderMeta";
 import { Timeline } from "@/components/orders/Timeline";
@@ -30,17 +29,24 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { SkeletonDetail } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
-import { ApiError, getOrder, transitionOrder } from "@/lib/api/client";
+import {
+  ApiError,
+  attachFulfilmentProof,
+  getOrder,
+  transitionOrder,
+  uploadFulfilmentProof,
+} from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
 import {
   actionsForJob,
+  shopProofHint,
+  shopProofLabel,
+  shopProofOutstanding,
   supplierWaitingOn,
   type SupplierAction,
 } from "@/lib/supplier-actions";
@@ -76,9 +82,12 @@ export default function SupplierJobDetailPage() {
   const [acting, setActing] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [confirmDecline, setConfirmDecline] = useState(false);
-  const [acceptOpen, setAcceptOpen] = useState(false);
-  const [pricePesos, setPricePesos] = useState("");
-  const [promisedDate, setPromisedDate] = useState("");
+  const [proofOpen, setProofOpen] = useState(false);
+  const [proofFileId, setProofFileId] = useState<string | null>(null);
+  const [proofFileName, setProofFileName] = useState<string | null>(null);
+  const proofInput = useRef<HTMLInputElement>(null);
+  const [proofError, setProofError] = useState<string | null>(null);
+  const [filedNote, setFiledNote] = useState<string | null>(null);
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -109,13 +118,26 @@ export default function SupplierJobDetailPage() {
     void load();
   }, [load]);
 
+  function closeProof() {
+    setProofOpen(false);
+    setProofFileId(null);
+    setProofFileName(null);
+    setProofError(null);
+    if (proofInput.current) proofInput.current.value = "";
+    setActing(null);
+  }
+
   async function runAction(action: SupplierAction) {
     if (!job) return;
-    if (action.needsPrice) {
+    if (action.kind === "add_proof" || action.targetState === null) {
       setActionError(null);
-      setAcceptOpen(true);
+      setProofError(null);
+      setProofFileId(null);
+      setProofFileName(null);
+      setProofOpen(true);
       return;
     }
+    if (action.kind === "ready_for_pickup" && shopProofOutstanding(job)) return;
     if (action.destructive && !confirmDecline) {
       setConfirmDecline(true);
       return;
@@ -126,9 +148,11 @@ export default function SupplierJobDetailPage() {
       const note =
         action.kind === "decline"
           ? "Supplier declined — returned for rematch"
-          : action.kind === "ready_for_pickup"
-            ? "Packaging ready — packed and staged for joint pickup checks with the rider"
-            : action.label;
+          : action.kind === "accept"
+            ? "Accepted"
+            : action.kind === "ready_for_pickup"
+              ? "Packaging ready — packed and staged for joint pickup checks with the rider"
+              : action.label;
       setJob(await transitionOrder(job.id, action.targetState, { note }));
       setConfirmDecline(false);
     } catch (err) {
@@ -139,28 +163,37 @@ export default function SupplierJobDetailPage() {
     }
   }
 
-  async function acceptWithPrice() {
-    if (!job) return;
-    const supplierPriceMinor = pesosToMinor(pricePesos);
-    if (supplierPriceMinor === null || supplierPriceMinor <= 0) {
-      setActionError("Enter your price in pesos, like 1000 or 1000.50.");
-      return;
-    }
-    setActing("accept");
-    setActionError(null);
+  async function onProofFile(file: File | undefined) {
+    if (!file) return;
+    setActing("add_proof");
+    setProofError(null);
+    setProofFileId(null);
+    setProofFileName(file.name);
     try {
-      const updated = await transitionOrder(job.id, "supplier_accepted", {
-        supplierPriceMinor,
-        promisedDate: promisedDate ? new Date(promisedDate).toISOString() : undefined,
-        note: "Accepted and priced",
-      });
-      setJob(updated);
-      setAcceptOpen(false);
-      setPricePesos("");
-      setPromisedDate("");
-    } catch (err) {
-      setActionError(supplierErrorMessage(err));
+      const stored = await uploadFulfilmentProof(file);
+      setProofFileId(stored.fileId);
+    } catch {
+      setProofError("File storage is unavailable, so this evidence was not filed.");
     } finally {
+      setActing(null);
+    }
+  }
+
+  async function fileProof(action: SupplierAction) {
+    if (!job || !proofFileId || !action.milestoneCode) return;
+    setActing("add_proof");
+    setProofError(null);
+    try {
+      await attachFulfilmentProof(proofFileId, job.id, action.milestoneCode);
+      const reloaded = await getOrder(job.id);
+      setJob(reloaded);
+      const part = shopProofLabel(action.milestoneCode).toLowerCase();
+      setFiledNote(
+        `GRIDGO has your ${part} evidence. Operations reviews it before that part is paid.`,
+      );
+      closeProof();
+    } catch (err) {
+      setProofError(supplierErrorMessage(err));
       setActing(null);
     }
   }
@@ -188,11 +221,13 @@ export default function SupplierJobDetailPage() {
 
   const status = presentOrderState(job.state);
   const activity = jobActivity(job);
-  const actions = actionsForJob(job.state);
+  const actions = actionsForJob(job);
+  const proofAction = actions.find((action) => action.kind === "add_proof") ?? null;
   const primary = actions.find((a) => a.primary);
   const secondary = actions.filter((a) => !a.primary);
   const waiting = supplierWaitingOn(job.state);
-  const previewMinor = pesosToMinor(pricePesos);
+  const confirmedMinor = job.supplierSubtotalMinor ?? job.supplierPriceMinor;
+  const confirmedDate = job.readyBy ?? job.promisedDate ?? job.deadline;
 
   return (
     <div className="flex w-full flex-col gap-3">
@@ -201,9 +236,9 @@ export default function SupplierJobDetailPage() {
           <div className="min-w-0">
             <h2 className="text-h2 text-text-primary m-0">{job.title}</h2>
             <p className="text-caption text-text-muted m-0 mt-1">Order {job.id}</p>
-            {job.supplierPriceMinor !== undefined ? (
+            {confirmedMinor !== undefined ? (
               <p className="text-caption text-text-muted m-0 mt-1">
-                You earn {formatPhp(job.supplierPriceMinor)} on this job
+                You earn {formatPhp(confirmedMinor)} on this job
               </p>
             ) : null}
           </div>
@@ -244,7 +279,11 @@ export default function SupplierJobDetailPage() {
                   disabled={acting !== null}
                   onClick={() => void runAction(primary)}
                 >
-                  {acting === primary.kind ? "Working…" : primary.label}
+                  {acting === primary.kind
+                    ? primary.kind === "accept"
+                      ? "Accepting…"
+                      : "Working…"
+                    : primary.label}
                 </Button>
               ) : null}
               {secondary.map((action) => (
@@ -267,7 +306,28 @@ export default function SupplierJobDetailPage() {
           {primary && waiting ? (
             <p className="text-caption text-text-muted m-0">{waiting}</p>
           ) : null}
-          {actionError && !acceptOpen && !confirmDecline ? (
+          {primary?.kind === "accept" ? (
+            <div className="flex max-w-prose flex-col gap-1">
+              <p className="text-body text-text-secondary m-0">
+                Your shop commits to this job at the price already on your board, by the
+                date GRIDGO already promised the client.
+              </p>
+              <p className="text-caption text-text-muted m-0">
+                {confirmedMinor !== undefined
+                  ? `Price: ${formatPhp(confirmedMinor)}`
+                  : "Price already set on your board"}
+              </p>
+              {confirmedDate ? (
+                <p className="text-caption text-text-muted m-0">
+                  Date: {formatDateTime(confirmedDate)}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          {filedNote ? (
+            <p className="text-body text-text-secondary m-0">{filedNote}</p>
+          ) : null}
+          {actionError && !confirmDecline && !proofOpen ? (
             <p className="text-body text-error m-0" role="alert">
               {actionError}
             </p>
@@ -335,76 +395,66 @@ export default function SupplierJobDetailPage() {
       </div>
 
       <Dialog
-        open={acceptOpen}
+        open={proofOpen && proofAction !== null}
         onOpenChange={(open) => {
-          if (!open) {
-            setAcceptOpen(false);
-            setActionError(null);
-          }
+          if (!open) closeProof();
         }}
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Accept this job at your price</DialogTitle>
+            <DialogTitle>
+              {proofAction ? shopProofLabel(proofAction.milestoneCode ?? "printing") : "Proof"}
+            </DialogTitle>
             <DialogDescription>
-              Name what you want for the work. The client is told the final price straight
-              away and sends a 75% downpayment; you start production once Operations
-              confirms it arrived. You keep your price in full.
+              {proofAction?.milestoneCode ? shopProofHint(proofAction.milestoneCode) : ""}
             </DialogDescription>
           </DialogHeader>
-
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="supplier-price">Your price (₱)</FieldLabel>
-              <Input
-                id="supplier-price"
-                inputMode="decimal"
-                value={pricePesos}
-                onChange={(e) => setPricePesos(e.target.value)}
-                placeholder="1000.00"
-                autoComplete="off"
-              />
-              <FieldDescription>
-                {previewMinor !== null && previewMinor > 0
-                  ? `You will be paid ${formatPhp(previewMinor)} across four milestones.`
-                  : "What you are paid, before GRIDGO adds its own charges and delivery on top."}
-              </FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="promised-date">Promise it by (optional)</FieldLabel>
-              <Input
-                id="promised-date"
-                type="datetime-local"
-                value={promisedDate}
-                onChange={(e) => setPromisedDate(e.target.value)}
-              />
-              <FieldDescription>
-                Shown to Operations on the schedule. Leave blank to use the client&rsquo;s
-                deadline.
-              </FieldDescription>
-            </Field>
-          </FieldGroup>
-
-          {actionError ? (
+          <div className="flex flex-col gap-2">
+            <p className="text-caption text-text-muted m-0">JPEG, PNG, WebP, or PDF</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={acting !== null}
+                onClick={() => proofInput.current?.click()}
+              >
+                Choose file
+              </Button>
+              <span className="text-caption text-text-secondary min-w-0 truncate">
+                {proofFileName ?? "No file chosen"}
+              </span>
+            </div>
+            <input
+              ref={proofInput}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,application/pdf"
+              className="sr-only"
+              tabIndex={-1}
+              disabled={acting !== null}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                void onProofFile(file);
+              }}
+            />
+          </div>
+          {proofError ? (
             <p className="text-body text-error m-0" role="alert">
-              {actionError}
+              {proofError}
             </p>
           ) : null}
-
           <DialogFooter>
-            <Button
-              variant="secondary"
-              disabled={acting !== null}
-              onClick={() => setAcceptOpen(false)}
-            >
-              Cancel
+            <Button variant="secondary" disabled={acting !== null} onClick={closeProof}>
+              Not yet
             </Button>
             <Button
               variant="primary"
-              disabled={acting !== null}
-              onClick={() => void acceptWithPrice()}
+              disabled={acting !== null || !proofFileId || !proofAction}
+              onClick={() => {
+                if (proofAction) void fileProof(proofAction);
+              }}
             >
-              {acting === "accept" ? "Accepting…" : "Accept and tell the client"}
+              {acting === "add_proof" ? "Filing…" : "File this evidence"}
             </Button>
           </DialogFooter>
         </DialogContent>
