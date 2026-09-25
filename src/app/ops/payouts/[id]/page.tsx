@@ -26,7 +26,8 @@ import { artworkEvidence } from "@/lib/evidence";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
-import { activeHolds, payoutProgress, payoutSummary } from "@/lib/payouts";
+import { windowStageOf } from "@/lib/payout-plan";
+import { activeHolds, payoutProgress, payoutSummary, sharesHeading } from "@/lib/payouts";
 import { describeQuantity } from "@/lib/quantity";
 
 type Loaded = {
@@ -178,11 +179,12 @@ export default function OpsPayoutReviewPage() {
 
           <section className="gg-card p-3" aria-labelledby="payout-shares-heading">
             <h2 id="payout-shares-heading" className="text-h3 text-text-primary m-0 mb-1">
-              Four shares of what the shop earns
+              {sharesHeading(progress.count)}
             </h2>
             <p className="text-caption text-text-muted m-0 mb-3">
-              Each one releases only against the picture behind it. Open a share to check
-              the proof before you release it.
+              {windowStageOf(order)
+                ? "The first shares release against the picture behind them, the last once the complaint window has closed with no claim open. Open a share to check it before you release it."
+                : "Each one releases only against the picture behind it. Open a share to check the proof before you release it."}
             </p>
             <PayoutMilestones
               order={order}

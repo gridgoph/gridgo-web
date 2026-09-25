@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MilestoneList } from "@/components/orders/MilestoneList";
 import type { Order, PayoutMilestone } from "@/lib/api/types";
+import { escrowStages, released } from "@/test/payout-plans";
 
 vi.stubGlobal("React", React);
 afterEach(cleanup);
@@ -99,5 +100,47 @@ describe("MilestoneList", () => {
   it("explains itself when the order has no milestones yet", () => {
     render(<MilestoneList order={order([])} />);
     expect(screen.getByText(/set up when the supplier accepts/i)).toBeInTheDocument();
+  });
+});
+
+describe("MilestoneList on an escrow-plan order", () => {
+  function escrowOrder(state: string, milestones: PayoutMilestone[]): Order {
+    return { ...order(milestones), state, payoutPlanVersion: 2 } as Order;
+  }
+
+  it("lists the three stages by the API's names and never asks for a window proof", () => {
+    render(
+      <MilestoneList
+        order={escrowOrder(
+          "issue_window_open",
+          escrowStages({
+            production_started: released("file_start"),
+            delivered: released("file_door"),
+          }),
+        )}
+      />,
+    );
+    expect(screen.getByText("Start of production")).toBeInTheDocument();
+    expect(screen.getByText("Issue window closed")).toBeInTheDocument();
+    expect(screen.getAllByText(/^\d\/3$/)).toHaveLength(3);
+    expect(screen.getByText("No proof needed")).toBeInTheDocument();
+    expect(screen.getByText("After the complaint window")).toBeInTheDocument();
+    expect(screen.queryByText("Proof needed")).toBeNull();
+    expect(screen.getByText(/client can still report a problem/)).toBeInTheDocument();
+  });
+
+  it("says the last share is ready for Operations once the window has closed", () => {
+    render(
+      <MilestoneList
+        order={escrowOrder(
+          "completed",
+          escrowStages({
+            production_started: released("file_start"),
+            delivered: released("file_door"),
+          }),
+        )}
+      />,
+    );
+    expect(screen.getByText("Ready for Operations")).toBeInTheDocument();
   });
 });

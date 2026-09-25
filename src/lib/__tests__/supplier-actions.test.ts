@@ -116,6 +116,10 @@ describe("actionsForJob", () => {
         targetState: null,
         primary: true,
         milestoneCode: "printing",
+        proofLabel: "Printing",
+        proofNoun: "printing",
+        proofHint:
+          "Show the finished print on your floor — enough of it to recognise the job, with the colour and the trim readable.",
       },
     ]);
     expect(actions.some((action) => action.label === "Package for pickup")).toBe(false);

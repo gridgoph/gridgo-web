@@ -7,6 +7,7 @@ import {
   presentSettlement,
 } from "./payouts";
 import type { Issue, Order, PayoutMilestone } from "@/lib/api/types";
+import { escrowStages, released } from "@/test/payout-plans";
 
 /** The four milestones as the server sends them to a supplier. */
 function milestones(
@@ -188,5 +189,63 @@ describe("formatMoneyOrUnavailable", () => {
   it("labels null as unavailable", () => {
     expect(formatMoneyOrUnavailable(null, (n) => `₱${n}`)).toBe("Unavailable");
     expect(formatMoneyOrUnavailable(100, (n) => `₱${n}`)).toBe("₱100");
+  });
+});
+
+describe("presentSettlement on an escrow-plan order", () => {
+  it("names the order's own first share and never the legacy words", () => {
+    const start = presentSettlement({
+      state: "production",
+      payoutHold: false,
+      payoutPlanVersion: 2,
+      payoutMilestones: escrowStages(),
+    });
+    expect(start.detail).toBe(
+      "Upload your start-of-production photo, and Operations can release the first 40%.",
+    );
+
+    const window = presentSettlement({
+      state: "issue_window_open",
+      payoutHold: false,
+      payoutPlanVersion: 2,
+      payoutMilestones: escrowStages(),
+    });
+    expect(window.detail).toBe(
+      "Delivered. The last 25% is released by Operations once the client's complaint window closes with nothing raised.",
+    );
+
+    const all = presentSettlement({
+      state: "payout_released",
+      payoutHold: false,
+      payoutPlanVersion: 2,
+      payoutMilestones: escrowStages({
+        production_started: released("a"),
+        delivered: released("b"),
+        issue_window: released(),
+      }),
+    });
+    expect(all.label).toBe("Paid in full");
+    expect(all.detail).toBe("Every milestone has been released to you.");
+
+    for (const s of [start, window, all]) {
+      expect(s.detail).not.toMatch(/four|10% retention|first 50%|escrow/i);
+    }
+  });
+
+  it("counts three parts, not four", () => {
+    const part = presentSettlement({
+      state: "issue_window_open",
+      payoutHold: false,
+      payoutPlanVersion: 2,
+      payoutMilestones: escrowStages({ production_started: released("a") }),
+    });
+    expect(part.label).toBe("1 of 3 milestones paid");
+  });
+
+  it("keeps the legacy copy on a four-stage order", () => {
+    expect(
+      presentSettlement({ state: "production", payoutHold: false, payoutMilestones: milestones() })
+        .detail,
+    ).toBe("Upload a Proof of Fulfilment for printing, and Operations can release the first 50%.");
   });
 });

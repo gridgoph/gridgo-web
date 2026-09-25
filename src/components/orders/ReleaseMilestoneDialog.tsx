@@ -32,10 +32,12 @@ import {
 } from "@/components/orders/PayoutDestination";
 import type { Order, PayoutMilestone, SupplierPayoutAccount } from "@/lib/api/types";
 import { formatPhp } from "@/lib/format";
-import { presentMilestone } from "@/lib/order-state";
+import { milestoneName } from "@/lib/order-state";
+import { isWindowStage } from "@/lib/payout-plan";
 
 export type ReleaseTarget = {
-  order: Pick<Order, "id" | "title">;
+  order: Pick<Order, "id" | "title"> &
+    Partial<Pick<Order, "payoutPlanVersion" | "payoutMilestones">>;
   milestone: PayoutMilestone;
 };
 
@@ -61,6 +63,8 @@ type Props = {
 };
 
 export const DEFAULT_RELEASE_NOTE = "Proof of Fulfilment reviewed";
+/** The escrow plan's last share has no proof to review; what was checked is the window. */
+export const WINDOW_RELEASE_NOTE = "Complaint window closed with no claim open";
 const RECEIPT_MAX_BYTES = 15 * 1024 * 1024;
 
 export function ReleaseMilestoneDialog({
@@ -104,6 +108,7 @@ export function ReleaseMilestoneDialog({
     target?.milestone.amountMinor !== undefined
       ? formatPhp(target.milestone.amountMinor)
       : null;
+  const windowShare = target ? isWindowStage(target.order, target.milestone) : false;
 
   function pickReceipt(file: File | undefined) {
     setReceiptProblem(null);
@@ -141,9 +146,13 @@ export function ReleaseMilestoneDialog({
           </AlertDialogTitle>
           <AlertDialogDescription>
             {target
-              ? `${presentMilestone(target.milestone.code, target.milestone.sharePercent)} on ${
+              ? `${milestoneName(target.milestone)} on ${
                   target.order.title || "this order"
-                }. This pays the shop and cannot be undone from the portal.`
+                }.${
+                  windowShare
+                    ? " The complaint window has closed with no claim open."
+                    : ""
+                } This pays the shop and cannot be undone from the portal.`
               : ""}
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -251,7 +260,11 @@ export function ReleaseMilestoneDialog({
               rows={2}
               value={note}
               onChange={(event) => setNote(event.target.value)}
-              placeholder="e.g. Proof shows the full run boxed and labelled"
+              placeholder={
+                windowShare
+                  ? "e.g. Window closed, the client raised nothing"
+                  : "e.g. Proof shows the full run boxed and labelled"
+              }
               disabled={busy}
             />
             <FieldDescription>
@@ -273,7 +286,9 @@ export function ReleaseMilestoneDialog({
             disabled={busy}
             onClick={() =>
               onConfirm({
-                note: note.trim() || DEFAULT_RELEASE_NOTE,
+                note:
+                  note.trim() ||
+                  (windowShare ? WINDOW_RELEASE_NOTE : DEFAULT_RELEASE_NOTE),
                 reference: reference.trim(),
                 receipt,
               })

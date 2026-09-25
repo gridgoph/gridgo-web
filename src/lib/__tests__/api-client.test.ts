@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   ApiError,
+  attachFulfilmentProof,
   getApiBase,
   getAuthMe,
   getPortalRoleProjection,
@@ -25,6 +26,7 @@ import type {
   OpsPortalRoleProjection,
   SupplierPortalRoleProjection,
 } from "@/lib/api/types";
+import { escrowStages } from "@/test/payout-plans";
 
 const portalIdentity = {
   id: "usr_multi",
@@ -285,5 +287,38 @@ describe("platform constraints", () => {
     ).toBe(false);
     expect(allMilestonesReleased([])).toBe(false);
     expect(allMilestonesReleased(undefined)).toBe(false);
+  });
+});
+
+describe("proof of fulfilment attach", () => {
+  it("binds a shop proof to the escrow plan's start-of-production stage", async () => {
+    const stages = escrowStages({ production_started: { status: "pof_attached", pofFileIds: ["file_start"] } });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          file: { fileId: "file_start", purpose: "fulfilment_proof", state: "ready" },
+          order: { id: "ord_1", state: "production", timeline: [], payoutPlanVersion: 2, payoutMilestones: stages },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    setTokenProvider(() => "clerk-session-token");
+
+    const result = await attachFulfilmentProof("file_start", "ord_1", "production_started");
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${getApiBase()}/files/file_start/attach`);
+    expect(JSON.parse(String(init.body))).toEqual({
+      orderId: "ord_1",
+      milestoneCode: "production_started",
+    });
+    expect(result.order.payoutPlanVersion).toBe(2);
+    expect(result.order.payoutMilestones?.[0]).toMatchObject({
+      code: "production_started",
+      label: "Start of production",
+      releaseRequires: "shop_proof",
+      status: "pof_attached",
+    });
   });
 });

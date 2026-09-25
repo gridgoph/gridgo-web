@@ -58,7 +58,8 @@ import {
   isGridgoDeskInstant,
   upcomingDeskDates,
 } from "@/lib/physicalInvoiceDesk";
-import { presentOrderState } from "@/lib/order-state";
+import { milestoneName, presentOrderState } from "@/lib/order-state";
+import { shopProofStages } from "@/lib/payout-plan";
 import { paymentOf, paymentPlanLabel, paymentProgress } from "@/lib/payments";
 import {
   milestoneProofs,
@@ -96,9 +97,10 @@ type SectionId =
  * read top to bottom as a record, and opened only where the evidence or the
  * decision lives. The rows that need Operations open themselves.
  *
- * After the four production steps comes the supplier's payout: the four shares
- * of the shop's price. The pictures that justify those shares live on
- * Production; the payout row keeps the wallet receipt and the release.
+ * After the four production steps comes the supplier's payout: the shares of
+ * the shop's price its payout plan has, in the API's order. The pictures that
+ * justify those shares live on Production and Delivery; the payout row keeps
+ * the wallet receipt and the release.
  *
  * On the right, the whole specification, always visible and never behind a
  * tab, because the one thing a quality check needs is to read the spec and
@@ -824,13 +826,13 @@ function PaymentStep({
 }
 
 /**
- * The shop's own record of the job: the proofs it filed while printing and
- * packing. They belong to the payout, but they are also the only sight
+ * The shop's own record of the job: the proofs it filed on the floor — the
+ * start of production on the escrow plan, printing and packing on a legacy
+ * order. They belong to the payout, but they are also the only sight
  * Operations gets of the work before a rider collects it.
  */
 function ProductionStep({ order, hint }: { order: Order; hint?: string }) {
-  const filed = (order.payoutMilestones ?? [])
-    .filter((m) => m.code === "printing" || m.code === "packaging_qc")
+  const filed = shopProofStages(order)
     .map((m) => ({ milestone: m, proofs: milestoneProofs(order, m) }))
     .filter((entry) => entry.proofs.length > 0);
 
@@ -846,7 +848,7 @@ function ProductionStep({ order, hint }: { order: Order; hint?: string }) {
             className="text-body text-text-primary m-0 mb-2"
             style={{ fontFamily: "var(--font-medium)" }}
           >
-            {milestone.code === "printing" ? "Printed run" : "Packed for pickup"}
+            {shopProofHeading(milestone)}
           </p>
           <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2">
             {proofs.map((proof) => (
@@ -865,6 +867,20 @@ function ProductionStep({ order, hint }: { order: Order; hint?: string }) {
       ))}
     </div>
   );
+}
+
+/** What each shop proof shows, in the words the workspace has always used. */
+function shopProofHeading(milestone: PayoutMilestone): string {
+  switch (milestone.code) {
+    case "printing":
+      return "Printed run";
+    case "packaging_qc":
+      return "Packed for pickup";
+    case "production_started":
+      return "Production started";
+    default:
+      return milestoneName(milestone);
+  }
 }
 
 /** Pickup checks and the photo at the door, once a rider has them. */

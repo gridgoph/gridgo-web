@@ -40,6 +40,7 @@ privileged account.
 | `src/lib/live/desktopAlerts.ts`        | Opt-in desktop alerts (with `public/desk-alerts-sw.js`): permission states, the Desk prompt and footer switch, toast dedupe, role filter, click routing through the service worker; see `docs/REALTIME_UPDATES.md#desktop-alerts`. Closed-browser delivery would need Web Push (API change) |
 | `src/app/api/gridgo/[...path]/route.ts` | Local-dev same-origin proxy to a loopback API (strips `Origin`)                                                                                                                                                                                                                                                                                                    |
 | `src/lib/api/types.ts`                  | Response/request types (no `any`)                                                                                                                                                                                                                                                                                                                                  |
+| `src/lib/payout-plan.ts`                | The order's supplier payout plan (`payoutPlanVersion`: 1 legacy four stages, 2 escrow 40/35/25) and what each stage waits on (`releaseRequires`); screens render stages in API order from here, never from a list of codes |
 | `src/lib/api/constraints.ts`            | Server rules the UI can explain _before_ rejection (payment/milestone gates, holds, issue window). The order's payment split (full up front vs 75/25) is read in `src/lib/payments.ts` |
 | `src/lib/nav.ts`                        | **Single** role→nav structure (`ROLE_NAV_GROUPS` + flattened `ROLE_NAV`); AppShell reads this only                                                                                                                                                                                                                                                                 |
 | `src/lib/auth/`                         | Clerk token bridge, `/auth/me` identity context, portal-membership landing, public login-return URL                                                                                                                                                                                                                                                                |
@@ -346,7 +347,7 @@ Use `isApiError(err)` and branch on `kind` / `code` — **never** string-match h
 
 Explain these _before_ the user hits submit when the screen can know:
 
-- A milestone needs a Proof of Fulfilment, and releases in order → `milestoneReleaseBlocker` (mirrors `409 pof_required` / `milestone_not_reached`)
+- A milestone waits on what its `releaseRequires` names: the shop's proof, the rider's delivery evidence, or (escrow plan's last share, no file) the complaint window closed with no claim → `milestoneReleaseBlocker` (mirrors `409 pof_required` / `milestone_not_reached` / `delivery_required` / `issue_window_open`)
 - An active claim hold blocks every remaining milestone → `order.payoutHold`, `claimBlocksPayout`, `409 payout_held`
 - The balance cannot be submitted before the downpayment settles, and never on an order paid in full up front → `canSubmitBalance`
 - Payment cannot be asked for before the client was told the final price → `clientWasNotifiedOfPrice`, `409 assignment_notification_required`
@@ -452,9 +453,14 @@ The client submits a reference; Operations confirms it (`payment_authorized`) or
 
 The seam is deliberately clean: a payment provider can replace the manual confirmation without redesigning the flow. Screenshots (light and dark, a new order awaiting confirmation, paid in full, and the Checkout payment control): `docs/screenshots/upfront/`.
 
-### Supplier payout is four milestones
+### Supplier payout is an escrow split, released only by Operations
 
-Printing 50%, packaging and QC 15%, delivered 25%, retention 10% — of the **supplier's own price**, not the client total. Each releases only against a Proof of Fulfilment, and any active claim holds all of them.
+A shop is paid in stages of its **own price**, never the client total, and **only Operations and Super Admin release a stage** (the captain, 25 Sep 2026; gridgo-api#73, gridgo-web#58). Each order snapshots its plan as `payoutPlanVersion`, and each milestone carries `label`, `sharePercent`, `amountMinor` and `releaseRequires` (`shop_proof | delivery_proof | issue_window_closed`). Contract: "Supplier payout milestones" in the API doc.
+
+- **Plan 2, every order committed from 25 Sep 2026:** start of production 40% (the shop files a start-of-production proof), delivered 35% (the rider's delivery evidence becomes its proof on its own), and the last 25% with no file at all, releasable once the complaint window has closed with no open claim. Neither the window timer nor the client's "everything is fine" pays anyone; Operations gets one "Everything looks good" action for that last share (`readyWindowShare`, `PayoutMilestones`).
+- **Plan 1, older orders:** the four legacy stages (printing 50, packaging 15, delivered 25, retention 10), which keep their old gates, words and automatic retention release exactly.
+
+Render the stages the order carries, **in the API's array order**, by the API's `label`. Never a list of codes, never a percentage written into a screen. Ask `src/lib/payout-plan.ts` what a stage waits on (`releaseRequirementOf`, `stageNeedsProof`, `shopProofStages`, `windowStageOf`, `isLegacyStage`); `milestoneReleaseBlocker` explains each blocker before the click. Test fixtures for both plans: `src/test/payout-plans.ts`. Screenshots: `docs/screenshots/escrow/`. Any active claim holds every remaining stage.
 
 Releasing a share is a person scanning the shop's own receiving QR (GCash / Maya / bank) with a wallet app. That plate and its words live on the shop's payout account (`SupplierPayoutAccount`; contract "Supplier payout account" in the API doc). Operations reads it as `order.supplierPayoutAccount` and sees it on `/ops/payouts/:id` and inside `ReleaseMilestoneDialog` (`src/components/orders/PayoutDestination.tsx`). A supplier sets it on `/supplier/payout-account` (`SupplierPayoutSettings`) or in the supplier app. The plate is always drawn on white, even in the dark theme, because a wallet camera reads dark-on-light; it is private to that shop and Operations and never appears on a client-facing surface.
 
