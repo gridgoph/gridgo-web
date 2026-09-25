@@ -57,7 +57,7 @@ const PAYOUT_STATES = new Set([
 /**
  * The payout desk, as a queue rather than a ledger.
  *
- * Every order used to arrive here with all four of its shares unrolled, so
+ * Every order used to arrive here with all of its shares unrolled, so
  * the one job waiting on a decision sat somewhere inside a wall of rows that
  * were waiting on a shop, a rider or a clock. Now each order is one line that
  * says what it is waiting for, sorted into the four questions Operations
@@ -145,10 +145,12 @@ export default function OpsPayoutsPage() {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          A supplier is paid in four parts, and each one releases only against a Proof of
-          Fulfilment. Open an order to see the proof and release the share. The shares are
-          of what the supplier earns; the commission and the delivery fee sit outside
-          them.
+          A supplier is paid in shares of what it earns, and only you release them: on
+          newer orders, one on the shop&rsquo;s start-of-production proof, one on the
+          rider&rsquo;s delivery photo, and the last once the complaint window closes with
+          no claim open. Older orders keep their four shares. Open an order to check what
+          a share waits on and release it. The commission and the delivery fee sit outside
+          these shares.
         </p>
         <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh

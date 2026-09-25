@@ -99,10 +99,11 @@ export default function SupplierPayoutsPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="max-w-prose">
           <p className="text-body text-text-secondary m-0">
-            You are paid in four parts of your own price: half when printing is under way,
-            15% on packaging, a quarter on delivery, and the last 10% once the
-            client&rsquo;s issue window closes. Each part needs a Proof of Fulfilment
-            before Operations can release it.
+            You are paid in parts of your own price, and Operations releases each one: the
+            first once you file a photo showing production has started, the next on the
+            rider&rsquo;s delivery photo, and the last once the client&rsquo;s complaint
+            window closes with nothing raised. Jobs accepted before 25 September 2026 keep
+            the four parts they were accepted under. Each job below lists its own.
           </p>
           {pending ? null : (
             <p className="text-caption text-text-muted m-0 mt-1">
@@ -127,7 +128,7 @@ export default function SupplierPayoutsPage() {
       ) : !rows.length ? (
         <EmptyState
           title="No payouts yet"
-          body="Once a job you have accepted reaches production, its four milestones appear here as you earn them."
+          body="Once a job you have accepted reaches production, its milestones appear here as you earn them."
           action={
             <Button
               variant="secondary"

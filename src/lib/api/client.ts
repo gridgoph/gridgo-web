@@ -548,14 +548,19 @@ export async function uploadFulfilmentProof(file: File): Promise<StoredFile> {
   return uploaded.file;
 }
 
+/** The stages a shop files its own proof for, across every payout plan. */
+export type ShopProofMilestoneCode = "production_started" | "printing" | "packaging_qc";
+
 /**
  * Bind an uploaded file to one payout milestone. The order state does not move.
- * A file backs one milestone, so each part needs its own upload.
+ * A file backs one milestone, so each part needs its own upload. The API
+ * accepts only a file-taking stage of the order's own plan
+ * (`400 invalid_milestone_code` lists the allowed ones).
  */
 export async function attachFulfilmentProof(
   fileId: string,
   orderId: string,
-  milestoneCode: "printing" | "packaging_qc",
+  milestoneCode: ShopProofMilestoneCode | string,
 ): Promise<{ file: StoredFile; order: Order }> {
   const result = await request<{ file: StoredFile; order: Order }>(
     `/files/${fileId}/attach`,

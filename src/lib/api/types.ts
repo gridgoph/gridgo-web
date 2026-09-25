@@ -275,14 +275,40 @@ export type OrderPayments = Partial<Record<PaymentInstallment, PaymentRecord>>;
 
 // ---- Milestone payouts (v2) ----
 
-export type PayoutMilestoneCode = "printing" | "packaging_qc" | "delivered" | "retention";
+/**
+ * Stage codes of the payout plans the API has shipped. Plan 2 (escrow, every
+ * order committed from 25 Sep 2026): `production_started`, `delivered`,
+ * `issue_window`. Plan 1 (legacy four stages): `printing`, `packaging_qc`,
+ * `delivered`, `retention`. Screens render whatever stages an order carries,
+ * in array order — a future plan adds codes without a screen change.
+ */
+export type PayoutMilestoneCode =
+  | "production_started"
+  | "printing"
+  | "packaging_qc"
+  | "delivered"
+  | "issue_window"
+  | "retention";
 
 export type PayoutMilestoneStatus = "pending_pof" | "pof_attached" | "released";
 
+/**
+ * What a stage's release waits on: the shop's own proof, the rider's delivery
+ * evidence, or the complaint window closing with no open claim.
+ */
+export type PayoutReleaseRequirement = "shop_proof" | "delivery_proof" | "issue_window_closed";
+
+/** `1` legacy four stages, `2` the escrow split; `null` before commitment. */
+export type PayoutPlanVersion = 1 | 2;
+
 export type PayoutMilestone = {
   code: PayoutMilestoneCode | string;
+  /** The API's shop-facing name for the stage. Absent on an older API. */
+  label?: string | null;
   /** Share of the supplier's own price — not of the client total. */
   sharePercent: number;
+  /** What the release desk waits on. Absent on an older API (plan 1 by code). */
+  releaseRequires?: PayoutReleaseRequirement | string | null;
   /** Ops / Super Admin and the assigned supplier only. */
   amountMinor?: number;
   status: PayoutMilestoneStatus | string;
@@ -493,6 +519,11 @@ export type Order = {
 
   /** True while an active claim hold exists on this order. */
   payoutHold?: boolean;
+  /**
+   * The payout plan the order was committed under, snapshotted per order.
+   * Absent from an API that predates it; read through `payoutPlanVersionOf`.
+   */
+  payoutPlanVersion?: PayoutPlanVersion | number | null;
   payoutMilestones?: PayoutMilestone[];
   /** Ops / Super Admin only. The API's own released-versus-outstanding roll-up. */
   supplierSettlement?: SupplierSettlement;

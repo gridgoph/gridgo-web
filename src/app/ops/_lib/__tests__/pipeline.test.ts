@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Order } from "@/lib/api/types";
+import { escrowStages, legacyStages, proofOnFile } from "@/test/payout-plans";
 
 import {
   STAGES,
@@ -9,6 +10,7 @@ import {
   stageCounts,
   stageNeedsOperations,
   stageOf,
+  stageSummary,
   stepsFor,
   waitingOnOperationsCount,
 } from "../pipeline";
@@ -106,5 +108,38 @@ describe("the order pipeline", () => {
 
     expect(waitingOnOperationsCount([transfer, paid, artwork, withClient, withShop])).toBe(2);
     expect(waitingOnOperationsCount([])).toBe(0);
+  });
+});
+
+describe("the shop's proofs on the production step", () => {
+  it("counts the escrow plan's start-of-production proof", () => {
+    const withProof = order("production", {
+      payoutPlanVersion: 2,
+      payoutMilestones: escrowStages({ production_started: proofOnFile("file_start") }),
+    });
+    expect(stageSummary(withProof, "production", String, String)).toBe(
+      "One proof on file from the shop.",
+    );
+  });
+
+  it("does not count the rider's delivery proof as the shop's", () => {
+    const delivered = order("production", {
+      payoutPlanVersion: 2,
+      payoutMilestones: escrowStages({ delivered: proofOnFile("file_door") }),
+    });
+    expect(stageSummary(delivered, "production", String, String)).toBe("Being printed now.");
+  });
+
+  it("still counts both legacy shop proofs", () => {
+    const legacy = order("production", {
+      payoutPlanVersion: 1,
+      payoutMilestones: legacyStages({
+        printing: proofOnFile("a"),
+        packaging_qc: proofOnFile("b"),
+      }),
+    });
+    expect(stageSummary(legacy, "production", String, String)).toBe(
+      "2 proofs on file from the shop.",
+    );
   });
 });

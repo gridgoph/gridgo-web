@@ -8,6 +8,7 @@ import { claimBlocksPayout } from "@/lib/api/constraints";
 import { primaryOpsAction } from "@/lib/ops-actions";
 import { presentOrderState } from "@/lib/order-state";
 import { balanceNotRequired } from "@/lib/payments";
+import { readyWindowShare } from "@/lib/payouts";
 
 export type OverviewBucketId =
   | "needs_qa"
@@ -375,18 +376,24 @@ export function pickOverviewNextAction(
   // 6. Milestones a supplier has earned and can be paid for.
   //    The issue window is not here: only the platform closes it, once it has
   //    actually expired, so there is nothing for Operations to do about it.
+  //    An escrow-plan order's last share has no proof: it is ready once the
+  //    window has closed, and only Operations releases it (gridgo-web#58).
   const payoutReady = active.find(
     (o) =>
-      !o.payoutHold &&
-      (o.payoutMilestones ?? []).some(
-        (m) => m.status === "pof_attached" || m.pofFileIds.length > 0,
-      ) &&
-      (o.payoutMilestones ?? []).some((m) => m.status !== "released"),
+      readyWindowShare(o) !== null ||
+      (!o.payoutHold &&
+        (o.payoutMilestones ?? []).some(
+          (m) => m.status === "pof_attached" || m.pofFileIds.length > 0,
+        ) &&
+        (o.payoutMilestones ?? []).some((m) => m.status !== "released")),
   );
   if (payoutReady) {
+    const lastShare = readyWindowShare(payoutReady);
     return {
       title: "Release a supplier milestone",
-      body: `${payoutReady.title} has proof waiting against a milestone the supplier has already earned.`,
+      body: lastShare
+        ? `${payoutReady.title} is through its complaint window with nothing raised. The last ${lastShare.sharePercent}% is ready to release.`
+        : `${payoutReady.title} has proof waiting against a milestone the supplier has already earned.`,
       href: "/ops/payouts",
       cta: "Open payouts",
       orderId: payoutReady.id,

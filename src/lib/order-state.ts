@@ -11,6 +11,14 @@ import type {
 } from "@/lib/api/types";
 import { paymentIsSettled } from "@/lib/api/constraints";
 import {
+  LEGACY_PAYOUT_PLAN_VERSION,
+  payoutPlanVersionOf,
+  releaseRequirementOf,
+  stageNeedsProof,
+  type PlanOrder,
+  type PlanStage,
+} from "@/lib/payout-plan";
+import {
   balanceNotRequired,
   installmentLabel,
   paymentOf,
@@ -262,25 +270,31 @@ export function presentPaymentProgress(
 /**
  * The name of a payout stage.
  *
- * Two shapes are live at once. The four-stage split (printing / packaging_qc /
- * delivered / retention) is the one the blueprint describes; the running API
- * also issues a two-stage `initial` + `completion` split, and which of them
- * GRIDGO settles on is still the captain's open call. Both are named here so a
- * shop is never shown the word "Milestone" twice in a column and asked to tell
- * them apart.
+ * The API names every stage (`label`), and a stage this portal has never seen
+ * is shown by that name. The codes below keep the words each screen has always
+ * used for them, so a legacy four-stage order reads exactly as it did — and a
+ * response from an API that predates `label` still names the escrow stages.
  *
  * `sharePercent` is the last resort. An unrecognised code with a known share is
  * still worth describing — "75% release" says more than "Milestone" — and only
  * a stage with neither falls back to its position.
  */
-export function presentMilestone(code: string, sharePercent?: number): string {
+export function presentMilestone(
+  code: string,
+  sharePercent?: number,
+  label?: string | null,
+): string {
   switch (code) {
+    case "production_started":
+      return "Start of production";
     case "printing":
       return "Printing in progress";
     case "packaging_qc":
       return "Packaging";
     case "delivered":
       return "Delivered";
+    case "issue_window":
+      return label?.trim() || "Issue window closed";
     case "retention":
       return "Client retention";
     case "initial":
@@ -288,27 +302,61 @@ export function presentMilestone(code: string, sharePercent?: number): string {
     case "completion":
       return "Final release";
     default:
+      if (label?.trim()) return label.trim();
       return sharePercent !== undefined && Number.isFinite(sharePercent)
         ? `${sharePercent}% release`
         : "Milestone";
   }
 }
 
-/** Who is expected to supply the Proof of Fulfilment for this milestone. */
-export function milestoneProofSource(code: string): string {
-  switch (code) {
-    case "printing":
-      return "Supplier uploads the proof";
-    case "packaging_qc":
-      return "Supplier uploads the packed-job photo";
-    case "delivered":
-      return "Rider uploads the proof at delivery";
-    case "retention":
-      return "Covered by the delivered proof";
-    case "initial":
-      return "Supplier uploads the proof";
-    case "completion":
-      return "Released once the work is delivered";
+/** `presentMilestone` for a stage as the API sends it. */
+export function milestoneName(
+  milestone: Pick<PayoutMilestone, "code"> &
+    Partial<Pick<PayoutMilestone, "sharePercent" | "label">>,
+): string {
+  return presentMilestone(milestone.code, milestone.sharePercent, milestone.label);
+}
+
+/**
+ * Who is expected to supply what this stage waits on.
+ *
+ * Legacy codes keep their old words. Escrow stages say it by what they wait
+ * on: the shop's photo, the rider's delivery evidence (recorded as the proof
+ * on its own), or no file at all for the share the complaint window pays.
+ */
+export function milestoneProofSource(
+  milestone: PlanStage,
+  order: PlanOrder = {},
+): string {
+  // No plan known (a bare stage) reads as it always did.
+  const version = payoutPlanVersionOf(order);
+  if (version === null || version === LEGACY_PAYOUT_PLAN_VERSION) {
+    switch (milestone.code) {
+      case "printing":
+        return "Supplier uploads the proof";
+      case "packaging_qc":
+        return "Supplier uploads the packed-job photo";
+      case "delivered":
+        return "Rider uploads the proof at delivery";
+      case "retention":
+        return "Covered by the delivered proof";
+      case "initial":
+        return "Supplier uploads the proof";
+      case "completion":
+        return "Released once the work is delivered";
+    }
+  }
+  switch (releaseRequirementOf(milestone)) {
+    case "shop_proof":
+      return milestone.code === "production_started"
+        ? "Supplier uploads a start-of-production photo"
+        : "Supplier uploads the proof";
+    case "delivery_proof":
+      return "The rider's delivery photo is the proof";
+    case "issue_window_closed":
+      return stageNeedsProof(order, milestone)
+        ? "Covered by the delivered proof"
+        : "No proof needed. Released after the complaint window closes";
     default:
       return "Proof required";
   }
@@ -316,6 +364,7 @@ export function milestoneProofSource(code: string): string {
 
 export function presentMilestoneStatus(
   status: PayoutMilestone["status"],
+  { needsProof = true }: { needsProof?: boolean } = {},
 ): StatePresentation {
   switch (status) {
     case "released":
@@ -324,7 +373,10 @@ export function presentMilestoneStatus(
       return { label: "Proof attached", tone: "info", icon: "circle-check" };
     case "pending_pof":
     case "pending":
-      return { label: "Proof needed", tone: "warning", icon: "clock" };
+      // The share the complaint window pays waits on the clock, not a file.
+      return needsProof
+        ? { label: "Proof needed", tone: "warning", icon: "clock" }
+        : { label: "After the complaint window", tone: "neutral", icon: "clock" };
     default:
       return { label: "Not released yet", tone: "neutral", icon: "clock" };
   }

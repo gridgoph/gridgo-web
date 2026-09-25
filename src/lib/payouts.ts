@@ -1,10 +1,13 @@
 /**
  * What Operations needs to know about a supplier's payout before opening it.
  *
- * A shop is paid in four shares and each releases against a Proof of
- * Fulfilment. These helpers answer, per order and per share, the three
- * questions the payout desk asks: how much has gone out, which share is next,
- * and what is stopping it. Pure functions — no React, no fetch.
+ * A shop is paid in shares of its own price, as many as the order's payout plan
+ * has (`@/lib/payout-plan`). Each releases against what it waits on: the shop's
+ * proof, the rider's delivery evidence, or — for the escrow plan's last share —
+ * the complaint window closing with no claim open. These helpers answer, per
+ * order and per share, the three questions the payout desk asks: how much has
+ * gone out, which share is next, and what is stopping it. Pure functions — no
+ * React, no fetch.
  */
 
 import type { Claim, Order, PayoutMilestone, TimelineEntry } from "@/lib/api/types";
@@ -18,10 +21,17 @@ import {
 import type { EvidenceItem } from "@/lib/evidence";
 import { formatPhp } from "@/lib/format";
 import {
-  presentMilestone,
+  milestoneName,
   presentTimelineActor,
   type StatePresentation,
 } from "@/lib/order-state";
+import {
+  isWindowStage,
+  releaseRequirementOf,
+  stageNeedsProof,
+  windowStageOf,
+  type PlanOrder,
+} from "@/lib/payout-plan";
 
 // ---------------------------------------------------------------------------
 // Progress
@@ -63,6 +73,17 @@ export function payoutProgress(
   };
 }
 
+const COUNT_WORDS = ["No", "One", "Two", "Three", "Four", "Five", "Six"];
+
+/**
+ * "Three shares of what the shop earns" — counted from the order's own plan,
+ * so a legacy order still reads "Four shares" and an escrow order "Three".
+ */
+export function sharesHeading(count: number): string {
+  const word = COUNT_WORDS[count] ?? String(count);
+  return `${word} ${count === 1 ? "share" : "shares"} of what the shop earns`;
+}
+
 // ---------------------------------------------------------------------------
 // Per-share readiness
 // ---------------------------------------------------------------------------
@@ -78,13 +99,17 @@ export function activeHolds(order: Pick<Order, "id">, claims: readonly Claim[]):
 }
 
 export function milestoneReadiness(
-  order: Pick<Order, "payoutHold" | "payments" | "state" | "deliveryEvidence">,
-  milestone: Pick<PayoutMilestone, "code" | "status" | "pofFileIds">,
+  order: Pick<Order, "payoutHold" | "payments" | "state" | "deliveryEvidence"> &
+    PlanOrder,
+  milestone: Pick<PayoutMilestone, "code" | "status" | "pofFileIds"> &
+    Partial<Pick<PayoutMilestone, "releaseRequires" | "label" | "sharePercent">>,
   holds: readonly Claim[] = [],
 ): MilestoneReadiness {
   if (milestoneIsReleased(milestone)) return "released";
   if (orderHasPayoutHold(order) || holds.length > 0) return "held";
-  if (!milestoneHasProof(milestone)) return "waiting_proof";
+  if (stageNeedsProof(order, milestone) && !milestoneHasProof(milestone)) {
+    return "waiting_proof";
+  }
   if (milestoneReleaseBlocker(order, milestone) !== null) return "not_reached";
   return "ready";
 }
@@ -116,12 +141,35 @@ export function releasableMilestones(
   order: Pick<
     Order,
     "payoutHold" | "payments" | "state" | "deliveryEvidence" | "payoutMilestones"
-  >,
+  > &
+    PlanOrder,
   holds: readonly Claim[] = [],
 ): PayoutMilestone[] {
   return (order.payoutMilestones ?? []).filter(
     (m) => milestoneReadiness(order, m, holds) === "ready",
   );
+}
+
+/**
+ * The last share of an escrow-plan order, once the complaint window has closed
+ * with no claim open and nothing else stands in its way (gridgo-web#58).
+ *
+ * This is the "everything looks good" moment: the client has had the job for
+ * the whole window and raised nothing, so Operations gets one clear action to
+ * pay the rest. Null on a legacy order, whose retention releases on its own,
+ * and whenever the share is not ready.
+ */
+export function readyWindowShare(
+  order: Pick<
+    Order,
+    "payoutHold" | "payments" | "state" | "deliveryEvidence" | "payoutMilestones"
+  > &
+    PlanOrder,
+  holds: readonly Claim[] = [],
+): PayoutMilestone | null {
+  const share = windowStageOf(order);
+  if (!share) return null;
+  return milestoneReadiness(order, share, holds) === "ready" ? share : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,7 +199,7 @@ function attachRow(
  * here rather than guessed from the file.
  */
 export function milestoneProofs(
-  order: Pick<Order, "timeline">,
+  order: Pick<Order, "timeline"> & Partial<Pick<Order, "deliveryEvidence">>,
   milestone: Pick<PayoutMilestone, "code" | "pofFileIds">,
 ): MilestoneProof[] {
   const seen = new Set<string>();
@@ -167,13 +215,17 @@ export function milestoneProofs(
         ? attachRow(order.timeline, fileId, "delivered")
         : undefined;
     const row = own ?? carried;
+    // The escrow plan records the rider's delivery evidence as the delivered
+    // proof without an attach row of its own; the evidence says when and who.
+    const evidence =
+      !row && order.deliveryEvidence?.fileId === fileId ? order.deliveryEvidence : null;
     return {
       fileId,
       kind: "pof",
       label:
         ids.length > 1 ? `Proof ${index + 1} of ${ids.length}` : "Proof of fulfilment",
-      attachedAt: row?.at ?? null,
-      attachedBy: row ? presentTimelineActor(row.by) : null,
+      attachedAt: row?.at ?? evidence?.recordedAt ?? null,
+      attachedBy: row ? presentTimelineActor(row.by) : evidence ? "Rider" : null,
       inherited: Boolean(carried),
     };
   });
@@ -228,7 +280,7 @@ export const PAYOUT_QUEUE_GROUPS: readonly {
   {
     id: "ready",
     label: "Ready to release",
-    hint: "Proof is on file and production has reached the stage. Your call.",
+    hint: "What the share waits on is in: its proof, or a closed complaint window. Your call.",
   },
   {
     id: "held",
@@ -238,7 +290,7 @@ export const PAYOUT_QUEUE_GROUPS: readonly {
   {
     id: "waiting",
     label: "Waiting on the shop or the rider",
-    hint: "A proof has not been filed yet, or production has not reached the next share.",
+    hint: "A proof has not been filed yet, the job has not reached the next share, or the complaint window is still open.",
   },
   {
     id: "settled",
@@ -251,7 +303,8 @@ export function payoutQueueGroup(
   order: Pick<
     Order,
     "payoutHold" | "payments" | "state" | "deliveryEvidence" | "payoutMilestones"
-  >,
+  > &
+    PlanOrder,
   holds: readonly Claim[] = [],
 ): PayoutQueueGroup {
   const milestones = order.payoutMilestones ?? [];
@@ -275,7 +328,8 @@ export function payoutSummary(
     | "payoutMilestones"
     | "supplierPriceMinor"
     | "supplierSettlement"
-  >,
+  > &
+    PlanOrder,
   holds: readonly Claim[] = [],
 ): string {
   const milestones = order.payoutMilestones ?? [];
@@ -302,7 +356,13 @@ export function payoutSummary(
       ? formatPhp(ready.reduce((total, m) => total + (m.amountMinor ?? 0), 0))
       : null;
     if (ready.length === 1) {
-      const name = presentMilestone(ready[0].code, ready[0].sharePercent);
+      if (isWindowStage(order, ready[0])) {
+        const closed = `Complaint window closed with nothing raised. The last ${ready[0].sharePercent}%`;
+        return sum
+          ? `${closed} is ready to release, ${sum}.`
+          : `${closed} is ready to release.`;
+      }
+      const name = milestoneName(ready[0]);
       return sum ? `${name} ready to release, ${sum}.` : `${name} ready to release.`;
     }
     return sum
@@ -311,9 +371,10 @@ export function payoutSummary(
   }
   const next = nextMilestone(order);
   if (!next) return "Nothing to release yet.";
-  const name = presentMilestone(next.code, next.sharePercent);
-  if (!milestoneHasProof(next)) {
-    return next.code === "delivered" || next.code === "retention"
+  const name = milestoneName(next);
+  if (stageNeedsProof(order, next) && !milestoneHasProof(next)) {
+    const requirement = releaseRequirementOf(next);
+    return requirement === "delivery_proof" || requirement === "issue_window_closed"
       ? `Waiting on the rider's delivery photo for ${name.toLowerCase()}.`
       : `Waiting on the shop's proof for ${name.toLowerCase()}.`;
   }

@@ -1,6 +1,7 @@
 /**
- * The four payout milestones on an order, each with its evidence and whatever
- * is currently stopping it from being released.
+ * The payout milestones on an order, as many as its plan has and in the API's
+ * order, each with its evidence and whatever is currently stopping it from
+ * being released.
  *
  * The amounts are shares of the supplier's own price, so they are safe for the
  * supplier's own payouts screen as well as Operations. Pass `onRelease` only
@@ -14,10 +15,18 @@ import type { Order, PayoutMilestone } from "@/lib/api/types";
 import { milestoneReleaseBlocker } from "@/lib/api/constraints";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import {
+  milestoneName,
   milestoneProofSource,
-  presentMilestone,
   presentMilestoneStatus,
+  type StatePresentation,
 } from "@/lib/order-state";
+import { stageNeedsProof } from "@/lib/payout-plan";
+
+const READY_FOR_OPERATIONS: StatePresentation = {
+  label: "Ready for Operations",
+  tone: "info",
+  icon: "circle-check",
+};
 
 type Props = {
   order: Order;
@@ -33,8 +42,8 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
   if (!milestones?.length) {
     return (
       <p className="text-body text-text-secondary m-0">
-        Milestones are set up when the supplier accepts and names its price. Each of the
-        four releases against a Proof of Fulfilment.
+        Milestones are set up when the supplier accepts and names its price. Operations
+        releases each one once what it waits on is in.
       </p>
     );
   }
@@ -63,8 +72,13 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
       ) : null}
       <ol className="m-0 flex list-none flex-col gap-3 p-0">
         {milestones.map((milestone, index) => {
-          const status = presentMilestoneStatus(milestone.status);
+          const needsProof = stageNeedsProof(order, milestone);
           const blocker = milestoneReleaseBlocker(order, milestone);
+          // A share with no file to wait on is ready the moment nothing blocks it.
+          const status =
+            !needsProof && milestone.status !== "released" && blocker === null
+              ? READY_FOR_OPERATIONS
+              : presentMilestoneStatus(milestone.status, { needsProof });
           const released = milestone.status === "released";
           const proofCount = milestone.pofFileIds.length;
 
@@ -82,11 +96,11 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
                     <span className="text-text-muted tabular-nums">
                       {index + 1}/{milestones.length}
                     </span>{" "}
-                    {presentMilestone(milestone.code, milestone.sharePercent)}
+                    {milestoneName(milestone)}
                   </p>
                   <p className="text-caption text-text-muted m-0 mt-0.5">
                     {milestone.sharePercent}% of supplier earnings ·{" "}
-                    {milestoneProofSource(milestone.code)}
+                    {milestoneProofSource(milestone, order)}
                   </p>
                 </div>
                 {milestone.amountMinor !== undefined ? (
@@ -103,7 +117,9 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
                 <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
                 <span className="text-caption text-text-muted">
                   {proofCount === 0
-                    ? "No proof on file"
+                    ? needsProof
+                      ? "No proof on file"
+                      : "No proof needed"
                     : proofCount === 1
                       ? "1 proof on file"
                       : `${proofCount} proofs on file`}
