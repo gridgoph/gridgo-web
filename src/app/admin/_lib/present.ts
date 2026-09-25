@@ -287,6 +287,8 @@ export function presentAuditAction(action: string): string {
     "claim.create": "Raised claim",
     "claim.hold": "Held payout",
     "claim.release": "Released payout hold",
+    "tracker.status": "Changed tracker status",
+    "tracker.decision": "Recorded tracker decision",
   };
   if (map[action]) return map[action];
 

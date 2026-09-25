@@ -13,7 +13,17 @@ import { paymentOf } from "@/lib/payments";
 
 export type StatusTone = "success" | "warning" | "error" | "info" | "neutral";
 export type StatusIconName =
-  "circle-check" | "triangle-alert" | "circle-x" | "clock" | "square-pen";
+  | "circle-check"
+  | "triangle-alert"
+  | "circle-x"
+  | "clock"
+  | "square-pen"
+  // Tracker work states (Super Admin Tracker).
+  | "circle-dashed"
+  | "git-pull-request"
+  | "git-merge"
+  | "circle-help"
+  | "ban";
 
 export type StatePresentation = {
   label: string;

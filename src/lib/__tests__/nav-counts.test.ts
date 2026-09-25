@@ -93,6 +93,7 @@ describe("rail counts", () => {
         "admin-chat:chat-unread",
         "admin-issue-reports:issue-reports-new",
         "admin-verification:signups-waiting",
+        "admin-tracker:tracker-needs-decision",
       ],
     });
   });
@@ -138,5 +139,16 @@ describe("rail counts", () => {
     expect(itemCountPhrase(orders!, { "orders-waiting": 1 })).toBe("1 needs action");
     expect(itemCountPhrase(orders!, { "orders-waiting": 250 })).toBe("99+ need action");
     expect(itemCountPhrase(approvals!, { "signups-waiting": 4 })).toBe("4 waiting for review");
+  });
+
+  it("counts the Tracker's decisions as quiet, not order-blocking, work", () => {
+    const system = group("super_admin", "admin-system");
+    const tracker = system.items.find((item) => item.id === "admin-tracker")!;
+    expect(countedName("Tracker", itemCountPhrase(tracker, { "tracker-needs-decision": 13 }))).toBe(
+      "Tracker, 13 need a decision",
+    );
+    expect(itemCountPhrase(tracker, { "tracker-needs-decision": 1 })).toBe("1 needs a decision");
+    expect(groupCount(system, { "tracker-needs-decision": 13 })).toBe(13);
+    expect(groupNeedsAttention(system, { "tracker-needs-decision": 13 })).toBe(false);
   });
 });
