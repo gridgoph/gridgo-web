@@ -2,12 +2,16 @@
 import "@testing-library/jest-dom/vitest";
 
 import React from "react";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { getOrder, transitionOrder } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
 import SupplierJobDetailPage from "@/app/supplier/jobs/[id]/page";
+
+// Regression for gridgoph/gridgo-web#57: the price a shop sees when it accepts
+// is its own price — the canonical `supplierSubtotalMinor`, falling back to the
+// `supplierPriceMinor` alias — never the client's subtotal or total. Accepting
+// is a confirmation now (no price field), so the guard is on what is shown.
 
 vi.stubGlobal("React", React);
 vi.mock("next/navigation", () => ({
@@ -45,25 +49,17 @@ const job: Order = {
 
 beforeEach(() => {
   vi.mocked(getOrder).mockResolvedValue(job);
-  vi.mocked(transitionOrder).mockResolvedValue({ ...job, state: "awaiting_checkout" });
 });
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
 
-async function openAcceptance() {
-  const user = userEvent.setup();
+it("shows the shop price rather than the client subtotal or total", async () => {
   render(<SupplierJobDetailPage />);
-  await user.click(await screen.findByRole("button", { name: "Accept and set price" }));
-  return { user, price: screen.getByRole("textbox", { name: "Your price (₱)" }) };
-}
-
-it("opens with the shop price in pesos rather than the client subtotal or total", async () => {
-  const { price } = await openAcceptance();
-  expect(price).toHaveValue("1234.56");
-  expect(price).not.toHaveAttribute("placeholder", "1000.00");
-  expect(screen.getByText(/You will be paid ₱1,234.56/)).toBeInTheDocument();
+  expect(await screen.findByText("Price: ₱1,234.56")).toBeInTheDocument();
+  expect(screen.queryByText(/₱1,358\.02/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/₱1,383\.02/)).not.toBeInTheDocument();
 });
 
 it.each([
@@ -72,55 +68,18 @@ it.each([
   { supplierSubtotalMinor: undefined, supplierPriceMinor: 123456 },
 ])("uses the canonical shop price with an alias fallback: %j", async (money) => {
   vi.mocked(getOrder).mockResolvedValue({ ...job, ...money });
-  const { price } = await openAcceptance();
-  expect(price).toHaveValue("1234.56");
+  render(<SupplierJobDetailPage />);
+  expect(await screen.findByText("Price: ₱1,234.56")).toBeInTheDocument();
 });
 
-it("leaves an unknown shop price blank without substituting client money", async () => {
+it("names no figure for an unknown shop price instead of substituting client money", async () => {
   vi.mocked(getOrder).mockResolvedValue({
     ...job,
     supplierSubtotalMinor: undefined,
     supplierPriceMinor: undefined,
   });
-  const { price, user } = await openAcceptance();
-  expect(price).toHaveValue("");
-  expect(price).not.toHaveAttribute("placeholder", "1000.00");
-  await user.click(screen.getByRole("button", { name: "Accept and tell the client" }));
-  expect(screen.getByRole("alert")).toHaveTextContent("Enter your price in pesos");
-  expect(transitionOrder).not.toHaveBeenCalled();
-});
-
-it("keeps the price editable and sends the shop subtotal in minor units", async () => {
-  const { price, user } = await openAcceptance();
-  await user.clear(price);
-  await user.type(price, "1456.78");
-  expect(screen.getByText(/You will be paid ₱1,456.78/)).toBeInTheDocument();
-  await user.click(screen.getByRole("button", { name: "Accept and tell the client" }));
-  await waitFor(() =>
-    expect(transitionOrder).toHaveBeenCalledWith(job.id, "supplier_accepted", {
-      supplierSubtotalMinor: 145678,
-      promisedDate: undefined,
-      note: "Accepted and priced",
-    }),
-  );
-});
-
-it("submits the prefilled amount without requiring the shop to retype it", async () => {
-  const { user } = await openAcceptance();
-  await user.click(screen.getByRole("button", { name: "Accept and tell the client" }));
-  expect(transitionOrder).toHaveBeenCalledWith(job.id, "supplier_accepted", {
-    supplierSubtotalMinor: 123456,
-    promisedDate: undefined,
-    note: "Accepted and priced",
-  });
-});
-
-it("starts again from the job price after cancelling an edit", async () => {
-  const { price, user } = await openAcceptance();
-  await user.clear(price);
-  await user.type(price, "1456.78");
-  await user.click(screen.getByRole("button", { name: "Cancel" }));
-  await user.click(screen.getByRole("button", { name: "Accept and set price" }));
-  expect(screen.getByRole("textbox", { name: "Your price (₱)" })).toHaveValue("1234.56");
+  render(<SupplierJobDetailPage />);
+  expect(await screen.findByText("Price already set on your board")).toBeInTheDocument();
+  expect(screen.queryByText(/₱/)).not.toBeInTheDocument();
   expect(transitionOrder).not.toHaveBeenCalled();
 });

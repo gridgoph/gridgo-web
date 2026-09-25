@@ -35,7 +35,11 @@ export const ACTIVE_PAYOUT_HOLD_STATUSES = ["open", "payout_held"] as const;
 export const ISSUE_WINDOW_MIN_HOURS = 1;
 export const ISSUE_WINDOW_MAX_HOURS = 720;
 
-/** Bounds for `productionNudge` on Operational settings. Days and hours differ. */
+/** Bounds for `productionNudge` on Operational settings. Each unit has its own ceiling. */
+export const PRODUCTION_NUDGE_MIN_SECONDS = 1;
+export const PRODUCTION_NUDGE_MAX_SECONDS = 3600;
+export const PRODUCTION_NUDGE_MIN_MINUTES = 1;
+export const PRODUCTION_NUDGE_MAX_MINUTES = 1440;
 export const PRODUCTION_NUDGE_MIN_HOURS = 1;
 export const PRODUCTION_NUDGE_MAX_HOURS = 720;
 export const PRODUCTION_NUDGE_MIN_DAYS = 1;
@@ -43,10 +47,13 @@ export const PRODUCTION_NUDGE_MAX_DAYS = 30;
 export const PRODUCTION_NUDGE_MIN_COUNT = 1;
 export const PRODUCTION_NUDGE_MAX_COUNT = 10;
 
-export function productionNudgeValueBounds(unit: "hours" | "days"): { min: number; max: number } {
-  return unit === "days"
-    ? { min: PRODUCTION_NUDGE_MIN_DAYS, max: PRODUCTION_NUDGE_MAX_DAYS }
-    : { min: PRODUCTION_NUDGE_MIN_HOURS, max: PRODUCTION_NUDGE_MAX_HOURS };
+export function productionNudgeValueBounds(
+  unit: "seconds" | "minutes" | "hours" | "days",
+): { min: number; max: number } {
+  if (unit === "seconds") return { min: PRODUCTION_NUDGE_MIN_SECONDS, max: PRODUCTION_NUDGE_MAX_SECONDS };
+  if (unit === "minutes") return { min: PRODUCTION_NUDGE_MIN_MINUTES, max: PRODUCTION_NUDGE_MAX_MINUTES };
+  if (unit === "days") return { min: PRODUCTION_NUDGE_MIN_DAYS, max: PRODUCTION_NUDGE_MAX_DAYS };
+  return { min: PRODUCTION_NUDGE_MIN_HOURS, max: PRODUCTION_NUDGE_MAX_HOURS };
 }
 
 /** Order states in which an installment can be waiting for Operations. */

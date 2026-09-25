@@ -2,36 +2,127 @@
  * Supplier-facing state actions for the v2 model.
  * Only the valid actions for a job's current state are offered.
  *
- * Accepting is the one action that carries money: the supplier names its own
- * price, and the API atomically computes the client total, tells the client,
- * and moves the job to awaiting downpayment. The supplier never asks for
- * payment itself, and the retired proof-approval loop has no actions left.
+ * Accepting an assigned job is a confirmation. The client already chose the
+ * listing, so the price and the date are already on the order. The shop says
+ * it can run the work; it does not name a price or a promise date.
+ *
+ * Once production has started, the shop files evidence before the job can
+ * leave the floor. Printing proof, then packaging proof. Filing attaches a
+ * photo to one payout milestone; it does not change the order state, and it
+ * does not release money. Operations reviews the evidence later. Package for
+ * pickup is offered only after both shop proofs are filed.
  */
 
+import type { Order } from "@/lib/api/types";
+
 export type SupplierActionKind =
-  "accept" | "decline" | "start_production" | "ready_for_pickup";
+  | "accept"
+  | "decline"
+  | "start_production"
+  | "ready_for_pickup"
+  | "add_proof";
+
+export type ShopProofCode = "printing" | "packaging_qc";
 
 export type SupplierAction = {
   kind: SupplierActionKind;
   label: string;
-  /** The `state` value sent to the transition endpoint. */
-  targetState: string;
+  /**
+   * The `state` value sent to the transition endpoint.
+   * Null when the step is not a transition — filing proof does not move the job.
+   */
+  targetState: string | null;
   primary: boolean;
   destructive?: boolean;
-  /** True when the action needs the supplier's own price before it can be sent. */
-  needsPrice?: boolean;
+  /** Set on `add_proof`: which payout part the evidence backs. */
+  milestoneCode?: ShopProofCode;
 };
 
-export function actionsForJob(state: string): SupplierAction[] {
-  switch (state) {
+type ShopOrder = Pick<Order, "state" | "payoutMilestones" | "payoutHold">;
+
+const SHOP_PROOFS: readonly { code: ShopProofCode; label: string; hint: string }[] = [
+  {
+    code: "printing",
+    label: "Printing",
+    hint: "Show the finished print on your floor — enough of it to recognise the job, with the colour and the trim readable.",
+  },
+  {
+    code: "packaging_qc",
+    label: "Packaging",
+    hint: "Show the job boxed or wrapped as the rider will collect it, labelled and ready to move.",
+  },
+];
+
+/** States where a shop can photograph the run or the packed job. */
+const PROOF_REACHED = new Set([
+  "production",
+  "supplier_self_qc",
+  "ready_for_dispatch",
+  "rider_assigned",
+  "picked_up",
+  "out_for_delivery",
+  "awaiting_collection",
+  "delivered",
+  "issue_window_open",
+  "completed",
+  "payout_released",
+]);
+
+export function shopProofHint(code: ShopProofCode): string {
+  return SHOP_PROOFS.find((proof) => proof.code === code)?.hint ?? "";
+}
+
+export function shopProofLabel(code: ShopProofCode): string {
+  return SHOP_PROOFS.find((proof) => proof.code === code)?.label ?? "";
+}
+
+/**
+ * The first shop milestone that is reached, not held, and still waiting on
+ * evidence. Delivered and retention are never the shop's to file.
+ */
+export function nextShopProof(
+  order: ShopOrder,
+): { code: ShopProofCode; label: string } | null {
+  if (order.payoutHold === true) return null;
+  if (!PROOF_REACHED.has(order.state)) return null;
+  const milestones = order.payoutMilestones ?? [];
+  for (const proof of SHOP_PROOFS) {
+    const milestone = milestones.find((item) => item.code === proof.code);
+    if (!milestone) continue;
+    if (milestone.status !== "pending_pof") continue;
+    return { code: proof.code, label: proof.label };
+  }
+  return null;
+}
+
+function proofAction(owed: { code: ShopProofCode; label: string }): SupplierAction {
+  return {
+    kind: "add_proof",
+    label: `Add ${owed.label.toLowerCase()} proof`,
+    targetState: null,
+    primary: true,
+    milestoneCode: owed.code,
+  };
+}
+
+const PACKAGE_FOR_PICKUP: SupplierAction = {
+  kind: "ready_for_pickup",
+  label: "Package for pickup",
+  targetState: "ready_for_dispatch",
+  primary: true,
+};
+
+export function actionsForJob(order: ShopOrder): SupplierAction[] {
+  const owed = nextShopProof(order);
+
+  switch (order.state) {
     case "supplier_assigned":
       return [
         {
           kind: "accept",
-          label: "Accept and set price",
-          targetState: "supplier_accepted",
+          label: "Accept job",
+          targetState: "payment_authorized",
           primary: true,
-          needsPrice: true,
         },
         {
           kind: "decline",
@@ -51,36 +142,26 @@ export function actionsForJob(state: string): SupplierAction[] {
         },
       ];
     case "production":
-      // Packed is the shop's last move. Quality and count are checked together
-      // with the rider at pickup, so no supplier self-check step sits between.
-      return [
-        {
-          kind: "ready_for_pickup",
-          label: "Package for pickup",
-          targetState: "ready_for_dispatch",
-          primary: true,
-        },
-      ];
     case "supplier_self_qc":
-      return [
-        {
-          kind: "ready_for_pickup",
-          label: "Ready for pickup",
-          targetState: "ready_for_dispatch",
-          primary: true,
-        },
-      ];
+      // While a shop proof is still empty, that is the only step. Packaging
+      // the job for a rider before the photo exists is the bug this blocks.
+      return owed ? [proofAction(owed)] : [PACKAGE_FOR_PICKUP];
     default:
-      return [];
+      return owed ? [proofAction(owed)] : [];
   }
 }
 
-export function primaryAction(state: string): SupplierAction | null {
-  return actionsForJob(state).find((a) => a.primary) ?? null;
+export function primaryAction(order: ShopOrder): SupplierAction | null {
+  return actionsForJob(order).find((a) => a.primary) ?? null;
 }
 
-export function needsSupplierAction(state: string): boolean {
-  return actionsForJob(state).some((a) => a.primary);
+export function needsSupplierAction(order: ShopOrder): boolean {
+  return actionsForJob(order).some((a) => a.primary);
+}
+
+/** True when a shop proof is still unfiled, so the job must not leave the floor. */
+export function shopProofOutstanding(order: ShopOrder): boolean {
+  return nextShopProof(order) !== null;
 }
 
 /**

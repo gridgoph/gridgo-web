@@ -100,6 +100,7 @@ export function slipFamily(notification: Notification): SlipFamily {
   ) {
     return "delivery";
   }
+  if (type === "ops_production_inactive" || type === "shop_production_inactive") return "issue";
   if (notification.orderId) return "order";
   return "general";
 }
