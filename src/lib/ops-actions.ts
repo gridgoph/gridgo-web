@@ -94,7 +94,7 @@ export function actionsForOps(state: string): OpsAction[] {
           label: "Close out payout",
           targetState: "payout_released",
           primary: true,
-          note: "All four milestones released",
+          note: "Every payout milestone released",
         },
       ];
     default:

@@ -17,6 +17,7 @@
 import type { Order } from "@/lib/api/types";
 import { paymentIsSettled } from "@/lib/api/constraints";
 import { balanceNotRequired, paymentOf } from "@/lib/payments";
+import { shopProofStages } from "@/lib/payout-plan";
 
 export type Stage = "payment" | "qa" | "production" | "delivery" | "done";
 
@@ -253,10 +254,7 @@ export function stageSummary(
   }
 
   if (stage === "production") {
-    const proofs = (order.payoutMilestones ?? []).filter(
-      (m) =>
-        (m.code === "printing" || m.code === "packaging_qc") && m.pofFileIds.length > 0,
-    );
+    const proofs = shopProofStages(order).filter((m) => m.pofFileIds.length > 0);
     const filed =
       proofs.length === 0
         ? null

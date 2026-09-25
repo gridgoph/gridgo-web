@@ -322,7 +322,7 @@ export default function AdminFinancePage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
           What clients have paid, what GRIDGO has earned, and what suppliers are still
-          owed. Every order is paid in two digital installments and every supplier in four
+          owed. Every order is paid in two digital installments and every supplier in
           milestones, so both sides are counted separately.
         </p>
         <Button variant="secondary" disabled={loading} onClick={() => void load()}>

@@ -8,6 +8,7 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Order, PayoutMilestone } from "@/lib/api/types";
+import { escrowStages, proofOnFile } from "@/test/payout-plans";
 
 const { getOrderMock, transitionOrderMock, uploadMock, attachMock } = vi.hoisted(() => ({
   getOrderMock: vi.fn(),
@@ -145,5 +146,48 @@ describe("supplier production proofs", () => {
     });
     expect(uploadMock).not.toHaveBeenCalled();
     expect(attachMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("supplier production proof on an escrow-plan order", () => {
+  it("files one start-of-production proof, then offers packing", async () => {
+    const user = userEvent.setup();
+    const open = {
+      ...productionJob(escrowStages()),
+      payoutPlanVersion: 2,
+    } as Order;
+    const afterStart = {
+      ...productionJob(escrowStages({ production_started: proofOnFile("file-start") })),
+      payoutPlanVersion: 2,
+    } as Order;
+    getOrderMock.mockResolvedValueOnce(open).mockResolvedValueOnce(afterStart);
+    uploadMock.mockResolvedValue({ fileId: "file-start" });
+    attachMock.mockResolvedValue({ file: { fileId: "file-start" }, order: afterStart });
+
+    render(<SupplierJobDetailPage />);
+
+    await user.click(
+      await screen.findByRole("button", { name: "Add start-of-production proof" }),
+    );
+    expect(await screen.findByRole("heading", { name: "Start of production" })).toBeInTheDocument();
+    expect(screen.getByText(/first finished sheets/)).toBeInTheDocument();
+
+    const input = document.querySelector("input[type=file]") as HTMLInputElement;
+    await user.upload(input, new File(["photo"], "press.jpg", { type: "image/jpeg" }));
+    const fileEvidence = await screen.findByRole("button", { name: "File this evidence" });
+    await waitFor(() => expect(fileEvidence).toBeEnabled());
+    await user.click(fileEvidence);
+
+    await waitFor(() => {
+      expect(attachMock).toHaveBeenCalledWith("file-start", "job-1", "production_started");
+    });
+    expect(transitionOrderMock).not.toHaveBeenCalled();
+    expect(await screen.findByRole("button", { name: "Package for pickup" })).toBeInTheDocument();
+    expect(
+      screen.getByText(/GRIDGO has your start-of-production evidence/),
+    ).toBeInTheDocument();
+    // The payout card counts the order's own three parts.
+    expect(screen.getByText(/^3 parts of your own price/)).toBeInTheDocument();
+    expect(screen.queryByText(/four parts|10% retention|first 50%/i)).toBeNull();
   });
 });

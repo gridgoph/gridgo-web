@@ -1,14 +1,18 @@
 /**
  * What a supplier is owed, and where each part of it has got to.
  *
- * A supplier is paid in four milestones against its own asking price, each one
- * released by Operations only after a Proof of Fulfilment. The server shows a
- * supplier its own price and its own milestone amounts — never GRIDGO's
- * commission, which this module must never try to derive either.
+ * A supplier is paid in milestones against its own asking price, as many as the
+ * order's payout plan has, each one released by Operations. The escrow plan
+ * pays the start of production on the shop's proof, delivery on the rider's
+ * evidence, and the last share once the client's complaint window has closed;
+ * a legacy order keeps its four. The server shows a supplier its own price and
+ * its own milestone amounts — never GRIDGO's commission, which this module
+ * must never try to derive either.
  */
 
 import type { Issue, Order, PayoutMilestone } from "@/lib/api/types";
-import type { StatusIconName, StatusTone } from "@/lib/order-state";
+import { milestoneName, type StatusIconName, type StatusTone } from "@/lib/order-state";
+import { isLegacyPayoutPlan, shopProofStages, windowStageOf } from "@/lib/payout-plan";
 
 /** States where a milestone can already have been earned. */
 export const PAYOUT_RELEVANT_STATES = [
@@ -41,11 +45,14 @@ export type SettlementPresentation = {
  * Never invents an amount the server did not send.
  */
 export function presentSettlement(
-  order: Pick<Order, "state" | "payoutHold" | "payoutMilestones">,
+  order: Pick<Order, "state" | "payoutHold" | "payoutMilestones"> &
+    Partial<Pick<Order, "payoutPlanVersion">>,
 ): SettlementPresentation {
   const milestones = order.payoutMilestones ?? [];
   const released = milestones.filter((m) => m.status === "released").length;
   const total = milestones.length;
+  // An order with no stages yet reads as it always did.
+  const legacy = total === 0 || isLegacyPayoutPlan(order);
 
   if (order.payoutHold) {
     return {
@@ -62,7 +69,9 @@ export function presentSettlement(
       label: "Paid in full",
       tone: "success",
       icon: "circle-check",
-      detail: "All four milestones have been released to you.",
+      detail: legacy
+        ? "All four milestones have been released to you."
+        : "Every milestone has been released to you.",
     };
   }
 
@@ -75,6 +84,8 @@ export function presentSettlement(
         "The rest release as the job reaches each stage and its proof is reviewed.",
     };
   }
+
+  if (!legacy) return escrowNothingReleased(order);
 
   switch (order.state) {
     case "issue_window_open":
@@ -101,6 +112,49 @@ export function presentSettlement(
         icon: "clock",
         detail: "Milestones begin releasing once production starts.",
       };
+  }
+}
+
+/**
+ * Nothing released yet on an escrow-plan order. The shares named are the
+ * order's own, so the words follow the plan rather than a list of four.
+ */
+function escrowNothingReleased(
+  order: Pick<Order, "state" | "payoutMilestones"> &
+    Partial<Pick<Order, "payoutPlanVersion">>,
+): SettlementPresentation {
+  const waiting = {
+    label: "Nothing released yet",
+    tone: "neutral" as const,
+    icon: "clock" as const,
+  };
+  const firstShop = shopProofStages(order)[0];
+  const lastShare = windowStageOf(order);
+  switch (order.state) {
+    case "issue_window_open":
+      return {
+        label: "Waiting on the issue window",
+        tone: "warning",
+        icon: "clock",
+        detail: lastShare
+          ? `Delivered. The last ${lastShare.sharePercent}% is released by Operations once the client's complaint window closes with nothing raised.`
+          : "Delivered. The last share is released by Operations once the client's complaint window closes with nothing raised.",
+      };
+    case "production":
+    case "supplier_self_qc":
+      return {
+        ...waiting,
+        detail:
+          firstShop && firstShop.status === "pending_pof"
+            ? `Upload your ${
+                firstShop.code === "production_started"
+                  ? "start-of-production photo"
+                  : `${milestoneName(firstShop).toLowerCase()} proof`
+              }, and Operations can release the first ${firstShop.sharePercent}%.`
+            : "Your proof is in. Operations releases this share once they have looked at it.",
+      };
+    default:
+      return { ...waiting, detail: "Milestones begin releasing once production starts." };
   }
 }
 

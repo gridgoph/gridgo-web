@@ -15,9 +15,14 @@ import type {
   PaymentInstallment,
   PaymentRecord,
   PayoutMilestone,
-  PayoutMilestoneCode,
 } from "@/lib/api/types";
 import { balanceNotRequired, listedInstallments, paymentOf } from "@/lib/payments";
+import {
+  isLegacyStage,
+  releaseRequirementOf,
+  stageNeedsProof,
+  type PlanOrder,
+} from "@/lib/payout-plan";
 
 /**
  * The two checkout splits the API accepts for `PlatformSettings.downpaymentPercent`,
@@ -67,16 +72,11 @@ export function productionNudgeValueBounds(
 /** Order states in which an installment can be waiting for Operations. */
 export const PAYMENT_REVIEW_STATE = "downpayment_review" as const;
 
-/**
- * Milestone shares of the *supplier's own* price, in release order.
- * These are not shares of what the client pays.
- */
-export const MILESTONE_ORDER: readonly PayoutMilestoneCode[] = [
-  "printing",
-  "packaging_qc",
-  "delivered",
-  "retention",
-] as const;
+/*
+ Payout stages are not listed here. Which stages an order has, in what order,
+ and what each waits on come from the order itself (`payoutPlanVersion`, and
+ each milestone's `releaseRequires`), read through `@/lib/payout-plan`.
+*/
 
 export type PlatformConstraintId =
   | "payment_not_pending"
@@ -265,19 +265,60 @@ const DELIVERED_STATES = new Set([
   "payout_released",
 ]);
 
+const WINDOW_CLOSED_STATES = new Set(["completed", "payout_released"]);
+
 /**
  * Why this milestone cannot be released right now, in plain language, or null
  * when Operations can go ahead. Mirrors the server's 409 codes so the screen
  * explains the block before the click rather than after it.
+ *
+ * What a stage waits on comes from the stage (`releaseRequires`), not from a
+ * list of codes. A legacy four-stage order keeps its old gates and words.
  */
 export function milestoneReleaseBlocker(
-  order: Pick<Order, "payoutHold" | "payments" | "state" | "deliveryEvidence">,
-  milestone: Pick<PayoutMilestone, "code" | "status" | "pofFileIds">,
+  order: Pick<Order, "payoutHold" | "payments" | "state" | "deliveryEvidence"> &
+    PlanOrder,
+  milestone: Pick<PayoutMilestone, "code" | "status" | "pofFileIds"> &
+    Partial<Pick<PayoutMilestone, "releaseRequires" | "label" | "sharePercent">>,
 ): string | null {
   if (milestoneIsReleased(milestone)) return null;
   if (orderHasPayoutHold(order)) {
     return PLATFORM_CONSTRAINT_COPY.payout_held.guidance;
   }
+  if (isLegacyStage(order, milestone)) return legacyMilestoneBlocker(order, milestone);
+
+  const requirement = releaseRequirementOf(milestone);
+  if (stageNeedsProof(order, milestone) && !milestoneHasProof(milestone)) {
+    if (requirement === "delivery_proof") {
+      return "The delivered share releases once the rider has recorded the delivery photo or signature. It becomes this share's proof on its own.";
+    }
+    if (requirement === "shop_proof") {
+      return milestone.code === "production_started"
+        ? "The shop has not filed its start-of-production photo yet. This share releases once it does."
+        : "The shop has not filed its proof for this stage yet. This share releases once it does.";
+    }
+    return PLATFORM_CONSTRAINT_COPY.pof_required.guidance;
+  }
+  if (requirement === "shop_proof" && !PRINTING_STATES.has(order.state)) {
+    return "This share releases once the shop has started production.";
+  }
+  if (requirement === "delivery_proof") {
+    const blocker = deliveredBlocker(order);
+    if (blocker) return blocker;
+  }
+  if (requirement === "issue_window_closed" && !WINDOW_CLOSED_STATES.has(order.state)) {
+    return order.state === "issue_window_open"
+      ? "The client can still report a problem. The last share releases once the complaint window closes with no claim open, or the client confirms the job is fine."
+      : "The last share releases once the job is delivered and the complaint window has closed with no claim open.";
+  }
+  return null;
+}
+
+/** The four legacy stages, gated and worded exactly as before the escrow plan. */
+function legacyMilestoneBlocker(
+  order: Pick<Order, "payments" | "state" | "deliveryEvidence">,
+  milestone: Pick<PayoutMilestone, "code" | "status" | "pofFileIds">,
+): string | null {
   if (!milestoneHasProof(milestone)) {
     return PLATFORM_CONSTRAINT_COPY.pof_required.guidance;
   }
@@ -290,19 +331,28 @@ export function milestoneReleaseBlocker(
     return "Packing releases once the job is packed and ready for a rider.";
   }
   if (milestone.code === "delivered") {
-    if (!DELIVERED_STATES.has(order.state)) {
-      return "The delivered share releases once the client has the job, at their door or off the counter.";
-    }
-    if (!order.deliveryEvidence) {
-      return "The delivered share releases once the rider has filed delivery evidence.";
-    }
-    const balance = paymentOf(order, "balance");
-    if (balance && !paymentIsSettled(balance)) {
-      return "The delivered share releases once the client's balance is confirmed.";
-    }
+    const blocker = deliveredBlocker(order);
+    if (blocker) return blocker;
   }
   if (milestone.code === "retention" && order.state !== "completed") {
     return "Retention releases when the issue window has expired and the order has completed.";
+  }
+  return null;
+}
+
+/** The client has the job, the rider's evidence is on file, and the money is in. */
+function deliveredBlocker(
+  order: Pick<Order, "payments" | "state" | "deliveryEvidence">,
+): string | null {
+  if (!DELIVERED_STATES.has(order.state)) {
+    return "The delivered share releases once the client has the job, at their door or off the counter.";
+  }
+  if (!order.deliveryEvidence) {
+    return "The delivered share releases once the rider has filed delivery evidence.";
+  }
+  const balance = paymentOf(order, "balance");
+  if (balance && !paymentIsSettled(balance)) {
+    return "The delivered share releases once the client's balance is confirmed.";
   }
   return null;
 }

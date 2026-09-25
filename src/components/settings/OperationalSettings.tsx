@@ -89,7 +89,9 @@ const ISSUE_WINDOW_COPY = (
   <>
     How long a client has after delivery to raise a problem. While it is open a claim can
     hold the supplier&rsquo;s payout; when it closes with nothing raised, the order
-    completes and the final 10% retention releases.
+    completes and the shop&rsquo;s last share is ready for Operations to release. Closing
+    the window never pays anyone by itself; only orders placed before 25 September 2026
+    still release their retention automatically.
   </>
 );
 

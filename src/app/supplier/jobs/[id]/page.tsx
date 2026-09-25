@@ -44,8 +44,6 @@ import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
 import {
   actionsForJob,
-  shopProofHint,
-  shopProofLabel,
   shopProofOutstanding,
   supplierWaitingOn,
   type SupplierAction,
@@ -187,7 +185,7 @@ export default function SupplierJobDetailPage() {
       await attachFulfilmentProof(proofFileId, job.id, action.milestoneCode);
       const reloaded = await getOrder(job.id);
       setJob(reloaded);
-      const part = shopProofLabel(action.milestoneCode).toLowerCase();
+      const part = action.proofNoun ?? "stage";
       setFiledNote(
         `GRIDGO has your ${part} evidence. Operations reviews it before that part is paid.`,
       );
@@ -225,7 +223,7 @@ export default function SupplierJobDetailPage() {
   const proofAction = actions.find((action) => action.kind === "add_proof") ?? null;
   const primary = actions.find((a) => a.primary);
   const secondary = actions.filter((a) => !a.primary);
-  const waiting = supplierWaitingOn(job.state);
+  const waiting = supplierWaitingOn(job.state, job);
   const confirmedMinor = job.supplierSubtotalMinor ?? job.supplierPriceMinor;
   const confirmedDate = job.readyBy ?? job.promisedDate ?? job.deadline;
 
@@ -381,9 +379,9 @@ export default function SupplierJobDetailPage() {
             </h3>
             <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
               {/*
-                Counted, not asserted. The blueprint describes four stages and
-                the running API issues two, so a hardcoded "four" was wrong on
-                this very screen.
+                Counted, not asserted. Orders placed under the escrow plan have
+                three stages and older ones four, so a hardcoded count is wrong
+                on one of them.
               */}
               {job.payoutMilestones.length === 1
                 ? "One release of your own price, paid by Operations once they have seen the proof."
@@ -402,12 +400,8 @@ export default function SupplierJobDetailPage() {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              {proofAction ? shopProofLabel(proofAction.milestoneCode ?? "printing") : "Proof"}
-            </DialogTitle>
-            <DialogDescription>
-              {proofAction?.milestoneCode ? shopProofHint(proofAction.milestoneCode) : ""}
-            </DialogDescription>
+            <DialogTitle>{proofAction?.proofLabel ?? "Proof"}</DialogTitle>
+            <DialogDescription>{proofAction?.proofHint ?? ""}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2">
             <p className="text-caption text-text-muted m-0">JPEG, PNG, WebP, or PDF</p>
