@@ -171,7 +171,7 @@ export function shopProofOutstanding(order: ShopOrder): boolean {
 export function supplierWaitingOn(state: string): string | null {
   switch (state) {
     case "awaiting_downpayment":
-      return "The client has been told the final price and is sending the 75% downpayment.";
+      return "The client has been told the final price and is sending their payment.";
     case "downpayment_review":
       return "Operations is confirming the client's downpayment. Production starts once it clears.";
     case "ready_for_dispatch":

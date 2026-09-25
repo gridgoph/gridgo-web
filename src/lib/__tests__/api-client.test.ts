@@ -12,7 +12,7 @@ import {
   allMilestonesReleased,
   canReportIssue,
   claimBlocksPayout,
-  DOWNPAYMENT_PERCENT,
+  DOWNPAYMENT_PERCENT_CHOICES,
   milestoneReleaseBlocker,
   orderHasPayoutHold,
   paymentAwaitsConfirmation,
@@ -224,8 +224,9 @@ describe("API bearer tokens", () => {
 });
 
 describe("platform constraints", () => {
-  it("encodes the split payment shares and bounds the service fee", () => {
-    expect(DOWNPAYMENT_PERCENT).toBe(75);
+  it("offers the two checkout splits the API accepts and bounds the service fee", () => {
+    // In full at checkout is the default and comes first.
+    expect(DOWNPAYMENT_PERCENT_CHOICES).toEqual([100, 75]);
     // The fee itself is not a constant: Operations sets it in settings.
     expect(SERVICE_FEE_MAX_BPS).toBe(10_000);
   });
@@ -237,6 +238,9 @@ describe("platform constraints", () => {
     // Orders migrated from the pre-v2 model are just as paid.
     expect(paymentIsSettled({ status: "legacy_confirmed" })).toBe(true);
     expect(paymentIsSettled({ status: "pending_confirmation" })).toBe(false);
+    // The ₱0 balance of an order paid in full up front owes nothing.
+    expect(paymentIsSettled({ status: "not_required" })).toBe(true);
+    expect(paymentAwaitsConfirmation({ status: "not_required" })).toBe(false);
   });
 
   it("detects payout hold and issue window", () => {

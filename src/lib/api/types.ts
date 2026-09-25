@@ -239,7 +239,12 @@ export type PaymentStatusCode =
   | "pending_confirmation"
   | "confirmed"
   /** Only on orders migrated from the pre-v2 model. */
-  | "legacy_confirmed";
+  | "legacy_confirmed"
+  /**
+   * The ₱0 balance of an order paid in full up front. Nothing to submit,
+   * confirm or reject (`409 balance_not_required`); every gate reads it as settled.
+   */
+  | "not_required";
 
 export type PaymentRecord = {
   amountMinor: number;
@@ -262,7 +267,10 @@ export type PaymentRecord = {
   proofFileId?: string | null;
 };
 
-/** Present installments after mapping. A pickup plan may omit the balance. */
+/**
+ * Present installments after mapping. A pickup plan may omit the balance; an
+ * upfront order keeps it at ₱0 with status `not_required`.
+ */
 export type OrderPayments = Partial<Record<PaymentInstallment, PaymentRecord>>;
 
 // ---- Milestone payouts (v2) ----
@@ -464,9 +472,16 @@ export type Order = {
   deliverySettlement?: DeliverySettlement;
   /** Subtotal + delivery. What the client owes in full. */
   totalMinor: number;
-  /** 75% of the total. */
+  /**
+   * The share of the total this order takes up front, snapshotted at checkout
+   * (100 or 75). Absent on an API that predates it and on orders with no
+   * checkout split. Read through `downpaymentPercentOf` in `@/lib/payments`,
+   * never directly.
+   */
+  downpaymentPercent?: number;
+  /** `downpaymentPercent` of the total — all of it on an upfront order. */
   downpaymentMinor?: number;
-  /** The exact remainder of the total. */
+  /** The exact remainder of the total. 0 on an order paid in full up front. */
   balanceMinor?: number;
   priceRange?: PriceRange;
   operationalModelVersion?: number;
@@ -641,6 +656,13 @@ export type PlatformSettings = {
    * nothing.
    */
   riderCommissionBps?: number;
+  /**
+   * How much of a new checkout the client pays up front: 100 (the default
+   * since 2026-09-25, gridgo-api#66) or 75 (75% now, 25% before delivery).
+   * Snapshotted on every order at checkout. Absent on an API that predates
+   * it; the settings screen then leaves the control out.
+   */
+  downpaymentPercent?: number;
   deliveryFeeBands: DeliveryFeeBand[];
   /** Manual QR checkout. `imageUrl` is the replaceable plate. */
   paymentQr?: PaymentQr;
@@ -651,6 +673,7 @@ export type UpdateSettingsInput = {
   serviceFeeRateBps?: number;
   serviceFeeVisibleToClient?: boolean;
   riderCommissionBps?: number;
+  downpaymentPercent?: number;
   deliveryFeeBands?: DeliveryFeeBand[];
   productionNudge?: ProductionNudge;
   reason?: string;

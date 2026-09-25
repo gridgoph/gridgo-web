@@ -5,7 +5,7 @@
 
 import type { Claim, Order } from "@/lib/api/types";
 import { claimBlocksPayout } from "@/lib/api/constraints";
-import { listedInstallments, paymentOf } from "@/lib/payments";
+import { installmentNoun, listedInstallments, paymentOf } from "@/lib/payments";
 import {
   endOfDay,
   endOfWeek,
@@ -205,10 +205,7 @@ export function buildScheduleEvents(
         orderId: order.id,
         orderTitle: order.title,
         href: `/ops/orders/${order.id}`,
-        detail:
-          code === "downpayment"
-            ? "The client's downpayment is waiting on Operations"
-            : "The client's balance is waiting on Operations",
+        detail: `The client's ${installmentNoun(order, code)} is waiting on Operations`,
       });
     }
 
