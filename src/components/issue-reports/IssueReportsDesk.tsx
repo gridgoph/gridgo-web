@@ -423,7 +423,7 @@ export function IssueReportsDesk() {
                       Dismiss
                     </Button>
                     {selected.status === "tracked" ? (
-                      <Button variant="ghost" disabled={saving} onClick={() => void mark("new")}>
+                      <Button disabled={saving} onClick={() => void mark("new")}>
                         Move back to New
                       </Button>
                     ) : null}
