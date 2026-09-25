@@ -450,7 +450,7 @@ Never write 75 or 25. Read the order's own split through `src/lib/payments.ts`: 
 
 The client submits a reference; Operations confirms it (`payment_authorized`) or rejects it with a client-visible reason that returns the installment to `not_submitted` so they can resubmit. Rejection reasons are written **for the client to read** — see `PAYMENT_REJECTION_REASONS` in `src/app/ops/_lib/payments.ts`.
 
-The seam is deliberately clean: a payment provider can replace the manual confirmation without redesigning the flow.
+The seam is deliberately clean: a payment provider can replace the manual confirmation without redesigning the flow. Screenshots (light and dark, a new order awaiting confirmation, paid in full, and the Checkout payment control): `docs/screenshots/upfront/`.
 
 ### Supplier payout is four milestones
 
