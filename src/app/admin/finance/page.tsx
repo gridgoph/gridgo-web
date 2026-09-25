@@ -153,9 +153,9 @@ export default function AdminFinancePage() {
       {
         id: "state",
         header: "Order status",
-        sortValue: (o) => presentOrderState(o.state).label,
+        sortValue: (o) => presentOrderState(o.state, o).label,
         cell: (o) => {
-          const p = presentOrderState(o.state);
+          const p = presentOrderState(o.state, o);
           return <StatusChip tone={p.tone} label={p.label} icon={p.icon} />;
         },
       },

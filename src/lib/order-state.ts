@@ -40,7 +40,18 @@ export type StatePresentation = {
   icon: StatusIconName;
 };
 
-export function presentOrderState(state: string): StatePresentation {
+/**
+ * The state as a label. Pass the order where it is at hand: an order paid in
+ * full up front has one payment, so its payment states never say "downpayment".
+ */
+export function presentOrderState(
+  state: string,
+  order?: PaymentSplitSource,
+): StatePresentation {
+  if (order && balanceNotRequired(order)) {
+    const upfront = UPFRONT_PAYMENT_STATES[state];
+    if (upfront) return upfront;
+  }
   switch (state) {
     case "draft":
       return { label: "Draft", tone: "neutral", icon: "square-pen" };
@@ -111,6 +122,23 @@ export function presentTimelineActor(by: string): string {
   if (by.startsWith("user_")) return "Team";
   return by;
 }
+
+/** The payment states in the words of an order paid in full up front. */
+const UPFRONT_PAYMENT_STATES: Record<string, StatePresentation> = {
+  awaiting_initial_payment: { label: "Awaiting payment", tone: "warning", icon: "clock" },
+  awaiting_downpayment: { label: "Awaiting payment", tone: "warning", icon: "clock" },
+  initial_payment_review: {
+    label: "Payment needs confirming",
+    tone: "warning",
+    icon: "triangle-alert",
+  },
+  downpayment_review: {
+    label: "Payment needs confirming",
+    tone: "warning",
+    icon: "triangle-alert",
+  },
+  payment_authorized: { label: "Paid in full", tone: "info", icon: "circle-check" },
+};
 
 // ---------------------------------------------------------------------------
 // Split payment

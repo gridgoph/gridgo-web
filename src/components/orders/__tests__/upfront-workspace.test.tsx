@@ -129,6 +129,8 @@ describe("OrderWorkspace, paid in full up front", () => {
     expect(screen.getByRole("button", { name: "Confirm this payment" })).toBeEnabled();
     expect(screen.getByText("Full payment of ₱930.00 is waiting on you.")).toBeInTheDocument();
     expect(moneyRow("Payment plan")).toHaveTextContent("In full at checkout");
+    expect(screen.getByText("Payment needs confirming")).toBeInTheDocument();
+    expect(screen.queryByText(/downpayment/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/balance/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/75%|25%/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /balance/i })).not.toBeInTheDocument();

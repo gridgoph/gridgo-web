@@ -217,7 +217,7 @@ export default function OpsPayoutsPage() {
  * the link, because the only thing to do with a row is open it.
  */
 function PayoutRow({ order, holds }: { order: Order; holds: Claim[] }) {
-  const status = presentOrderState(order.state);
+  const status = presentOrderState(order.state, order);
   const progress = payoutProgress(order);
   const percent =
     progress.totalMinor && progress.releasedMinor !== null

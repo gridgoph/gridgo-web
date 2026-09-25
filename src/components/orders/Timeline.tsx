@@ -7,6 +7,7 @@ import {
   presentTimelineActor,
   type StatusTone,
 } from "@/lib/order-state";
+import type { PaymentSplitSource } from "@/lib/payments";
 
 /** Tone → the marker's ink. Matches StatusChip so one state reads one way. */
 const TONE_INK: Record<StatusTone, string> = {
@@ -19,6 +20,8 @@ const TONE_INK: Record<StatusTone, string> = {
 
 type Props = {
   entries: TimelineEntry[];
+  /** The order, so an upfront order's payment states read as one payment. */
+  order?: PaymentSplitSource;
   /**
    * Put the most recent event at the top.
    *
@@ -30,7 +33,7 @@ type Props = {
 };
 
 /** Who did what and when, with the state each event moved the order into. */
-export function Timeline({ entries, newestFirst = false }: Props) {
+export function Timeline({ entries, newestFirst = false, order }: Props) {
   if (!entries.length) {
     return (
       <p className="text-body text-text-muted m-0">No timeline events yet.</p>
@@ -44,7 +47,7 @@ export function Timeline({ entries, newestFirst = false }: Props) {
   return (
     <ol className="m-0 flex list-none flex-col p-0">
       {ordered.map((entry, i) => {
-        const state = presentOrderState(entry.state);
+        const state = presentOrderState(entry.state, order);
         const Icon = ICONS[state.icon];
         const isLatest = entry === latest;
         const isLast = i === ordered.length - 1;

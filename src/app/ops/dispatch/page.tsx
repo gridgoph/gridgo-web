@@ -225,9 +225,9 @@ export default function OpsDispatchPage() {
       {
         id: "status",
         header: "Status",
-        sortValue: (o) => presentOrderState(o.state).label,
+        sortValue: (o) => presentOrderState(o.state, o).label,
         cell: (o) => {
-          const s = presentOrderState(o.state);
+          const s = presentOrderState(o.state, o);
           return <StatusChip tone={s.tone} label={s.label} icon={s.icon} />;
         },
       },
@@ -378,9 +378,9 @@ export default function OpsDispatchPage() {
                   <span className="text-caption text-text-muted">Order {o.id}</span>
                 </span>
                 <StatusChip
-                  tone={presentOrderState(o.state).tone}
-                  label={presentOrderState(o.state).label}
-                  icon={presentOrderState(o.state).icon}
+                  tone={presentOrderState(o.state, o).tone}
+                  label={presentOrderState(o.state, o).label}
+                  icon={presentOrderState(o.state, o).icon}
                 />
               </li>
             ))}

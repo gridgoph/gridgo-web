@@ -209,7 +209,7 @@ export function OrderWorkspace({
     );
   }
 
-  const status = presentOrderState(order.state);
+  const status = presentOrderState(order.state, order);
   const busy = acting !== null;
   const hasPayout = Boolean(order.payoutMilestones?.length);
   const releasing = acting?.startsWith("release-")
@@ -362,7 +362,7 @@ export function OrderWorkspace({
               summary={historySummary(order)}
               marker={{ icon: CircleDot, tone: "muted" }}
             >
-              <Timeline entries={order.timeline} />
+              <Timeline entries={order.timeline} order={order} />
             </SectionRow>
           </Accordion>
 

@@ -19,7 +19,12 @@ import {
   paymentIsSettled,
 } from "@/lib/api/constraints";
 import type { Order, OrderPayments, PaymentRecord } from "@/lib/api/types";
-import { presentInstallment, presentPaymentProgress, presentPaymentStatus } from "@/lib/order-state";
+import {
+  presentInstallment,
+  presentOrderState,
+  presentPaymentProgress,
+  presentPaymentStatus,
+} from "@/lib/order-state";
 import {
   balanceNotRequired,
   downpaymentPercentOf,
@@ -158,6 +163,23 @@ describe("reading the split from the order", () => {
     const order = split("confirmed", "not_submitted", { downpaymentPercent: 100 });
     expect(balanceNotRequired(order)).toBe(false);
     expect(presentInstallment("downpayment", order)).toBe("Downpayment (75%)");
+  });
+
+  it("names the payment states without a downpayment on an upfront order", () => {
+    expect(presentOrderState("downpayment_review", upfront()).label).toBe(
+      "Payment needs confirming",
+    );
+    expect(presentOrderState("awaiting_downpayment", upfront("not_submitted")).label).toBe(
+      "Awaiting payment",
+    );
+    expect(presentOrderState("payment_authorized", upfront("confirmed")).label).toBe(
+      "Paid in full",
+    );
+    expect(presentOrderState("downpayment_review", split("pending_confirmation")).label).toBe(
+      "Downpayment needs confirming",
+    );
+    // Without the order the state alone still reads as before.
+    expect(presentOrderState("downpayment_review").label).toBe("Downpayment needs confirming");
   });
 
   it("names a not_required installment calmly rather than as unknown", () => {
