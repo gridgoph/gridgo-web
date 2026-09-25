@@ -15,7 +15,8 @@
  */
 
 import type { Order } from "@/lib/api/types";
-import { paymentOf } from "@/lib/payments";
+import { paymentIsSettled } from "@/lib/api/constraints";
+import { balanceNotRequired, paymentOf } from "@/lib/payments";
 
 export type Stage = "payment" | "qa" | "production" | "delivery" | "done";
 
@@ -187,6 +188,8 @@ export function stageSummary(
     Order,
     | "state"
     | "payments"
+    | "balanceMinor"
+    | "downpaymentPercent"
     | "totalMinor"
     | "timeline"
     | "payoutMilestones"
@@ -209,11 +212,12 @@ export function stageSummary(
   if (stage === "payment") {
     const downpayment = paymentOf(order, "downpayment");
     const balance = paymentOf(order, "balance");
-    const settled = (record: { status: string } | undefined) =>
-      record?.status === "confirmed" || record?.status === "legacy_confirmed";
+    const settled = paymentIsSettled;
+    // Paid up front there is one payment, and it is the whole order.
+    const first = balanceNotRequired(order) ? "Full payment" : "Downpayment";
     if (!downpayment && !balance) return "No payment set up yet.";
     if (downpayment?.status === "pending_confirmation") {
-      return `Downpayment of ${formatMoney(downpayment.amountMinor)} is waiting on you.`;
+      return `${first} of ${formatMoney(downpayment.amountMinor)} is waiting on you.`;
     }
     if (balance?.status === "pending_confirmation") {
       return `Balance of ${formatMoney(balance.amountMinor)} is waiting on you.`;
@@ -225,7 +229,7 @@ export function stageSummary(
       return `Downpayment in. Balance of ${formatMoney(balance.amountMinor)} not sent yet.`;
     }
     if (downpayment) {
-      return `Downpayment of ${formatMoney(downpayment.amountMinor)} not sent yet.`;
+      return `${first} of ${formatMoney(downpayment.amountMinor)} not sent yet.`;
     }
     return "Waiting on the client.";
   }

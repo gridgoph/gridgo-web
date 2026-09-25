@@ -9,7 +9,14 @@ import type {
   PayoutMilestone,
   PickupCheckCode,
 } from "@/lib/api/types";
-import { paymentOf } from "@/lib/payments";
+import { paymentIsSettled } from "@/lib/api/constraints";
+import {
+  balanceNotRequired,
+  installmentLabel,
+  paymentOf,
+  type PaymentSource,
+  type PaymentSplitSource,
+} from "@/lib/payments";
 
 export type StatusTone = "success" | "warning" | "error" | "info" | "neutral";
 export type StatusIconName =
@@ -33,7 +40,18 @@ export type StatePresentation = {
   icon: StatusIconName;
 };
 
-export function presentOrderState(state: string): StatePresentation {
+/**
+ * The state as a label. Pass the order where it is at hand: an order paid in
+ * full up front has one payment, so its payment states never say "downpayment".
+ */
+export function presentOrderState(
+  state: string,
+  order?: PaymentSplitSource,
+): StatePresentation {
+  if (order && balanceNotRequired(order)) {
+    const upfront = UPFRONT_PAYMENT_STATES[state];
+    if (upfront) return upfront;
+  }
   switch (state) {
     case "draft":
       return { label: "Draft", tone: "neutral", icon: "square-pen" };
@@ -105,6 +123,23 @@ export function presentTimelineActor(by: string): string {
   return by;
 }
 
+/** The payment states in the words of an order paid in full up front. */
+const UPFRONT_PAYMENT_STATES: Record<string, StatePresentation> = {
+  awaiting_initial_payment: { label: "Awaiting payment", tone: "warning", icon: "clock" },
+  awaiting_downpayment: { label: "Awaiting payment", tone: "warning", icon: "clock" },
+  initial_payment_review: {
+    label: "Payment needs confirming",
+    tone: "warning",
+    icon: "triangle-alert",
+  },
+  downpayment_review: {
+    label: "Payment needs confirming",
+    tone: "warning",
+    icon: "triangle-alert",
+  },
+  payment_authorized: { label: "Paid in full", tone: "info", icon: "circle-check" },
+};
+
 // ---------------------------------------------------------------------------
 // Split payment
 // ---------------------------------------------------------------------------
@@ -114,9 +149,16 @@ export const INSTALLMENT_LABEL: Record<PaymentInstallment, string> = {
   balance: "Balance",
 };
 
-/** "Downpayment (75%)" — the share is part of how the team talks about it. */
-export function presentInstallment(installment: PaymentInstallment): string {
-  return installment === "downpayment" ? "Downpayment (75%)" : "Balance (25%)";
+/**
+ * "Downpayment (75%)" — the share is part of how the team talks about it — or
+ * "Full payment" on an order paid in full up front. The share is the order's
+ * own, never a constant.
+ */
+export function presentInstallment(
+  installment: PaymentInstallment,
+  order: PaymentSplitSource,
+): string {
+  return installmentLabel(order, installment);
 }
 
 export function presentPaymentStatus(
@@ -139,6 +181,8 @@ export function presentPaymentStatus(
         tone: "success",
         icon: "circle-check",
       };
+    case "not_required":
+      return { label: "Nothing to pay", tone: "neutral", icon: "circle-check" };
     default:
       return { label: "Payment", tone: "neutral", icon: "clock" };
   }
@@ -174,18 +218,22 @@ export function presentConfirmationSource(source: string | null): string {
   }
 }
 
-/** Roll-up of both installments for a list row. */
+/**
+ * Roll-up of the installments for a list row. Pass the order where it is at
+ * hand, so an upfront order reads as one full payment.
+ */
 export function presentPaymentProgress(
-  payments: OrderPayments | undefined,
+  source: OrderPayments | PaymentSplitSource | undefined,
 ): StatePresentation {
-  const downpayment = paymentOf(payments, "downpayment");
-  const balance = paymentOf(payments, "balance");
+  const downpayment = paymentOf(source as PaymentSource, "downpayment");
+  const balance = paymentOf(source as PaymentSource, "balance");
   if (!downpayment && !balance) {
     return { label: "No payment set up", tone: "neutral", icon: "clock" };
   }
+  const upfront = balanceNotRequired(source as PaymentSplitSource);
   if (downpayment?.status === "pending_confirmation") {
     return {
-      label: "Downpayment to confirm",
+      label: upfront ? "Full payment to confirm" : "Downpayment to confirm",
       tone: "warning",
       icon: "triangle-alert",
     };
@@ -197,8 +245,7 @@ export function presentPaymentProgress(
       icon: "triangle-alert",
     };
   }
-  const settled = (record: { status: string } | undefined) =>
-    record?.status === "confirmed" || record?.status === "legacy_confirmed";
+  const settled = paymentIsSettled;
   if (settled(downpayment) && (!balance || settled(balance))) {
     return { label: "Paid in full", tone: "success", icon: "circle-check" };
   }

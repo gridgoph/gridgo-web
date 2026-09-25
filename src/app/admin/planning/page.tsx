@@ -300,7 +300,7 @@ export default function AdminPlanningPage() {
             <ul className="m-0 flex list-none flex-col gap-2 p-0">
               {(snapshot?.agenda ?? []).map((item) => {
                 const order = orders?.find((o) => o.id === item.id);
-                const status = order ? presentOrderState(order.state) : null;
+                const status = order ? presentOrderState(order.state, order) : null;
                 return (
                   <li
                     key={item.id}
@@ -353,7 +353,7 @@ export default function AdminPlanningPage() {
           <ul className="m-0 flex list-none flex-col gap-3 p-0">
             {snapshot.agenda.map((item) => {
               const order = orders?.find((o) => o.id === item.id);
-              const status = order ? presentOrderState(order.state) : null;
+              const status = order ? presentOrderState(order.state, order) : null;
               return (
                 <li
                   key={item.id}

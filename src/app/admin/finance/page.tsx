@@ -153,9 +153,9 @@ export default function AdminFinancePage() {
       {
         id: "state",
         header: "Order status",
-        sortValue: (o) => presentOrderState(o.state).label,
+        sortValue: (o) => presentOrderState(o.state, o).label,
         cell: (o) => {
-          const p = presentOrderState(o.state);
+          const p = presentOrderState(o.state, o);
           return <StatusChip tone={p.tone} label={p.label} icon={p.icon} />;
         },
       },
@@ -164,11 +164,11 @@ export default function AdminFinancePage() {
         header: "Payment",
         sortValue: (o) =>
           o.payments
-            ? presentPaymentProgress(o.payments).label
+            ? presentPaymentProgress(o).label
             : presentPaymentStatus(o.paymentStatus).label,
         cell: (o) => {
           const p = o.payments
-            ? presentPaymentProgress(o.payments)
+            ? presentPaymentProgress(o)
             : presentPaymentStatus(o.paymentStatus);
           return <StatusChip tone={p.tone} label={p.label} icon={p.icon} />;
         },

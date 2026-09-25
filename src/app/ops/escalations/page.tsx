@@ -298,7 +298,7 @@ function EscalationCard({
   onResolve?: () => void;
 }) {
   const status = presentEscalationStatus(escalation.status);
-  const orderStatus = order ? presentOrderState(order.state) : null;
+  const orderStatus = order ? presentOrderState(order.state, order) : null;
 
   return (
     <li className="gg-card flex flex-col gap-3">

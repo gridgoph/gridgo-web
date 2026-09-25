@@ -1,7 +1,8 @@
 /**
  * The payment confirmation queue.
  *
- * A client's 75% downpayment does not move the order on its own — Operations
+ * A client's payment — the whole order on an upfront checkout, the downpayment
+ * on one placed on 75/25 — does not move the order on its own. Operations
  * looks at the QR transfer reference against the exact amount owed and decides
  * whether the money arrived. Until that happens the order sits still, so this
  * queue is ordered by how long someone has been waiting.

@@ -59,7 +59,7 @@ import {
   upcomingDeskDates,
 } from "@/lib/physicalInvoiceDesk";
 import { presentOrderState } from "@/lib/order-state";
-import { paymentOf, paymentProgress } from "@/lib/payments";
+import { paymentOf, paymentPlanLabel, paymentProgress } from "@/lib/payments";
 import {
   milestoneProofs,
   payoutProgress,
@@ -209,7 +209,7 @@ export function OrderWorkspace({
     );
   }
 
-  const status = presentOrderState(order.state);
+  const status = presentOrderState(order.state, order);
   const busy = acting !== null;
   const hasPayout = Boolean(order.payoutMilestones?.length);
   const releasing = acting?.startsWith("release-")
@@ -362,7 +362,7 @@ export function OrderWorkspace({
               summary={historySummary(order)}
               marker={{ icon: CircleDot, tone: "muted" }}
             >
-              <Timeline entries={order.timeline} />
+              <Timeline entries={order.timeline} order={order} />
             </SectionRow>
           </Accordion>
 
@@ -914,6 +914,7 @@ function DeliveryStep({ order, hint }: { order: Order; hint?: string }) {
 
 function SpecRail({ order, payoutsHref }: { order: Order; payoutsHref?: string }) {
   const { paidMinor, remainingMinor } = paymentProgress(order);
+  const plan = paymentPlanLabel(order);
   const payout = payoutProgress(order);
   const deliverySplit = orderDeliverySplit(order);
   const artwork = artworkEvidence(order);
@@ -1027,6 +1028,12 @@ function SpecRail({ order, payoutsHref }: { order: Order; payoutsHref?: string }
           <dd className="text-body text-text-primary m-0 tabular-nums">
             {order.totalMinor != null ? formatPhp(order.totalMinor) : "—"}
           </dd>
+          {plan ? (
+            <>
+              <dt className="text-caption text-text-muted">Payment plan</dt>
+              <dd className="text-body text-text-secondary m-0">{plan}</dd>
+            </>
+          ) : null}
           <dt className="text-caption text-text-muted">Paid</dt>
           <dd className="text-body text-text-secondary m-0 tabular-nums">
             {paidMinor != null ? formatPhp(paidMinor) : "—"}

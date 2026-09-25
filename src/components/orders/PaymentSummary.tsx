@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 /**
- * Both installments of an order's digital payment, with what the client sent
- * and where each one stands. The review workspace supplies authorized actions
- * beside the matching installment; other callers keep this read-only.
+ * The installments of an order's digital payment, with what the client sent
+ * and where each one stands: one full payment on an order paid up front, the
+ * downpayment and the balance on a split one. The review workspace supplies
+ * authorized actions beside the matching installment; other callers keep this
+ * read-only.
  */
 
 import { EvidencePlate } from "@/components/orders/EvidencePreview";
@@ -16,7 +18,7 @@ import {
   presentPaymentMethod,
   presentPaymentStatus,
 } from "@/lib/order-state";
-import { listedInstallments, paymentOf } from "@/lib/payments";
+import { balanceNotRequired, listedInstallments, paymentOf } from "@/lib/payments";
 
 type Props = {
   order: Order;
@@ -25,11 +27,12 @@ type Props = {
 
 export function PaymentSummary({ order, renderActions }: Props) {
   const installments = listedInstallments(order);
+  const upfront = balanceNotRequired(order);
   if (installments.length === 0) {
     return (
       <p className="text-body text-text-secondary m-0">
-        The two installments are set up when the supplier accepts and names its price.
-        Nothing is owed before then.
+        The payment is set up when the supplier accepts and names its price. Nothing is
+        owed before then.
       </p>
     );
   }
@@ -47,7 +50,7 @@ export function PaymentSummary({ order, renderActions }: Props) {
                 className="text-body text-text-primary m-0"
                 style={{ fontFamily: "var(--font-medium)" }}
               >
-                {presentInstallment(code)}
+                {presentInstallment(code, order)}
               </p>
               <p
                 className="text-body text-text-primary m-0 tabular-nums"
@@ -112,7 +115,9 @@ export function PaymentSummary({ order, renderActions }: Props) {
             ) : (
               <p className="text-caption text-text-muted m-0 mt-2">
                 {code === "downpayment"
-                  ? "The client sends this by QR transfer once they have been told the final price."
+                  ? upfront
+                    ? "The client pays the whole order by QR transfer once they have been told the final price."
+                    : "The client sends this by QR transfer once they have been told the final price."
                   : "The client can send the balance once the downpayment is confirmed."}
               </p>
             )}

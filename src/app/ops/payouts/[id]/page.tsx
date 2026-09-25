@@ -116,7 +116,7 @@ export default function OpsPayoutReviewPage() {
   }
 
   const { order, holds } = data;
-  const status = presentOrderState(order.state);
+  const status = presentOrderState(order.state, order);
   const progress = payoutProgress(order);
   const artwork = artworkEvidence(order);
 

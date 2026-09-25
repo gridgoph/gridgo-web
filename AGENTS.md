@@ -8,7 +8,7 @@ A single Next.js (App Router) portal for three roles: `supplier`, `ops_admin`, `
 
 Mobile apps (client / supplier / rider) are separate repos. Do not invent a parallel product identity here.
 
-**Operations is a required participant in the order flow, not an observer.** A client's 75% downpayment waits for a person here to confirm the money arrived; until they do, the order physically cannot progress. That confirmation lives on the shared order workspace; see [inbox destinations](docs/REALTIME_UPDATES.md#inbox-destinations).
+**Operations is a required participant in the order flow, not an observer.** A client's payment (the whole order at checkout, by default) waits for a person here to confirm the money arrived; until they do, the order physically cannot progress. That confirmation lives on the shared order workspace; see [inbox destinations](docs/REALTIME_UPDATES.md#inbox-destinations).
 
 The operational model is v2. Its contract is `gridgo-api/docs/OPERATIONAL_MODEL_V2_API.md`; the captain's reasoning is in `/home/kali/firstmate/data/gridgo-operational-model-v2.md`. Read the contract before changing anything that touches money, states, or roles.
 
@@ -40,7 +40,7 @@ privileged account.
 | `src/lib/live/desktopAlerts.ts`        | Opt-in desktop alerts (with `public/desk-alerts-sw.js`): permission states, the Desk prompt and footer switch, toast dedupe, role filter, click routing through the service worker; see `docs/REALTIME_UPDATES.md#desktop-alerts`. Closed-browser delivery would need Web Push (API change) |
 | `src/app/api/gridgo/[...path]/route.ts` | Local-dev same-origin proxy to a loopback API (strips `Origin`)                                                                                                                                                                                                                                                                                                    |
 | `src/lib/api/types.ts`                  | Response/request types (no `any`)                                                                                                                                                                                                                                                                                                                                  |
-| `src/lib/api/constraints.ts`            | Server rules the UI can explain _before_ rejection (payment/milestone gates, holds, issue window)                                                                                                                                                                                                                                                                  |
+| `src/lib/api/constraints.ts`            | Server rules the UI can explain _before_ rejection (payment/milestone gates, holds, issue window). The order's payment split (full up front vs 75/25) is read in `src/lib/payments.ts` |
 | `src/lib/nav.ts`                        | **Single** role→nav structure (`ROLE_NAV_GROUPS` + flattened `ROLE_NAV`); AppShell reads this only                                                                                                                                                                                                                                                                 |
 | `src/lib/auth/`                         | Clerk token bridge, `/auth/me` identity context, portal-membership landing, public login-return URL                                                                                                                                                                                                                                                                |
 | `src/middleware.ts`                     | Clerk-session check only; never role authorization; delegates public-origin reconstruction to `publicRequestUrl`                                                                                                                                                                                                                                                   |
@@ -348,7 +348,7 @@ Explain these _before_ the user hits submit when the screen can know:
 
 - A milestone needs a Proof of Fulfilment, and releases in order → `milestoneReleaseBlocker` (mirrors `409 pof_required` / `milestone_not_reached`)
 - An active claim hold blocks every remaining milestone → `order.payoutHold`, `claimBlocksPayout`, `409 payout_held`
-- The balance cannot be submitted before the downpayment settles → `canSubmitBalance`
+- The balance cannot be submitted before the downpayment settles, and never on an order paid in full up front → `canSubmitBalance`
 - Payment cannot be asked for before the client was told the final price → `clientWasNotifiedOfPrice`, `409 assignment_notification_required`
 - Client issues only in `issue_window_open` → `canReportIssue`
 
@@ -440,11 +440,17 @@ Commission secrecy is an **authorization rule**, not a layout preference. The se
 
 `totalMinor` **already includes delivery** in v2. Never write `totalMinor + deliveryFeeMinor` — that was the v1 shape and it double-counts.
 
-### Payment is two installments, confirmed by hand
+### Payment is in full at checkout, confirmed by hand
 
-75% downpayment then 25% balance, both digital QR transfers. The client submits a reference; Operations confirms it (`payment_authorized`) or rejects it with a client-visible reason that returns the installment to `not_submitted` so they can resubmit. Rejection reasons are written **for the client to read** — see `PAYMENT_REJECTION_REASONS` in `src/app/ops/_lib/payments.ts`.
+New orders are paid **100% up front** (the captain, 2026-09-25, gridgo-api#66): one digital QR transfer, one confirmation. Such an order has `downpaymentPercent: 100`, `balanceMinor: 0`, and keeps its balance installment at ₱0 with status `not_required`. Nobody can submit, confirm or reject that installment (`409 balance_not_required`), and every gate that waits on the balance treats it as settled. Screens show one "Full payment" and "Paid in full", with no balance row, balance queue state or balance blocker copy.
 
-The seam is deliberately clean: a payment provider can replace the manual confirmation without redesigning the flow.
+The split is the Operations/Super Admin setting `downpaymentPercent` (100 or 75; the "Checkout payment" control in Operational settings, same `expectedVersion` handshake). It is snapshotted per order, so the business can go back to 75/25 without a release, and orders already placed on 75/25 keep their downpayment-then-balance step exactly as before.
+
+Never write 75 or 25. Read the order's own split through `src/lib/payments.ts`: `balanceNotRequired`, `downpaymentPercentOf`, `installmentLabel` and `paymentPlanLabel`. `listedInstallments` already leaves out a `not_required` balance, and `paymentIsSettled` counts it as settled.
+
+The client submits a reference; Operations confirms it (`payment_authorized`) or rejects it with a client-visible reason that returns the installment to `not_submitted` so they can resubmit. Rejection reasons are written **for the client to read** — see `PAYMENT_REJECTION_REASONS` in `src/app/ops/_lib/payments.ts`.
+
+The seam is deliberately clean: a payment provider can replace the manual confirmation without redesigning the flow. Screenshots (light and dark, a new order awaiting confirmation, paid in full, and the Checkout payment control): `docs/screenshots/upfront/`.
 
 ### Supplier payout is four milestones
 
