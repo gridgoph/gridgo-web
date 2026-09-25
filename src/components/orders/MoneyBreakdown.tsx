@@ -15,6 +15,7 @@ import { formatRatePercent } from "@/components/settings/service-fee";
 import type { Order } from "@/lib/api/types";
 import { orderDeliverySplit, platformShareBps } from "@/lib/delivery-split";
 import { formatPhp } from "@/lib/format";
+import { balanceNotRequired, installmentLabel } from "@/lib/payments";
 
 type Props = {
   order: Order;
@@ -129,16 +130,24 @@ export function MoneyBreakdown({ order, headingId }: Props) {
       {order.downpaymentMinor !== undefined &&
       order.balanceMinor !== undefined ? (
         <div className="border-t border-outline-subtle pt-4">
+          {/*
+            Paid up front, the one payment is the whole total and there is no
+            balance line. A 75/25 order keeps both, at its own shares.
+          */}
           <MoneyRows
             rows={[
               {
-                label: "Downpayment (75%)",
+                label: installmentLabel(order, "downpayment"),
                 value: formatPhp(order.downpaymentMinor),
               },
-              {
-                label: "Balance (25%)",
-                value: formatPhp(order.balanceMinor),
-              },
+              ...(balanceNotRequired(order)
+                ? []
+                : [
+                    {
+                      label: installmentLabel(order, "balance"),
+                      value: formatPhp(order.balanceMinor),
+                    },
+                  ]),
             ]}
           />
         </div>

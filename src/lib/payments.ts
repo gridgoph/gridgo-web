@@ -102,11 +102,16 @@ export function paymentOf(
   return normalizePayments(source)?.[code];
 }
 
-/** Installments that actually exist on this order — never a missing slot. */
+/**
+ * Installments that actually exist on this order — never a missing slot, and
+ * never the ₱0 `not_required` balance of an order paid in full up front: there
+ * is nothing on it to show, submit, confirm or reject.
+ */
 export function listedInstallments(source: PaymentSource): PaymentInstallment[] {
   const listed: PaymentInstallment[] = [];
   if (paymentOf(source, "downpayment")) listed.push("downpayment");
-  if (paymentOf(source, "balance")) listed.push("balance");
+  const balance = paymentOf(source, "balance");
+  if (balance && balance.status !== BALANCE_NOT_REQUIRED) listed.push("balance");
   return listed;
 }
 
@@ -125,4 +130,96 @@ export function paymentProgress(order: Pick<Order, "payments" | "totalMinor">) {
     paidMinor,
     remainingMinor: paidMinor !== null && order.totalMinor != null ? Math.max(0, order.totalMinor - paidMinor) : null,
   };
+}
+
+/*
+ How much of the order the client paid up front.
+
+ The captain moved new orders to 100% on 2026-09-25 (gridgo-api#66): one QR
+ transfer, one confirmation, and no balance to chase. Each order snapshots the
+ split it was placed under as `downpaymentPercent`, and a paid-up-front order
+ keeps its balance installment at ₱0 with status `not_required`. Orders placed
+ on 75/25 keep their balance step. Every screen that names a share reads it
+ here rather than writing 75 or 25.
+*/
+
+/** Orders placed before the split was snapshotted were all 75/25. */
+export const LEGACY_DOWNPAYMENT_PERCENT = 75;
+
+/** The balance status of an order paid in full up front. */
+export const BALANCE_NOT_REQUIRED = "not_required";
+
+/** An order, or only its payments, as the split helpers read it. */
+export type PaymentSplitSource =
+  | PaymentSource
+  | Partial<Pick<Order, "payments" | "downpaymentPercent" | "balanceMinor">>;
+
+function orderFields(
+  source: PaymentSplitSource,
+): Partial<Pick<Order, "downpaymentPercent" | "balanceMinor">> {
+  if (!source || typeof source !== "object" || !("payments" in source)) return {};
+  return source as Partial<Pick<Order, "downpaymentPercent" | "balanceMinor">>;
+}
+
+/**
+ * True when the order has no balance to pay: it was paid in full up front.
+ * A balance of more than ₱0 always means a 75/25 order, whatever else it says.
+ */
+export function balanceNotRequired(source: PaymentSplitSource): boolean {
+  const { balanceMinor, downpaymentPercent } = orderFields(source);
+  if (typeof balanceMinor === "number" && balanceMinor > 0) return false;
+  if (paymentOf(source as PaymentSource, "balance")?.status === BALANCE_NOT_REQUIRED) {
+    return true;
+  }
+  return balanceMinor === 0 || downpaymentPercent === 100;
+}
+
+/** The share of the total this order took up front: 100, or 75 on a split order. */
+export function downpaymentPercentOf(source: PaymentSplitSource): number {
+  if (balanceNotRequired(source)) return 100;
+  const { downpaymentPercent } = orderFields(source);
+  return typeof downpaymentPercent === "number" &&
+    Number.isFinite(downpaymentPercent) &&
+    downpaymentPercent > 0 &&
+    downpaymentPercent < 100
+    ? downpaymentPercent
+    : LEGACY_DOWNPAYMENT_PERCENT;
+}
+
+/** "Full payment" on an upfront order; "Downpayment (75%)" / "Balance (25%)" on a split one. */
+export function installmentLabel(
+  source: PaymentSplitSource,
+  code: PaymentInstallment,
+): string {
+  if (balanceNotRequired(source)) {
+    return code === "downpayment" ? "Full payment" : "No balance";
+  }
+  const percent = downpaymentPercentOf(source);
+  return code === "downpayment"
+    ? `Downpayment (${percent}%)`
+    : `Balance (${100 - percent}%)`;
+}
+
+/** The installment's name inside a sentence: "full payment", "downpayment", "balance". */
+export function installmentNoun(
+  source: PaymentSplitSource,
+  code: PaymentInstallment,
+): string {
+  if (code === "downpayment") {
+    return balanceNotRequired(source) ? "full payment" : "downpayment";
+  }
+  return "balance";
+}
+
+/**
+ * The plan the order was placed under, for the Money rail: "In full at
+ * checkout", or "75% now, 25% before delivery". Null before anything is owed.
+ */
+export function paymentPlanLabel(
+  order: Pick<Order, "payments"> & Partial<Pick<Order, "downpaymentPercent" | "balanceMinor">>,
+): string | null {
+  if (listedInstallments(order).length === 0) return null;
+  if (balanceNotRequired(order)) return "In full at checkout";
+  const percent = downpaymentPercentOf(order);
+  return `${percent}% now, ${100 - percent}% before delivery`;
 }

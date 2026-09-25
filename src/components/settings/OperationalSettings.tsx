@@ -6,7 +6,8 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
 
 /**
  * Platform settings held in configuration rather than code: GRIDGO's service
- * fee on top of every shop price, the rider's share of each delivery fee, how long a client has to raise an issue
+ * fee on top of every shop price, the rider's share of each delivery fee, how much
+ * of a new order the client pays at checkout, how long a client has to raise an issue
  * after delivery, what delivery costs at each distance, and the GCash plate
  * checkout scans.
  *
@@ -36,6 +37,7 @@ import {
   RiderDeliveryShareSkeleton,
   riderShareInput,
 } from "@/components/settings/RiderDeliveryShare";
+import { CheckoutPayment, checkoutPaymentLabel } from "@/components/settings/CheckoutPayment";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -255,6 +257,8 @@ export function OperationalSettings() {
 
   const [rate, setRate] = useState("");
   const [riderShare, setRiderShare] = useState("");
+  /** Undefined while the API holds no checkout split; nothing is sent for it then. */
+  const [checkoutPercent, setCheckoutPercent] = useState<number | undefined>(undefined);
   const [hours, setHours] = useState("");
   const [bands, setBands] = useState<BandDraft[]>([]);
   const [nudge, setNudge] = useState<NudgeDraft>(toNudgeDraft({ version: 0, issueWindowHours: 24, serviceFeeRateBps: 1000, deliveryFeeBands: [] }));
@@ -281,6 +285,11 @@ export function OperationalSettings() {
           preserveDraft && previous && current !== riderShareInput(previous.riderCommissionBps)
             ? current
             : riderShareInput(next.riderCommissionBps),
+        );
+        setCheckoutPercent((current) =>
+          preserveDraft && previous && current !== previous.downpaymentPercent
+            ? current
+            : next.downpaymentPercent,
         );
         setHours((current) =>
           preserveDraft && previous && current !== String(previous.issueWindowHours)
@@ -424,15 +433,21 @@ export function OperationalSettings() {
         serviceFeeRateBps: parsedRate,
         serviceFeeVisibleToClient: feeVisible,
         ...(parsedRiderShare !== null ? { riderCommissionBps: parsedRiderShare } : {}),
+        // An API without the setting holds no checkout split; nothing is sent for it.
+        ...(checkoutPercent !== undefined ? { downpaymentPercent: checkoutPercent } : {}),
         issueWindowHours: parsedHours,
         deliveryFeeBands: parsedBands.bands,
         productionNudge: parsedNudge.nudge,
-        reason: settingsChangeReason(settings.riderCommissionBps, parsedRiderShare),
+        reason: settingsChangeReason(settings.riderCommissionBps, parsedRiderShare, {
+          from: settings.downpaymentPercent,
+          to: checkoutPercent,
+        }),
       });
       setSettings(next);
       setRate(bpsToPercentInput(next.serviceFeeRateBps));
       setFeeVisible(feeVisibleOf(next));
       setRiderShare(riderShareInput(next.riderCommissionBps));
+      setCheckoutPercent(next.downpaymentPercent);
       setHours(String(next.issueWindowHours));
       setBands(toDraft(next.deliveryFeeBands));
       setNudge(toNudgeDraft(next));
@@ -440,8 +455,12 @@ export function OperationalSettings() {
         next.riderCommissionBps !== undefined
           ? `, give the rider ${formatRatePercent(next.riderCommissionBps)} of each delivery fee,`
           : "";
+      const checkoutPart =
+        next.downpaymentPercent !== undefined
+          ? ` Checkout: ${checkoutPaymentLabel(next.downpaymentPercent)}.`
+          : "";
       setSaveOk(
-        `Saved. Orders placed from now on carry a ${formatRatePercent(next.serviceFeeRateBps)} service fee${riderPart} and price delivery from these bands, and issue windows opened from now use the new length. Orders already placed keep the figures they were given.`,
+        `Saved. Orders placed from now on carry a ${formatRatePercent(next.serviceFeeRateBps)} service fee${riderPart} and price delivery from these bands, and issue windows opened from now use the new length.${checkoutPart} Orders already placed keep the figures they were given.`,
       );
     } catch (err) {
       if (err instanceof ApiError && err.code === "settings_version_conflict") {
@@ -505,6 +524,7 @@ export function OperationalSettings() {
     rate !== bpsToPercentInput(settings.serviceFeeRateBps) ||
     feeVisible !== feeVisibleOf(settings) ||
     riderShare !== riderShareInput(settings.riderCommissionBps) ||
+    checkoutPercent !== settings.downpaymentPercent ||
     hours !== String(settings.issueWindowHours) ||
     JSON.stringify(bands) !== JSON.stringify(toDraft(settings.deliveryFeeBands)) ||
     JSON.stringify(nudge) !== JSON.stringify(toNudgeDraft(settings));
@@ -601,6 +621,13 @@ export function OperationalSettings() {
         inForceBps={settings.riderCommissionBps}
         draftBps={draftRiderBps}
         invalid={riderShareInvalid}
+      />
+
+      <CheckoutPayment
+        value={checkoutPercent ?? settings.downpaymentPercent ?? 100}
+        onChange={setCheckoutPercent}
+        inForce={settings.downpaymentPercent}
+        disabled={busy}
       />
 
       <div className="grid w-full gap-3 lg:grid-cols-2 lg:items-start">
@@ -876,6 +903,7 @@ export function OperationalSettings() {
             setRate(bpsToPercentInput(settings.serviceFeeRateBps));
             setFeeVisible(feeVisibleOf(settings));
             setRiderShare(riderShareInput(settings.riderCommissionBps));
+            setCheckoutPercent(settings.downpaymentPercent);
             setHours(String(settings.issueWindowHours));
             setBands(toDraft(settings.deliveryFeeBands));
             setNudge(toNudgeDraft(settings));
@@ -892,16 +920,29 @@ export function OperationalSettings() {
 
 /**
  * The audit line saved with the change. The API requires one; a rider share
- * change is named in it so the audit log says who moved rider money and to what.
+ * or checkout payment change is named in it so the audit log says who moved
+ * that money and to what.
  */
 export function settingsChangeReason(
   previousRiderBps: number | undefined,
   nextRiderBps: number | null,
+  checkout: { from: number | undefined; to: number | undefined } = {
+    from: undefined,
+    to: undefined,
+  },
 ): string {
-  if (previousRiderBps === undefined || nextRiderBps === null || previousRiderBps === nextRiderBps) {
-    return "Updated from the portal";
+  const changes: string[] = [];
+  if (previousRiderBps !== undefined && nextRiderBps !== null && previousRiderBps !== nextRiderBps) {
+    changes.push(
+      `rider delivery share ${formatRatePercent(previousRiderBps)} to ${formatRatePercent(nextRiderBps)}`,
+    );
   }
-  return `Updated from the portal: rider delivery share ${formatRatePercent(previousRiderBps)} to ${formatRatePercent(nextRiderBps)}`;
+  if (checkout.from !== undefined && checkout.to !== undefined && checkout.from !== checkout.to) {
+    changes.push(`checkout payment ${checkout.from}% to ${checkout.to}% up front`);
+  }
+  return changes.length
+    ? `Updated from the portal: ${changes.join("; ")}`
+    : "Updated from the portal";
 }
 
 type ReceiptLine = {

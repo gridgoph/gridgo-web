@@ -92,7 +92,7 @@ export function paymentProofEvidence(order: Pick<Order, "payments">): EvidenceIt
       {
         fileId,
         kind: "payment_proof" as const,
-        label: `${presentInstallment(code)} proof`,
+        label: `${presentInstallment(code, order)} proof`,
         caption: payment.reference,
       },
     ];

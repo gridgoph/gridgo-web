@@ -125,10 +125,10 @@ export default function OpsOrdersPage() {
       {
         id: "status",
         header: "Status",
-        sortValue: (order) => presentOrderState(order.state).label,
-        filterValue: (order) => presentOrderState(order.state).label,
+        sortValue: (order) => presentOrderState(order.state, order).label,
+        filterValue: (order) => presentOrderState(order.state, order).label,
         cell: (order) => {
-          const status = presentOrderState(order.state);
+          const status = presentOrderState(order.state, order);
           return (
             <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
           );

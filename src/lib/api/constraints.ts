@@ -2,8 +2,12 @@
  * Server-enforced rules the UI should explain *before* the user hits them.
  * Values match gridgo-api (observed + server source); money is always PHP minor units.
  *
- * Cash on delivery is gone from the platform. The 25% balance is digital only —
+ * Cash on delivery is gone from the platform. Every installment is digital only —
  * do not reintroduce a cash path, a cash ceiling, or a Pilot Credits payment route.
+ *
+ * New orders are paid in full up front; orders placed on 75/25 keep a balance.
+ * The split an order was placed under is read through `downpaymentPercentOf`
+ * and `balanceNotRequired` in `@/lib/payments` — never a literal 75 or 25.
  */
 
 import type {
@@ -13,10 +17,14 @@ import type {
   PayoutMilestone,
   PayoutMilestoneCode,
 } from "@/lib/api/types";
-import { listedInstallments, paymentOf } from "@/lib/payments";
+import { balanceNotRequired, listedInstallments, paymentOf } from "@/lib/payments";
 
-/** Share of the client total taken as the downpayment. */
-export const DOWNPAYMENT_PERCENT = 75;
+/**
+ * The two checkout splits the API accepts for `PlatformSettings.downpaymentPercent`,
+ * in the order Operational settings offers them. 100 is the default.
+ */
+export const DOWNPAYMENT_PERCENT_CHOICES = [100, 75] as const;
+export type DownpaymentPercentChoice = (typeof DOWNPAYMENT_PERCENT_CHOICES)[number];
 
 /**
  * GRIDGO's service fee is not a constant. Operations sets the rate in
@@ -72,6 +80,7 @@ export const MILESTONE_ORDER: readonly PayoutMilestoneCode[] = [
 
 export type PlatformConstraintId =
   | "payment_not_pending"
+  | "balance_not_required"
   | "assignment_notification_required"
   | "payout_held"
   | "pof_required"
@@ -92,6 +101,11 @@ export const PLATFORM_CONSTRAINT_COPY: Record<
     title: "Nothing waiting on this installment",
     guidance:
       "This installment has no payment waiting for a decision — someone may have already confirmed it. Refresh the order to see where it stands.",
+  },
+  balance_not_required: {
+    title: "Paid in full up front",
+    guidance:
+      "This order was paid in full at checkout, so it has no balance to send, confirm or reject.",
   },
   assignment_notification_required: {
     title: "Client has not been told the final price",
@@ -152,11 +166,20 @@ export function paymentAwaitsConfirmation(
   return payment?.status === "pending_confirmation";
 }
 
-/** True once the money is in, however it was recorded. */
+/**
+ * True once nothing more is owed on this installment: the money is in, however
+ * it was recorded, or it is the ₱0 `not_required` balance of an order paid in
+ * full up front. Mirrors the API, where every gate on the balance lets
+ * `not_required` through.
+ */
 export function paymentIsSettled(
   payment: Pick<PaymentRecord, "status"> | undefined | null,
 ): boolean {
-  return payment?.status === "confirmed" || payment?.status === "legacy_confirmed";
+  return (
+    payment?.status === "confirmed" ||
+    payment?.status === "legacy_confirmed" ||
+    payment?.status === "not_required"
+  );
 }
 
 /** The installments on an order that Operations still has to decide on. */
@@ -173,8 +196,12 @@ export function installmentsAwaitingConfirmation(
  * The balance cannot be submitted until the downpayment is settled, so a
  * pending balance always implies a settled downpayment. Stated for the UI so
  * it can explain the order of events before the client is asked for anything.
+ * An order paid in full up front has no balance to submit at all.
  */
-export function canSubmitBalance(order: Pick<Order, "payments">): boolean {
+export function canSubmitBalance(
+  order: Pick<Order, "payments"> & Partial<Pick<Order, "balanceMinor" | "downpaymentPercent">>,
+): boolean {
+  if (balanceNotRequired(order)) return false;
   return paymentIsSettled(paymentOf(order, "downpayment"));
 }
 
@@ -271,7 +298,7 @@ export function milestoneReleaseBlocker(
     }
     const balance = paymentOf(order, "balance");
     if (balance && !paymentIsSettled(balance)) {
-      return "The delivered share releases once the client's 25% balance is confirmed.";
+      return "The delivered share releases once the client's balance is confirmed.";
     }
   }
   if (milestone.code === "retention" && order.state !== "completed") {

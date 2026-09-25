@@ -7,6 +7,7 @@ import type { Claim, Issue, Order } from "@/lib/api/types";
 import { claimBlocksPayout } from "@/lib/api/constraints";
 import { primaryOpsAction } from "@/lib/ops-actions";
 import { presentOrderState } from "@/lib/order-state";
+import { balanceNotRequired } from "@/lib/payments";
 
 export type OverviewBucketId =
   | "needs_qa"
@@ -256,7 +257,7 @@ export function pickOverviewNextAction(
     .sort((a, b) => (a.updatedAt || "").localeCompare(b.updatedAt || ""))[0];
   if (paymentOrder) {
     return {
-      title: "Confirm a downpayment",
+      title: balanceNotRequired(paymentOrder) ? "Confirm a full payment" : "Confirm a downpayment",
       body: `${paymentOrder.title} — the client has transferred and the order cannot move until the money is confirmed.`,
       href: `/ops/orders/${paymentOrder.id}`,
       cta: "Review payment",

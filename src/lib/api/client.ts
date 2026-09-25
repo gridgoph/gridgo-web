@@ -412,7 +412,7 @@ export async function transitionOrder(
  *
  * The second of a collected order's two endings. The rider's proof said the
  * package reached our shelf; this says it left with the client, which is the
- * point the balance has to be settled and the issue window starts.
+ * point any balance has to be settled and the issue window starts.
  */
 export async function recordCollection(
   orderId: string,
@@ -426,7 +426,9 @@ export async function recordCollection(
 }
 
 // ---------------------------------------------------------------------------
-// Split digital payment — 75% downpayment, then the 25% balance
+// Digital payment — in full at checkout, or a downpayment then the balance
+// on an order placed on 75/25. A `not_required` balance answers 409
+// `balance_not_required` to submit, confirm and reject alike.
 // ---------------------------------------------------------------------------
 
 /**
@@ -466,7 +468,8 @@ export async function promisePhysicalInvoice(
 
 /**
  * Ops / Super Admin — the manual confirmation that lets an order leave payment.
- * Confirming the downpayment moves the order to `payment_authorized`.
+ * Confirming the downpayment (the full payment, on an upfront order) moves the
+ * order to `payment_authorized`.
  */
 export async function confirmPayment(
   orderId: string,
@@ -1427,7 +1430,8 @@ export async function postDispatchLocation(
 
 /**
  * Rider only. Records delivery evidence and atomically opens the issue window.
- * Requires a confirmed balance and a delivered Proof of Fulfilment on the order.
+ * Requires a settled balance (confirmed, or `not_required` on an order paid up
+ * front) and a delivered Proof of Fulfilment on the order.
  */
 export async function recordDelivery(
   orderId: string,

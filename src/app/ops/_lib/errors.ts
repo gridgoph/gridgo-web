@@ -10,6 +10,7 @@ import { RIDER_SHARE_INVALID } from "@/lib/delivery-split";
 /** Codes worth naming precisely, because each has a different way out. */
 const CODE_COPY: Record<string, string> = {
   payment_not_pending: PLATFORM_CONSTRAINT_COPY.payment_not_pending.guidance,
+  balance_not_required: PLATFORM_CONSTRAINT_COPY.balance_not_required.guidance,
   payment_rejection_reason_required:
     "Say what was wrong with the payment. The client only gets your reason to work from.",
   payment_already_confirmed:
@@ -49,6 +50,8 @@ const CODE_COPY: Record<string, string> = {
     "Pilot Credits can no longer pay for an order. Grants and balances still exist, but the client pays by QR transfer.",
   order_not_found: "That order was not found. Refresh the queue.",
   invalid_rider_commission_rate: RIDER_SHARE_INVALID,
+  invalid_downpayment_percent:
+    "Checkout takes either the full amount or 75% now and 25% before delivery. Choose one of the two.",
   promise_outside_business_hours:
     "Promise a Monday–Friday time from 8:00 am up to, but not including, 5:00 pm Philippine time.",
   invalid_physical_invoice: "Choose a date and a time for the paper invoice, then set the promise.",
