@@ -42,6 +42,11 @@ export const NAV_COUNT_MEANING: Record<NavCountKey, CountMeaning> = {
     attention: false,
   },
   "jobs-need-action": { phrase: needAction, attention: false },
+  // The captain's own calls: quiet, because no order waits on them.
+  "tracker-needs-decision": {
+    phrase: (count) => `${compactCount(count)} ${count === 1 ? "needs" : "need"} a decision`,
+    attention: false,
+  },
 };
 
 /** Over 99 reads "99+"; the badge is a hint, the page has the exact figure. */

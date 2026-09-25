@@ -125,6 +125,10 @@ const { ordersRef, listOrdersMock, countMocks } = vi.hoisted(() => {
       })),
       listJobs: vi.fn(async () => [] as Array<Record<string, unknown>>),
       listSupportChatThreads: vi.fn(async () => [] as Array<{ unreadCount: number }>),
+      getTracker: vi.fn(async () => ({
+        fetchedAt: "2026-09-25T00:00:00.000Z",
+        items: [] as Array<{ status: string }>,
+      })),
     },
   };
 });
@@ -137,6 +141,7 @@ vi.mock("@/lib/api/client", () => ({
   listClaims: countMocks.listClaims,
   listIssueReports: countMocks.listIssueReports,
   listJobs: countMocks.listJobs,
+  getTracker: countMocks.getTracker,
 }));
 
 vi.mock("@/lib/api/support-chat", () => ({
@@ -870,6 +875,35 @@ describe("AppShell chrome", () => {
 
       const chat = await screen.findByRole("link", { name: "Chat, 99+ unread" });
       expect(chat.querySelector('[data-slot="nav-count"]')).toHaveTextContent("99+");
+    });
+
+    it("counts Needs decision on the Super Admin Tracker row, quietly", async () => {
+      countMocks.getTracker.mockImplementation(async () => ({
+        fetchedAt: "2026-09-25T00:00:00.000Z",
+        items: [{ status: "needs-decision" }, { status: "needs-decision" }, { status: "live" }],
+      }));
+      renderShell("/admin/tracker");
+
+      const tracker = await screen.findByRole("link", { name: "Tracker, 2 need a decision" });
+      expect(tracker).toHaveAttribute("href", "/admin/tracker");
+      const badge = tracker.querySelector('[data-slot="nav-count"]') as HTMLElement;
+      expect(badge).toHaveTextContent("2");
+      expect(badge).toHaveAttribute("data-tone", "quiet");
+      expect(badge.previousElementSibling).toHaveTextContent(/^Tracker$/);
+    });
+
+    it("never shows or reads the Tracker on an Operations or supplier rail", async () => {
+      renderShell("/ops/overview");
+      await vi.waitFor(() => expect(listOrdersMock).toHaveBeenCalled());
+      let nav = screen.getByRole("navigation", { name: "Primary navigation" });
+      expect(within(nav).queryByRole("link", { name: /Tracker/ })).toBeNull();
+
+      cleanup();
+      renderShell("/supplier/dashboard");
+      await vi.waitFor(() => expect(countMocks.listJobs).toHaveBeenCalled());
+      nav = screen.getByRole("navigation", { name: "Primary navigation" });
+      expect(within(nav).queryByRole("link", { name: /Tracker/ })).toBeNull();
+      expect(countMocks.getTracker).not.toHaveBeenCalled();
     });
 
     it("draws nothing at zero", async () => {

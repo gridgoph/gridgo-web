@@ -1132,6 +1132,70 @@ export type PostAnnouncementInput = {
   imageUrl?: string;
 };
 
+// ---- Super Admin Tracker ----
+// Contract: gridgo-api docs/TRACKER_API.md. GitHub issues labelled `tracker`
+// are the source of truth; the API reads them with a server-side token.
+
+/** The report's six statuses, exact wire values. */
+export type TrackerStatus =
+  | "open"
+  | "in-review"
+  | "merged-dev"
+  | "live"
+  | "needs-decision"
+  | "blocked";
+
+export type TrackerAttachment = {
+  id: string;
+  name: string;
+  contentType: string;
+  size: number;
+};
+
+export type TrackerDecision = {
+  id: string;
+  text: string;
+  attachments: TrackerAttachment[];
+  decidedBy: { id: string; name: string };
+  decidedAt: string;
+};
+
+/** One sheet row, read from one GitHub issue. Only `status` is editable. */
+export type TrackerItem = {
+  /** `<repo>#<number>`, e.g. `gridgo-web#50`. */
+  key: string;
+  repo: string;
+  number: number;
+  url: string;
+  /** Sheet section key: `general`, `supplier`, `step-01` … `step-08`. */
+  section: string;
+  order: number;
+  /** The sheet's ID column, e.g. `1.0`. */
+  ref: string;
+  /** Sheet "Module / Step". */
+  module: string;
+  developer: string;
+  /** Sheet "Requirement / Issue Description". */
+  requirement: string;
+  category: string;
+  status: TrackerStatus;
+  /** `explicit` when a Super Admin set it; `derived` from the issue's state. */
+  statusSource: "explicit" | "derived";
+  decisions: TrackerDecision[];
+};
+
+export type TrackerBoard = {
+  fetchedAt: string;
+  items: TrackerItem[];
+};
+
+export type RecordTrackerDecisionInput = {
+  text: string;
+  attachmentIds?: string[];
+  /** Where the item goes after the decision; the API defaults to `open`. */
+  status?: TrackerStatus;
+};
+
 // ---- Auth / health ----
 
 export type HealthResult = {

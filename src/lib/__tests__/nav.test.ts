@@ -59,6 +59,7 @@ describe("ROLE_NAV", () => {
       "/admin/settings",
       "/admin/audit",
       "/admin/planning",
+      "/admin/tracker",
       "/admin/broadcast",
     ]);
   });
@@ -81,6 +82,7 @@ describe("ROLE_NAV", () => {
       "/admin/riders",
       "/admin/roles",
       "/admin/settings",
+      "/admin/tracker",
       "/admin/verification",
       "/admin/zones",
       "/ops/approvals",
@@ -200,7 +202,13 @@ describe("ROLE_NAV", () => {
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-system")
         ?.items.map((n) => n.href),
-    ).toEqual(["/admin/settings", "/admin/audit", "/admin/planning", "/admin/broadcast"]);
+    ).toEqual([
+      "/admin/settings",
+      "/admin/audit",
+      "/admin/planning",
+      "/admin/tracker",
+      "/admin/broadcast",
+    ]);
 
     expect(
       ROLE_NAV_GROUPS.supplier
@@ -221,6 +229,26 @@ describe("ROLE_NAV", () => {
     );
     expect(grouped).toEqual(flat);
     expect(new Set(flat).size).toBe(flat.length);
+  });
+});
+
+describe("Tracker visibility", () => {
+  it("shows the Tracker to Super Admin only, under Platform › System, counting decisions", () => {
+    const tracker = navForRole("super_admin").find((n) => n.href === "/admin/tracker");
+    expect(tracker).toMatchObject({
+      label: "Tracker",
+      ready: true,
+      count: "tracker-needs-decision",
+    });
+    const system = navGroupsForRole("super_admin").find((g) => g.id === "admin-system");
+    expect(system?.section).toBe("Platform");
+    expect(system?.items.some((n) => n.href === "/admin/tracker")).toBe(true);
+
+    for (const role of ["ops_admin", "supplier", "client", "rider"] as const) {
+      expect(navForRole(role).some((n) => n.href.includes("tracker"))).toBe(false);
+      expect(navItemForPath("/admin/tracker", role)).toBeNull();
+    }
+    expect(contextTitleForPath("/admin/tracker", "super_admin")).toBe("Tracker");
   });
 });
 

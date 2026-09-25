@@ -51,6 +51,7 @@ export type NavIconKey =
   | "broadcast"
   | "chat"
   | "reports"
+  | "tracker"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -95,7 +96,8 @@ export type NavCountKey =
   | "claims-open"
   | "chat-unread"
   | "issue-reports-new"
-  | "jobs-need-action";
+  | "jobs-need-action"
+  | "tracker-needs-decision";
 
 /**
  * One rail section. A missing `label` is a top-level cluster (Overview / Jobs)
@@ -543,6 +545,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "planning",
           ready: true,
           placeholderBody: "",
+        },
+        {
+          id: "admin-tracker",
+          href: "/admin/tracker",
+          label: "Tracker",
+          title: "Tracker",
+          icon: "tracker",
+          ready: true,
+          placeholderBody: "",
+          count: "tracker-needs-decision",
         },
         // Last on purpose. This is the one control here that reaches outside the
         // platform onto people's phones, and it cannot be undone — it should take

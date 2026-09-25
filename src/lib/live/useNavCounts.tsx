@@ -9,9 +9,11 @@ import {
   type ReactNode,
 } from "react";
 
+import { needsDecisionCount } from "@/app/admin/_lib/tracker";
 import { waitingOnOperationsCount } from "@/app/ops/_lib/pipeline";
 import { isAwaitingSignupReview } from "@/components/approvals/signup-queue";
 import {
+  getTracker,
   listApprovalCases,
   listClaims,
   listEscalations,
@@ -93,6 +95,13 @@ const NAV_COUNT_SOURCES: Record<NavCountKey, CountSource> = {
   "jobs-need-action": {
     resources: ["jobs"],
     load: async () => (await listJobs()).filter((job) => needsSupplierAction(job)).length,
+  },
+  // GitHub is the source, so no stream covers it. The API caches its GitHub
+  // read for 60 s, so re-reading on each page move stays cheap.
+  "tracker-needs-decision": {
+    resources: [],
+    refreshOnNavigate: true,
+    load: async () => needsDecisionCount((await getTracker()).items),
   },
 };
 
