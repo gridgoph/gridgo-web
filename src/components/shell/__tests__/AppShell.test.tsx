@@ -103,16 +103,44 @@ vi.mock("@/lib/live/LiveProvider", () => ({
   useLiveOptional: () => liveRef.current,
 }));
 
-const { ordersRef, listOrdersMock } = vi.hoisted(() => {
+const { ordersRef, listOrdersMock, countMocks } = vi.hoisted(() => {
   const ordersRef = { current: [] as Array<Record<string, unknown>> };
   return {
     ordersRef,
     listOrdersMock: vi.fn(async () => ordersRef.current),
+    // Every other rail count reads an empty list unless a test says otherwise.
+    countMocks: {
+      listUsers: vi.fn<(role?: string) => Promise<Array<Record<string, unknown>>>>(
+        async () => [],
+      ),
+      listApprovalCases: vi.fn(async () => ({
+        approvalCases: [] as unknown[],
+        nextCursor: null,
+      })),
+      listEscalations: vi.fn(async () => [] as unknown[]),
+      listClaims: vi.fn(async () => [] as Array<{ status: string }>),
+      listIssueReports: vi.fn(async () => ({
+        reports: [] as unknown[],
+        counts: { new: 0, published: 0, dismissed: 0 },
+      })),
+      listJobs: vi.fn(async () => [] as Array<Record<string, unknown>>),
+      listSupportChatThreads: vi.fn(async () => [] as Array<{ unreadCount: number }>),
+    },
   };
 });
 
 vi.mock("@/lib/api/client", () => ({
   listOrders: listOrdersMock,
+  listUsers: countMocks.listUsers,
+  listApprovalCases: countMocks.listApprovalCases,
+  listEscalations: countMocks.listEscalations,
+  listClaims: countMocks.listClaims,
+  listIssueReports: countMocks.listIssueReports,
+  listJobs: countMocks.listJobs,
+}));
+
+vi.mock("@/lib/api/support-chat", () => ({
+  listSupportChatThreads: countMocks.listSupportChatThreads,
 }));
 
 vi.mock("@clerk/nextjs", () => ({
@@ -684,7 +712,49 @@ describe("AppShell chrome", () => {
     expect(current.closest("a")).toBeNull();
   });
 
-  describe("the Orders queue pill", () => {
+  describe("section headings", () => {
+    const headings = (nav: HTMLElement) =>
+      Array.from(nav.querySelectorAll('[data-slot="sidebar-group-label"]')).map(
+        (label) => label.textContent,
+      );
+
+    it("heads each role's rail with small muted section labels", () => {
+      renderShell("/ops/overview");
+      let nav = screen.getByRole("navigation", { name: "Primary navigation" });
+      expect(headings(nav)).toEqual(["Desk", "Work", "Platform"]);
+      // Each heading names its run of rows for assistive tech too.
+      const work = within(nav).getByRole("group", { name: "Work" });
+      for (const label of ["Queue", "Field", "Money"]) {
+        expect(within(work).getByRole("button", { name: label })).toBeInTheDocument();
+      }
+      expect(
+        within(within(nav).getByRole("group", { name: "Desk" })).getByRole("link", {
+          name: "Chat",
+        }),
+      ).toBeInTheDocument();
+
+      cleanup();
+      renderShell("/admin/overview");
+      nav = screen.getByRole("navigation", { name: "Primary navigation" });
+      expect(headings(nav)).toEqual(["Desk", "Manage", "Platform"]);
+
+      cleanup();
+      renderShell("/supplier/dashboard");
+      nav = screen.getByRole("navigation", { name: "Primary navigation" });
+      expect(headings(nav)).toEqual(["Work", "Business"]);
+    });
+
+    it("drops the headings on the icon rail", () => {
+      window.localStorage.setItem(RAIL_OPEN_STORAGE_KEY, "false");
+      renderShell("/ops/overview");
+      const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+      expect(nav.querySelector('[data-slot="sidebar-group-label"]')).toBeNull();
+      expect(within(nav).queryByText("Desk")).toBeNull();
+      expect(nav.querySelectorAll("[data-nav-section]")).toHaveLength(3);
+    });
+  });
+
+  describe("count badges", () => {
     beforeEach(() => {
       ordersRef.current = [];
       listOrdersMock.mockClear();
@@ -700,64 +770,155 @@ describe("AppShell chrome", () => {
       { id: "ord_with_shop", state: "production" },
     ];
 
-    it("counts the orders waiting on Operations on the Orders row, in yellow", async () => {
+    function withSignups(count: number) {
+      countMocks.listUsers.mockImplementation(async (role?: string) =>
+        role === "supplier"
+          ? Array.from({ length: count }, (_, i) => ({
+              id: `sup_${i}`,
+              verificationStatus: "pending",
+            }))
+          : [{ id: "rider_ok", verificationStatus: "approved" }],
+      );
+    }
+
+    afterEach(() => {
+      countMocks.listUsers.mockImplementation(async () => []);
+      countMocks.listSupportChatThreads.mockImplementation(async () => []);
+    });
+
+    it("sits the count right after the Orders label, in yellow, and names it", async () => {
       ordersRef.current = waiting;
       renderShell("/ops/orders");
 
-      const pill = await screen.findByTestId("orders-queue-pill");
-      expect(pill).toHaveTextContent("2");
-      expect(pill).toHaveTextContent("2 orders waiting on you");
-      expect(pill.className).toContain("--color-action-yellow");
-      const row = pill.closest('[data-slot="sidebar-menu-sub-item"]') as HTMLElement;
-      expect(within(row).getByRole("link", { name: "Orders" })).toHaveAttribute(
-        "href",
-        "/ops/orders",
-      );
+      const orders = await screen.findByRole("link", { name: "Orders, 2 need action" });
+      expect(orders).toHaveAttribute("href", "/ops/orders");
+      const badge = orders.querySelector('[data-slot="nav-count"]') as HTMLElement;
+      expect(badge).toHaveTextContent("2");
+      expect(badge).toHaveAttribute("data-tone", "attention");
+      expect(badge.className).toContain("--color-action-yellow");
+      // Inline: the badge is inside the row, straight after the label, not a
+      // sibling pinned to the far edge.
+      expect(badge.previousElementSibling).toHaveTextContent(/^Orders$/);
+      expect(badge.className).not.toMatch(/\babsolute\b|right-/);
     });
 
-    it("moves the count onto the Queue row while that group is folded", async () => {
+    it("gives every other count a quiet monochrome pill", async () => {
+      withSignups(2);
+      renderShell("/ops/approvals");
+
+      const approvals = await screen.findByRole("link", {
+        name: "Sign-up approvals, 2 waiting for review",
+      });
+      const badge = approvals.querySelector('[data-slot="nav-count"]') as HTMLElement;
+      expect(badge).toHaveAttribute("data-tone", "quiet");
+      expect(badge.className).not.toContain("action-yellow");
+    });
+
+    it("puts the sum beside a folded group's name", async () => {
       ordersRef.current = waiting;
+      withSignups(3);
       renderShell("/ops/overview");
 
-      const pill = await screen.findByTestId("orders-queue-pill");
-      expect(pill).toHaveTextContent("2 orders waiting on you");
-      const row = pill.closest("[data-nav-group]") as HTMLElement;
-      expect(within(row).getByRole("button", { name: "Queue" })).toHaveAttribute(
-        "aria-expanded",
-        "false",
-      );
-      expect(screen.getAllByTestId("orders-queue-pill")).toHaveLength(1);
+      const queue = await screen.findByRole("button", { name: "Queue, 5 need action" });
+      expect(queue).toHaveAttribute("aria-expanded", "false");
+      const total = queue.querySelector('[data-slot="nav-count"]') as HTMLElement;
+      expect(total).toHaveTextContent("5");
+      // Filled while folded, yellow because an order is among the five.
+      expect(total).toHaveAttribute("data-tone", "attention");
+      expect(total.previousElementSibling).toHaveTextContent(/^Queue$/);
       expect(listOrdersMock).toHaveBeenCalledTimes(1);
     });
 
-    it("marks the Queue icon and names the count on the icon rail", async () => {
-      window.localStorage.setItem(RAIL_OPEN_STORAGE_KEY, "false");
+    it("outlines an open group's total so it reads as the sum of the rows below", async () => {
       ordersRef.current = waiting;
+      withSignups(3);
       const user = userEvent.setup();
       renderShell("/ops/overview");
 
-      await screen.findByTestId("orders-queue-dot");
-      const queue = screen.getByRole("button", {
-        name: "Queue, 2 orders waiting on you",
-      });
+      const queue = await screen.findByRole("button", { name: "Queue, 5 need action" });
       await user.click(queue);
+      expect(queue).toHaveAttribute("aria-expanded", "true");
+      expect(queue.querySelector('[data-slot="nav-count"]')).toHaveAttribute(
+        "data-tone",
+        "total",
+      );
       expect(
-        await screen.findByRole("menuitem", { name: /Orders 2 orders waiting on you/ }),
-      ).toHaveAttribute("href", "/ops/orders");
+        await screen.findByRole("link", { name: "Orders, 2 need action" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: "Sign-up approvals, 3 waiting for review" }),
+      ).toBeInTheDocument();
     });
 
-    it("draws nothing when no order is waiting on Operations", async () => {
+    it("drops an open group's total when a single row carries the count", async () => {
+      ordersRef.current = waiting;
+      renderShell("/ops/orders");
+
+      const orders = await screen.findByRole("link", { name: "Orders, 2 need action" });
+      expect(orders.querySelector('[data-slot="nav-count"]')).toHaveTextContent("2");
+      const queue = screen.getByRole("button", { name: "Queue, 2 need action" });
+      expect(queue).toHaveAttribute("aria-expanded", "true");
+      expect(queue.querySelector('[data-slot="nav-count"]')).toBeNull();
+    });
+
+    it("reads 99+ past ninety-nine", async () => {
+      countMocks.listSupportChatThreads.mockImplementation(async () => [
+        { unreadCount: 80 },
+        { unreadCount: 70 },
+      ]);
+      renderShell("/ops/overview");
+
+      const chat = await screen.findByRole("link", { name: "Chat, 99+ unread" });
+      expect(chat.querySelector('[data-slot="nav-count"]')).toHaveTextContent("99+");
+    });
+
+    it("draws nothing at zero", async () => {
       ordersRef.current = [{ id: "ord_with_shop", state: "production" }];
       renderShell("/ops/overview");
 
-      expect(listOrdersMock).toHaveBeenCalled();
-      await vi.waitFor(() => expect(listOrdersMock.mock.results[0]?.value).resolves.toBeDefined());
-      expect(screen.queryByTestId("orders-queue-pill")).toBeNull();
+      await vi.waitFor(() => expect(listOrdersMock).toHaveBeenCalled());
+      await vi.waitFor(() => expect(countMocks.listSupportChatThreads).toHaveBeenCalled());
+      const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+      expect(nav.querySelector('[data-slot="nav-count"]')).toBeNull();
+      expect(within(nav).getByRole("button", { name: "Queue" })).toBeInTheDocument();
+      expect(within(nav).getByRole("link", { name: "Chat" })).toBeInTheDocument();
     });
 
-    it("never asks for the orders list on a rail that has no Orders row", () => {
+    it("marks the group icon on the icon rail and lists each count in the flyout", async () => {
+      window.localStorage.setItem(RAIL_OPEN_STORAGE_KEY, "false");
+      ordersRef.current = waiting;
+      withSignups(1);
+      const user = userEvent.setup();
+      renderShell("/ops/overview");
+
+      const queue = await screen.findByRole("button", { name: "Queue, 3 need action" });
+      const bubble = queue.querySelector('[data-slot="rail-count"]') as HTMLElement;
+      expect(bubble).toHaveTextContent("3");
+      expect(bubble).toHaveAttribute("data-tone", "attention");
+
+      await user.click(queue);
+      expect(
+        await screen.findByRole("menuitem", { name: "Orders, 2 need action" }),
+      ).toHaveAttribute("href", "/ops/orders");
+      expect(
+        screen.getByRole("menuitem", { name: "Sign-up approvals, 1 waiting for review" }),
+      ).toHaveAttribute("href", "/ops/approvals");
+    });
+
+    it("reads only the counts a rail shows", async () => {
       renderShell("/supplier/dashboard");
+      await vi.waitFor(() => expect(countMocks.listJobs).toHaveBeenCalledTimes(1));
       expect(listOrdersMock).not.toHaveBeenCalled();
+      expect(countMocks.listUsers).not.toHaveBeenCalled();
+      expect(countMocks.listSupportChatThreads).not.toHaveBeenCalled();
+
+      cleanup();
+      countMocks.listJobs.mockClear();
+      renderShell("/admin/overview");
+      await vi.waitFor(() => expect(countMocks.listSupportChatThreads).toHaveBeenCalled());
+      expect(listOrdersMock).not.toHaveBeenCalled();
+      expect(countMocks.listEscalations).not.toHaveBeenCalled();
+      expect(countMocks.listJobs).not.toHaveBeenCalled();
     });
   });
 });

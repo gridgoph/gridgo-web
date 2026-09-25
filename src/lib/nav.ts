@@ -77,7 +77,25 @@ export type NavItem = {
   ready: boolean;
   /** Placeholder body — what the screen will do and which client helpers to use. */
   placeholderBody: string;
+  /**
+   * The live count this row carries, when the app already has a cheap source
+   * for it. Sources and their wording live in `src/lib/nav-counts.ts`.
+   */
+  count?: NavCountKey;
 };
+
+/**
+ * Work the rail can count without a new endpoint. Each key names one existing
+ * list read and what its number means — never an invented figure.
+ */
+export type NavCountKey =
+  | "orders-waiting"
+  | "signups-waiting"
+  | "escalations-open"
+  | "claims-open"
+  | "chat-unread"
+  | "issue-reports-new"
+  | "jobs-need-action";
 
 /**
  * One rail section. A missing `label` is a top-level cluster (Overview / Jobs)
@@ -88,6 +106,12 @@ export type NavItem = {
  */
 export type NavGroup = {
   id: string;
+  /**
+   * The small muted heading this group sits under (sidebar-07 "Platform").
+   * Consecutive groups sharing a section share one heading; headings hide on
+   * the icon rail.
+   */
+  section: string;
   label?: string;
   icon?: NavIconKey;
   items: readonly NavItem[];
@@ -97,6 +121,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
   supplier: [
     {
       id: "supplier-top",
+      section: "Work",
       items: [
         {
           id: "supplier-dashboard",
@@ -115,11 +140,13 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "jobs",
           ready: true,
           placeholderBody: "",
+          count: "jobs-need-action",
         },
       ],
     },
     {
       id: "supplier-shop",
+      section: "Business",
       label: "Shop",
       icon: "group-shop",
       items: [
@@ -157,6 +184,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     },
     {
       id: "supplier-money",
+      section: "Business",
       label: "Money",
       icon: "group-money",
       items: [
@@ -187,6 +215,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
   ops_admin: [
     {
       id: "ops-top",
+      section: "Desk",
       items: [
         {
           id: "ops-overview",
@@ -205,6 +234,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "chat",
           ready: true,
           placeholderBody: "",
+          count: "chat-unread",
         },
         {
           id: "ops-issue-reports",
@@ -214,11 +244,13 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "reports",
           ready: true,
           placeholderBody: "",
+          count: "issue-reports-new",
         },
       ],
     },
     {
       id: "ops-queue",
+      section: "Work",
       label: "Queue",
       icon: "group-queue",
       items: [
@@ -232,6 +264,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "qa",
           ready: true,
           placeholderBody: "",
+          count: "orders-waiting",
         },
         {
           id: "ops-approvals",
@@ -241,11 +274,13 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "approvals",
           ready: true,
           placeholderBody: "",
+          count: "signups-waiting",
         },
       ],
     },
     {
       id: "ops-field",
+      section: "Work",
       label: "Field",
       icon: "group-field",
       items: [
@@ -284,6 +319,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "escalations",
           ready: true,
           placeholderBody: "",
+          count: "escalations-open",
         },
         {
           id: "ops-schedule",
@@ -298,6 +334,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     },
     {
       id: "ops-money",
+      section: "Work",
       label: "Money",
       icon: "group-money",
       items: [
@@ -318,6 +355,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "claims",
           ready: true,
           placeholderBody: "",
+          count: "claims-open",
         },
         {
           id: "ops-recovery",
@@ -332,6 +370,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     },
     {
       id: "ops-system",
+      section: "Platform",
       label: "System",
       icon: "group-system",
       items: [
@@ -360,6 +399,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
   super_admin: [
     {
       id: "admin-top",
+      section: "Desk",
       items: [
         {
           id: "admin-overview",
@@ -378,6 +418,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "chat",
           ready: true,
           placeholderBody: "",
+          count: "chat-unread",
         },
         {
           id: "admin-issue-reports",
@@ -387,6 +428,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "reports",
           ready: true,
           placeholderBody: "",
+          count: "issue-reports-new",
         },
         {
           id: "admin-riders",
@@ -401,6 +443,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     },
     {
       id: "admin-people",
+      section: "Manage",
       label: "People",
       icon: "group-people",
       items: [
@@ -412,6 +455,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "verification",
           ready: true,
           placeholderBody: "",
+          count: "signups-waiting",
         },
         {
           id: "admin-roles",
@@ -426,6 +470,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     },
     {
       id: "admin-catalog",
+      section: "Manage",
       label: "Catalog",
       icon: "group-catalog",
       items: [
@@ -451,6 +496,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     },
     {
       id: "admin-money",
+      section: "Manage",
       label: "Money",
       icon: "group-money",
       items: [
@@ -467,6 +513,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     },
     {
       id: "admin-system",
+      section: "Platform",
       label: "System",
       icon: "group-system",
       items: [
@@ -513,6 +560,23 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
     },
   ],
 };
+
+/** One headed run of groups, in rail order. */
+export type NavSection = {
+  label: string;
+  groups: readonly NavGroup[];
+};
+
+/** Consecutive groups with the same `section` share one heading. */
+export function navSectionsForRole(role: Role | string): readonly NavSection[] {
+  const sections: { label: string; groups: NavGroup[] }[] = [];
+  for (const group of navGroupsForRole(role)) {
+    const last = sections[sections.length - 1];
+    if (last && last.label === group.section) last.groups.push(group);
+    else sections.push({ label: group.section, groups: [group] });
+  }
+  return sections;
+}
 
 function flattenNavGroups(groups: readonly NavGroup[]): readonly NavItem[] {
   return groups.flatMap((group) => group.items);
