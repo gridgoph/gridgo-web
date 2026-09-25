@@ -47,6 +47,7 @@ import {
   setUserVerification,
 } from "@/lib/api/client";
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
+import { isAwaitingSignupReview } from "@/components/approvals/signup-queue";
 import type {
   ApprovalCaseDetail,
   ApprovalCaseSummary,
@@ -149,12 +150,7 @@ export function SignupApprovals({ intro }: Props) {
       ),
     );
     return {
-      waiting: people.filter(
-        (u) =>
-          u.verificationStatus === "pending" ||
-          u.verificationStatus === "unverified" ||
-          !u.verificationStatus,
-      ),
+      waiting: people.filter(isAwaitingSignupReview),
       decided: people.filter(
         (u) =>
           u.verificationStatus === "approved" ||
