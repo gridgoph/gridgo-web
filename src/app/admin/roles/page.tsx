@@ -5,7 +5,8 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { UserCog } from "lucide-react";
+import Link from "next/link";
+import { ShieldAlert, TriangleAlert, UserCog } from "lucide-react";
 
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
 import {
@@ -13,12 +14,21 @@ import {
   presentRole,
   roleChangeConsequence,
 } from "@/app/admin/_lib/present";
+import {
+  suspendedQueueHref,
+  suspensionHeadline,
+  suspensionReasonText,
+  suspensionsByUser,
+  type UserSuspension,
+} from "@/components/approvals/suspended-accounts";
 import { Button } from "@/components/ui/button";
 import {
   DataTable,
   DataTableRowAction,
   type DataTableColumn,
+  type DataTableFacet,
 } from "@/components/ui/data-table";
+import { StatusChip } from "@/components/ui/StatusChip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,11 +51,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { listUsers, updateUserRole } from "@/lib/api/client";
+import { listApprovalCases, listUsers, updateUserRole } from "@/lib/api/client";
 import type { Role, User } from "@/lib/api/types";
+
+const SUSPENDED = "Suspended";
+const ACTIVE = "Active";
 
 export default function AdminRolesPage() {
   const [users, setUsers] = useState<User[] | null>(null);
+  const [suspensions, setSuspensions] = useState<Map<string, UserSuspension>>(
+    () => new Map(),
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -61,7 +77,20 @@ export default function AdminRolesPage() {
       setLoading(true);
       setError(null);
       try {
-        setUsers(await listUsers());
+        const [directory, suspendedCases] = await Promise.all([
+          listUsers(),
+          // A suspension without this list still shows from the person's own
+          // status; the case adds business clients and the reason.
+          listApprovalCases({ status: "suspended" }).catch(() => null),
+        ]);
+        setUsers(directory);
+        setSuspensions(
+          suspensionsByUser({
+            cases: suspendedCases?.approvalCases ?? [],
+            users: directory,
+            directory: new Map(directory.map((user) => [user.id, user.name])),
+          }),
+        );
       } catch (err) {
         setUsers(null);
         setError(
@@ -113,6 +142,27 @@ export default function AdminRolesPage() {
         ),
       },
       {
+        id: "account",
+        header: "Account",
+        sortValue: (u) => (suspensions.has(u.id) ? SUSPENDED : ACTIVE),
+        cell: (u) => {
+          const suspension = suspensions.get(u.id);
+          if (!suspension) {
+            return <span className="text-body text-text-secondary">{ACTIVE}</span>;
+          }
+          const reason = suspensionReasonText(suspension.reason);
+          return (
+            <div className="flex min-w-0 flex-col items-start gap-1">
+              <StatusChip tone="error" label={SUSPENDED} icon="triangle-alert" />
+              <span className="text-caption text-text-muted line-clamp-2 max-w-72 whitespace-normal">
+                {suspensionHeadline(suspension)}
+                {reason ? `: ${reason}` : ""}
+              </span>
+            </div>
+          );
+        },
+      },
+      {
         id: "org",
         header: "Organisation",
         sortValue: (u) => u.orgName || u.supplierName || "",
@@ -123,8 +173,23 @@ export default function AdminRolesPage() {
         ),
       },
     ],
+    [suspensions],
+  );
+
+  const facets = useMemo<DataTableFacet[]>(
+    () => [
+      {
+        columnId: "account",
+        title: "Account",
+        options: [
+          { value: SUSPENDED, label: SUSPENDED, icon: TriangleAlert },
+          { value: ACTIVE, label: ACTIVE },
+        ],
+      },
+    ],
     [],
   );
+  const suspendedCount = suspensions.size;
 
   const isHighRisk = Boolean(
     target &&
@@ -200,6 +265,27 @@ export default function AdminRolesPage() {
         </p>
       ) : null}
 
+      {suspendedCount ? (
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-error px-4 py-3"
+          role="note"
+        >
+          <p className="text-body text-text-primary m-0 flex items-start gap-2">
+            <TriangleAlert className="mt-0.5 size-5 shrink-0 text-error" aria-hidden />
+            {suspendedCount === 1
+              ? "1 account is suspended. Its reason and the way back are on Accreditation."
+              : `${suspendedCount} accounts are suspended. Their reasons and the way back are on Accreditation.`}
+          </p>
+          <Button
+            variant="secondary"
+            nativeButton={false}
+            render={<Link href={suspendedQueueHref("admin")} />}
+          >
+            Review suspended accounts
+          </Button>
+        </div>
+      ) : null}
+
       {!pending && !users?.length ? (
         <EmptyState
           title="No users"
@@ -220,18 +306,28 @@ export default function AdminRolesPage() {
           filterPlaceholder="Filter people…"
           itemLabel="people"
           defaultSortId="role"
+          facets={facets}
           rowActions={(u) => (
-            <DataTableRowAction
-              label="Change role"
-              icon={UserCog}
-              onClick={() => {
-                setTarget(u);
-                setNextRole(u.role);
-                setReason("");
-                setTypedConfirm("");
-                setActionError(null);
-              }}
-            />
+            <>
+              {suspensions.has(u.id) ? (
+                <DataTableRowAction
+                  label="Review suspension"
+                  icon={ShieldAlert}
+                  href={suspendedQueueHref("admin")}
+                />
+              ) : null}
+              <DataTableRowAction
+                label="Change role"
+                icon={UserCog}
+                onClick={() => {
+                  setTarget(u);
+                  setNextRole(u.role);
+                  setReason("");
+                  setTypedConfirm("");
+                  setActionError(null);
+                }}
+              />
+            </>
           )}
         />
       )}

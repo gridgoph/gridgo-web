@@ -110,7 +110,7 @@ export function verificationActions(
           status: "approved",
           label: "Reinstate",
           consequence:
-            "Restores approved status. Live services become eligible for new matching again; existing orders were never disrupted.",
+            "Restores approved status so the account can take new work again. A supplier's service lines stay suspended unless they are brought back too; existing orders were never disrupted.",
         },
       ];
     case "rejected":

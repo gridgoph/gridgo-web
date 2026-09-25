@@ -12,6 +12,7 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CircleCheck, TriangleAlert } from "lucide-react";
 
 import {
   presentVerification,
@@ -34,11 +35,25 @@ import {
   Detail,
   SupplierCategoryRanks,
 } from "@/components/approvals/applicant-identity";
+import {
+  ReinstateDialog,
+  type ReinstateResult,
+} from "@/components/approvals/ReinstateDialog";
+import {
+  QUEUE_VIEW_LABEL,
+  QUEUE_VIEWS,
+  collectSuspendedAccounts,
+  suspensionHeadline,
+  suspensionReasonText,
+  type QueueView,
+  type SuspendedAccount,
+} from "@/components/approvals/suspended-accounts";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { SkeletonCards } from "@/components/ui/loading";
 import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   decideApprovalCase,
   getApprovalCase,
@@ -50,6 +65,7 @@ import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { isAwaitingSignupReview } from "@/components/approvals/signup-queue";
 import type {
   ApprovalCaseDetail,
+  ApprovalCaseQueue,
   ApprovalCaseSummary,
   ApprovalDecisionAction,
   Taxonomy,
@@ -62,19 +78,34 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
 type Props = {
   /** Extra prose above the queue, when the mounting surface needs it. */
   intro?: string;
+  /**
+   * Which part of the queue to show. The pages keep it in `?show=` so Roles
+   * can link straight to the suspended accounts; uncontrolled it starts on
+   * everything.
+   */
+  view?: QueueView;
+  onViewChange?: (view: QueueView) => void;
 };
 
 type Loaded = {
   people: User[];
   business: ApprovalCaseDetail[];
+  suspended: SuspendedAccount[];
   categoryNames: Record<string, string>;
 };
+
+const NO_CASES: ApprovalCaseQueue = { approvalCases: [], nextCursor: null };
 
 type ConfirmTarget =
   | { kind: "member"; user: User; action: VerificationAction }
   | { kind: "business"; detail: ApprovalCaseDetail; action: VerificationAction };
 
 const BUSINESS_STATUSES = ["pending", "approved", "rejected", "suspended"] as const;
+
+/** Names for decision-makers the queue can already see, by user id. */
+function nameDirectory(users: readonly User[]): Map<string, string> {
+  return new Map(users.map((user) => [user.id, user.name]));
+}
 
 const ORDER: Record<string, number> = {
   pending: 0,
@@ -84,7 +115,15 @@ const ORDER: Record<string, number> = {
   rejected: 4,
 };
 
-export function SignupApprovals({ intro }: Props) {
+export function SignupApprovals({ intro, view: controlledView, onViewChange }: Props) {
+  const [ownView, setOwnView] = useState<QueueView>("all");
+  const view = controlledView ?? ownView;
+  const setView = (next: QueueView) => {
+    setOwnView(next);
+    onViewChange?.(next);
+  };
+  const [reinstating, setReinstating] = useState<SuspendedAccount | null>(null);
+  const [reinstated, setReinstated] = useState<ReinstateResult | null>(null);
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -99,14 +138,18 @@ export function SignupApprovals({ intro }: Props) {
       setLoading(true);
       setError(null);
       try {
-        const [suppliers, riders, taxonomy, ...businessPages] = await Promise.all([
-          listUsers("supplier"),
-          listUsers("rider"),
-          getTaxonomy().catch(() => null as Taxonomy | null),
-          ...BUSINESS_STATUSES.map((status) =>
-            listApprovalCases({ kind: "business_client", status }),
-          ),
-        ]);
+        const [suppliers, riders, taxonomy, suspendedCases, ...businessPages] =
+          await Promise.all([
+            listUsers("supplier"),
+            listUsers("rider"),
+            getTaxonomy().catch(() => null as Taxonomy | null),
+            // Every kind at once: supplier and rider suspensions carry their
+            // reason, time and decider here, and only a case can restore lines.
+            listApprovalCases({ status: "suspended" }).catch(() => NO_CASES),
+            ...BUSINESS_STATUSES.map((status) =>
+              listApprovalCases({ kind: "business_client", status }),
+            ),
+          ]);
         const categoryNames: Record<string, string> = {};
         for (const category of taxonomy?.categories ?? []) {
           categoryNames[category.code] = category.name;
@@ -115,7 +158,31 @@ export function SignupApprovals({ intro }: Props) {
         const business = await Promise.all(
           summaries.map((item) => getApprovalCase(item.id)),
         );
-        setData({ people: [...suppliers, ...riders], business, categoryNames });
+        const people = [...suppliers, ...riders];
+        const directory = nameDirectory(people);
+        const deciders = [
+          ...suspendedCases.approvalCases.filter((item) => !item.decidedByName),
+          ...business
+            .map((detail) => detail.approvalCase)
+            .filter((c) => !c.decidedByName),
+        ]
+          .map((item) => item.decidedBy)
+          .concat(people.map((person) => person.verifiedBy));
+        // Suspensions are made by Operations or Super Admin, who are not in the
+        // shop and rider lists. Only when the API did not name them, read the
+        // directory once; a refusal just leaves the name out.
+        if (deciders.some((id) => id && !directory.has(id))) {
+          for (const user of await listUsers().catch(() => [] as User[])) {
+            directory.set(user.id, user.name);
+          }
+        }
+        const suspended = collectSuspendedAccounts({
+          cases: suspendedCases.approvalCases,
+          people,
+          business,
+          directory,
+        });
+        setData({ people, business, suspended, categoryNames });
       } catch (err) {
         setData(null);
         setError(
@@ -152,15 +219,23 @@ export function SignupApprovals({ intro }: Props) {
     return {
       waiting: people.filter(isAwaitingSignupReview),
       decided: people.filter(
-        (u) =>
-          u.verificationStatus === "approved" ||
-          u.verificationStatus === "suspended" ||
-          u.verificationStatus === "rejected",
+        (u) => u.verificationStatus === "approved" || u.verificationStatus === "rejected",
       ),
       waitingBusiness: business.filter((item) => item.approvalCase.status === "pending"),
-      decidedBusiness: business.filter((item) => item.approvalCase.status !== "pending"),
+      decidedBusiness: business.filter(
+        (item) =>
+          item.approvalCase.status === "approved" ||
+          item.approvalCase.status === "rejected",
+      ),
     };
   }, [data]);
+  const suspended = data?.suspended ?? [];
+  const counts: Record<QueueView, number | null> = {
+    all: null,
+    waiting: data ? waiting.length + waitingBusiness.length : null,
+    suspended: data ? suspended.length : null,
+    decided: data ? decided.length + decidedBusiness.length : null,
+  };
 
   async function apply() {
     if (!confirm) return;
@@ -171,16 +246,12 @@ export function SignupApprovals({ intro }: Props) {
     setBusy(true);
     setActionError(null);
     setActionOk(null);
+    setReinstated(null);
     try {
       if (confirm.kind === "business") {
-        const decision = caseDecision(confirm.action.status, confirm.detail.approvalCase.status);
+        const decision = caseDecision(confirm.action.status);
         if (!decision) {
           setActionError("That decision is not available for this application.");
-          setBusy(false);
-          return;
-        }
-        if (decision === "restore" && !reason.trim()) {
-          setActionError("Add a note for the record before restoring this account.");
           setBusy(false);
           return;
         }
@@ -189,7 +260,6 @@ export function SignupApprovals({ intro }: Props) {
           expectedVersion: confirm.detail.approvalCase.version,
           requestId: crypto.randomUUID(),
           ...(decision === "approve" ? { note: note || undefined } : {}),
-          ...(decision === "restore" ? { note } : {}),
           ...(decision === "reject" || decision === "suspend" ? { reason: note } : {}),
         });
         const name =
@@ -239,6 +309,8 @@ export function SignupApprovals({ intro }: Props) {
     );
   }
 
+  const show = (section: Exclude<QueueView, "all">) => view === "all" || view === section;
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -251,95 +323,170 @@ export function SignupApprovals({ intro }: Props) {
         </Button>
       </div>
 
+      <ToggleGroup
+        value={[view]}
+        onValueChange={(values) => {
+          const next = values[0] as QueueView | undefined;
+          if (next) setView(next);
+        }}
+        variant="outline"
+        spacing={0}
+        aria-label="Show accounts"
+        className="flex-wrap"
+      >
+        {QUEUE_VIEWS.map((option) => (
+          <ToggleGroupItem key={option} value={option} className="min-h-11 gap-1.5 px-3">
+            {QUEUE_VIEW_LABEL[option]}
+            {counts[option] !== null ? (
+              <span className="text-text-muted tabular-nums">{counts[option]}</span>
+            ) : null}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+
       {actionOk ? (
         <p className="text-body text-success m-0" role="status">
           {actionOk}
         </p>
       ) : null}
+      {reinstated ? <ReinstatedNotice result={reinstated} /> : null}
       {actionError && !confirm ? (
         <p className="text-body text-error m-0" role="alert">
           {actionError}
         </p>
       ) : null}
 
-      <section aria-labelledby="waiting-heading" className="flex flex-col gap-3">
-        <h2 id="waiting-heading" className="text-h3 text-text-primary m-0">
-          Waiting for a decision{data ? ` (${waiting.length + waitingBusiness.length})` : ""}
-        </h2>
-        {pending ? (
-          <SkeletonCards count={2} lines={2} label="Loading sign-ups" />
-        ) : !waiting.length && !waitingBusiness.length ? (
-          <EmptyState
-            title="Nobody is waiting"
-            body="Every supplier, rider, and business application has had a decision. New sign-ups and client conversions land here the moment they are submitted."
-            action={
-              <Button variant="secondary" onClick={() => void load()}>
-                Check again
-              </Button>
-            }
-          />
-        ) : (
-          <ul className="m-0 flex list-none flex-col gap-3 p-0">
-            {waitingBusiness.map((detail) => (
-              <BusinessApplicationCard
-                key={detail.approvalCase.id}
-                detail={detail}
-                onAction={(action) => {
-                  setActionError(null);
-                  setReason("");
-                  setConfirm({ kind: "business", detail, action });
-                }}
-              />
-            ))}
-            {waiting.map((person) => (
-              <ApplicantCard
-                key={person.id}
-                person={person}
-                categoryNames={data?.categoryNames ?? {}}
-                onAction={(action) => {
-                  setActionError(null);
-                  setReason("");
-                  setConfirm({ kind: "member", user: person, action });
-                }}
-              />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      {decided.length || decidedBusiness.length ? (
-        <section aria-labelledby="decided-heading" className="flex flex-col gap-3">
-          <h2 id="decided-heading" className="text-h3 text-text-primary m-0">
-            Already decided ({decided.length + decidedBusiness.length})
+      {show("waiting") ? (
+        <section aria-labelledby="waiting-heading" className="flex flex-col gap-3">
+          <h2 id="waiting-heading" className="text-h3 text-text-primary m-0">
+            Waiting for a decision
+            {data ? ` (${waiting.length + waitingBusiness.length})` : ""}
           </h2>
-          <ul className="m-0 flex list-none flex-col gap-3 p-0">
-            {decidedBusiness.map((detail) => (
-              <BusinessApplicationCard
-                key={detail.approvalCase.id}
-                detail={detail}
-                onAction={(action) => {
-                  setActionError(null);
-                  setReason("");
-                  setConfirm({ kind: "business", detail, action });
-                }}
-              />
-            ))}
-            {decided.map((person) => (
-              <ApplicantCard
-                key={person.id}
-                person={person}
-                categoryNames={data?.categoryNames ?? {}}
-                onAction={(action) => {
-                  setActionError(null);
-                  setReason("");
-                  setConfirm({ kind: "member", user: person, action });
-                }}
-              />
-            ))}
-          </ul>
+          {pending ? (
+            <SkeletonCards count={2} lines={2} label="Loading sign-ups" />
+          ) : !waiting.length && !waitingBusiness.length ? (
+            <EmptyState
+              title="Nobody is waiting"
+              body="Every supplier, rider, and business application has had a decision. New sign-ups and client conversions land here the moment they are submitted."
+              action={
+                <Button variant="secondary" onClick={() => void load()}>
+                  Check again
+                </Button>
+              }
+            />
+          ) : (
+            <ul className="m-0 flex list-none flex-col gap-3 p-0">
+              {waitingBusiness.map((detail) => (
+                <BusinessApplicationCard
+                  key={detail.approvalCase.id}
+                  detail={detail}
+                  onAction={(action) => {
+                    setActionError(null);
+                    setReason("");
+                    setConfirm({ kind: "business", detail, action });
+                  }}
+                />
+              ))}
+              {waiting.map((person) => (
+                <ApplicantCard
+                  key={person.id}
+                  person={person}
+                  categoryNames={data?.categoryNames ?? {}}
+                  onAction={(action) => {
+                    setActionError(null);
+                    setReason("");
+                    setConfirm({ kind: "member", user: person, action });
+                  }}
+                />
+              ))}
+            </ul>
+          )}
         </section>
       ) : null}
 
+      {show("suspended") && (suspended.length || view === "suspended") ? (
+        <section aria-labelledby="suspended-heading" className="flex flex-col gap-3">
+          <h2 id="suspended-heading" className="text-h3 text-text-primary m-0">
+            Suspended{data ? ` (${suspended.length})` : ""}
+          </h2>
+          {pending ? (
+            <SkeletonCards count={1} lines={2} label="Loading suspended accounts" />
+          ) : !suspended.length ? (
+            <EmptyState
+              title="Nobody is suspended"
+              body="Every supplier, rider, and business client is either working or waiting for a decision. A suspended account shows here with who suspended it and why."
+            />
+          ) : (
+            <ul className="m-0 flex list-none flex-col gap-3 p-0">
+              {suspended.map((account) => (
+                <SuspendedAccountCard
+                  key={account.key}
+                  account={account}
+                  onReinstate={() => {
+                    setActionError(null);
+                    setActionOk(null);
+                    setReinstated(null);
+                    setReinstating(account);
+                  }}
+                />
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
+
+      {show("decided") &&
+      (decided.length || decidedBusiness.length || view === "decided") ? (
+        <section aria-labelledby="decided-heading" className="flex flex-col gap-3">
+          <h2 id="decided-heading" className="text-h3 text-text-primary m-0">
+            Already decided{data ? ` (${decided.length + decidedBusiness.length})` : ""}
+          </h2>
+          {pending ? (
+            <SkeletonCards count={1} lines={2} label="Loading decided accounts" />
+          ) : !decided.length && !decidedBusiness.length ? (
+            <EmptyState
+              title="Nothing decided yet"
+              body="Approved and rejected accounts collect here once someone decides on a sign-up."
+            />
+          ) : (
+            <ul className="m-0 flex list-none flex-col gap-3 p-0">
+              {decidedBusiness.map((detail) => (
+                <BusinessApplicationCard
+                  key={detail.approvalCase.id}
+                  detail={detail}
+                  onAction={(action) => {
+                    setActionError(null);
+                    setReason("");
+                    setConfirm({ kind: "business", detail, action });
+                  }}
+                />
+              ))}
+              {decided.map((person) => (
+                <ApplicantCard
+                  key={person.id}
+                  person={person}
+                  categoryNames={data?.categoryNames ?? {}}
+                  onAction={(action) => {
+                    setActionError(null);
+                    setReason("");
+                    setConfirm({ kind: "member", user: person, action });
+                  }}
+                />
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
+
+      <ReinstateDialog
+        account={reinstating}
+        onClose={() => setReinstating(null)}
+        onReinstated={(result) => {
+          setReinstating(null);
+          setReinstated(result);
+          void load();
+        }}
+      />
       <AlertDialog
         open={!!confirm}
         onOpenChange={(open) => {
@@ -532,12 +679,20 @@ function BusinessApplicationCard({
             }
           />
         ) : null}
-        {detail.applicant?.phone ? <Detail label="Phone" value={detail.applicant.phone} /> : null}
+        {detail.applicant?.phone ? (
+          <Detail label="Phone" value={detail.applicant.phone} />
+        ) : null}
         {detail.approvalCase.submittedAt ? (
-          <Detail label="Submitted" value={formatDateTime(detail.approvalCase.submittedAt)} />
+          <Detail
+            label="Submitted"
+            value={formatDateTime(detail.approvalCase.submittedAt)}
+          />
         ) : null}
         {detail.approvalCase.decidedAt ? (
-          <Detail label="Last decision" value={formatDateTime(detail.approvalCase.decidedAt)} />
+          <Detail
+            label="Last decision"
+            value={formatDateTime(detail.approvalCase.decidedAt)}
+          />
         ) : null}
       </dl>
 
@@ -580,11 +735,8 @@ function confirmName(confirm: ConfirmTarget | null): string {
   );
 }
 
-function caseDecision(
-  next: VerificationAction["status"],
-  current: ApprovalCaseSummary["status"],
-): ApprovalDecisionAction | null {
-  if (next === "approved" && current === "suspended") return "restore";
+/** Reinstating a suspended case is `ReinstateDialog`'s job, not this one's. */
+function caseDecision(next: VerificationAction["status"]): ApprovalDecisionAction | null {
   if (next === "approved") return "approve";
   if (next === "rejected") return "reject";
   if (next === "suspended") return "suspend";
@@ -621,15 +773,97 @@ function businessApplicationActions(
             "Stops business ordering on this account. Personal orders continue.",
         },
       ];
-    case "suspended":
-      return [
-        {
-          status: "approved",
-          label: "Reinstate",
-          consequence: "Restores business ordering on this account.",
-        },
-      ];
     default:
       return [];
   }
+}
+
+/**
+ * A suspended account leads with why it is out: who suspended it, when, and
+ * the reason they gave. Reinstate is the card's one action.
+ */
+function SuspendedAccountCard({
+  account,
+  onReinstate,
+}: {
+  account: SuspendedAccount;
+  onReinstate: () => void;
+}) {
+  const reason = suspensionReasonText(account.reason);
+  const user = account.user;
+  return (
+    <li className="gg-card flex flex-col gap-3">
+      <ApplicantHeader
+        title={account.title}
+        caption={account.caption}
+        status={presentVerification("suspended")}
+      />
+
+      <div
+        className="flex flex-col gap-3 rounded-field border border-error px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+        role="note"
+        aria-label={`${account.title} is suspended`}
+      >
+        <div className="flex min-w-0 items-start gap-2">
+          <TriangleAlert className="mt-0.5 size-5 shrink-0 text-error" aria-hidden />
+          <p className="text-body text-text-primary m-0 min-w-0 break-words">
+            <span style={{ fontFamily: "var(--font-medium)" }}>
+              {suspensionHeadline(account)}:
+            </span>{" "}
+            {reason ?? (
+              <span className="text-text-secondary">no reason was recorded</span>
+            )}
+          </p>
+        </div>
+        <Button
+          variant="primary"
+          className="shrink-0 self-start sm:self-center"
+          onClick={onReinstate}
+        >
+          Reinstate
+        </Button>
+      </div>
+
+      {user ? (
+        <dl className="m-0 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {user.phone ? <Detail label="Phone" value={user.phone} /> : null}
+          {user.shop?.label ? <Detail label="Shop" value={user.shop.label} /> : null}
+          {user.createdAt ? (
+            <Detail label="Signed up" value={formatDateTime(user.createdAt)} />
+          ) : null}
+        </dl>
+      ) : null}
+    </li>
+  );
+}
+
+/** What reinstating brought back, and what it deliberately left down. */
+function ReinstatedNotice({ result }: { result: ReinstateResult }) {
+  return (
+    <div
+      className="flex items-start gap-2 rounded-card border border-success px-4 py-3"
+      role="status"
+    >
+      <CircleCheck className="mt-0.5 size-5 shrink-0 text-success" aria-hidden />
+      <div className="flex min-w-0 flex-col gap-1">
+        <p
+          className="text-body text-text-primary m-0"
+          style={{ fontFamily: "var(--font-medium)" }}
+        >
+          {result.headline}
+        </p>
+        {result.restored.length ? (
+          <p className="text-body text-text-secondary m-0">
+            Back live: {result.restored.join(", ")}.
+          </p>
+        ) : null}
+        {result.stillSuspended.length ? (
+          <p className="text-body text-text-secondary m-0">
+            Still suspended: {result.stillSuspended.join(", ")}. Review{" "}
+            {result.stillSuspended.length === 1 ? "it" : "them"} on the Service lines tab.
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
 }
