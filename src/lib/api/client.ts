@@ -64,6 +64,10 @@ import type {
   IssueReport,
   IssueReportCounts,
   IssueReportStatus,
+  RecordTrackerDecisionInput,
+  TrackerBoard,
+  TrackerItem,
+  TrackerStatus,
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
 
@@ -1706,4 +1710,82 @@ export async function updateIssueReport(
     method: "PATCH",
     body: JSON.stringify(input),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Super Admin Tracker — the captain's sheet, read from GitHub issues by the
+// API. Super Admin only; `503 tracker_not_configured` until the server has
+// its GitHub token. Contract: gridgo-api docs/TRACKER_API.md.
+// ---------------------------------------------------------------------------
+
+/** The tracker's own file purpose: PNG, JPEG, WebP or PDF, 10 MB, 6 per decision. */
+export const TRACKER_ATTACHMENT_PURPOSE = "tracker_decision";
+
+function trackerItemPath(item: Pick<TrackerItem, "repo" | "number">): string {
+  return `/admin/tracker/${encodeURIComponent(item.repo)}/${encodeURIComponent(String(item.number))}`;
+}
+
+/** Writes answer the updated item, bare or as `{ item }`. */
+function unwrapTrackerItem(result: TrackerItem | { item: TrackerItem }): TrackerItem {
+  return "item" in result ? result.item : result;
+}
+
+/** Every tracker item, in report order. `refresh` skips the API's 60 s GitHub cache. */
+export async function getTracker(options?: { refresh?: boolean }): Promise<TrackerBoard> {
+  return request<TrackerBoard>(
+    `/admin/tracker${buildQuery({ refresh: options?.refresh ? 1 : undefined })}`,
+  );
+}
+
+/** Stores one status label on the GitHub issue (and closes/reopens it). */
+export async function setTrackerStatus(
+  item: Pick<TrackerItem, "repo" | "number">,
+  input: { status: TrackerStatus; note?: string },
+): Promise<TrackerItem> {
+  const payload: { status: TrackerStatus; note?: string } = { status: input.status };
+  const note = input.note?.trim();
+  if (note) payload.note = note;
+  const result = await request<TrackerItem | { item: TrackerItem }>(
+    `${trackerItemPath(item)}/status`,
+    { method: "PATCH", body: JSON.stringify(payload) },
+  );
+  return unwrapTrackerItem(result);
+}
+
+/** Upload one decision attachment. The upload alone files nothing. */
+export async function uploadTrackerAttachment(file: File): Promise<StoredFile> {
+  const body = new FormData();
+  body.append("purpose", TRACKER_ATTACHMENT_PURPOSE);
+  body.append("file", file);
+  const uploaded = await request<{ file: StoredFile }>("/files", {
+    method: "POST",
+    body,
+  });
+  return uploaded.file;
+}
+
+/** Only while the item is `needs-decision`; firstmate is told straight away. */
+export async function recordTrackerDecision(
+  item: Pick<TrackerItem, "repo" | "number">,
+  input: RecordTrackerDecisionInput,
+): Promise<TrackerItem> {
+  const payload: RecordTrackerDecisionInput = { text: input.text };
+  if (input.attachmentIds?.length) payload.attachmentIds = input.attachmentIds;
+  if (input.status) payload.status = input.status;
+  const result = await request<TrackerItem | { item: TrackerItem }>(
+    `${trackerItemPath(item)}/decisions`,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+  return unwrapTrackerItem(result);
+}
+
+/** A short-lived signed link to one decision attachment. Fetch it on click. */
+export async function getTrackerAttachmentUrl(
+  decisionId: string,
+  attachmentId: string,
+): Promise<string> {
+  const result = await request<{ url: string }>(
+    `/admin/tracker/decisions/${encodeURIComponent(decisionId)}/attachments/${encodeURIComponent(attachmentId)}`,
+  );
+  return result.url;
 }

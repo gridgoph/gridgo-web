@@ -1,29 +1,12 @@
-import {
-  CircleCheck,
-  CircleX,
-  Clock,
-  SquarePen,
-  TriangleAlert,
-  type LucideIcon,
-} from "lucide-react";
-
 import type { TimelineEntry } from "@/lib/api/types";
+import { STATUS_ICONS as ICONS } from "@/components/ui/StatusChip";
 import { cn } from "@/lib/utils";
 import { formatDateTime } from "@/lib/format";
 import {
   presentOrderState,
   presentTimelineActor,
-  type StatusIconName,
   type StatusTone,
 } from "@/lib/order-state";
-
-const ICONS: Record<StatusIconName, LucideIcon> = {
-  "circle-check": CircleCheck,
-  "triangle-alert": TriangleAlert,
-  "circle-x": CircleX,
-  clock: Clock,
-  "square-pen": SquarePen,
-};
 
 /** Tone → the marker's ink. Matches StatusChip so one state reads one way. */
 const TONE_INK: Record<StatusTone, string> = {
