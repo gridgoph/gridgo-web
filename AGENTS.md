@@ -253,6 +253,14 @@ Both were evaluated here and deliberately not adopted:
    denial so membership changes take effect without a reload.
 6. An authenticated but unmapped identity, or one with no portal membership, gets the
    access-not-assigned screen and can sign out to use another account.
+7. A suspended or rejected shop keeps its supplier membership (the projection allows it)
+   but every supplier endpoint answers `403 forbidden`. `RoleGate` reads the projection's
+   `approvalCase` (`withdrawnStanding`, `src/lib/auth/account-standing.ts`) and renders
+   `AccountStandingNotice` **instead of** `AppShell`, so the live stream, rail counts and
+   page reads never mount. A 403 from any supplier endpoint (`onForbidden` in the API
+   client) re-checks the projection, closing the workspace mid-session too. Pending shops
+   keep their workspace. Reuse the notice (status + reason props) for other withdrawn
+   accounts rather than a second screen.
 
 `/login` never offers sign-up: `SignIn` uses `withSignUp={false}` and
 `transferable={false}`. There is no sign-up route or role selector. The public
