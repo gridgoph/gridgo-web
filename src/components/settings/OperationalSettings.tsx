@@ -10,10 +10,10 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
  * after delivery, what delivery costs at each distance, and the GCash plate
  * checkout scans.
  *
- * The service fee is the one figure here the client must never see as a
- * line. It is folded into their total; Operations and Super Admin see it on
- * every order. The screen shows both receipts side by side so a change can be
- * read as money before it is saved.
+ * The service fee is folded into the client's printing price. Operations can
+ * name that fee on checkout or hide the row; Operations and Super Admin still
+ * see the split on every order. The screen shows both receipts side by side
+ * so a rate change can be read as money before it is saved.
  *
  * The band figures shipped as Firstmate's suggestion, not the captain's — the
  * screen says so, because someone has to decide the real ones. One
@@ -69,8 +69,10 @@ const SERVICE_FEE_COPY = (
 
 const SERVICE_FEE_VISIBILITY = (
   <>
-    Clients are never shown the fee as a line &mdash; it sits inside the price of the work
-    on their receipt. Operations and Super Admin see it on every order.
+    The fee always sits inside the client&rsquo;s printing price. This switch only names
+    it on checkout &mdash; hide the row when you do not want clients to see
+    &ldquo;Service fee&rdquo;. Operations and Super Admin still see the split on every
+    order.
   </>
 );
 
@@ -109,7 +111,9 @@ const NUDGE_COPY = (
   <>
     If a shop has not moved a job that is waiting on them — start production, file proof, or
     mark it ready — GRIDGO reminds that shop on this cadence. Changing it here is live.
-    Phones pick it up on the next check. No app release.
+    Phones pick it up on the next check. No app release. Seconds and minutes are for
+    checking the reminder; the check itself runs about every 30 seconds, so a shorter
+    wait still lands on the next check.
   </>
 );
 
@@ -135,6 +139,10 @@ function nudgeFrom(settings: PlatformSettings): ProductionNudge {
   return settings.productionNudge ?? DEFAULT_PRODUCTION_NUDGE;
 }
 
+function feeVisibleOf(settings: Pick<PlatformSettings, "serviceFeeVisibleToClient">): boolean {
+  return settings.serviceFeeVisibleToClient !== false;
+}
+
 function toNudgeDraft(settings: PlatformSettings): NudgeDraft {
   const nudge = nudgeFrom(settings);
   return {
@@ -148,8 +156,13 @@ function toNudgeDraft(settings: PlatformSettings): NudgeDraft {
 }
 
 function unitWord(value: number, unit: ProductionNudgeUnit): string {
-  if (unit === "days") return value === 1 ? "day" : "days";
-  return value === 1 ? "hour" : "hours";
+  const words: Record<ProductionNudgeUnit, [string, string]> = {
+    seconds: ["second", "seconds"],
+    minutes: ["minute", "minutes"],
+    hours: ["hour", "hours"],
+    days: ["day", "days"],
+  };
+  return value === 1 ? words[unit][0] : words[unit][1];
 }
 
 /** One sentence from the saved policy, for the “in force” line. */
@@ -245,6 +258,7 @@ export function OperationalSettings() {
   const [hours, setHours] = useState("");
   const [bands, setBands] = useState<BandDraft[]>([]);
   const [nudge, setNudge] = useState<NudgeDraft>(toNudgeDraft({ version: 0, issueWindowHours: 24, serviceFeeRateBps: 1000, deliveryFeeBands: [] }));
+  const [feeVisible, setFeeVisible] = useState(true);
   const [qrBusy, setQrBusy] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
   const [qrOk, setQrOk] = useState<string | null>(null);
@@ -286,6 +300,11 @@ export function OperationalSettings() {
           JSON.stringify(current) !== JSON.stringify(toNudgeDraft(previous))
             ? current
             : toNudgeDraft(next),
+        );
+        setFeeVisible((current) =>
+          preserveDraft && previous && current !== feeVisibleOf(previous)
+            ? current
+            : feeVisibleOf(next),
         );
         settingsRef.current = next;
         setSettings(next);
@@ -403,6 +422,7 @@ export function OperationalSettings() {
       const next = await updateSettings({
         expectedVersion: settings.version,
         serviceFeeRateBps: parsedRate,
+        serviceFeeVisibleToClient: feeVisible,
         ...(parsedRiderShare !== null ? { riderCommissionBps: parsedRiderShare } : {}),
         issueWindowHours: parsedHours,
         deliveryFeeBands: parsedBands.bands,
@@ -411,6 +431,7 @@ export function OperationalSettings() {
       });
       setSettings(next);
       setRate(bpsToPercentInput(next.serviceFeeRateBps));
+      setFeeVisible(feeVisibleOf(next));
       setRiderShare(riderShareInput(next.riderCommissionBps));
       setHours(String(next.issueWindowHours));
       setBands(toDraft(next.deliveryFeeBands));
@@ -482,6 +503,7 @@ export function OperationalSettings() {
 
   const dirty =
     rate !== bpsToPercentInput(settings.serviceFeeRateBps) ||
+    feeVisible !== feeVisibleOf(settings) ||
     riderShare !== riderShareInput(settings.riderCommissionBps) ||
     hours !== String(settings.issueWindowHours) ||
     JSON.stringify(bands) !== JSON.stringify(toDraft(settings.deliveryFeeBands)) ||
@@ -516,6 +538,15 @@ export function OperationalSettings() {
 
         <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
           <FieldGroup>
+            <Field orientation="horizontal">
+              <FieldLabel htmlFor="service-fee-visible">Show on client checkout</FieldLabel>
+              <Switch
+                id="service-fee-visible"
+                checked={feeVisible}
+                onCheckedChange={(checked) => setFeeVisible(Boolean(checked))}
+                aria-label="Show on client checkout"
+              />
+            </Field>
             <Field data-invalid={rateInvalid || undefined}>
               <FieldLabel htmlFor="service-fee-rate">Rate on the shop price</FieldLabel>
               <div className="relative max-w-40">
@@ -560,7 +591,7 @@ export function OperationalSettings() {
             </p>
           </FieldGroup>
 
-          <WorkedReceipts rateBps={draftRateBps} />
+          <WorkedReceipts rateBps={draftRateBps} feeVisible={feeVisible} />
         </div>
       </section>
 
@@ -843,6 +874,7 @@ export function OperationalSettings() {
           disabled={busy || !dirty}
           onClick={() => {
             setRate(bpsToPercentInput(settings.serviceFeeRateBps));
+            setFeeVisible(feeVisibleOf(settings));
             setRiderShare(riderShareInput(settings.riderCommissionBps));
             setHours(String(settings.issueWindowHours));
             setBands(toDraft(settings.deliveryFeeBands));
@@ -931,10 +963,11 @@ function Receipt({
 
 /**
  * One sample order, twice: as the client's receipt shows it and as Operations
- * sees it. Same total on both. The fee line is the only difference, which is
- * exactly the rule this setting has to make visible.
+ * sees it. Same total on both. The client never sees the fee as pesos — at
+ * most, with "Show on client checkout" on, a named row with no amount, since
+ * its pesos are already inside the price of the work.
  */
-function WorkedReceipts({ rateBps }: { rateBps: number }) {
+function WorkedReceipts({ rateBps, feeVisible }: { rateBps: number; feeVisible: boolean }) {
   const example = workedExample(rateBps);
   return (
     <div aria-label="Worked example" className="flex min-w-0 flex-col gap-2">
@@ -946,9 +979,16 @@ function WorkedReceipts({ rateBps }: { rateBps: number }) {
         <Receipt
           testId="receipt-client"
           title="What the client sees"
-          note="No fee line. The fee is inside the price of the work."
+          note={
+            feeVisible
+              ? "The fee is named but not charged again. Its pesos are inside the price of the work."
+              : "No fee line. The fee is inside the price of the work."
+          }
           lines={[
             { label: "Items", value: formatPhp(example.clientItemsMinor) },
+            ...(feeVisible
+              ? [{ label: `Service fee · ${formatRatePercent(rateBps)}`, value: "Included" }]
+              : []),
             { label: "Delivery", value: formatPhp(example.deliveryFeeMinor) },
             { label: "Total", value: formatPhp(example.clientTotalMinor), total: true },
           ]}
@@ -1004,8 +1044,17 @@ function NudgeSpan({
           aria-label={`${label} unit`}
           className="h-12 rounded-[var(--radius-field)] border border-input bg-card px-3 text-body text-foreground"
           value={unit}
-          onChange={(event) => onUnit(event.target.value === "days" ? "days" : "hours")}
+          onChange={(event) => {
+            const next = event.target.value;
+            onUnit(
+              next === "seconds" || next === "minutes" || next === "days" || next === "hours"
+                ? next
+                : "hours",
+            );
+          }}
         >
+          <option value="seconds">Seconds</option>
+          <option value="minutes">Minutes</option>
           <option value="hours">Hours</option>
           <option value="days">Days</option>
         </select>

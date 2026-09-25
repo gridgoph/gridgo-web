@@ -1,12 +1,33 @@
 import { describe, expect, it } from "vitest";
 
+import type { PayoutMilestone } from "@/lib/api/types";
+import { presentOrderState } from "@/lib/order-state";
 import {
   actionsForJob,
   needsSupplierAction,
   primaryAction,
   supplierWaitingOn,
 } from "@/lib/supplier-actions";
-import { presentOrderState } from "@/lib/order-state";
+
+function job(
+  state: string,
+  milestones: PayoutMilestone[] = [],
+  payoutHold = false,
+) {
+  return { state, payoutMilestones: milestones, payoutHold };
+}
+
+function milestone(
+  code: PayoutMilestone["code"],
+  status: PayoutMilestone["status"],
+): PayoutMilestone {
+  return {
+    code,
+    sharePercent: 25,
+    status,
+    pofFileIds: status === "pending_pof" ? [] : ["file-1"],
+  };
+}
 
 describe("presentOrderState", () => {
   it("maps supplier states to plain language without snake_case", () => {
@@ -35,21 +56,27 @@ describe("presentOrderState", () => {
 
 describe("actionsForJob", () => {
   it("offers accept and decline only for supplier_assigned", () => {
-    const actions = actionsForJob("supplier_assigned");
+    const actions = actionsForJob(job("supplier_assigned"));
     expect(actions.map((a) => a.kind)).toEqual(["accept", "decline"]);
     expect(actions.filter((a) => a.primary)).toHaveLength(1);
-    expect(primaryAction("supplier_assigned")?.targetState).toBe("supplier_accepted");
+    expect(primaryAction(job("supplier_assigned"))?.targetState).toBe("payment_authorized");
+    expect(primaryAction(job("supplier_assigned"))?.label).toBe("Accept job");
+    const decline = actions.find((a) => a.kind === "decline");
+    expect(decline?.targetState).toBe("approved_for_matching");
+    expect(actions.filter((a) => a.kind !== "accept" && a.kind !== "decline")).toEqual([]);
   });
 
-  it("makes accepting the step that carries the supplier's price", () => {
-    expect(primaryAction("supplier_assigned")?.needsPrice).toBe(true);
+  it("sends no price when the shop accepts an assigned job", () => {
+    const accept = primaryAction(job("supplier_assigned"));
+    expect(accept).not.toHaveProperty("needsPrice");
+    expect(accept?.targetState).toBe("payment_authorized");
   });
 
   it("leaves payment to the client and Operations", () => {
     // The supplier no longer asks for payment; the client is told the price
     // automatically on acceptance and Operations confirms the transfer.
-    expect(actionsForJob("awaiting_downpayment")).toEqual([]);
-    expect(actionsForJob("downpayment_review")).toEqual([]);
+    expect(actionsForJob(job("awaiting_downpayment"))).toEqual([]);
+    expect(actionsForJob(job("downpayment_review"))).toEqual([]);
     expect(supplierWaitingOn("downpayment_review")).toMatch(/Operations/);
   });
 
@@ -60,19 +87,84 @@ describe("actionsForJob", () => {
       "supplier_proof_approved",
       "awaiting_payment",
     ]) {
-      expect(actionsForJob(state)).toEqual([]);
+      expect(actionsForJob(job(state))).toEqual([]);
     }
   });
 
-  it("offers a single primary production action chain", () => {
-    expect(primaryAction("payment_authorized")?.targetState).toBe("production");
-    expect(primaryAction("production")?.targetState).toBe("ready_for_dispatch");
-    expect(primaryAction("supplier_self_qc")?.targetState).toBe("ready_for_dispatch");
+  it("offers start production only before there is anything to photograph", () => {
+    const actions = actionsForJob(
+      job("payment_authorized", [
+        milestone("printing", "pending_pof"),
+        milestone("packaging_qc", "pending_pof"),
+      ]),
+    );
+    expect(actions.map((action) => action.label)).toEqual(["Start production"]);
+    expect(actions.some((action) => action.kind === "add_proof")).toBe(false);
+  });
+
+  it("asks for printing proof before the job can be packaged", () => {
+    const actions = actionsForJob(
+      job("production", [
+        milestone("printing", "pending_pof"),
+        milestone("packaging_qc", "pending_pof"),
+      ]),
+    );
+    expect(actions).toEqual([
+      {
+        kind: "add_proof",
+        label: "Add printing proof",
+        targetState: null,
+        primary: true,
+        milestoneCode: "printing",
+      },
+    ]);
+    expect(actions.some((action) => action.label === "Package for pickup")).toBe(false);
+  });
+
+  it("asks for packaging proof once printing evidence is filed", () => {
+    const actions = actionsForJob(
+      job("production", [
+        milestone("printing", "pof_attached"),
+        milestone("packaging_qc", "pending_pof"),
+        milestone("delivered", "pending_pof"),
+        milestone("retention", "pending_pof"),
+      ]),
+    );
+    expect(actions.map((action) => action.kind)).toEqual(["add_proof"]);
+    expect(actions[0]?.label).toBe("Add packaging proof");
+    expect(actions[0]?.milestoneCode).toBe("packaging_qc");
+    expect(actions[0]?.targetState).toBeNull();
+  });
+
+  it("offers package for pickup only after both shop proofs are filed", () => {
+    const filed = [
+      milestone("printing", "pof_attached"),
+      milestone("packaging_qc", "pof_attached"),
+      milestone("delivered", "pending_pof"),
+      milestone("retention", "pending_pof"),
+    ];
+    expect(actionsForJob(job("production", filed)).map((action) => action.label)).toEqual([
+      "Package for pickup",
+    ]);
+    expect(primaryAction(job("production", filed))?.targetState).toBe("ready_for_dispatch");
+    expect(primaryAction(job("supplier_self_qc", filed))?.label).toBe("Package for pickup");
+  });
+
+  it("never asks the shop to file delivery or retention evidence", () => {
+    const actions = actionsForJob(
+      job("delivered", [
+        milestone("printing", "pof_attached"),
+        milestone("packaging_qc", "pof_attached"),
+        milestone("delivered", "pending_pof"),
+        milestone("retention", "pending_pof"),
+      ]),
+    );
+    expect(actions.filter((action) => action.kind === "add_proof")).toEqual([]);
   });
 
   it("returns no actions for terminal supplier states", () => {
-    expect(actionsForJob("ready_for_dispatch")).toEqual([]);
-    expect(actionsForJob("completed")).toEqual([]);
-    expect(needsSupplierAction("ready_for_dispatch")).toBe(false);
+    expect(actionsForJob(job("ready_for_dispatch"))).toEqual([]);
+    expect(actionsForJob(job("completed"))).toEqual([]);
+    expect(needsSupplierAction(job("ready_for_dispatch"))).toBe(false);
   });
 });

@@ -22,7 +22,9 @@ import {
 import type { InvalidatePing, Notification, Role } from "@/lib/api/types";
 import {
   isFreshArrival,
+  isProductionReminder,
   notificationChime,
+  PRODUCTION_NUDGE_SOUND_SRC,
   readNotificationSoundEnabled,
 } from "@/lib/live/notificationSound";
 import { createArrivalAnnouncer, type ArrivalAnnouncer } from "@/lib/live/arrivalToast";
@@ -204,7 +206,11 @@ function AccountLiveProvider({ children, role, onOpenNotification }: LiveProvide
             !row.read &&
             isFreshArrival(notification.at);
           if (news) {
-            if (readNotificationSoundEnabled()) notificationChime().play();
+            if (readNotificationSoundEnabled()) {
+              notificationChime().play(
+                isProductionReminder(row.type) ? PRODUCTION_NUDGE_SOUND_SRC : undefined,
+              );
+            }
             if (!desktop.current?.announce(row)) announcer.current?.announce(row);
           }
           const revision = ++arrivalRevision.current;

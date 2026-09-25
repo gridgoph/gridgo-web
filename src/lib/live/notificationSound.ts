@@ -15,6 +15,12 @@
  */
 
 export const NOTIFICATION_SOUND_SRC = "/audio/notification_user.mp3";
+/** Production-inactivity reminder only. Every other Desk arrival keeps the chime above. */
+export const PRODUCTION_NUDGE_SOUND_SRC = "/audio/notification_alert.mp3";
+
+export function isProductionReminder(type: string | undefined): boolean {
+  return type === "ops_production_inactive" || type === "shop_production_inactive";
+}
 export const NOTIFICATION_SOUND_PREFERENCE_KEY = "gridgo-web.notification-sound";
 export const NOTIFICATION_SOUND_MIN_GAP_MS = 1_500;
 
@@ -59,8 +65,11 @@ export function subscribeNotificationSoundEnabled(listener: Listener): () => voi
 }
 
 export type NotificationChime = {
-  /** Play the chime unless one played within the coalescing window. */
-  play: () => void;
+  /**
+   * Play the chime (or `src`, e.g. the production-nudge sting) unless a sound
+   * played within the coalescing window.
+   */
+  play: (src?: string) => void;
   /** Stop listening for the priming gesture. */
   dispose: () => void;
 };
@@ -68,11 +77,11 @@ export type NotificationChime = {
 type ChimeOptions = {
   minGapMs?: number;
   now?: () => number;
-  createAudio?: () => HTMLAudioElement;
+  createAudio?: (src: string) => HTMLAudioElement;
 };
 
-function defaultAudio(): HTMLAudioElement {
-  const audio = new Audio(NOTIFICATION_SOUND_SRC);
+function defaultAudio(src: string): HTMLAudioElement {
+  const audio = new Audio(src);
   audio.preload = "auto";
   return audio;
 }
@@ -80,19 +89,23 @@ function defaultAudio(): HTMLAudioElement {
 export function createNotificationChime(options: ChimeOptions = {}): NotificationChime {
   const minGap = options.minGapMs ?? NOTIFICATION_SOUND_MIN_GAP_MS;
   const now = options.now ?? (() => Date.now());
-  let audio: HTMLAudioElement | null = null;
+  const elements = new Map<string, HTMLAudioElement>();
   let lastPlayedAt = -Infinity;
   let priming = false;
+  let pendingSrc = NOTIFICATION_SOUND_SRC;
   const gestureEvents = ["pointerdown", "keydown"] as const;
 
-  const element = () => {
-    if (!audio) audio = (options.createAudio ?? defaultAudio)();
-    return audio;
+  const element = (src: string) => {
+    const existing = elements.get(src);
+    if (existing) return existing;
+    const created = (options.createAudio ?? defaultAudio)(src);
+    elements.set(src, created);
+    return created;
   };
 
   const prime = () => {
     unbindGesture();
-    const el = element();
+    const el = element(pendingSrc);
     const wasMuted = el.muted;
     el.muted = true;
     void Promise.resolve(el.play())
@@ -120,11 +133,12 @@ export function createNotificationChime(options: ChimeOptions = {}): Notificatio
   };
 
   return {
-    play: () => {
+    play: (src: string = NOTIFICATION_SOUND_SRC) => {
       const at = now();
       if (at - lastPlayedAt < minGap) return;
       lastPlayedAt = at;
-      const el = element();
+      pendingSrc = src;
+      const el = element(src);
       el.currentTime = 0;
       void Promise.resolve(el.play()).catch(() => {
         lastPlayedAt = -Infinity;

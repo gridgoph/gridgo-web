@@ -28,7 +28,7 @@ import { activitySortValue, jobActivity, relativeTime } from "../_lib/job-activi
 const NO_ACTION = "No action needed";
 
 function nextStepLabel(job: Order): string {
-  return primaryAction(job.state)?.label ?? NO_ACTION;
+  return primaryAction(job)?.label ?? NO_ACTION;
 }
 
 /** Whether a due date falls inside the next `hours`. */
@@ -250,7 +250,7 @@ export default function SupplierJobsPage() {
     );
   }
 
-  const actionRequired = rows.filter((j) => needsSupplierAction(j.state)).length;
+  const actionRequired = rows.filter((j) => needsSupplierAction(j)).length;
   const dueSoon = rows.filter((j) => isDueWithin(j.readyBy ?? j.deadline, 24)).length;
   const onTheBoard = rows.reduce((total, j) => total + (j.supplierSubtotalMinor ?? 0), 0);
 

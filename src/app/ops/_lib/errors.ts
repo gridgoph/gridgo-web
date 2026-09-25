@@ -46,6 +46,11 @@ const CODE_COPY: Record<string, string> = {
     "Pilot Credits can no longer pay for an order. Grants and balances still exist, but the client pays by QR transfer.",
   order_not_found: "That order was not found. Refresh the queue.",
   invalid_rider_commission_rate: RIDER_SHARE_INVALID,
+  promise_outside_business_hours:
+    "Promise a Monday–Friday time from 8:00 am up to, but not including, 5:00 pm Philippine time.",
+  invalid_physical_invoice: "Choose a date and a time for the paper invoice, then set the promise.",
+  physical_invoice_not_found:
+    "This order no longer has a paper-invoice request. Refresh the order.",
 };
 
 export function opsErrorMessage(err: unknown, fallback: string): string {

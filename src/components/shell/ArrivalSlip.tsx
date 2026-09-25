@@ -6,6 +6,7 @@ import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Notification } from "@/lib/api/types";
 import { FAMILY_ICON, presentSlip, slipFamily } from "@/components/shell/slip";
+import { isProductionReminder } from "@/lib/live/notificationSound";
 
 /**
  * One slip, landing on the desk.
@@ -21,6 +22,7 @@ import { FAMILY_ICON, presentSlip, slipFamily } from "@/components/shell/slip";
  */
 export function ArrivalSlip({ notification }: { notification: Notification }) {
   const { headline, reference } = presentSlip(notification);
+  const reminder = isProductionReminder(notification.type);
   const Icon = FAMILY_ICON[slipFamily(notification)];
 
   return (
@@ -30,7 +32,12 @@ export function ArrivalSlip({ notification }: { notification: Notification }) {
     >
       <span
         aria-hidden
-        className="border-primary bg-primary text-primary-foreground mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-pill border"
+        className={
+          reminder
+            ? "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-pill border text-text-primary"
+            : "border-primary bg-primary text-primary-foreground mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-pill border"
+        }
+        style={reminder ? { background: "var(--color-warning)", borderColor: "var(--color-warning)" } : undefined}
       >
         <Icon size={14} strokeWidth={2} />
       </span>
@@ -42,6 +49,11 @@ export function ArrivalSlip({ notification }: { notification: Notification }) {
         >
           {headline}
         </ToastPrimitive.Title>
+        {reminder ? (
+          <p className="text-caption m-0" style={{ color: "var(--color-warning)" }}>
+            Needs an update
+          </p>
+        ) : null}
         {reference ? (
           <ToastPrimitive.Description
             data-slot="arrival-reference"

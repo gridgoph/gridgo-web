@@ -28,6 +28,7 @@ import { useLive } from "@/lib/live/LiveProvider";
 import { notificationHref } from "@/lib/live/notificationHref";
 import { useNotificationSound } from "@/lib/live/useNotificationSound";
 import { FAMILY_ICON, presentSlip, slipFamily } from "@/components/shell/slip";
+import { isProductionReminder } from "@/lib/live/notificationSound";
 import { DesktopAlertsPrompt, DesktopAlertsRow } from "@/components/shell/DesktopAlerts";
 import { cn } from "@/lib/utils";
 
@@ -63,6 +64,7 @@ function SlipRow({
   onOpen: (notification: Notification) => void;
 }) {
   const unread = !notification.read;
+  const reminder = isProductionReminder(notification.type);
   const { headline, reference } = presentSlip(notification);
   const Icon = FAMILY_ICON[slipFamily(notification)];
 
@@ -80,7 +82,9 @@ function SlipRow({
           aria-hidden
           className={cn(
             "mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-pill border",
-            unread
+            reminder && unread
+              ? "border-warning bg-warning text-text-primary"
+              : unread
               ? "border-primary bg-primary text-primary-foreground"
               : "border-outline-subtle bg-surface text-text-muted",
           )}
@@ -95,6 +99,11 @@ function SlipRow({
           >
             {headline}
           </span>
+          {reminder ? (
+            <span className="text-caption" style={{ color: "var(--color-warning)" }}>
+              Needs an update
+            </span>
+          ) : null}
           {reference ? (
             <span className="text-caption text-text-muted truncate tabular-nums">
               {reference}
