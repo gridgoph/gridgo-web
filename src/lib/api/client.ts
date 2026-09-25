@@ -1704,7 +1704,7 @@ export async function listIssueReports(
 
 export async function updateIssueReport(
   id: string,
-  input: { status: IssueReportStatus; publishedIn?: string | null },
+  input: { status: IssueReportStatus; publishedIn?: string | null; trackerIssueUrl?: string | null },
 ): Promise<IssueReport> {
   return request<IssueReport>(`/ops/issue-reports/${encodeURIComponent(id)}`, {
     method: "PATCH",

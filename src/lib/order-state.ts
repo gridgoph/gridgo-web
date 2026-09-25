@@ -23,7 +23,9 @@ export type StatusIconName =
   | "git-pull-request"
   | "git-merge"
   | "circle-help"
-  | "ban";
+  | "ban"
+  // A GitHub issue (issue reports linked to the tracker).
+  | "circle-dot";
 
 export type StatePresentation = {
   label: string;
