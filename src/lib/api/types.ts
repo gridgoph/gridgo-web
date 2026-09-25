@@ -1304,7 +1304,8 @@ export type ShopRankings = {
 // ---------------------------------------------------------------------------
 
 export type IssueReportCategory = "bug" | "feature" | "other";
-export type IssueReportStatus = "new" | "published" | "dismissed";
+/** `tracked`: filed on, or linked to, a GitHub tracker issue. */
+export type IssueReportStatus = "new" | "tracked" | "published" | "dismissed";
 
 export type IssueReportScreenshot = {
   position: number;
@@ -1321,9 +1322,16 @@ export type IssueReport = {
   category: IssueReportCategory | null;
   status: IssueReportStatus;
   publishedIn: string | null;
+  /**
+   * `https://github.com/gridgoph/<repo>/issues/<n>`. Kept while `tracked` or
+   * `published`, cleared on `new` or `dismissed`. Absent from an API that
+   * predates the tracker link.
+   */
+  trackerIssueUrl?: string | null;
   createdAt: string;
   updatedAt: string;
   screenshots: IssueReportScreenshot[];
 };
 
-export type IssueReportCounts = Record<IssueReportStatus, number>;
+/** `tracked` is missing from an API that predates the tracker link. */
+export type IssueReportCounts = Record<Exclude<IssueReportStatus, "tracked">, number> & { tracked?: number };

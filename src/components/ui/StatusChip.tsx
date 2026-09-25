@@ -2,9 +2,11 @@ import {
   Ban,
   CircleCheck,
   CircleDashed,
+  CircleDot,
   CircleHelp,
   CircleX,
   Clock,
+  ExternalLink,
   GitMerge,
   GitPullRequest,
   SquarePen,
@@ -26,6 +28,7 @@ export const STATUS_ICONS: Record<StatusIconName, LucideIcon> = {
   "git-merge": GitMerge,
   "circle-help": CircleHelp,
   ban: Ban,
+  "circle-dot": CircleDot,
 };
 
 const TONE: Record<
@@ -97,5 +100,37 @@ export function StatusChip({ tone, label, icon }: Props) {
       />
       <span className={`text-caption ${style.text}`}>{label}</span>
     </span>
+  );
+}
+
+/**
+ * A status chip that is also a way out: it opens `href` (a GitHub issue, say)
+ * in a new tab. The chip keeps its size; the link around it carries the 44px
+ * target. `role="status"` stays off, because a link is not a live region.
+ */
+export function StatusChipLink({
+  tone,
+  label,
+  icon,
+  href,
+  linkLabel,
+}: Props & { href: string; linkLabel?: string }) {
+  const style = TONE[tone];
+  const Icon = STATUS_ICONS[icon];
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={linkLabel ? `${linkLabel} (opens in a new tab)` : `${label} (opens in a new tab)`}
+      className="group inline-flex min-h-11 min-w-11 items-center rounded-[var(--radius-pill)]"
+    >
+      <span className={`gg-chip ${style.border} group-hover:bg-overlay-hover`}>
+        <Icon size={13} strokeWidth={2} aria-hidden style={{ color: style.icon }} />
+        <span className={`text-caption ${style.text} underline-offset-4 group-hover:underline`}>{label}</span>
+        <ExternalLink size={12} strokeWidth={2} aria-hidden style={{ color: style.icon }} />
+      </span>
+    </a>
   );
 }
