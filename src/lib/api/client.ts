@@ -55,6 +55,7 @@ import type {
   ApprovalCaseDetail,
   ApprovalCaseQueue,
   ApprovalDecisionAction,
+  ApprovalDecisionResult,
   User,
   VerificationStatus,
   Zone,
@@ -261,9 +262,39 @@ async function request<T>(
         data = text;
       }
     }
-    if (!res.ok) throw new ApiError(res.status, data);
+    if (!res.ok) {
+      const error = new ApiError(res.status, data);
+      if (error.kind === "forbidden" && !path.startsWith("/auth/")) notifyForbidden(error);
+      throw error;
+    }
     return data as T;
   });
+}
+
+type ForbiddenListener = (error: ApiError) => void;
+const forbiddenListeners = new Set<ForbiddenListener>();
+
+/**
+ * Hear every 403 from a workspace endpoint. `RoleGate` uses it to re-check its
+ * projection, so access withdrawn mid-session (a suspended shop) ends the
+ * workspace instead of being retried by every page and rail count. `/auth/*`
+ * denials are excluded: `RoleGate` reads those directly.
+ */
+export function onForbidden(listener: ForbiddenListener): () => void {
+  forbiddenListeners.add(listener);
+  return () => {
+    forbiddenListeners.delete(listener);
+  };
+}
+
+function notifyForbidden(error: ApiError): void {
+  for (const listener of forbiddenListeners) {
+    try {
+      listener(error);
+    } catch {
+      /* A listener never changes the caller's error. */
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -869,9 +900,16 @@ export async function getApprovalCase(caseId: string): Promise<ApprovalCaseDetai
 export async function decideApprovalCase(
   caseId: string,
   action: ApprovalDecisionAction,
-  input: { expectedVersion: number; requestId: string; reason?: string; note?: string },
-): Promise<ApprovalCaseDetail> {
-  return request<ApprovalCaseDetail>(
+  input: {
+    expectedVersion: number;
+    requestId: string;
+    reason?: string;
+    note?: string;
+    /** Restore only: suspended-with-account lines to bring back in the same step. */
+    restoreServiceIds?: string[];
+  },
+): Promise<ApprovalDecisionResult> {
+  return request<ApprovalDecisionResult>(
     `/approval-cases/${encodeURIComponent(caseId)}/${action}`,
     { method: "POST", body: JSON.stringify(input) },
   );
@@ -962,7 +1000,9 @@ export async function listAllCatalogShops(
  * Every shop ranked by what clients said — overall, or within one category,
  * where the shop's cheapest listing price rides beside the stars.
  */
-export async function getShopRankings(categoryCode?: string | null): Promise<ShopRankings> {
+export async function getShopRankings(
+  categoryCode?: string | null,
+): Promise<ShopRankings> {
   const q = buildQuery({ categoryCode: categoryCode || undefined });
   return request<ShopRankings>(`/admin/shop-rankings${q}`);
 }

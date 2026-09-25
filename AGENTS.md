@@ -59,6 +59,7 @@ privileged account.
 | `src/lib/vehicle.ts`                    | The five rider vehicle types as plain-language labels and one glyph set (lucide path data; motorcycle and van drawn on the same grid) used by map pins, the dispatch board and the roster                                                                                                                                                                          |
 | `src/lib/osrm.ts`                       | Road routes from the public OSRM demo (keyless, rate-limited, no SLA) with a straight-line fallback that never invents a travel time; the one sanctioned non-API `fetch` besides the SSE stream                                                                                                                                                                    |
 | `src/components/orders/`                | Order-shaped views: `OrderWorkspace` (ops + Super Admin inbox), `MoneyBreakdown` (ops/super **only**), `PaymentSummary`, `MilestoneList`, `OrderMeta`, `Timeline`                                                                                                                                                                                                  |
+| `src/components/approvals/suspended-accounts.ts` | Suspended accounts across the approvals queue (`?show=suspended`, deep-linked from Roles) and Roles: banner wording, the legacy "Verification suspended" placeholder read as "no reason", and what reinstating restores. `ReinstateDialog` restores through `POST /approval-cases/:id/restore` with `restoreServiceIds` (lines `suspendedWithAccount` pre-ticked); without `suspendedServiceLines` from the API it restores the account only and says so. |
 | `src/app/admin/`                        | Super Admin surfaces — including `broadcast`, the push megaphone                                                                                                                                                                                                                                                                                                   |
 | `src/app/admin/_lib/broadcasts.ts`      | Announcement rules: audience order/copy, lock-screen budget, session resend check, reach reading                                                                                                                                                                                                                                                                   |
 | `src/app/admin/catalogue/_components/DangerZone.tsx` | The one delete on the chart editors (category + print job): typed-code confirmation, then the API's `409 catalog_entry_in_use` / `catalog_entry_shipped` breakdown with "Hide from new listings" (`active:false`) as the fallback. Copy rules in `_lib/danger.ts`; contract in `gridgo-api/docs/TAXONOMY_API.md` § Delete. Build-shipped entries can never be hard-deleted: the seed appends them back. |
@@ -253,6 +254,14 @@ Both were evaluated here and deliberately not adopted:
    denial so membership changes take effect without a reload.
 6. An authenticated but unmapped identity, or one with no portal membership, gets the
    access-not-assigned screen and can sign out to use another account.
+7. A suspended or rejected shop keeps its supplier membership (the projection allows it)
+   but every supplier endpoint answers `403 forbidden`. `RoleGate` reads the projection's
+   `approvalCase` (`withdrawnStanding`, `src/lib/auth/account-standing.ts`) and renders
+   `AccountStandingNotice` **instead of** `AppShell`, so the live stream, rail counts and
+   page reads never mount. A 403 from any supplier endpoint (`onForbidden` in the API
+   client) re-checks the projection, closing the workspace mid-session too. Pending shops
+   keep their workspace. Reuse the notice (status + reason props) for other withdrawn
+   accounts rather than a second screen.
 
 `/login` never offers sign-up: `SignIn` uses `withSignUp={false}` and
 `transferable={false}`. There is no sign-up route or role selector. The public

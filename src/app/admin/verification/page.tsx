@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ServiceLines } from "@/components/approvals/ServiceLines";
 import { SignupApprovals } from "@/components/approvals/SignupApprovals";
 import { reviewQueueTab } from "@/components/approvals/review-tab";
+import { queueView, type QueueView } from "@/components/approvals/suspended-accounts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 /**
@@ -17,6 +18,13 @@ function AdminVerificationBody() {
   const search = useSearchParams();
   const router = useRouter();
   const tab = reviewQueueTab(search);
+  const view = queueView(search.get("show"));
+  const setView = (next: QueueView) => {
+    const params = new URLSearchParams(search.toString());
+    if (next === "all") params.delete("show");
+    else params.set("show", next);
+    router.replace("/admin/verification?" + params.toString(), { scroll: false });
+  };
   return (
     <Tabs
       value={tab}
@@ -35,7 +43,11 @@ function AdminVerificationBody() {
       </TabsList>
 
       <TabsContent value="signups" className="mt-4">
-        <SignupApprovals intro="Suppliers and riders sign themselves up and can be given no work until they are approved. Approving an account does not make its catalogue lines live — those are verified on the Service lines tab." />
+        <SignupApprovals
+          intro="Suppliers and riders sign themselves up and can be given no work until they are approved. Approving an account does not make its catalogue lines live — those are verified on the Service lines tab."
+          view={view}
+          onViewChange={setView}
+        />
       </TabsContent>
 
       <TabsContent value="services" className="mt-4">
