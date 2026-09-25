@@ -261,9 +261,39 @@ async function request<T>(
         data = text;
       }
     }
-    if (!res.ok) throw new ApiError(res.status, data);
+    if (!res.ok) {
+      const error = new ApiError(res.status, data);
+      if (error.kind === "forbidden" && !path.startsWith("/auth/")) notifyForbidden(error);
+      throw error;
+    }
     return data as T;
   });
+}
+
+type ForbiddenListener = (error: ApiError) => void;
+const forbiddenListeners = new Set<ForbiddenListener>();
+
+/**
+ * Hear every 403 from a workspace endpoint. `RoleGate` uses it to re-check its
+ * projection, so access withdrawn mid-session (a suspended shop) ends the
+ * workspace instead of being retried by every page and rail count. `/auth/*`
+ * denials are excluded: `RoleGate` reads those directly.
+ */
+export function onForbidden(listener: ForbiddenListener): () => void {
+  forbiddenListeners.add(listener);
+  return () => {
+    forbiddenListeners.delete(listener);
+  };
+}
+
+function notifyForbidden(error: ApiError): void {
+  for (const listener of forbiddenListeners) {
+    try {
+      listener(error);
+    } catch {
+      /* A listener never changes the caller's error. */
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

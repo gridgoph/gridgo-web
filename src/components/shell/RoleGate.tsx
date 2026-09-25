@@ -1,16 +1,18 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
+import { AccountStandingNotice } from "@/components/auth/AccountStandingNotice";
 import {
   PortalAccessDenied,
   PortalAccessUnavailable,
 } from "@/components/auth/PortalAccessState";
 import { AppShell } from "@/components/shell/AppShell";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
-import { getPortalRoleProjection, isApiError } from "@/lib/api/client";
+import { getPortalRoleProjection, isApiError, onForbidden } from "@/lib/api/client";
 import type { PortalRole } from "@/lib/api/types";
+import { withdrawnStanding, type WithdrawnStanding } from "@/lib/auth/account-standing";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { roleLabel } from "@/lib/routes";
 
@@ -19,9 +21,12 @@ type Props = {
   children: ReactNode;
 };
 
-type ProjectionStatus = "idle" | "checking" | "allowed" | "denied" | "unavailable";
+type ProjectionStatus =
+  "idle" | "checking" | "allowed" | "withdrawn" | "denied" | "unavailable";
 
 const MAX_UNAUTHORIZED_REFRESHES = 1;
+/** A burst of refused reads (the page and the rail together) costs one re-check. */
+const FORBIDDEN_RECHECK_GAP_MS = 5_000;
 
 /**
  * Each role tree authorizes from its fixed Postgres-backed API projection.
@@ -34,13 +39,22 @@ const MAX_UNAUTHORIZED_REFRESHES = 1;
  * access is removed only on a settled denial. A 401 gets one fresh-token
  * retry, and effect cleanup prevents an older overlapping check from changing
  * the latest authorization state.
+ *
+ * A suspended or rejected shop still holds its supplier membership, so the
+ * projection allows it, but every supplier endpoint answers 403. Its approval
+ * case therefore closes the workspace here: the notice replaces `AppShell`,
+ * which unmounts the live stream, the rail counts and every page read
+ * (gridgoph/gridgo-web#77). A 403 from any supplier endpoint re-checks the
+ * projection, so a suspension that lands mid-session closes it too.
  */
 export function RoleGate({ allow, children }: Props) {
   const auth = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [projectionStatus, setProjectionStatus] = useState<ProjectionStatus>("idle");
+  const [standing, setStanding] = useState<WithdrawnStanding | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const lastForbiddenRecheck = useRef(0);
 
   useEffect(() => {
     if (auth.status === "signed_out") {
@@ -58,13 +72,13 @@ export function RoleGate({ allow, children }: Props) {
 
       while (active) {
         try {
-          if (refreshToken) {
-            await getPortalRoleProjection(allow, { refreshToken: true });
-          } else {
-            await getPortalRoleProjection(allow);
-          }
+          const projection = refreshToken
+            ? await getPortalRoleProjection(allow, { refreshToken: true })
+            : await getPortalRoleProjection(allow);
           if (!active) return;
-          setProjectionStatus("allowed");
+          const withdrawn = withdrawnStanding(projection);
+          setStanding(withdrawn);
+          setProjectionStatus(withdrawn ? "withdrawn" : "allowed");
           return;
         } catch (error) {
           if (!active) return;
@@ -97,6 +111,16 @@ export function RoleGate({ allow, children }: Props) {
     };
   }, [allow, attempt, auth.status, auth.revision, pathname, router]);
 
+  useEffect(() => {
+    if (allow !== "supplier" || projectionStatus !== "allowed") return;
+    return onForbidden(() => {
+      const now = Date.now();
+      if (now - lastForbiddenRecheck.current < FORBIDDEN_RECHECK_GAP_MS) return;
+      lastForbiddenRecheck.current = now;
+      setAttempt((current) => current + 1);
+    });
+  }, [allow, projectionStatus]);
+
   if (auth.status === "unmapped") {
     return (
       <PortalAccessDenied
@@ -121,6 +145,21 @@ export function RoleGate({ allow, children }: Props) {
         title={`This account cannot open ${roleLabel(allow)}`}
         body={`This signed-in identity does not have the ${roleLabel(allow)} membership required for this workspace. GRIDGO assigns portal access from its database membership records.`}
         onSignOut={() => void auth.signOut()}
+      />
+    );
+  }
+
+  if (projectionStatus === "withdrawn" && standing) {
+    return (
+      <AccountStandingNotice
+        status={standing.status}
+        reason={standing.reason}
+        accountName={standing.accountName}
+        email={auth.user?.email}
+        onSignOut={() => void auth.signOut()}
+        onCheckAgain={() => {
+          setAttempt((current) => current + 1);
+        }}
       />
     );
   }
