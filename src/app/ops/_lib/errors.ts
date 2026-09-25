@@ -36,6 +36,9 @@ const CODE_COPY: Record<string, string> = {
     "This rider has not finished sending their application. Ask them to submit it from the rider app, then try again.",
   approval_case_stale:
     "This approval was updated. Refresh and review it again.",
+  note_required: "Add a note for the record before reinstating this account.",
+  service_not_restorable:
+    "One of the ticked service lines was not suspended with this account, so reinstating cannot bring it back. Refresh, then review that line on the Service lines tab.",
   escalation_already_resolved:
     "Someone has already given an instruction on this escalation. Refresh to see it.",
   transition_not_allowed:

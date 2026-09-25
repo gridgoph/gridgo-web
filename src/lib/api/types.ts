@@ -23,6 +23,8 @@ export type ApprovalCaseSummary = {
 export type ApprovalCaseQueueItem = ApprovalCaseSummary & {
   applicant: PortalIdentity | null;
   decidedBy?: string | null;
+  /** Display name of whoever made the last decision (reinstate API; optional). */
+  decidedByName?: string | null;
 };
 
 export type ApprovalCaseQueue = {
@@ -56,12 +58,36 @@ export type BusinessApplication = {
   accountType: "business" | "organization";
 };
 
+/**
+ * A supplier line that is suspended right now. `suspendedWithAccount` lines
+ * went down with the account suspension and may come back on reinstate; any
+ * other line was suspended on its own and is reviewed on the Service lines tab.
+ */
+export type SuspendedServiceLine = {
+  id: string;
+  name: string;
+  suspendedAt: string | null;
+  suspendReason: string | null;
+  suspendedWithAccount: boolean;
+};
+
 export type ApprovalCaseDetail = {
-  approvalCase: ApprovalCaseSummary & { decidedBy?: string | null };
+  approvalCase: ApprovalCaseSummary & {
+    decidedBy?: string | null;
+    decidedByName?: string | null;
+  };
   applicant: PortalIdentity | null;
   history: ApprovalCaseHistoryEntry[];
   clientProfile?: ClientProfile | null;
   application?: BusinessApplication;
+  /** Supplier cases on the reinstate API. Absent: this API restores the account only. */
+  suspendedServiceLines?: SuspendedServiceLine[];
+};
+
+/** `POST /approval-cases/:id/<decision>` answers with the fresh detail. */
+export type ApprovalDecisionResult = ApprovalCaseDetail & {
+  /** Restore only, on the reinstate API: the lines that actually went back live. */
+  restoredServiceIds?: string[];
 };
 
 export type ApprovalDecisionAction = "approve" | "reject" | "suspend" | "restore";

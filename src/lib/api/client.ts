@@ -55,6 +55,7 @@ import type {
   ApprovalCaseDetail,
   ApprovalCaseQueue,
   ApprovalDecisionAction,
+  ApprovalDecisionResult,
   User,
   VerificationStatus,
   Zone,
@@ -899,9 +900,16 @@ export async function getApprovalCase(caseId: string): Promise<ApprovalCaseDetai
 export async function decideApprovalCase(
   caseId: string,
   action: ApprovalDecisionAction,
-  input: { expectedVersion: number; requestId: string; reason?: string; note?: string },
-): Promise<ApprovalCaseDetail> {
-  return request<ApprovalCaseDetail>(
+  input: {
+    expectedVersion: number;
+    requestId: string;
+    reason?: string;
+    note?: string;
+    /** Restore only: suspended-with-account lines to bring back in the same step. */
+    restoreServiceIds?: string[];
+  },
+): Promise<ApprovalDecisionResult> {
+  return request<ApprovalDecisionResult>(
     `/approval-cases/${encodeURIComponent(caseId)}/${action}`,
     { method: "POST", body: JSON.stringify(input) },
   );
@@ -992,7 +1000,9 @@ export async function listAllCatalogShops(
  * Every shop ranked by what clients said — overall, or within one category,
  * where the shop's cheapest listing price rides beside the stars.
  */
-export async function getShopRankings(categoryCode?: string | null): Promise<ShopRankings> {
+export async function getShopRankings(
+  categoryCode?: string | null,
+): Promise<ShopRankings> {
   const q = buildQuery({ categoryCode: categoryCode || undefined });
   return request<ShopRankings>(`/admin/shop-rankings${q}`);
 }
