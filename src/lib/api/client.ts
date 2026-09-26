@@ -892,6 +892,18 @@ export async function updateUserRole(
   return result.user;
 }
 
+/** Super Admin only. Reason is required for suspend, remove, and restore. */
+export async function updateUserAccount(
+  userId: string,
+  input: { status: "suspended" | "removed" | "active"; reason: string },
+): Promise<User> {
+  const result = await request<{ user: User }>(`/users/${userId}/account`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+  return result.user;
+}
+
 export async function listApprovalCases(params?: {
   status?: string;
   kind?: string;

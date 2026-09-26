@@ -15,6 +15,7 @@ describe("ROLE_NAV", () => {
     expect(hrefs).toEqual([
       "/supplier/dashboard",
       "/supplier/jobs",
+      "/supplier/chat",
       "/supplier/catalogue",
       "/supplier/schedule",
       "/supplier/capacity",
@@ -102,6 +103,7 @@ describe("ROLE_NAV", () => {
       "/ops/settings",
       "/supplier/capacity",
       "/supplier/catalogue",
+      "/supplier/chat",
       "/supplier/dashboard",
       "/supplier/jobs",
       "/supplier/payout-account",
@@ -166,7 +168,13 @@ describe("ROLE_NAV", () => {
       ROLE_NAV_GROUPS.ops_admin
         .find((g) => g.id === "ops-field")
         ?.items.map((n) => n.href),
-    ).toEqual(["/ops/dispatch", "/ops/riders", "/ops/rankings", "/ops/escalations", "/ops/schedule"]);
+    ).toEqual([
+      "/ops/dispatch",
+      "/ops/riders",
+      "/ops/rankings",
+      "/ops/escalations",
+      "/ops/schedule",
+    ]);
     expect(
       ROLE_NAV_GROUPS.ops_admin
         .find((g) => g.id === "ops-money")
@@ -210,6 +218,11 @@ describe("ROLE_NAV", () => {
       "/admin/broadcast",
     ]);
 
+    expect(
+      ROLE_NAV_GROUPS.supplier
+        .find((g) => g.id === "supplier-top")
+        ?.items.map((n) => n.href),
+    ).toEqual(["/supplier/dashboard", "/supplier/jobs", "/supplier/chat"]);
     expect(
       ROLE_NAV_GROUPS.supplier
         .find((g) => g.id === "supplier-shop")
