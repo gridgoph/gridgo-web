@@ -24,6 +24,8 @@ const {
       name: "Multi Member",
       // Deliberately irrelevant to route authorization.
       role: "client",
+      accountStatus: undefined as undefined | "active" | "suspended" | "removed",
+      accountStatusReason: undefined as undefined | string | null,
     },
     memberships: [{ role: "supplier" }, { role: "ops_admin" }, { role: "super_admin" }],
     status: "mapped",
@@ -73,7 +75,14 @@ afterEach(() => {
   refreshMock.mockReset();
   pathnameRef.current = "/test-route";
   authState.status = "mapped";
-  authState.user.role = "client";
+  authState.user = {
+    id: "user_multi",
+    email: "person@example.com",
+    name: "Multi Member",
+    role: "client",
+    accountStatus: undefined,
+    accountStatusReason: undefined,
+  };
   authState.memberships = [
     { role: "supplier" },
     { role: "ops_admin" },
@@ -145,6 +154,27 @@ describe("RoleGate fixed projections", () => {
     ).toBeVisible();
     expect(screen.queryByText("Admin secrets")).not.toBeInTheDocument();
     expect(getPortalRoleProjectionMock).toHaveBeenCalledWith("super_admin");
+  });
+
+  it("replaces the portal shell when /auth/me says the account is suspended", async () => {
+    authState.user = {
+      ...authState.user,
+      accountStatus: "suspended",
+      accountStatusReason: "Missed the counter",
+    };
+    getPortalRoleProjectionMock.mockResolvedValue(projection("supplier"));
+
+    render(
+      <RoleGate allow="supplier">
+        <p>Supplier jobs</p>
+      </RoleGate>,
+    );
+
+    expect(screen.getByRole("heading", { name: "This account is suspended." })).toBeVisible();
+    expect(screen.getByText("Missed the counter")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeVisible();
+    expect(screen.queryByText("Supplier jobs")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("shell-supplier")).not.toBeInTheDocument();
   });
 
   it("shows the mapped-account denial without probing a role for an unmapped identity", async () => {

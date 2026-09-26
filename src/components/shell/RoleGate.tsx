@@ -4,11 +4,13 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { AccountStandingNotice } from "@/components/auth/AccountStandingNotice";
+import { AccountStatusNotice } from "@/components/auth/AccountStatusNotice";
 import {
   PortalAccessDenied,
   PortalAccessUnavailable,
 } from "@/components/auth/PortalAccessState";
 import { AppShell } from "@/components/shell/AppShell";
+import { accountHold } from "@/lib/accountHold";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { getPortalRoleProjection, isApiError, onForbidden } from "@/lib/api/client";
 import type { PortalRole } from "@/lib/api/types";
@@ -134,6 +136,17 @@ export function RoleGate({ allow, children }: Props) {
     return (
       <PortalAccessUnavailable
         onRetry={() => void auth.refresh()}
+        onSignOut={() => void auth.signOut()}
+      />
+    );
+  }
+
+  const sessionHold = accountHold(auth.user);
+  if (auth.status === "mapped" && sessionHold) {
+    return (
+      <AccountStatusNotice
+        title={sessionHold.title}
+        reason={sessionHold.reason}
         onSignOut={() => void auth.signOut()}
       />
     );
