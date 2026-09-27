@@ -51,18 +51,29 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { listApprovalCases, listUsers, updateUserAccount, updateUserRole } from "@/lib/api/client";
+import {
+  listApprovalCases,
+  listUsers,
+  updateUserAccount,
+  updateUserRole,
+} from "@/lib/api/client";
 import type { Role, User } from "@/lib/api/types";
 
+// Account is accreditation (the approval case); Standing is whether the person
+// may use GRIDGO at all. They are independent, so each has its own column and
+// facet, and a facet value must equal its column's `sortValue` exactly.
 const SUSPENDED = "Suspended";
 const ACTIVE = "Active";
+const STANDING_ACTIVE = "Active";
+const STANDING_SUSPENDED = "Suspended";
+const STANDING_REMOVED = "Removed";
 
 type AccountAction = "suspend" | "remove" | "restore";
 
-function accountLabel(user: User): string {
-  if (user.accountStatus === "suspended") return "Suspended";
-  if (user.accountStatus === "removed") return "Removed";
-  return "Active";
+function standingLabel(user: User): string {
+  if (user.accountStatus === "suspended") return STANDING_SUSPENDED;
+  if (user.accountStatus === "removed") return STANDING_REMOVED;
+  return STANDING_ACTIVE;
 }
 
 function accountConsequence(action: AccountAction): string {
@@ -166,26 +177,47 @@ export default function AdminRolesPage() {
       {
         id: "account",
         header: "Account",
-        sortValue: (u) => `${accountLabel(u)} ${suspensions.has(u.id) ? SUSPENDED : ACTIVE}`,
-        filterValue: (u) => `${accountLabel(u)} ${u.accountStatusReason ?? ""}`,
+        sortValue: (u) => (suspensions.has(u.id) ? SUSPENDED : ACTIVE),
         cell: (u) => {
           const suspension = suspensions.get(u.id);
+          if (!suspension) {
+            return <span className="text-body text-text-secondary">{ACTIVE}</span>;
+          }
+          const reason = suspensionReasonText(suspension.reason);
           return (
             <div className="flex min-w-0 flex-col items-start gap-1">
-              <p className="text-body text-text-primary m-0">{accountLabel(u)}</p>
+              <StatusChip tone="error" label={SUSPENDED} icon="triangle-alert" />
+              <span className="text-caption text-text-muted line-clamp-2 max-w-72 whitespace-normal">
+                {suspensionHeadline(suspension)}
+                {reason ? `: ${reason}` : ""}
+              </span>
+            </div>
+          );
+        },
+      },
+      {
+        id: "standing",
+        header: "Standing",
+        sortValue: (u) => standingLabel(u),
+        filterValue: (u) => `${standingLabel(u)} ${u.accountStatusReason ?? ""}`,
+        cell: (u) => {
+          const status = u.accountStatus ?? "active";
+          if (status === "active") {
+            return (
+              <span className="text-body text-text-secondary">{STANDING_ACTIVE}</span>
+            );
+          }
+          return (
+            <div className="flex min-w-0 flex-col items-start gap-1">
+              <StatusChip
+                tone={status === "removed" ? "error" : "warning"}
+                label={standingLabel(u)}
+                icon={status === "removed" ? "circle-x" : "ban"}
+              />
               {u.accountStatusReason ? (
-                <p className="text-caption text-text-muted m-0">{u.accountStatusReason}</p>
-              ) : null}
-              {suspension ? (
-                <>
-                  <StatusChip tone="error" label={SUSPENDED} icon="triangle-alert" />
-                  <span className="text-caption text-text-muted line-clamp-2 max-w-72 whitespace-normal">
-                    {suspensionHeadline(suspension)}
-                    {suspensionReasonText(suspension.reason)
-                      ? `: ${suspensionReasonText(suspension.reason)}`
-                      : ""}
-                  </span>
-                </>
+                <span className="text-caption text-text-muted line-clamp-2 max-w-72 whitespace-normal">
+                  {u.accountStatusReason}
+                </span>
               ) : null}
             </div>
           );
@@ -213,6 +245,15 @@ export default function AdminRolesPage() {
         options: [
           { value: SUSPENDED, label: SUSPENDED, icon: TriangleAlert },
           { value: ACTIVE, label: ACTIVE },
+        ],
+      },
+      {
+        columnId: "standing",
+        title: "Standing",
+        options: [
+          { value: STANDING_ACTIVE, label: STANDING_ACTIVE },
+          { value: STANDING_SUSPENDED, label: STANDING_SUSPENDED, icon: Ban },
+          { value: STANDING_REMOVED, label: STANDING_REMOVED, icon: UserX },
         ],
       },
     ],
@@ -310,9 +351,7 @@ export default function AdminRolesPage() {
           : accountAction === "suspend"
             ? "suspended"
             : "removed";
-      setActionOk(
-        `${accountTarget.name} is ${verb}. The reason is on the audit log.`,
-      );
+      setActionOk(`${accountTarget.name} is ${verb}. The reason is on the audit log.`);
       closeAccount();
       await load();
     } catch (err) {
@@ -324,10 +363,16 @@ export default function AdminRolesPage() {
 
   const accountTitle =
     accountAction === "suspend"
-      ? "Suspend"
+      ? "Suspend account"
       : accountAction === "remove"
-        ? "Remove"
-        : "Restore";
+        ? "Remove account"
+        : "Restore account";
+  const accountConfirm =
+    accountAction === "suspend"
+      ? "Confirm suspension"
+      : accountAction === "remove"
+        ? "Confirm removal"
+        : "Confirm restore";
 
   const pending = loading && !users;
 
@@ -350,9 +395,10 @@ export default function AdminRolesPage() {
         <p className="text-body text-text-secondary m-0 max-w-prose">
           Platform role changes are the highest-blast-radius control in GRIDGO. Granting
           Super Admin creates another full administrator; removing it revokes governance
-          access immediately. Suspending or removing an account keeps the person in this
-          directory. They stay signed in and see your reason instead of the app. Every
-          change is audited.
+          access immediately. Suspending or removing an account changes its Standing, not
+          its accreditation in the Account column. The person stays in this directory,
+          stays signed in, and sees your reason instead of the app. Every change is
+          audited.
         </p>
         <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
@@ -431,14 +477,14 @@ export default function AdminRolesPage() {
                 />
                 {status !== "suspended" ? (
                   <DataTableRowAction
-                    label="Suspend"
+                    label="Suspend account"
                     icon={Ban}
                     onClick={() => openAccount(u, "suspend")}
                   />
                 ) : null}
                 {status !== "removed" ? (
                   <DataTableRowAction
-                    label="Remove"
+                    label="Remove account"
                     icon={UserX}
                     variant="danger"
                     onClick={() => openAccount(u, "remove")}
@@ -446,7 +492,7 @@ export default function AdminRolesPage() {
                 ) : null}
                 {status === "suspended" || status === "removed" ? (
                   <DataTableRowAction
-                    label="Restore"
+                    label="Restore account"
                     icon={RotateCcw}
                     onClick={() => openAccount(u, "restore")}
                   />
@@ -580,10 +626,11 @@ export default function AdminRolesPage() {
         <AlertDialogContent className="sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {accountTitle} {accountTarget?.name}
+              {accountTitle} for {accountTarget?.name}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Currently {accountTarget ? accountLabel(accountTarget).toLowerCase() : ""}. The
+              Standing is currently{" "}
+              {accountTarget ? standingLabel(accountTarget).toLowerCase() : ""}. The
               reason is written to the account and the audit log.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -596,6 +643,14 @@ export default function AdminRolesPage() {
               <p className="text-body text-text-primary m-0">
                 {accountAction ? accountConsequence(accountAction) : ""}
               </p>
+              {accountAction === "restore" &&
+              accountTarget &&
+              suspensions.has(accountTarget.id) ? (
+                <p className="text-body text-text-primary m-0 mt-2">
+                  Their accreditation is also suspended. Restoring the account does not
+                  reinstate it; do that separately on Accreditation.
+                </p>
+              ) : null}
             </div>
 
             <Field>
@@ -643,7 +698,7 @@ export default function AdminRolesPage() {
               disabled={busy || !canSubmitAccount}
               onClick={() => void applyAccount()}
             >
-              {busy ? "Saving…" : `Confirm ${accountTitle.toLowerCase()}`}
+              {busy ? "Saving…" : accountConfirm}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

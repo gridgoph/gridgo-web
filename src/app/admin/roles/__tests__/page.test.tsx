@@ -71,11 +71,11 @@ describe("Admin roles account actions", () => {
 
     const clientRow = within(table).getByText("Ana Client").closest("tr");
     if (!clientRow) throw new Error("missing client row");
-    const suspend = within(clientRow).getByRole("button", { name: "Suspend" });
-    expect(within(clientRow).queryByRole("button", { name: "Restore" })).not.toBeInTheDocument();
+    const suspend = within(clientRow).getByRole("button", { name: "Suspend account" });
+    expect(within(clientRow).queryByRole("button", { name: "Restore account" })).not.toBeInTheDocument();
     await user.click(suspend);
 
-    const confirmSuspend = await screen.findByRole("button", { name: "Confirm suspend" });
+    const confirmSuspend = await screen.findByRole("button", { name: "Confirm suspension" });
     expect(confirmSuspend).toBeDisabled();
     await user.type(screen.getByLabelText(/Reason \(required/), "Missed a payment");
     await waitFor(() => expect(confirmSuspend).toBeEnabled());
@@ -96,9 +96,9 @@ describe("Admin roles account actions", () => {
       }),
     );
 
-    const remove = within(clientRow).getByRole("button", { name: "Remove" });
+    const remove = within(clientRow).getByRole("button", { name: "Remove account" });
     await user.click(remove);
-    const confirmRemove = await screen.findByRole("button", { name: "Confirm remove" });
+    const confirmRemove = await screen.findByRole("button", { name: "Confirm removal" });
     expect(confirmRemove).toBeDisabled();
     await user.type(screen.getByLabelText(/Reason \(required/), "Closed the account");
     expect(confirmRemove).toBeDisabled();
@@ -109,8 +109,8 @@ describe("Admin roles account actions", () => {
 
     const shopRow = within(table).getByText("North Press").closest("tr");
     if (!shopRow) throw new Error("missing shop row");
-    expect(within(shopRow).queryByRole("button", { name: "Suspend" })).not.toBeInTheDocument();
-    await user.click(within(shopRow).getByRole("button", { name: "Restore" }));
+    expect(within(shopRow).queryByRole("button", { name: "Suspend account" })).not.toBeInTheDocument();
+    await user.click(within(shopRow).getByRole("button", { name: "Restore account" }));
     const confirmRestore = await screen.findByRole("button", { name: "Confirm restore" });
     expect(confirmRestore).toBeDisabled();
     await user.type(screen.getByLabelText(/Reason \(required/), "Payment landed");
