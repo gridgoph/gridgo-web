@@ -9,8 +9,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { User } from "@/lib/api/types";
 
-const { listUsers, updateUserAccount } = vi.hoisted(() => ({
+const { listUsers, listApprovalCases, updateUserAccount } = vi.hoisted(() => ({
   listUsers: vi.fn(),
+  // Mocked so the page never reaches a real fetch: the table shows its loading
+  // skeleton until both directory reads settle, and a real network error
+  // settles at a different speed on every machine.
+  listApprovalCases: vi.fn(),
   updateUserAccount: vi.fn(),
 }));
 
@@ -27,7 +31,7 @@ vi.mock("@/lib/api/client", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api/client")>(
     "@/lib/api/client",
   );
-  return { ...actual, listUsers, updateUserAccount };
+  return { ...actual, listUsers, listApprovalCases, updateUserAccount };
 });
 
 import AdminRolesPage from "@/app/admin/roles/page";
@@ -63,10 +67,13 @@ describe("Admin roles account actions", () => {
       }),
     ]);
 
+    listApprovalCases.mockResolvedValue({ approvalCases: [], nextCursor: null });
+
     render(<AdminRolesPage />);
 
     const table = await screen.findByRole("table");
-    expect(within(table).getByText("Counter was closed")).toBeVisible();
+    // The skeleton table is present before the rows; wait for the data itself.
+    expect(await within(table).findByText("Counter was closed")).toBeVisible();
     expect(within(table).getByText("Suspended")).toBeVisible();
 
     const clientRow = within(table).getByText("Ana Client").closest("tr");
