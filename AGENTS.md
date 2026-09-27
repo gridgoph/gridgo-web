@@ -265,6 +265,12 @@ Both were evaluated here and deliberately not adopted:
    client) re-checks the projection, closing the workspace mid-session too. Pending shops
    keep their workspace. Reuse the notice (status + reason props) for other withdrawn
    accounts rather than a second screen.
+8. An **account hold** (`accountStatus` `suspended`/`removed`, Super Admin only via
+   `PATCH /users/:id/account`) is a separate axis from accreditation (7). `RoleGate`
+   reads it from `/auth/me` and from every projection (`accountHold`), and any role
+   re-checks on `403 account_suspended`/`account_removed`; `AccountStatusNotice` then
+   replaces the shell. On Roles, "Account" stays accreditation and "Standing" is the
+   hold, each with its own facet. Screenshots: `docs/screenshots/account-standing/`.
 
 `/login` never offers sign-up: `SignIn` uses `withSignUp={false}` and
 `transferable={false}`. There is no sign-up route or role selector. The public
