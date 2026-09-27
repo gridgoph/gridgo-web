@@ -290,7 +290,11 @@ export function stageSummary(
     }
     return `Delivered ${when}. Photo on file.`;
   }
-  if (order.state === "rider_assigned") return "Rider assigned, not yet picked up.";
+  if (order.state === "rider_assigned") {
+    return order.pickupChecklist?.status === "failed_escalated"
+      ? "Held at the shop until you answer the counter check."
+      : "Rider assigned, not yet picked up.";
+  }
   if (order.state === "picked_up" || order.state === "out_for_delivery") {
     return order.pickupChecklist?.status === "passed"
       ? "Picked up with all six checks passed. On its way."

@@ -42,6 +42,10 @@ const CODE_COPY: Record<string, string> = {
     "One of the ticked service lines was not suspended with this account, so reinstating cannot bring it back. Refresh, then review that line on the Service lines tab.",
   escalation_already_resolved:
     "Someone has already given an instruction on this escalation. Refresh to see it.",
+  escalation_closed:
+    "Someone has already given an instruction on this escalation. Refresh to see it.",
+  resolution_required:
+    "Write the instruction. The rider is waiting at the shop and this is what they act on.",
   transition_not_allowed:
     "That step is not available from where this order is now. Refresh and take the action the order offers.",
   payment_method_not_allowed:

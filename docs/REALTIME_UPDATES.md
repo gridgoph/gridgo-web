@@ -97,7 +97,10 @@ endpoint and sender in `gridgo-api`), a follow-up the worker is already shaped f
 `src/lib/live/notificationHref.ts` owns event-to-destination selection. Order rows open
 `/ops/orders/:id` for Operations and `/admin/orders/:id` for Super Admin. Both mount
 `OrderWorkspace`; the Super Admin back link returns to the overview. Pickup escalations
-open the matching role's escalations page, including `/admin/escalations`. These Super Admin
+(`pickup_check_escalation`, `pickup_escalation_changed`, `pickup_escalation_resolved`) open
+their order too, where the Counter check row shows the count, the six checks, the photos and
+the Resolve action; only a notice without an order falls back to the role's escalations page,
+including `/admin/escalations`. These Super Admin
 destinations are inbox workspaces, not rail items, and stay within its authorized route tree.
 Payout releases open the Operations payout desk (`/ops/payouts/:id`); Super Admin has no
 payout tree, so its copy opens the order.

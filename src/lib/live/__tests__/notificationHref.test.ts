@@ -59,11 +59,25 @@ describe("notificationHref", () => {
     );
   });
 
-  it("opens pickup escalations on a screen that role may use", () => {
-    const row = note({ type: "pickup_check_escalation", orderId: "ord_9" });
+  it("opens a pickup escalation on its order, in the tree that role may use", () => {
+    for (const type of [
+      "pickup_check_escalation",
+      "pickup_escalation_changed",
+      "pickup_escalation_resolved",
+    ]) {
+      const row = note({ type, orderId: "ord_9" });
+      expect(notificationHref("ops_admin", row)).toBe("/ops/orders/ord_9");
+      expect(notificationHref("super_admin", row)).toBe("/admin/orders/ord_9");
+      expect(notificationHref("supplier", row)).toBe("/supplier/jobs/ord_9");
+    }
+    const shop = note({ type: "shop_pickup_issue_changed", orderId: "ord_9" });
+    expect(notificationHref("supplier", shop)).toBe("/supplier/jobs/ord_9");
+  });
+
+  it("opens an escalation without an order on the escalations queue", () => {
+    const row = note({ type: "pickup_check_escalation" });
     expect(notificationHref("ops_admin", row)).toBe("/ops/escalations");
     expect(notificationHref("super_admin", row)).toBe("/admin/escalations");
-    expect(notificationHref("supplier", row)).toBe("/supplier/jobs/ord_9");
   });
 
   it("opens role events on the Super Admin roles desk", () => {
