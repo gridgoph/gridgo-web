@@ -17,6 +17,7 @@ import {
 } from "@/app/ops/_lib/pipeline";
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { EvidencePlate, EvidenceStrip } from "@/components/orders/EvidencePreview";
+import { DesignLinkLead, DesignLinkList, OrderArtwork } from "@/components/orders/DesignLinks";
 import { PaymentSummary } from "@/components/orders/PaymentSummary";
 import { formatRatePercent } from "@/components/settings/service-fee";
 import { PayoutMilestones } from "@/components/orders/PayoutMilestones";
@@ -39,7 +40,8 @@ import { SkeletonDetail } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Textarea } from "@/components/ui/textarea";
 import { installmentsAwaitingConfirmation } from "@/lib/api/constraints";
-import { artworkEvidence, deliveryEvidenceItems, pickupEvidence } from "@/lib/evidence";
+import { deliveryEvidenceItems, pickupEvidence } from "@/lib/evidence";
+import { artworkQaCheckLabel, artworkSource, orderDesignLinks } from "@/lib/design-links";
 import {
   confirmPayment,
   getOrder,
@@ -580,6 +582,11 @@ function StepRow({
 }: StepRowProps) {
   const definition = STAGES.find((entry) => entry.id === step.id);
   const current = step.status === "current";
+  const artwork = artworkSource(order);
+  const designLinks = orderDesignLinks(order);
+  const qaChecks = QA_CHECKS.map((check) =>
+    check.id === "artwork" ? { ...check, label: artworkQaCheckLabel(artwork) } : check,
+  );
   const busy = acting !== null;
   const trailing =
     step.id === "payment"
@@ -616,8 +623,18 @@ function StepRow({
       {step.id === "qa" ? (
         current ? (
           <div className="flex flex-col gap-3">
+            {/*
+              A design link is the one piece of artwork the rail cannot show:
+              the file is behind it. Put it where the check is made.
+            */}
+            {designLinks.length ? (
+              <div className="flex flex-col gap-2">
+                <DesignLinkLead fileToo={artwork !== "link"} />
+                <DesignLinkList links={designLinks} />
+              </div>
+            ) : null}
             <ul className="flex flex-col gap-2 m-0 p-0 list-none">
-              {QA_CHECKS.map((check) => (
+              {qaChecks.map((check) => (
                 <li key={check.id}>
                   <label className="flex items-start gap-2 text-body text-text-secondary cursor-pointer">
                     <input
@@ -644,7 +661,7 @@ function StepRow({
               <Button
                 variant="primary"
                 onClick={onApprove}
-                disabled={busy || QA_CHECKS.some((check) => !checked[check.id])}
+                disabled={busy || qaChecks.some((check) => !checked[check.id])}
               >
                 {acting === "approve" ? "Sending…" : "Approve and send to the shop"}
               </Button>
@@ -933,7 +950,7 @@ function SpecRail({ order, payoutsHref }: { order: Order; payoutsHref?: string }
   const plan = paymentPlanLabel(order);
   const payout = payoutProgress(order);
   const deliverySplit = orderDeliverySplit(order);
-  const artwork = artworkEvidence(order);
+  const hasArtwork = artworkSource(order) !== "none";
   return (
     <aside
       className="flex flex-col gap-3 lg:sticky lg:top-4 lg:self-start"
@@ -968,10 +985,10 @@ function SpecRail({ order, payoutsHref }: { order: Order; payoutsHref?: string }
         </dl>
       </section>
 
-      {artwork.length ? (
+      {hasArtwork ? (
         <section className="gg-card p-3">
           <h2 className="text-overline text-text-muted m-0 mb-2">Artwork</h2>
-          <EvidenceStrip items={artwork} />
+          <OrderArtwork order={order} />
         </section>
       ) : null}
 
