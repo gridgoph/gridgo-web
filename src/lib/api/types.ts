@@ -408,6 +408,23 @@ export type OrderLineMeasurement = {
   unit?: string | null;
 };
 
+/**
+ * A design kept at a sharing link instead of (or beside) an uploaded file.
+ * Snapshotted at checkout; HTTPS only. Contract: "Artwork design links" in
+ * `gridgo-api/docs/ORDER_MATCH_API.md`.
+ */
+export type ArtworkLinkFormat =
+  | "canva_link"
+  | "google_drive"
+  | "dropbox"
+  | "we_transfer"
+  | "other_link";
+
+export type ArtworkLink = {
+  formatCode: ArtworkLinkFormat | (string & {});
+  url: string;
+};
+
 /** One print line on a placed order. */
 export type ProductionItem = {
   id: string;
@@ -419,6 +436,8 @@ export type ProductionItem = {
   structuredSpec?: Record<string, unknown>;
   options?: Array<{ groupName: string; label: string }>;
   artworkFileId?: string | null;
+  /** Design links on this line; `[]` when none, absent on an older API. */
+  artworkLinks?: ArtworkLink[];
   mockupFileId?: string | null;
 };
 

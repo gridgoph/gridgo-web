@@ -14,7 +14,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { DesignLinkLead, DesignLinkList } from "@/components/orders/DesignLinks";
 import { EvidencePlate } from "@/components/orders/EvidencePreview";
+import { orderDesignLinks } from "@/lib/design-links";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentZone } from "@/lib/order-state";
 import type { Order } from "@/lib/api/types";
@@ -68,6 +70,7 @@ export function OrderMeta({ order, showMoney = true }: Props) {
 
   const artworkId = order.artworkFileIds?.[order.artworkFileIds.length - 1] ?? null;
   const mockupId = order.mockupFileIds?.[order.mockupFileIds.length - 1] ?? null;
+  const designLinks = orderDesignLinks(order);
 
   return (
     <div className="flex flex-col gap-4">
@@ -105,12 +108,32 @@ export function OrderMeta({ order, showMoney = true }: Props) {
         })}
       </dl>
       <div className="grid grid-cols-1 gap-3 border-t border-outline-subtle pt-4 sm:grid-cols-2">
-        <EvidencePlate
-          fileId={artworkId}
-          label="Artwork"
-          caption={order.artworkName}
-          empty="None on file"
-        />
+        {/*
+          A design link is artwork too: the file is behind it. A link-only
+          order says so plainly instead of the plate's "None on file".
+        */}
+        {artworkId || designLinks.length === 0 ? (
+          <div className="flex min-w-0 flex-col gap-3">
+            <EvidencePlate
+              fileId={artworkId}
+              label="Artwork"
+              caption={order.artworkName}
+              empty="None on file"
+            />
+            {designLinks.length ? (
+              <div className="flex flex-col gap-2">
+                <DesignLinkLead fileToo />
+                <DesignLinkList links={designLinks} />
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="flex min-w-0 flex-col gap-2">
+            <p className="text-caption text-text-muted m-0">Artwork</p>
+            <DesignLinkLead fileToo={false} />
+            <DesignLinkList links={designLinks} />
+          </div>
+        )}
         <EvidencePlate fileId={mockupId} label="Mockup" empty="No mockup on file" />
       </div>
     </div>

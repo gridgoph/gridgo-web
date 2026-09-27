@@ -8,7 +8,7 @@ import { useParams } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
-import { EvidenceStrip } from "@/components/orders/EvidencePreview";
+import { OrderArtwork } from "@/components/orders/DesignLinks";
 import { PayoutDestinationCard } from "@/components/orders/PayoutDestination";
 import { PayoutMilestones } from "@/components/orders/PayoutMilestones";
 import {
@@ -22,7 +22,7 @@ import { SkeletonDetail } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { getOrder, listClaims, releaseMilestoneWithReceipt } from "@/lib/api/client";
 import type { Claim, Order } from "@/lib/api/types";
-import { artworkEvidence } from "@/lib/evidence";
+import { artworkSource } from "@/lib/design-links";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
@@ -119,7 +119,7 @@ export default function OpsPayoutReviewPage() {
   const { order, holds } = data;
   const status = presentOrderState(order.state, order);
   const progress = payoutProgress(order);
-  const artwork = artworkEvidence(order);
+  const hasArtwork = artworkSource(order) !== "none";
 
   return (
     <div className="flex flex-col gap-4">
@@ -278,10 +278,10 @@ export default function OpsPayoutReviewPage() {
             </Link>
           </section>
 
-          {artwork.length ? (
+          {hasArtwork ? (
             <section className="gg-card p-3">
               <h2 className="text-overline text-text-muted m-0 mb-2">Artwork</h2>
-              <EvidenceStrip items={artwork} />
+              <OrderArtwork order={order} />
             </section>
           ) : null}
         </aside>
