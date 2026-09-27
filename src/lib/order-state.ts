@@ -431,9 +431,11 @@ export function presentPickupCheck(code: string): string {
 export function presentChecklistStatus(status: string | undefined): StatePresentation {
   switch (status) {
     case "passed":
-      return { label: "All six checks passed", tone: "success", icon: "circle-check" };
+      return { label: "Passed at the counter", tone: "success", icon: "circle-check" };
     case "failed_escalated":
-      return { label: "Check failed — escalated", tone: "error", icon: "circle-x" };
+      return { label: "Blocked at the counter", tone: "error", icon: "circle-x" };
+    case "escalation_resolved":
+      return { label: "Waiting for a fresh check", tone: "warning", icon: "clock" };
     case "not_started":
     case undefined:
       return { label: "Not checked yet", tone: "neutral", icon: "clock" };

@@ -371,11 +371,49 @@ export type PickupCheck = {
   passed: boolean;
 };
 
-export type PickupChecklistStatus = "not_started" | "passed" | "failed_escalated";
+/**
+ * `escalation_resolved`: Operations answered a failed check and the rider must
+ * repeat all six checks and a fresh count before taking the package.
+ */
+export type PickupChecklistStatus =
+  | "not_started"
+  | "passed"
+  | "failed_escalated"
+  | "escalation_resolved";
+
+/**
+ * What the rider counts at the counter, one row per order line. The API
+ * derives `expectedQuantity` in pieces from the order's immutable snapshots
+ * (two packs of 100 is 200). An older order without line items has one row
+ * with `lineItemId: null`. Contract: "Counter count" in the API doc.
+ */
+export type PickupCountItem = {
+  lineItemId: string | null;
+  itemName: string;
+  expectedQuantity: number;
+};
+
+/** One line as the rider counted it, beside what the order says. */
+export type PickupCount = {
+  lineItemId: string | null;
+  expectedQuantity: number;
+  countedQuantity: number;
+};
+
+/** The shop's signature on the rider's phone that hands custody over. */
+export type HandoffSignature = {
+  fileId: string;
+  signerName: string;
+  signedAt: string;
+  riderId: string;
+  checklistHash?: string;
+};
 
 export type PickupChecklist = {
   status: PickupChecklistStatus | string;
   checks: PickupCheck[];
+  /** Absent on checks recorded before counting was required: "Not recorded". */
+  counts?: PickupCount[];
   evidenceFileIds: string[];
   failureNote: string | null;
   completedAt: string | null;
@@ -383,6 +421,8 @@ export type PickupChecklist = {
   escalationId: string | null;
   /** Trained sign-off line the rider says at handoff. */
   signOffPrompt?: string;
+  /** `null` on a failed attempt; absent on checks recorded before signatures. */
+  handoffSignature?: HandoffSignature | null;
 };
 
 export type DeliveryEvidence = {
@@ -563,6 +603,8 @@ export type Order = {
   supplierPayoutAccount?: SupplierPayoutAccount | null;
 
   pickupChecklist?: PickupChecklist;
+  /** What the rider counts at the counter; `null` when the order has no usable quantity. */
+  pickupCountItems?: PickupCountItem[] | null;
   deliveryEvidence?: DeliveryEvidence | null;
   issueWindowOpenedAt?: string | null;
   issueWindowExpiresAt?: string | null;
@@ -751,6 +793,9 @@ export type Escalation = {
   supplierId: string | null;
   /** Which of the six pickup checks the rider failed. */
   failedCheckCodes: string[];
+  /** The whole attempt that failed, kept after a later recheck passes. */
+  checks?: PickupCheck[];
+  counts?: PickupCount[];
   evidenceFileIds: string[];
   failureNote: string | null;
   createdAt: string;

@@ -171,7 +171,8 @@ it.each([
               orderId: order.id,
               riderId: "fixture_rider",
               supplierId: "fixture_shop",
-              failedCheckCodes: ["quantity"],
+              failedCheckCodes: ["quantity_match"],
+              counts: [{ lineItemId: null, expectedQuantity: 500, countedQuantity: 480 }],
               evidenceFileIds: [],
               failureNote: "One bundle is missing at pickup.",
               createdAt: at,
@@ -180,6 +181,10 @@ it.each([
               resolution: null,
             },
           ],
+        });
+      if (url.pathname === "/users/fixture_rider")
+        return json({
+          user: { id: "fixture_rider", name: "Fixture Rider", email: "", role: "rider" },
         });
       throw new Error(`Unexpected fixture request: ${url.pathname}`);
     });
@@ -285,6 +290,31 @@ it.each([
     ).toBe(true);
     capture(`${role}-order-live-refresh`, role);
 
+    // The rider counted short at the shop: the order is held there and both
+    // privileged roles get a durable notice that opens this same order.
+    order = {
+      ...order,
+      state: "rider_assigned",
+      pickupCountItems: [{ lineItemId: null, itemName: "", expectedQuantity: 500 }],
+      pickupChecklist: {
+        status: "failed_escalated",
+        checks: [
+          { code: "quantity_match", passed: false },
+          { code: "specification_match", passed: true },
+          { code: "visible_defects", passed: true },
+          { code: "packaging_integrity", passed: true },
+          { code: "documentation", passed: true },
+          { code: "supplier_sign_off", passed: true },
+        ],
+        counts: [{ lineItemId: null, expectedQuantity: 500, countedQuantity: 480 }],
+        evidenceFileIds: [],
+        failureNote: "One bundle is missing at pickup.",
+        completedAt: at,
+        completedBy: "fixture_rider",
+        escalationId: "fixture_escalation",
+        handoffSignature: null,
+      },
+    };
     row = {
       ...row,
       id: "fixture_pickup",
@@ -295,7 +325,8 @@ it.each([
     await act(async () => {
       stream.enqueue(
         new TextEncoder().encode(
-          `event: notification\ndata: ${JSON.stringify({ notification: row })}\n\n`,
+          `event: invalidate\ndata: ${JSON.stringify({ resource: "orders", id: order.id })}\n\n` +
+            `event: notification\ndata: ${JSON.stringify({ notification: row })}\n\n`,
         ),
       );
     });
@@ -305,10 +336,26 @@ it.each([
     await user.click(
       await screen.findByRole("button", { name: /Pickup needs an instruction/ }),
     );
-    expect(window.location.pathname).toBe(
-      role === "super_admin" ? "/admin/escalations" : "/ops/escalations",
-    );
+    expect(window.location.pathname).toBe(destination);
+    expect(
+      await screen.findByText("Blocked: counted 20 short. The rider is waiting for you."),
+    ).toBeVisible();
     expect(await screen.findByText("One bundle is missing at pickup.")).toBeVisible();
+    expect(await screen.findByText(/by Fixture Rider/)).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Give the rider an instruction" }),
+    ).toBeEnabled();
+    capture(`${role}-order-counter-check`, role);
+
+    // The escalations queue still lists it, linked back to the order.
+    await act(async () => {
+      navigation.push(role === "super_admin" ? "/admin/escalations" : "/ops/escalations");
+    });
+    expect(await screen.findByText("One bundle is missing at pickup.")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Community event flyers" })).toHaveAttribute(
+      "href",
+      destination,
+    );
     expect(screen.getByRole("button", { name: "Give an instruction" })).toBeEnabled();
     capture(`${role}-escalations`, role);
   },
