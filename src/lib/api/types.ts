@@ -119,11 +119,17 @@ export type RiderProfile = {
   licenseNumber?: string;
 };
 
+export type AccountStatus = "active" | "suspended" | "removed";
+
 export type User = {
   id: string;
   email: string;
   name: string;
   role: Role;
+  /** Account standing. Separate from supplier/rider accreditation. */
+  accountStatus?: AccountStatus;
+  accountStatusReason?: string | null;
+  accountStatusAt?: string | null;
   phone?: string;
   /** Client accounts only. */
   accountType?: AccountType;
@@ -149,6 +155,9 @@ export type PortalIdentity = {
   name: string;
   phone?: string;
   createdAt: string;
+  accountStatus?: AccountStatus;
+  accountStatusReason?: string | null;
+  accountStatusAt?: string | null;
 };
 
 /** Exact merged `GET /auth/me` envelope. Authorization reads memberships, not `user.role`. */

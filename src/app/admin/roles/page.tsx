@@ -6,7 +6,7 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ShieldAlert, TriangleAlert, UserCog } from "lucide-react";
+import { Ban, RotateCcw, ShieldAlert, TriangleAlert, UserCog, UserX } from "lucide-react";
 
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
 import {
@@ -51,11 +51,40 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { listApprovalCases, listUsers, updateUserRole } from "@/lib/api/client";
+import {
+  listApprovalCases,
+  listUsers,
+  updateUserAccount,
+  updateUserRole,
+} from "@/lib/api/client";
 import type { Role, User } from "@/lib/api/types";
 
+// Account is accreditation (the approval case); Standing is whether the person
+// may use GRIDGO at all. They are independent, so each has its own column and
+// facet, and a facet value must equal its column's `sortValue` exactly.
 const SUSPENDED = "Suspended";
 const ACTIVE = "Active";
+const STANDING_ACTIVE = "Active";
+const STANDING_SUSPENDED = "Suspended";
+const STANDING_REMOVED = "Removed";
+
+type AccountAction = "suspend" | "remove" | "restore";
+
+function standingLabel(user: User): string {
+  if (user.accountStatus === "suspended") return STANDING_SUSPENDED;
+  if (user.accountStatus === "removed") return STANDING_REMOVED;
+  return STANDING_ACTIVE;
+}
+
+function accountConsequence(action: AccountAction): string {
+  if (action === "suspend") {
+    return "They stay in this directory and their sign-in stays valid. The app replaces their workspace with this reason until you restore the account. Accreditation is unchanged.";
+  }
+  if (action === "remove") {
+    return "This does not delete the person, their orders, or their sign-in. They stay in this directory and see this reason instead of the app until you restore the account.";
+  }
+  return "They can use GRIDGO again. The reason stored on the account is cleared. This note stays on the audit log.";
+}
 
 export default function AdminRolesPage() {
   const [users, setUsers] = useState<User[] | null>(null);
@@ -71,6 +100,10 @@ export default function AdminRolesPage() {
   const [nextRole, setNextRole] = useState<Role | null>(null);
   const [reason, setReason] = useState("");
   const [typedConfirm, setTypedConfirm] = useState("");
+  const [accountTarget, setAccountTarget] = useState<User | null>(null);
+  const [accountAction, setAccountAction] = useState<AccountAction | null>(null);
+  const [accountReason, setAccountReason] = useState("");
+  const [accountTypedConfirm, setAccountTypedConfirm] = useState("");
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -163,6 +196,34 @@ export default function AdminRolesPage() {
         },
       },
       {
+        id: "standing",
+        header: "Standing",
+        sortValue: (u) => standingLabel(u),
+        filterValue: (u) => `${standingLabel(u)} ${u.accountStatusReason ?? ""}`,
+        cell: (u) => {
+          const status = u.accountStatus ?? "active";
+          if (status === "active") {
+            return (
+              <span className="text-body text-text-secondary">{STANDING_ACTIVE}</span>
+            );
+          }
+          return (
+            <div className="flex min-w-0 flex-col items-start gap-1">
+              <StatusChip
+                tone={status === "removed" ? "error" : "warning"}
+                label={standingLabel(u)}
+                icon={status === "removed" ? "circle-x" : "ban"}
+              />
+              {u.accountStatusReason ? (
+                <span className="text-caption text-text-muted line-clamp-2 max-w-72 whitespace-normal">
+                  {u.accountStatusReason}
+                </span>
+              ) : null}
+            </div>
+          );
+        },
+      },
+      {
         id: "org",
         header: "Organisation",
         sortValue: (u) => u.orgName || u.supplierName || "",
@@ -184,6 +245,15 @@ export default function AdminRolesPage() {
         options: [
           { value: SUSPENDED, label: SUSPENDED, icon: TriangleAlert },
           { value: ACTIVE, label: ACTIVE },
+        ],
+      },
+      {
+        columnId: "standing",
+        title: "Standing",
+        options: [
+          { value: STANDING_ACTIVE, label: STANDING_ACTIVE },
+          { value: STANDING_SUSPENDED, label: STANDING_SUSPENDED, icon: Ban },
+          { value: STANDING_REMOVED, label: STANDING_REMOVED, icon: UserX },
         ],
       },
     ],
@@ -231,6 +301,79 @@ export default function AdminRolesPage() {
     }
   }
 
+  const accountHighRisk = Boolean(
+    accountTarget &&
+    (accountAction === "remove" ||
+      (accountAction === "suspend" && accountTarget.role === "super_admin")),
+  );
+  const accountPhrase = accountTarget ? accountTarget.email : "";
+  const canSubmitAccount =
+    !!accountTarget &&
+    !!accountAction &&
+    accountReason.trim().length > 0 &&
+    (!accountHighRisk || accountTypedConfirm === accountPhrase);
+
+  function openAccount(user: User, action: AccountAction) {
+    setAccountTarget(user);
+    setAccountAction(action);
+    setAccountReason("");
+    setAccountTypedConfirm("");
+    setActionError(null);
+  }
+
+  function closeAccount() {
+    setAccountTarget(null);
+    setAccountAction(null);
+    setAccountReason("");
+    setAccountTypedConfirm("");
+    setActionError(null);
+  }
+
+  async function applyAccount() {
+    if (!accountTarget || !accountAction || !canSubmitAccount) return;
+    const status =
+      accountAction === "restore"
+        ? "active"
+        : accountAction === "suspend"
+          ? "suspended"
+          : "removed";
+    setBusy(true);
+    setActionError(null);
+    setActionOk(null);
+    try {
+      await updateUserAccount(accountTarget.id, {
+        status,
+        reason: accountReason.trim(),
+      });
+      const verb =
+        accountAction === "restore"
+          ? "restored"
+          : accountAction === "suspend"
+            ? "suspended"
+            : "removed";
+      setActionOk(`${accountTarget.name} is ${verb}. The reason is on the audit log.`);
+      closeAccount();
+      await load();
+    } catch (err) {
+      setActionError(adminErrorMessage(err, "Could not update the account."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const accountTitle =
+    accountAction === "suspend"
+      ? "Suspend account"
+      : accountAction === "remove"
+        ? "Remove account"
+        : "Restore account";
+  const accountConfirm =
+    accountAction === "suspend"
+      ? "Confirm suspension"
+      : accountAction === "remove"
+        ? "Confirm removal"
+        : "Confirm restore";
+
   const pending = loading && !users;
 
   if (!pending && (error || !users)) {
@@ -252,7 +395,10 @@ export default function AdminRolesPage() {
         <p className="text-body text-text-secondary m-0 max-w-prose">
           Platform role changes are the highest-blast-radius control in GRIDGO. Granting
           Super Admin creates another full administrator; removing it revokes governance
-          access immediately. Every change is audited.
+          access immediately. Suspending or removing an account changes its Standing, not
+          its accreditation in the Account column. The person stays in this directory,
+          stays signed in, and sees your reason instead of the app. Every change is
+          audited.
         </p>
         <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
@@ -307,28 +453,53 @@ export default function AdminRolesPage() {
           itemLabel="people"
           defaultSortId="role"
           facets={facets}
-          rowActions={(u) => (
-            <>
-              {suspensions.has(u.id) ? (
+          rowActions={(u) => {
+            const status = u.accountStatus ?? "active";
+            return (
+              <>
+                {suspensions.has(u.id) ? (
+                  <DataTableRowAction
+                    label="Review suspension"
+                    icon={ShieldAlert}
+                    href={suspendedQueueHref("admin")}
+                  />
+                ) : null}
                 <DataTableRowAction
-                  label="Review suspension"
-                  icon={ShieldAlert}
-                  href={suspendedQueueHref("admin")}
+                  label="Change role"
+                  icon={UserCog}
+                  onClick={() => {
+                    setTarget(u);
+                    setNextRole(u.role);
+                    setReason("");
+                    setTypedConfirm("");
+                    setActionError(null);
+                  }}
                 />
-              ) : null}
-              <DataTableRowAction
-                label="Change role"
-                icon={UserCog}
-                onClick={() => {
-                  setTarget(u);
-                  setNextRole(u.role);
-                  setReason("");
-                  setTypedConfirm("");
-                  setActionError(null);
-                }}
-              />
-            </>
-          )}
+                {status !== "suspended" ? (
+                  <DataTableRowAction
+                    label="Suspend account"
+                    icon={Ban}
+                    onClick={() => openAccount(u, "suspend")}
+                  />
+                ) : null}
+                {status !== "removed" ? (
+                  <DataTableRowAction
+                    label="Remove account"
+                    icon={UserX}
+                    variant="danger"
+                    onClick={() => openAccount(u, "remove")}
+                  />
+                ) : null}
+                {status === "suspended" || status === "removed" ? (
+                  <DataTableRowAction
+                    label="Restore account"
+                    icon={RotateCcw}
+                    onClick={() => openAccount(u, "restore")}
+                  />
+                ) : null}
+              </>
+            );
+          }}
         />
       )}
 
@@ -441,6 +612,93 @@ export default function AdminRolesPage() {
               onClick={() => void applyRole()}
             >
               {busy ? "Saving…" : "Confirm role change"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!accountTarget}
+        onOpenChange={(open) => {
+          if (!open) closeAccount();
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {accountTitle} for {accountTarget?.name}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Standing is currently{" "}
+              {accountTarget ? standingLabel(accountTarget).toLowerCase() : ""}. The
+              reason is written to the account and the audit log.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <FieldGroup>
+            <div
+              className="rounded-field border border-outline bg-surface-variant px-3 py-3"
+              role="note"
+            >
+              <p className="text-body text-text-primary m-0">
+                {accountAction ? accountConsequence(accountAction) : ""}
+              </p>
+              {accountAction === "restore" &&
+              accountTarget &&
+              suspensions.has(accountTarget.id) ? (
+                <p className="text-body text-text-primary m-0 mt-2">
+                  Their accreditation is also suspended. Restoring the account does not
+                  reinstate it; do that separately on Accreditation.
+                </p>
+              ) : null}
+            </div>
+
+            <Field>
+              <FieldLabel htmlFor="account-reason">
+                Reason (required — stored on the account and the audit log)
+              </FieldLabel>
+              <Textarea
+                id="account-reason"
+                value={accountReason}
+                onChange={(e) => setAccountReason(e.target.value)}
+                rows={3}
+                placeholder="Why this account should change"
+                required
+              />
+            </Field>
+
+            {accountHighRisk ? (
+              <Field>
+                <FieldLabel htmlFor="account-confirm">
+                  Type {accountPhrase} to confirm this high-risk change
+                </FieldLabel>
+                <Input
+                  id="account-confirm"
+                  value={accountTypedConfirm}
+                  onChange={(e) => setAccountTypedConfirm(e.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </Field>
+            ) : null}
+          </FieldGroup>
+
+          {actionError ? (
+            <p className="text-body text-error m-0" role="alert">
+              {actionError}
+            </p>
+          ) : null}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel variant="secondary" disabled={busy} onClick={closeAccount}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant={accountHighRisk ? "danger" : "primary"}
+              disabled={busy || !canSubmitAccount}
+              onClick={() => void applyAccount()}
+            >
+              {busy ? "Saving…" : accountConfirm}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

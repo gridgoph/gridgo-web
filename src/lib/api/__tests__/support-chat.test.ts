@@ -8,6 +8,7 @@ describe("support chat API client", () => {
     expect(src).toMatch(/export async function listSupportChatThreads/);
     expect(src).toMatch(/export async function replySupportChat/);
     expect(src).toMatch(/\/support-chat\/threads/);
+    expect(src).not.toMatch(/\/support-chat\/me/);
     expect(src).not.toMatch(/support-tickets/);
     expect(src).not.toMatch(/support-desk/);
   });
