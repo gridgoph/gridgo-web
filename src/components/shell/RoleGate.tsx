@@ -4,11 +4,13 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { AccountStandingNotice } from "@/components/auth/AccountStandingNotice";
+import { AccountStatusNotice } from "@/components/auth/AccountStatusNotice";
 import {
   PortalAccessDenied,
   PortalAccessUnavailable,
 } from "@/components/auth/PortalAccessState";
 import { AppShell } from "@/components/shell/AppShell";
+import { accountHold, type AccountHold } from "@/lib/accountHold";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { getPortalRoleProjection, isApiError, onForbidden } from "@/lib/api/client";
 import type { PortalRole } from "@/lib/api/types";
@@ -22,7 +24,10 @@ type Props = {
 };
 
 type ProjectionStatus =
-  "idle" | "checking" | "allowed" | "withdrawn" | "denied" | "unavailable";
+  "idle" | "checking" | "allowed" | "held" | "withdrawn" | "denied" | "unavailable";
+
+/** API refusals that mean GRIDGO suspended or removed the whole account. */
+const ACCOUNT_HOLD_CODES = new Set(["account_suspended", "account_removed"]);
 
 const MAX_UNAUTHORIZED_REFRESHES = 1;
 /** A burst of refused reads (the page and the rail together) costs one re-check. */
@@ -46,6 +51,12 @@ const FORBIDDEN_RECHECK_GAP_MS = 5_000;
  * which unmounts the live stream, the rail counts and every page read
  * (gridgoph/gridgo-web#77). A 403 from any supplier endpoint re-checks the
  * projection, so a suspension that lands mid-session closes it too.
+ *
+ * An account hold (Super Admin suspended or removed the person, separate from
+ * accreditation) closes every role tree. `/auth/me` carries it at load, and
+ * each projection carries it again, so a hold that lands mid-session shows on
+ * the next navigation, or at once when any endpoint answers
+ * `403 account_suspended` / `account_removed`.
  */
 export function RoleGate({ allow, children }: Props) {
   const auth = useAuth();
@@ -53,6 +64,7 @@ export function RoleGate({ allow, children }: Props) {
   const pathname = usePathname();
   const [projectionStatus, setProjectionStatus] = useState<ProjectionStatus>("idle");
   const [standing, setStanding] = useState<WithdrawnStanding | null>(null);
+  const [projectionHold, setProjectionHold] = useState<AccountHold | null>(null);
   const [attempt, setAttempt] = useState(0);
   const lastForbiddenRecheck = useRef(0);
 
@@ -76,6 +88,13 @@ export function RoleGate({ allow, children }: Props) {
             ? await getPortalRoleProjection(allow, { refreshToken: true })
             : await getPortalRoleProjection(allow);
           if (!active) return;
+          const held = accountHold(projection.user);
+          setProjectionHold(held);
+          if (held) {
+            setStanding(null);
+            setProjectionStatus("held");
+            return;
+          }
           const withdrawn = withdrawnStanding(projection);
           setStanding(withdrawn);
           setProjectionStatus(withdrawn ? "withdrawn" : "allowed");
@@ -112,8 +131,11 @@ export function RoleGate({ allow, children }: Props) {
   }, [allow, attempt, auth.status, auth.revision, pathname, router]);
 
   useEffect(() => {
-    if (allow !== "supplier" || projectionStatus !== "allowed") return;
-    return onForbidden(() => {
+    if (projectionStatus !== "allowed") return;
+    return onForbidden((error) => {
+      // Any role re-checks on an account hold; only a shop re-checks on a
+      // plain 403, because only its accreditation can withdraw it mid-session.
+      if (allow !== "supplier" && !ACCOUNT_HOLD_CODES.has(error.code)) return;
       const now = Date.now();
       if (now - lastForbiddenRecheck.current < FORBIDDEN_RECHECK_GAP_MS) return;
       lastForbiddenRecheck.current = now;
@@ -134,6 +156,18 @@ export function RoleGate({ allow, children }: Props) {
     return (
       <PortalAccessUnavailable
         onRetry={() => void auth.refresh()}
+        onSignOut={() => void auth.signOut()}
+      />
+    );
+  }
+
+  const sessionHold =
+    (projectionStatus === "held" ? projectionHold : null) ?? accountHold(auth.user);
+  if (auth.status === "mapped" && sessionHold) {
+    return (
+      <AccountStatusNotice
+        title={sessionHold.title}
+        reason={sessionHold.reason}
         onSignOut={() => void auth.signOut()}
       />
     );

@@ -144,6 +144,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
           count: "jobs-need-action",
         },
+        {
+          id: "supplier-chat",
+          href: "/supplier/chat",
+          label: "Chat",
+          title: "Support chat",
+          icon: "chat",
+          ready: true,
+          placeholderBody: "",
+        },
       ],
     },
     {
