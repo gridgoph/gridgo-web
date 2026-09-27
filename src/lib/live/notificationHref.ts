@@ -28,7 +28,14 @@ export function notificationHref(role: Role, notification: Notification): string
     return null;
   }
 
+  // A pickup escalation opens its order, where the counter check shows the
+  // count, the six checks, the photos and the Resolve action together. Only
+  // a notice without an order falls back to the escalations queue.
   if (isEscalation(type)) {
+    if (notification.orderId) {
+      if (role === "super_admin") return `/admin/orders/${notification.orderId}`;
+      if (role === "ops_admin") return `/ops/orders/${notification.orderId}`;
+    }
     if (role === "super_admin") return "/admin/escalations";
     if (role === "ops_admin") return "/ops/escalations";
   }

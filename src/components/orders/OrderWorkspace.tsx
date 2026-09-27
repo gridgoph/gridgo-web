@@ -2,7 +2,7 @@
 
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ChevronLeft, CircleCheck, CircleDot, Lock, type LucideIcon } from "lucide-react";
@@ -16,9 +16,15 @@ import {
   type WorkspaceStep,
 } from "@/app/ops/_lib/pipeline";
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
+import { CounterCheck } from "@/components/orders/CounterCheck";
 import { EvidencePlate, EvidenceStrip } from "@/components/orders/EvidencePreview";
-import { DesignLinkLead, DesignLinkList, OrderArtwork } from "@/components/orders/DesignLinks";
+import {
+  DesignLinkLead,
+  DesignLinkList,
+  OrderArtwork,
+} from "@/components/orders/DesignLinks";
 import { PaymentSummary } from "@/components/orders/PaymentSummary";
+import { ResolveEscalationDialog } from "@/components/orders/ResolveEscalationDialog";
 import { formatRatePercent } from "@/components/settings/service-fee";
 import { PayoutMilestones } from "@/components/orders/PayoutMilestones";
 import {
@@ -40,17 +46,26 @@ import { SkeletonDetail } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Textarea } from "@/components/ui/textarea";
 import { installmentsAwaitingConfirmation } from "@/lib/api/constraints";
-import { deliveryEvidenceItems, pickupEvidence } from "@/lib/evidence";
+import { counterRow, counterStep } from "@/lib/counter-check";
+import { deliveryEvidenceItems } from "@/lib/evidence";
 import { artworkQaCheckLabel, artworkSource, orderDesignLinks } from "@/lib/design-links";
 import {
   confirmPayment,
   getOrder,
+  getUser,
+  listEscalations,
   promisePhysicalInvoice,
   rejectPayment,
   releaseMilestoneWithReceipt,
+  resolveEscalation,
   transitionOrder,
 } from "@/lib/api/client";
-import type { Order, PaymentInstallment, PayoutMilestone } from "@/lib/api/types";
+import type {
+  Escalation,
+  Order,
+  PaymentInstallment,
+  PayoutMilestone,
+} from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import {
@@ -86,6 +101,7 @@ type SectionId =
   | "payment"
   | "qa"
   | "production"
+  | "counter"
   | "delivery"
   | "payout"
   | "physical-invoice"
@@ -129,13 +145,33 @@ export function OrderWorkspace({
   const needed = useRef<SectionId[]>([]);
   const [release, setRelease] = useState<ReleaseTarget | null>(null);
   const [releaseError, setReleaseError] = useState<string | null>(null);
+  const [escalations, setEscalations] = useState<Escalation[]>([]);
+  const [escalationsError, setEscalationsError] = useState<string | null>(null);
+  const [names, setNames] = useState<Record<string, string>>({});
+  const [resolveId, setResolveId] = useState<string | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
 
   const load = useSerializedLoad(
     useCallback(async () => {
       setLoading(true);
       setError(null);
       try {
-        setOrder(await getOrder(orderId));
+        // The attempt history is its own read: if it fails, the order and its
+        // latest counter check still show, with a line saying so.
+        const [next, history] = await Promise.all([
+          getOrder(orderId),
+          listEscalations({ orderId }).then(
+            (list) => ({ list, error: null }),
+            () => ({
+              list: null,
+              error:
+                "Earlier counter attempts could not be loaded. Refresh the order to try again.",
+            }),
+          ),
+        ]);
+        setOrder(next);
+        if (history.list) setEscalations(history.list);
+        setEscalationsError(history.error);
       } catch (err) {
         setOrder(null);
         setError(opsErrorMessage(err, "That order could not be loaded."));
@@ -167,6 +203,40 @@ export function OrderWorkspace({
 
   const steps = useMemo(() => (order ? stepsFor(order) : []), [order]);
 
+  // Who counted and who answered, by name. Best effort: a missing person
+  // reads "the rider", never a raw id.
+  const people = useMemo(() => {
+    const ids = new Set<string>();
+    if (order?.pickupChecklist?.completedBy) ids.add(order.pickupChecklist.completedBy);
+    for (const escalation of escalations) {
+      if (escalation.riderId) ids.add(escalation.riderId);
+      if (escalation.resolvedBy) ids.add(escalation.resolvedBy);
+    }
+    return [...ids].sort().join(",");
+  }, [order, escalations]);
+
+  useEffect(() => {
+    const missing = people.split(",").filter((id) => id && !(id in names));
+    if (!missing.length) return;
+    let cancelled = false;
+    void Promise.all(
+      missing.map((id) =>
+        getUser(id).then(
+          (user) => [id, user.name] as const,
+          () => [id, ""] as const,
+        ),
+      ),
+    ).then((found) => {
+      if (cancelled) return;
+      setNames((current) => ({ ...current, ...Object.fromEntries(found) }));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // `names` is read, not watched: a lookup is made once per id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [people]);
+
   async function run(label: string, action: () => Promise<Order>) {
     setActing(label);
     setActionError(null);
@@ -177,6 +247,23 @@ export function OrderWorkspace({
     } catch (err) {
       setActionError(
         opsErrorMessage(err, "That did not go through. Refresh the order and try again."),
+      );
+    } finally {
+      setActing(null);
+    }
+  }
+
+  async function sendInstruction(instruction: string) {
+    if (!resolveId) return;
+    setActing("resolve-escalation");
+    setResolveError(null);
+    try {
+      await resolveEscalation(resolveId, { resolution: instruction });
+      setResolveId(null);
+      await load();
+    } catch (err) {
+      setResolveError(
+        opsErrorMessage(err, "Could not send that instruction. Try again."),
       );
     } finally {
       setActing(null);
@@ -274,41 +361,59 @@ export function OrderWorkspace({
             className="gg-card-flush"
           >
             {steps.map((step) => (
-              <StepRow
-                key={step.id}
-                step={step}
-                order={order}
-                note={note}
-                onNote={setNote}
-                checked={checked}
-                onCheck={setChecked}
-                acting={acting}
-                onConfirmPayment={(installment) =>
-                  run(`confirm-${installment}`, () =>
-                    confirmPayment(order.id, installment),
-                  )
-                }
-                onRejectPayment={(installment, reason) =>
-                  run(`reject-${installment}`, () =>
-                    rejectPayment(order.id, installment, { reason }),
-                  )
-                }
-                onApprove={() =>
-                  run("approve", () =>
-                    transitionOrder(order.id, "supplier_assigned", { note }),
-                  )
-                }
-                onCorrection={() =>
-                  run("correction", () =>
-                    transitionOrder(order.id, "client_correction", { note }),
-                  )
-                }
-                onCancel={() =>
-                  run("cancel", () =>
-                    transitionOrder(order.id, "cancelled", { reason: note }),
-                  )
-                }
-              />
+              <Fragment key={step.id}>
+                <StepRow
+                  step={step}
+                  order={order}
+                  note={note}
+                  onNote={setNote}
+                  checked={checked}
+                  onCheck={setChecked}
+                  acting={acting}
+                  onConfirmPayment={(installment) =>
+                    run(`confirm-${installment}`, () =>
+                      confirmPayment(order.id, installment),
+                    )
+                  }
+                  onRejectPayment={(installment, reason) =>
+                    run(`reject-${installment}`, () =>
+                      rejectPayment(order.id, installment, { reason }),
+                    )
+                  }
+                  onApprove={() =>
+                    run("approve", () =>
+                      transitionOrder(order.id, "supplier_assigned", { note }),
+                    )
+                  }
+                  onCorrection={() =>
+                    run("correction", () =>
+                      transitionOrder(order.id, "client_correction", { note }),
+                    )
+                  }
+                  onCancel={() =>
+                    run("cancel", () =>
+                      transitionOrder(order.id, "cancelled", { reason: note }),
+                    )
+                  }
+                />
+                {/*
+                Between the shop and the road: the rider's count and six
+                checks at the counter. A gate on custody, not a payout stage.
+              */}
+                {step.id === "production" ? (
+                  <CounterRow
+                    order={order}
+                    escalations={escalations}
+                    escalationsError={escalationsError}
+                    names={names}
+                    resolving={busy}
+                    onResolve={(id) => {
+                      setResolveError(null);
+                      setResolveId(id);
+                    }}
+                  />
+                ) : null}
+              </Fragment>
             ))}
 
             {hasPayout ? (
@@ -348,13 +453,19 @@ export function OrderWorkspace({
                 heading="Physical invoice"
                 summary={physicalInvoiceSummary(order)}
                 marker={physicalInvoiceMarker(order)}
-                trailing={order.physicalInvoiceRequest.promisedDeliveryAt ? "Promised" : "Your call"}
+                trailing={
+                  order.physicalInvoiceRequest.promisedDeliveryAt
+                    ? "Promised"
+                    : "Your call"
+                }
               >
                 <PhysicalInvoicePanel
                   order={order}
                   busy={busy}
                   onPromise={(instant) =>
-                    run("physical-invoice", () => promisePhysicalInvoice(order.id, instant))
+                    run("physical-invoice", () =>
+                      promisePhysicalInvoice(order.id, instant),
+                    )
                   }
                 />
               </SectionRow>
@@ -379,6 +490,17 @@ export function OrderWorkspace({
 
         <SpecRail order={order} payoutsHref={payoutsHref} />
       </div>
+
+      <ResolveEscalationDialog
+        escalationId={resolveId}
+        busy={acting === "resolve-escalation"}
+        error={resolveError}
+        onCancel={() => {
+          setResolveId(null);
+          setResolveError(null);
+        }}
+        onSend={(instruction) => void sendInstruction(instruction)}
+      />
 
       {release ? (
         <ReleaseMilestoneDialog
@@ -406,6 +528,7 @@ export function defaultOpenSections(order: Order): SectionId[] {
   const ids = new Set<SectionId>();
   const current = stepsFor(order).find((step) => step.status === "current");
   if (current) ids.add(current.id as SectionId);
+  if (counterStep(order) === "current") ids.add("counter");
   if (installmentsAwaitingConfirmation(order).length > 0) ids.add("payment");
   if (order.physicalInvoiceRequest && !order.physicalInvoiceRequest.promisedDeliveryAt) {
     ids.add("physical-invoice");
@@ -415,10 +538,55 @@ export function defaultOpenSections(order: Order): SectionId[] {
   return [...ids];
 }
 
+const COUNTER_MARKER: Record<ReturnType<typeof counterRow>["marker"], MarkerSpec> = {
+  success: { icon: CircleCheck, tone: "success" },
+  current: { icon: CircleDot, tone: "current" },
+  "muted-lock": { icon: Lock, tone: "muted" },
+  muted: { icon: CircleDot, tone: "muted" },
+};
+
+function CounterRow({
+  order,
+  escalations,
+  escalationsError,
+  names,
+  resolving,
+  onResolve,
+}: {
+  order: Order;
+  escalations: Escalation[];
+  escalationsError: string | null;
+  names: Record<string, string>;
+  resolving: boolean;
+  onResolve: (escalationId: string) => void;
+}) {
+  const row = counterRow(order, escalations, formatDateTime);
+  return (
+    <SectionRow
+      id="counter"
+      heading="Counter check"
+      summary={row.summary}
+      marker={COUNTER_MARKER[row.marker]}
+      trailing={row.trailing}
+      current={counterStep(order) === "current"}
+    >
+      <CounterCheck
+        order={order}
+        escalations={escalations}
+        escalationsError={escalationsError}
+        names={names}
+        resolving={resolving}
+        onResolve={onResolve}
+      />
+    </SectionRow>
+  );
+}
+
 function physicalInvoiceSummary(order: Order): string {
   const request = order.physicalInvoiceRequest;
   if (!request) return "";
-  if (request.promisedDeliveryAt) return `Promised ${formatDateTime(request.promisedDeliveryAt)}.`;
+  if (request.promisedDeliveryAt)
+    return `Promised ${formatDateTime(request.promisedDeliveryAt)}.`;
   return `Paper copy requested ${formatDateTime(request.requestedAt)}.`;
 }
 
@@ -724,7 +892,8 @@ function PhysicalInvoicePanel({
   const dates = upcomingDeskDates().filter((option) => ahead(option.value, lastTime));
   const times = date ? allTimes.filter((option) => ahead(date, option.value)) : allTimes;
   const instant = date && time ? deskInstant(date, time) : "";
-  const ready = Boolean(instant) && isGridgoDeskInstant(instant) && Date.parse(instant) > now;
+  const ready =
+    Boolean(instant) && isGridgoDeskInstant(instant) && Date.parse(instant) > now;
   const saving = busy;
 
   return (
@@ -744,7 +913,9 @@ function PhysicalInvoicePanel({
           </div>
         ))}
       </dl>
-      <p className="text-body text-text-secondary m-0">Someone is there: {request.operatingHours}</p>
+      <p className="text-body text-text-secondary m-0">
+        Someone is there: {request.operatingHours}
+      </p>
       <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
         <legend className="text-caption text-text-muted p-0">
           Promise delivery
@@ -900,43 +1071,29 @@ function shopProofHeading(milestone: PayoutMilestone): string {
   }
 }
 
-/** Pickup checks and the photo at the door, once a rider has them. */
+/**
+ * The photo at the door, once a rider has it. The pickup itself (count,
+ * checks, photos of a failed check, the shop's signature) is the counter
+ * check row above.
+ */
 function DeliveryStep({ order, hint }: { order: Order; hint?: string }) {
-  const pickup = pickupEvidence(order);
   const delivery = deliveryEvidenceItems(order);
-  const checklist = order.pickupChecklist;
 
-  if (pickup.length === 0 && delivery.length === 0 && !checklist?.completedAt) {
+  if (delivery.length === 0) {
     return <p className="text-body text-text-secondary m-0">{hint}</p>;
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {checklist?.completedAt ? (
-        <p className="text-body text-text-secondary m-0">
-          {checklist.status === "passed"
-            ? `Rider and supplier passed all six pickup checks together ${formatDateTime(checklist.completedAt)}.`
-            : checklist.status === "failed_escalated"
-              ? `A pickup check failed ${formatDateTime(checklist.completedAt)}.${
-                  checklist.failureNote ? ` ${checklist.failureNote}` : ""
-                }`
-              : `Pickup checks recorded ${formatDateTime(checklist.completedAt)}.`}
-        </p>
-      ) : null}
-      {pickup.length > 0 ? <EvidenceStrip items={pickup} /> : null}
-      {delivery.length > 0 ? (
-        <div>
-          <p
-            className="text-body text-text-primary m-0 mb-2"
-            style={{ fontFamily: "var(--font-medium)" }}
-          >
-            {order.deliveryEvidence
-              ? `At the door, ${formatDateTime(order.deliveryEvidence.recordedAt)}`
-              : "Delivery photos"}
-          </p>
-          <EvidenceStrip items={delivery} />
-        </div>
-      ) : null}
+    <div>
+      <p
+        className="text-body text-text-primary m-0 mb-2"
+        style={{ fontFamily: "var(--font-medium)" }}
+      >
+        {order.deliveryEvidence
+          ? `At the door, ${formatDateTime(order.deliveryEvidence.recordedAt)}`
+          : "Delivery photos"}
+      </p>
+      <EvidenceStrip items={delivery} />
     </div>
   );
 }
