@@ -4,10 +4,11 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { History, ListChecks, Wallet } from "lucide-react";
+import { Camera, History, ListChecks, Wallet } from "lucide-react";
 
 import { MilestoneList } from "@/components/orders/MilestoneList";
 import { OrderMeta } from "@/components/orders/OrderMeta";
+import { ProgressGallery, WaitingForPhoto } from "@/components/orders/ProductionProgress";
 import { Timeline } from "@/components/orders/Timeline";
 import {
   AlertDialog,
@@ -34,14 +35,25 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import {
   ApiError,
   attachFulfilmentProof,
+  attachProductionPhoto,
   getOrder,
   transitionOrder,
   uploadFulfilmentProof,
+  uploadProductionPhoto,
 } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
+import {
+  PRODUCTION_PHOTO_COPY,
+  canAddProgressPhoto,
+  productionPhotoMissing,
+  productionProgressOf,
+  progressPhotoCount,
+  progressPhotos,
+  progressReached,
+} from "@/lib/production-progress";
 import {
   actionsForJob,
   shopProofOutstanding,
@@ -57,6 +69,10 @@ function supplierErrorMessage(err: unknown): string {
   switch (err.code) {
     case "transition_not_allowed":
       return "That step is no longer available for this job. Refresh to see where it stands.";
+    case "production_photo_required":
+      return PRODUCTION_PHOTO_COPY.supplierRefused;
+    case "production_photo_upload_not_allowed":
+      return PRODUCTION_PHOTO_COPY.supplierTooLate;
     case "verification_not_approved":
     case "supplier_not_approved":
       return "Your account is still waiting for approval, so it cannot be given work yet. Operations will be in touch.";
@@ -86,6 +102,13 @@ export default function SupplierJobDetailPage() {
   const proofInput = useRef<HTMLInputElement>(null);
   const [proofError, setProofError] = useState<string | null>(null);
   const [filedNote, setFiledNote] = useState<string | null>(null);
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const [photoFileId, setPhotoFileId] = useState<string | null>(null);
+  const [photoFileName, setPhotoFileName] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
+  // The API refused to pack for want of a photo: the error offers the upload.
+  const [photoRefused, setPhotoRefused] = useState(false);
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -125,8 +148,30 @@ export default function SupplierJobDetailPage() {
     setActing(null);
   }
 
+  function openPhoto() {
+    setActionError(null);
+    setPhotoRefused(false);
+    setPhotoError(null);
+    setPhotoFileId(null);
+    setPhotoFileName(null);
+    setPhotoOpen(true);
+  }
+
+  function closePhoto() {
+    setPhotoOpen(false);
+    setPhotoFileId(null);
+    setPhotoFileName(null);
+    setPhotoError(null);
+    if (photoInput.current) photoInput.current.value = "";
+    setActing(null);
+  }
+
   async function runAction(action: SupplierAction) {
     if (!job) return;
+    if (action.kind === "add_progress_photo") {
+      openPhoto();
+      return;
+    }
     if (action.kind === "add_proof" || action.targetState === null) {
       setActionError(null);
       setProofError(null);
@@ -142,6 +187,7 @@ export default function SupplierJobDetailPage() {
     }
     setActing(action.kind);
     setActionError(null);
+    setPhotoRefused(false);
     try {
       const note =
         action.kind === "decline"
@@ -155,8 +201,51 @@ export default function SupplierJobDetailPage() {
       setConfirmDecline(false);
     } catch (err) {
       setActionError(supplierErrorMessage(err));
+      setPhotoRefused(err instanceof ApiError && err.code === "production_photo_required");
       await load();
     } finally {
+      setActing(null);
+    }
+  }
+
+  async function onPhotoFile(file: File | undefined) {
+    if (!file) return;
+    setActing("add_progress_photo");
+    setPhotoError(null);
+    setPhotoFileId(null);
+    setPhotoFileName(file.name);
+    try {
+      const stored = await uploadProductionPhoto(file);
+      setPhotoFileId(stored.fileId);
+    } catch (err) {
+      setPhotoError(
+        err instanceof ApiError && err.kind === "validation"
+          ? "That file is not a photo GRIDGO can take. Choose a JPEG, PNG or WebP."
+          : "File storage is unavailable, so this photo was not sent.",
+      );
+    } finally {
+      setActing(null);
+    }
+  }
+
+  async function sendPhoto() {
+    if (!job || !photoFileId) return;
+    setActing("add_progress_photo");
+    setPhotoError(null);
+    try {
+      await attachProductionPhoto(photoFileId, job.id);
+      setJob(await getOrder(job.id));
+      setFiledNote("Photo sent. The client can see it on their order.");
+      closePhoto();
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "production_photo_upload_not_allowed") {
+        // The job moved on while the dialog was open. Show where it is now.
+        closePhoto();
+        setActionError(PRODUCTION_PHOTO_COPY.supplierTooLate);
+        await load();
+        return;
+      }
+      setPhotoError(supplierErrorMessage(err));
       setActing(null);
     }
   }
@@ -226,6 +315,10 @@ export default function SupplierJobDetailPage() {
   const waiting = supplierWaitingOn(job.state, job);
   const confirmedMinor = job.supplierSubtotalMinor ?? job.supplierPriceMinor;
   const confirmedDate = job.readyBy ?? job.promisedDate ?? job.deadline;
+  const progress = productionProgressOf(job);
+  const photos = progressPhotos(job);
+  const photoMissing = productionPhotoMissing(job);
+  const photoOpenState = canAddProgressPhoto(job);
 
   return (
     <div className="flex w-full flex-col gap-3">
@@ -304,6 +397,11 @@ export default function SupplierJobDetailPage() {
           {primary && waiting ? (
             <p className="text-caption text-text-muted m-0">{waiting}</p>
           ) : null}
+          {primary?.kind === "add_progress_photo" ? (
+            <p className="text-caption text-text-muted m-0 max-w-prose">
+              {PRODUCTION_PHOTO_COPY.supplierRule}
+            </p>
+          ) : null}
           {primary?.kind === "accept" ? (
             <div className="flex max-w-prose flex-col gap-1">
               <p className="text-body text-text-secondary m-0">
@@ -325,10 +423,16 @@ export default function SupplierJobDetailPage() {
           {filedNote ? (
             <p className="text-body text-text-secondary m-0">{filedNote}</p>
           ) : null}
-          {actionError && !confirmDecline && !proofOpen ? (
-            <p className="text-body text-error m-0" role="alert">
-              {actionError}
-            </p>
+          {actionError && !confirmDecline && !proofOpen && !photoOpen ? (
+            <div className="flex flex-col items-start gap-2" role="alert">
+              <p className="text-body text-error m-0">{actionError}</p>
+              {photoRefused && photoOpenState && primary?.kind !== "add_progress_photo" ? (
+                <Button variant="secondary" onClick={openPhoto}>
+                  <Camera size={16} strokeWidth={1.75} aria-hidden />
+                  Add a progress photo
+                </Button>
+              ) : null}
+            </div>
           ) : null}
         </div>
       </header>
@@ -351,6 +455,39 @@ export default function SupplierJobDetailPage() {
             </h3>
             <OrderMeta order={job} showMoney={false} />
           </section>
+
+          {progress && progressReached(job) ? (
+            <section className="gg-card p-3" aria-labelledby="progress-heading">
+              <h3
+                id="progress-heading"
+                className="text-h3 text-text-primary m-0 mb-1 flex items-center gap-2"
+              >
+                <Camera size={18} strokeWidth={1.75} aria-hidden />
+                Progress photos
+              </h3>
+              <p className="text-caption text-text-muted m-0 mb-3 max-w-prose">
+                {photoMissing
+                  ? "The client sees these on their order."
+                  : `${progressPhotoCount(photos.length)} on this job. The client sees these on their order.`}
+              </p>
+              {photoMissing ? (
+                <WaitingForPhoto
+                  tone={photoOpenState ? "attention" : "neutral"}
+                  body={
+                    photoOpenState
+                      ? "Once one photo of this job is here, you can pack it for a rider."
+                      : "This job left production without a progress photo."
+                  }
+                />
+              ) : (
+                <ProgressGallery
+                  photos={photos}
+                  onAdd={photoOpenState ? openPhoto : undefined}
+                  addDisabled={acting !== null}
+                />
+              )}
+            </section>
+          ) : null}
 
           <section className="gg-card p-3" aria-labelledby="timeline-heading">
             <h3
@@ -404,7 +541,12 @@ export default function SupplierJobDetailPage() {
             <DialogDescription>{proofAction?.proofHint ?? ""}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2">
-            <p className="text-caption text-text-muted m-0">JPEG, PNG, WebP, or PDF</p>
+            <p className="text-caption text-text-muted m-0">
+              JPEG, PNG, WebP, or PDF.
+              {progress
+                ? " A photo also counts as the progress photo you need before packing; a PDF does not."
+                : ""}
+            </p>
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 type="button"
@@ -449,6 +591,69 @@ export default function SupplierJobDetailPage() {
               }}
             >
               {acting === "add_proof" ? "Filing…" : "File this evidence"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={photoOpen}
+        onOpenChange={(open) => {
+          if (!open) closePhoto();
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Progress photo</DialogTitle>
+            <DialogDescription>{PRODUCTION_PHOTO_COPY.supplierHint}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <p className="text-caption text-text-muted m-0">
+              JPEG, PNG, or WebP. It does not release any part of your payout.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={acting !== null}
+                onClick={() => photoInput.current?.click()}
+              >
+                Choose photo
+              </Button>
+              <span className="text-caption text-text-secondary min-w-0 truncate">
+                {photoFileName ?? "No photo chosen"}
+              </span>
+            </div>
+            <input
+              ref={photoInput}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              className="sr-only"
+              tabIndex={-1}
+              aria-label="Progress photo file"
+              disabled={acting !== null}
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                void onPhotoFile(file);
+              }}
+            />
+          </div>
+          {photoError ? (
+            <p className="text-body text-error m-0" role="alert">
+              {photoError}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button variant="secondary" disabled={acting !== null} onClick={closePhoto}>
+              Not yet
+            </Button>
+            <Button
+              variant="primary"
+              disabled={acting !== null || !photoFileId}
+              onClick={() => void sendPhoto()}
+            >
+              {acting === "add_progress_photo" && photoFileId ? "Sending…" : "Send photo"}
             </Button>
           </DialogFooter>
         </DialogContent>
