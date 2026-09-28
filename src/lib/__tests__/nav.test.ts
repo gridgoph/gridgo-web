@@ -38,6 +38,7 @@ describe("ROLE_NAV", () => {
       "/ops/escalations",
       "/ops/schedule",
       "/ops/payouts",
+      "/ops/refunds",
       "/ops/claims",
       "/ops/recovery",
       "/ops/settings",
@@ -57,6 +58,7 @@ describe("ROLE_NAV", () => {
       "/admin/catalogue",
       "/admin/zones",
       "/admin/finance",
+      "/admin/refunds",
       "/admin/settings",
       "/admin/audit",
       "/admin/planning",
@@ -80,6 +82,7 @@ describe("ROLE_NAV", () => {
       "/admin/issue-reports",
       "/admin/overview",
       "/admin/planning",
+      "/admin/refunds",
       "/admin/riders",
       "/admin/roles",
       "/admin/settings",
@@ -98,6 +101,7 @@ describe("ROLE_NAV", () => {
       "/ops/payouts",
       "/ops/rankings",
       "/ops/recovery",
+      "/ops/refunds",
       "/ops/riders",
       "/ops/schedule",
       "/ops/settings",
@@ -179,7 +183,7 @@ describe("ROLE_NAV", () => {
       ROLE_NAV_GROUPS.ops_admin
         .find((g) => g.id === "ops-money")
         ?.items.map((n) => n.href),
-    ).toEqual(["/ops/payouts", "/ops/claims", "/ops/recovery"]);
+    ).toEqual(["/ops/payouts", "/ops/refunds", "/ops/claims", "/ops/recovery"]);
     expect(
       ROLE_NAV_GROUPS.ops_admin
         .find((g) => g.id === "ops-system")
@@ -205,7 +209,7 @@ describe("ROLE_NAV", () => {
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-money")
         ?.items.map((n) => n.href),
-    ).toEqual(["/admin/finance"]);
+    ).toEqual(["/admin/finance", "/admin/refunds"]);
     expect(
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-system")

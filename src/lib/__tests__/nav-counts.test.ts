@@ -87,12 +87,14 @@ describe("rail counts", () => {
         "ops-orders:orders-waiting",
         "ops-approvals:signups-waiting",
         "ops-escalations:escalations-open",
+        "ops-refunds:refunds-waiting",
         "ops-claims:claims-open",
       ],
       super_admin: [
         "admin-chat:chat-unread",
         "admin-issue-reports:issue-reports-new",
         "admin-verification:signups-waiting",
+        "admin-refunds:refunds-waiting",
         "admin-tracker:tracker-needs-decision",
       ],
     });

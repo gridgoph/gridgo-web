@@ -102,7 +102,10 @@ export default function OpsPayoutsPage() {
     return (
       data.orders
         .filter(
-          (order) => PAYOUT_STATES.has(order.state) && order.payoutMilestones?.length,
+          (order) =>
+            (PAYOUT_STATES.has(order.state) && order.payoutMilestones?.length) ||
+            // A settled refund can cancel the order and still owe the shop.
+            order.supplierSettlementPayouts?.length,
         )
         .map((order) => {
           const holds = activeHolds(order, data.claims);
@@ -148,9 +151,10 @@ export default function OpsPayoutsPage() {
           A supplier is paid in shares of what it earns, and only you release them: on
           newer orders, one on the shop&rsquo;s start-of-production proof, one on the
           rider&rsquo;s delivery photo, and the last once the complaint window closes with
-          no claim open. Older orders keep their four shares. Open an order to check what
-          a share waits on and release it. The commission and the delivery fee sit outside
-          these shares.
+          no claim open. Older orders keep their four shares. When a client refund is
+          settled, unpaid shares close unpaid and what the shop is still owed becomes one
+          agreed settlement payout. Open an order to check what a share waits on and
+          release it. The commission and the delivery fee sit outside these shares.
         </p>
         <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh

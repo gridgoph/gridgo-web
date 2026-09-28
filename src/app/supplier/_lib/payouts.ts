@@ -46,13 +46,38 @@ export type SettlementPresentation = {
  */
 export function presentSettlement(
   order: Pick<Order, "state" | "payoutHold" | "payoutMilestones"> &
-    Partial<Pick<Order, "payoutPlanVersion">>,
+    Partial<Pick<Order, "payoutPlanVersion" | "supplierSettlementPayouts">>,
 ): SettlementPresentation {
   const milestones = order.payoutMilestones ?? [];
   const released = milestones.filter((m) => m.status === "released").length;
   const total = milestones.length;
   // An order with no stages yet reads as it always did.
   const legacy = total === 0 || isLegacyPayoutPlan(order);
+
+  // A client refund was settled: unpaid shares closed unpaid, and what the shop
+  // agreed it is still owed is one separate settlement payout.
+  if (milestones.some((m) => m.status === "superseded")) {
+    const settlement = (order.supplierSettlementPayouts ?? []).find(
+      (p) => p.status !== "superseded",
+    );
+    if (settlement?.status === "pending") {
+      return {
+        label: "Settlement payout pending",
+        tone: "info",
+        icon: "clock",
+        detail:
+          "A client refund was settled. Your unpaid shares were replaced by the amount you agreed; Operations pays it as one settlement payout.",
+      };
+    }
+    return {
+      label: "Settled after a refund",
+      tone: "success",
+      icon: "circle-check",
+      detail: settlement
+        ? "A client refund was settled and your agreed settlement payout has been released."
+        : "A client refund was settled. The shares already paid stay yours; nothing more is owed on this order.",
+    };
+  }
 
   if (order.payoutHold) {
     return {
@@ -199,7 +224,13 @@ export function buildPayoutRows(
   }
 
   const rows = jobs
-    .filter((j) => isPayoutRelevant(j.state) || j.payoutHold)
+    .filter(
+      (j) =>
+        isPayoutRelevant(j.state) ||
+        j.payoutHold ||
+        // A refund settlement can cancel the job and still owe the shop.
+        Boolean(j.supplierSettlementPayouts?.length),
+    )
     .map((order) => {
       const orderIssues = issueByOrder.get(order.id) ?? [];
       const openOrHoldIssue = orderIssues.find(
@@ -217,14 +248,28 @@ export function buildPayoutRows(
       }
 
       const milestones = order.payoutMilestones ?? [];
+      const settlements = (order.supplierSettlementPayouts ?? []).filter(
+        (p) => p.status !== "superseded",
+      );
+      const settlementSum = (status: string) =>
+        settlements.filter((p) => p.status === status).reduce((t, p) => t + p.amountMinor, 0);
+      const plus = (value: number | null, extra: number) =>
+        value === null ? null : value + extra;
 
       return {
         order,
         earnsMinor: order.supplierPriceMinor ?? null,
-        releasedMinor: sumMilestones(milestones, (m) => m.status === "released"),
-        outstandingMinor: sumMilestones(
-          milestones,
-          (m) => m.status !== "released",
+        releasedMinor: plus(
+          sumMilestones(milestones, (m) => m.status === "released"),
+          settlementSum("released"),
+        ),
+        // A share replaced by a refund settlement is neither paid nor owed.
+        outstandingMinor: plus(
+          sumMilestones(
+            milestones,
+            (m) => m.status !== "released" && m.status !== "superseded",
+          ),
+          settlementSum("pending"),
         ),
         milestones,
         settlement: presentSettlement(order),

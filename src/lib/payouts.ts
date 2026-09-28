@@ -10,13 +10,22 @@
  * React, no fetch.
  */
 
-import type { Claim, Order, PayoutMilestone, TimelineEntry } from "@/lib/api/types";
+import type {
+  Claim,
+  Order,
+  PayoutMilestone,
+  SupplierSettlementPayout,
+  TimelineEntry,
+} from "@/lib/api/types";
 import {
   claimBlocksPayout,
   milestoneHasProof,
+  milestoneIsClosed,
   milestoneIsReleased,
+  milestoneIsSuperseded,
   milestoneReleaseBlocker,
   orderHasPayoutHold,
+  orderHasRefundHold,
 } from "@/lib/api/constraints";
 import type { EvidenceItem } from "@/lib/evidence";
 import { formatPhp } from "@/lib/format";
@@ -38,38 +47,61 @@ import {
 // ---------------------------------------------------------------------------
 
 export type PayoutProgress = {
+  /** Shares still in play: superseded stages drop out, settlement payouts join. */
   count: number;
   releasedCount: number;
   /** Null when this caller is not shown amounts. */
   releasedMinor: number | null;
   totalMinor: number | null;
   outstandingMinor: number | null;
+  /** Stages a refund settlement closed unpaid. */
+  supersededCount: number;
 };
 
+/**
+ * Settlement payouts that still count: a later settlement can replace an
+ * unpaid one, and that one is then neither paid nor owed.
+ */
+export function liveSettlementPayouts(
+  order: Partial<Pick<Order, "supplierSettlementPayouts">>,
+): SupplierSettlementPayout[] {
+  return (order.supplierSettlementPayouts ?? []).filter(
+    (payout) => payout.status !== "superseded",
+  );
+}
+
 export function payoutProgress(
-  order: Pick<Order, "payoutMilestones" | "supplierPriceMinor" | "supplierSettlement">,
+  order: Pick<Order, "payoutMilestones" | "supplierPriceMinor" | "supplierSettlement"> &
+    Partial<Pick<Order, "supplierSettlementPayouts">>,
 ): PayoutProgress {
-  const milestones = order.payoutMilestones ?? [];
+  const all = order.payoutMilestones ?? [];
+  const milestones = all.filter((m) => !milestoneIsSuperseded(m));
+  const settlements = liveSettlementPayouts(order);
   const released = milestones.filter(milestoneIsReleased);
+  const releasedSettlements = settlements.filter((p) => p.status === "released");
   const amountsKnown =
-    milestones.length > 0 && milestones.every((m) => m.amountMinor !== undefined);
+    milestones.length + settlements.length > 0 &&
+    milestones.every((m) => m.amountMinor !== undefined);
   const totalMinor = amountsKnown
-    ? milestones.reduce((sum, m) => sum + (m.amountMinor ?? 0), 0)
+    ? milestones.reduce((sum, m) => sum + (m.amountMinor ?? 0), 0) +
+      settlements.reduce((sum, p) => sum + p.amountMinor, 0)
     : (order.supplierSettlement?.totalSupplierEarningsMinor ??
       order.supplierPriceMinor ??
       null);
   const releasedMinor = amountsKnown
-    ? released.reduce((sum, m) => sum + (m.amountMinor ?? 0), 0)
+    ? released.reduce((sum, m) => sum + (m.amountMinor ?? 0), 0) +
+      releasedSettlements.reduce((sum, p) => sum + p.amountMinor, 0)
     : (order.supplierSettlement?.supplierReleasedMinor ?? null);
   return {
-    count: milestones.length,
-    releasedCount: released.length,
+    count: milestones.length + settlements.length,
+    releasedCount: released.length + releasedSettlements.length,
     releasedMinor,
     totalMinor,
     outstandingMinor:
       releasedMinor !== null && totalMinor !== null
         ? Math.max(0, totalMinor - releasedMinor)
         : null,
+    supersededCount: all.length - milestones.length,
   };
 }
 
@@ -89,7 +121,7 @@ export function sharesHeading(count: number): string {
 // ---------------------------------------------------------------------------
 
 export type MilestoneReadiness =
-  "released" | "ready" | "waiting_proof" | "held" | "not_reached";
+  "released" | "superseded" | "ready" | "waiting_proof" | "held" | "not_reached";
 
 /** Claim holds on this order that stop money moving. */
 export function activeHolds(order: Pick<Order, "id">, claims: readonly Claim[]): Claim[] {
@@ -100,13 +132,17 @@ export function activeHolds(order: Pick<Order, "id">, claims: readonly Claim[]):
 
 export function milestoneReadiness(
   order: Pick<Order, "payoutHold" | "payments" | "state" | "deliveryEvidence"> &
+    Partial<Pick<Order, "refundHold">> &
     PlanOrder,
   milestone: Pick<PayoutMilestone, "code" | "status" | "pofFileIds"> &
     Partial<Pick<PayoutMilestone, "releaseRequires" | "label" | "sharePercent">>,
   holds: readonly Claim[] = [],
 ): MilestoneReadiness {
   if (milestoneIsReleased(milestone)) return "released";
-  if (orderHasPayoutHold(order) || holds.length > 0) return "held";
+  if (milestoneIsSuperseded(milestone)) return "superseded";
+  if (orderHasRefundHold(order) || orderHasPayoutHold(order) || holds.length > 0) {
+    return "held";
+  }
   if (stageNeedsProof(order, milestone) && !milestoneHasProof(milestone)) {
     return "waiting_proof";
   }
@@ -118,6 +154,9 @@ export function presentReadiness(readiness: MilestoneReadiness): StatePresentati
   switch (readiness) {
     case "released":
       return { label: "Released", tone: "success", icon: "circle-check" };
+    case "superseded":
+      // Never "paid": this share closed unpaid when a refund was settled.
+      return { label: "Replaced by settlement", tone: "neutral", icon: "ban" };
     case "ready":
       return { label: "Ready to release", tone: "info", icon: "circle-check" };
     case "waiting_proof":
@@ -133,7 +172,7 @@ export function presentReadiness(readiness: MilestoneReadiness): StatePresentati
 export function nextMilestone(
   order: Pick<Order, "payoutMilestones">,
 ): PayoutMilestone | null {
-  return (order.payoutMilestones ?? []).find((m) => !milestoneIsReleased(m)) ?? null;
+  return (order.payoutMilestones ?? []).find((m) => !milestoneIsClosed(m)) ?? null;
 }
 
 /** Shares Operations could release right now. */
@@ -142,6 +181,7 @@ export function releasableMilestones(
     Order,
     "payoutHold" | "payments" | "state" | "deliveryEvidence" | "payoutMilestones"
   > &
+    Partial<Pick<Order, "refundHold">> &
     PlanOrder,
   holds: readonly Claim[] = [],
 ): PayoutMilestone[] {
@@ -164,6 +204,7 @@ export function readyWindowShare(
     Order,
     "payoutHold" | "payments" | "state" | "deliveryEvidence" | "payoutMilestones"
   > &
+    Partial<Pick<Order, "refundHold">> &
     PlanOrder,
   holds: readonly Claim[] = [],
 ): PayoutMilestone | null {
@@ -280,12 +321,12 @@ export const PAYOUT_QUEUE_GROUPS: readonly {
   {
     id: "ready",
     label: "Ready to release",
-    hint: "What the share waits on is in: its proof, or a closed complaint window. Your call.",
+    hint: "What the share waits on is in: its proof, a closed complaint window, or an agreed refund settlement. Your call.",
   },
   {
     id: "held",
-    label: "Held by a claim",
-    hint: "Nothing releases until the claim is lifted on Claims and holds.",
+    label: "Held",
+    hint: "A claim or an open refund request stops every payout until it is resolved.",
   },
   {
     id: "waiting",
@@ -295,29 +336,53 @@ export const PAYOUT_QUEUE_GROUPS: readonly {
   {
     id: "settled",
     label: "Fully paid",
-    hint: "Every share has gone out. Kept here for the record.",
+    hint: "Every share has gone out or was replaced by a refund settlement. Kept here for the record.",
   },
 ];
 
+type QueueOrder = Pick<
+  Order,
+  "payoutHold" | "payments" | "state" | "deliveryEvidence" | "payoutMilestones"
+> &
+  Partial<Pick<Order, "refundHold" | "supplierSettlementPayouts">> &
+  PlanOrder;
+
+/** Settlement payouts still waiting to be recorded. */
+export function pendingSettlementPayouts(
+  order: Partial<Pick<Order, "supplierSettlementPayouts">>,
+): SupplierSettlementPayout[] {
+  return (order.supplierSettlementPayouts ?? []).filter((p) => p.status === "pending");
+}
+
+/**
+ * A pending settlement payout is held by a claim or payout hold. An open
+ * refund request that has not been settled also holds it, but the order
+ * cannot say which request is open, so the server's `payout_held` answers that.
+ */
+export function settlementPayoutHeld(
+  order: Pick<Order, "payoutHold">,
+  holds: readonly Claim[] = [],
+): boolean {
+  return orderHasPayoutHold(order) || holds.length > 0;
+}
+
 export function payoutQueueGroup(
-  order: Pick<
-    Order,
-    "payoutHold" | "payments" | "state" | "deliveryEvidence" | "payoutMilestones"
-  > &
-    PlanOrder,
+  order: QueueOrder,
   holds: readonly Claim[] = [],
 ): PayoutQueueGroup {
   const milestones = order.payoutMilestones ?? [];
-  if (milestones.length > 0 && milestones.every(milestoneIsReleased)) return "settled";
-  if (orderHasPayoutHold(order) || holds.length > 0) return "held";
+  const pending = pendingSettlementPayouts(order);
+  if (pending.length > 0) {
+    return settlementPayoutHeld(order, holds) ? "held" : "ready";
+  }
+  if (milestones.length > 0 && milestones.every(milestoneIsClosed)) return "settled";
+  if (orderHasRefundHold(order) || orderHasPayoutHold(order) || holds.length > 0) {
+    return "held";
+  }
   if (releasableMilestones(order, holds).length > 0) return "ready";
   return "waiting";
 }
 
-/**
- * One line that says where a payout stands without opening it. Written for
- * the queue row and the workspace section header alike.
- */
 export function payoutSummary(
   order: Pick<
     Order,
@@ -329,6 +394,7 @@ export function payoutSummary(
     | "supplierPriceMinor"
     | "supplierSettlement"
   > &
+    Partial<Pick<Order, "refundHold" | "supplierSettlementPayouts">> &
     PlanOrder,
   holds: readonly Claim[] = [],
 ): string {
@@ -339,18 +405,36 @@ export function payoutSummary(
   const progress = payoutProgress(order);
   const money = (minor: number | null) => (minor === null ? null : formatPhp(minor));
   const group = payoutQueueGroup(order, holds);
+  const pending = pendingSettlementPayouts(order);
+  const pendingSum = pending.reduce((total, p) => total + p.amountMinor, 0);
 
   if (group === "settled") {
     const paid = money(progress.releasedMinor);
+    if (progress.supersededCount > 0) {
+      return paid
+        ? `Settled with a client refund. ${paid} paid to the shop in all.`
+        : "Settled with a client refund. Nothing more is owed to the shop.";
+    }
     return paid
       ? `All ${progress.count} shares released, ${paid} paid.`
       : "Every share released.";
   }
   if (group === "held") {
+    if (pending.length > 0) {
+      return `A claim holds the agreed refund settlement payout, ${formatPhp(pendingSum)}.`;
+    }
     const left = money(progress.outstandingMinor);
+    if (orderHasRefundHold(order)) {
+      return left
+        ? `Paused for a client refund request, ${left} not released.`
+        : "Paused for a client refund request.";
+    }
     return left ? `Held by a claim, ${left} still to release.` : "Held by a claim.";
   }
   if (group === "ready") {
+    if (pending.length > 0) {
+      return `Agreed refund settlement payout ready to record, ${formatPhp(pendingSum)}.`;
+    }
     const ready = releasableMilestones(order, holds);
     const sum = ready.every((m) => m.amountMinor !== undefined)
       ? formatPhp(ready.reduce((total, m) => total + (m.amountMinor ?? 0), 0))

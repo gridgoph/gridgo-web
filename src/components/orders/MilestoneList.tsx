@@ -9,10 +9,11 @@
  */
 
 import { EvidenceStrip } from "@/components/orders/EvidencePreview";
+import { SettlementPayouts } from "@/components/orders/SettlementPayouts";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Button } from "@/components/ui/button";
 import type { Order, PayoutMilestone } from "@/lib/api/types";
-import { milestoneReleaseBlocker } from "@/lib/api/constraints";
+import { milestoneIsClosed, milestoneReleaseBlocker } from "@/lib/api/constraints";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import {
   milestoneName,
@@ -56,7 +57,7 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
    buried the per-stage detail that actually differs. When they all agree, the
    reason belongs above the list; the rows keep only what is theirs alone.
   */
-  const unreleased = milestones.filter((m) => m.status !== "released");
+  const unreleased = milestones.filter((m) => !milestoneIsClosed(m));
   const blockers = unreleased.map((m) => milestoneReleaseBlocker(order, m));
   const sharedBlocker =
     unreleased.length > 1 && blockers.every((b) => b !== null && b === blockers[0])
@@ -75,8 +76,9 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
           const needsProof = stageNeedsProof(order, milestone);
           const blocker = milestoneReleaseBlocker(order, milestone);
           // A share with no file to wait on is ready the moment nothing blocks it.
+          const superseded = milestone.status === "superseded";
           const status =
-            !needsProof && milestone.status !== "released" && blocker === null
+            !needsProof && !milestoneIsClosed(milestone) && blocker === null
               ? READY_FOR_OPERATIONS
               : presentMilestoneStatus(milestone.status, { needsProof });
           const released = milestone.status === "released";
@@ -105,10 +107,13 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
                 </div>
                 {milestone.amountMinor !== undefined ? (
                   <p
-                    className="text-body text-text-primary m-0 tabular-nums"
-                    style={{ fontFamily: "var(--font-bold)" }}
+                    className={`text-body m-0 tabular-nums ${
+                      superseded ? "text-text-muted" : "text-text-primary"
+                    }`}
+                    style={{ fontFamily: superseded ? "var(--font-sans)" : "var(--font-bold)" }}
                   >
                     {formatPhp(milestone.amountMinor)}
+                    {superseded ? <span className="sr-only">, not paid</span> : null}
                   </p>
                 ) : null}
               </div>
@@ -166,7 +171,7 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
                 <p className="text-caption text-text-secondary m-0 mt-2">{blocker}</p>
               ) : null}
 
-              {onRelease && !released ? (
+              {onRelease && !released && !superseded ? (
                 <div className="mt-3">
                   <Button
                     variant="secondary"
@@ -183,6 +188,7 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
           );
         })}
       </ol>
+      {order.supplierSettlementPayouts?.length ? <SettlementPayouts order={order} /> : null}
     </div>
   );
 }

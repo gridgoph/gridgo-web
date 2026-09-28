@@ -68,6 +68,12 @@ import type {
   TrackerBoard,
   TrackerItem,
   TrackerStatus,
+  RefundDestination,
+  RefundKind,
+  RefundPreview,
+  RefundRequest,
+  RefundStatus,
+  SettlementInput,
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
 
@@ -1809,4 +1815,213 @@ export async function getTrackerAttachmentUrl(
     `/admin/tracker/decisions/${encodeURIComponent(decisionId)}/attachments/${encodeURIComponent(attachmentId)}`,
   );
   return result.url;
+}
+
+// ---------------------------------------------------------------------------
+// Client refunds (gridgo-api/docs/REFUNDS_API.md)
+//
+// Approval reserves money; it never sends any. Operations pays by hand to the
+// client's own receiving QR and records the wallet screenshot as transfer
+// evidence. Every write carries an `Idempotency-Key` (a retry with the same
+// key and body replays the saved answer) and, on an existing request, the
+// `expectedVersion` the screen was showing (`409 refund_stale` otherwise).
+// ---------------------------------------------------------------------------
+
+/** A fresh opaque key for one refund command. Reuse it only to retry the same body. */
+export function newIdempotencyKey(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `k_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+}
+
+function refundCommand(key: string, body: Record<string, unknown>): RequestInit {
+  return {
+    method: "POST",
+    headers: { "Idempotency-Key": key },
+    body: JSON.stringify(body),
+  };
+}
+
+async function refundWrite(
+  path: string,
+  key: string,
+  body: Record<string, unknown>,
+): Promise<RefundRequest> {
+  const result = await request<{ refund: RefundRequest }>(path, refundCommand(key, body));
+  return result.refund;
+}
+
+/** Ops / Super Admin see every request; an optional exact status filter. */
+export async function listRefunds(status?: RefundStatus): Promise<RefundRequest[]> {
+  const result = await request<{ refunds: RefundRequest[] }>(
+    `/refund-requests${buildQuery({ status })}`,
+  );
+  return result.refunds ?? [];
+}
+
+export async function listOrderRefunds(orderId: string): Promise<RefundRequest[]> {
+  const result = await request<{ refunds: RefundRequest[] }>(
+    `/orders/${encodeURIComponent(orderId)}/refund-requests`,
+  );
+  return result.refunds ?? [];
+}
+
+export async function getRefund(refundId: string): Promise<RefundRequest> {
+  const result = await request<{ refund: RefundRequest }>(
+    `/refund-requests/${encodeURIComponent(refundId)}`,
+  );
+  return result.refund;
+}
+
+/**
+ * Operations files for the client (late filing: Super Admin only). Staff never
+ * send a destination: only the client can supply their receiving QR.
+ */
+export async function fileRefundRequest(
+  orderId: string,
+  input: { kind: RefundKind; reason: string; evidenceFileIds?: string[] },
+  key: string,
+): Promise<RefundRequest> {
+  const result = await request<{ refund: RefundRequest }>(
+    `/orders/${encodeURIComponent(orderId)}/refund-requests`,
+    refundCommand(key, { ...input, evidenceFileIds: input.evidenceFileIds ?? [] }),
+  );
+  return result.refund;
+}
+
+/** Ops / Super Admin evidence for a request they file. JPEG, PNG or WebP, 15 MiB. */
+export async function uploadRefundEvidence(file: File): Promise<StoredFile> {
+  return uploadPurpose("refund_evidence", file);
+}
+
+/** The wallet screenshot of a client refund transfer. JPEG, PNG or WebP, 15 MiB. */
+export async function uploadRefundReceipt(file: File): Promise<StoredFile> {
+  return uploadPurpose("refund_receipt", file);
+}
+
+async function uploadPurpose(purpose: string, file: File): Promise<StoredFile> {
+  const body = new FormData();
+  body.append("purpose", purpose);
+  body.append("file", file);
+  const uploaded = await request<{ file: StoredFile }>("/files", { method: "POST", body });
+  return uploaded.file;
+}
+
+export async function reviewRefund(
+  refund: Pick<RefundRequest, "id" | "version">,
+  input: { reason: string; destinationVerified: true; substantiated?: boolean },
+  key: string,
+): Promise<RefundRequest> {
+  return refundWrite(`/refund-requests/${refund.id}/review`, key, {
+    expectedVersion: refund.version,
+    ...input,
+  });
+}
+
+/** Read-only calculation; needs no idempotency key. */
+export async function previewRefundSettlement(
+  refund: Pick<RefundRequest, "id" | "version">,
+  input: SettlementInput,
+): Promise<RefundPreview> {
+  return request<RefundPreview>(`/refund-requests/${refund.id}/settlement-preview`, {
+    method: "POST",
+    body: JSON.stringify({ expectedVersion: refund.version, ...input }),
+  });
+}
+
+export async function settleRefund(
+  refund: Pick<RefundRequest, "id" | "version">,
+  input: SettlementInput & {
+    totalMinor: number;
+    reason: string;
+    workStopped: true;
+    shopAgreement: string;
+    deliveryEvidence: string;
+  },
+  key: string,
+): Promise<RefundRequest> {
+  return refundWrite(`/refund-requests/${refund.id}/settle`, key, {
+    expectedVersion: refund.version,
+    ...input,
+  });
+}
+
+export async function rejectRefund(
+  refund: Pick<RefundRequest, "id" | "version">,
+  reason: string,
+  key: string,
+): Promise<RefundRequest> {
+  return refundWrite(`/refund-requests/${refund.id}/reject`, key, {
+    expectedVersion: refund.version,
+    reason,
+  });
+}
+
+/** Reserve one payer before anyone sends. `provider`/`sourceWallet` name the sending wallet. */
+export async function reserveRefundPayment(
+  refund: Pick<RefundRequest, "id" | "version">,
+  input: {
+    reason: string;
+    destinationRevision: RefundDestination["revision"];
+    destinationVerified: true;
+    provider: string;
+    sourceWallet: string;
+  },
+  key: string,
+): Promise<RefundRequest> {
+  return refundWrite(`/refund-requests/${refund.id}/payment-attempts`, key, {
+    expectedVersion: refund.version,
+    ...input,
+  });
+}
+
+export async function reconcileRefundPayment(
+  refund: Pick<RefundRequest, "id" | "version">,
+  input:
+    | { reason: string; outcome: "unknown" }
+    | { reason: string; outcome: "failed"; noTransferConfirmed: true },
+  key: string,
+): Promise<RefundRequest> {
+  return refundWrite(`/refund-requests/${refund.id}/reconcile`, key, {
+    expectedVersion: refund.version,
+    ...input,
+  });
+}
+
+export async function recordRefundPayment(
+  refund: Pick<RefundRequest, "id" | "version">,
+  input: {
+    reason: string;
+    attemptId: string;
+    amountMinor: number;
+    reference: string;
+    receiptFileId: string;
+    paidAt: string;
+  },
+  key: string,
+): Promise<RefundRequest> {
+  return refundWrite(`/refund-requests/${refund.id}/payments`, key, {
+    expectedVersion: refund.version,
+    ...input,
+  });
+}
+
+/** The shop's separately labelled settlement payout: exact amount, current QR, reference and receipt. */
+export async function recordSupplierSettlementPayout(
+  refund: Pick<RefundRequest, "id" | "version">,
+  input: {
+    reason: string;
+    amountMinor: number;
+    payoutAccountVersion: number;
+    destinationVerified: true;
+    reference: string;
+    receiptFileId: string;
+  },
+  key: string,
+): Promise<RefundRequest> {
+  return refundWrite(`/refund-requests/${refund.id}/supplier-payout`, key, {
+    expectedVersion: refund.version,
+    ...input,
+  });
 }

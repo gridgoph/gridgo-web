@@ -19,9 +19,10 @@
  */
 
 import { useState } from "react";
-import { CircleCheck, Lock } from "lucide-react";
+import { CircleCheck, Lock, Minus } from "lucide-react";
 
 import { EvidencePlate } from "@/components/orders/EvidencePreview";
+import { SettlementPayouts } from "@/components/orders/SettlementPayouts";
 import {
   Accordion,
   AccordionContent,
@@ -31,8 +32,13 @@ import {
 } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/ui/StatusChip";
-import type { Claim, Order, PayoutMilestone } from "@/lib/api/types";
-import { milestoneReleaseBlocker } from "@/lib/api/constraints";
+import type {
+  Claim,
+  Order,
+  PayoutMilestone,
+  SupplierSettlementPayout,
+} from "@/lib/api/types";
+import { milestoneIsClosed, milestoneReleaseBlocker } from "@/lib/api/constraints";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { milestoneName, milestoneProofSource } from "@/lib/order-state";
 import { stageNeedsProof } from "@/lib/payout-plan";
@@ -63,6 +69,13 @@ type Props = {
   defaultOpen?: string[];
   /** Larger proof plates for a screen whose whole job is looking at them. */
   emphasizeProof?: boolean;
+  /**
+   * Operations only: record the agreed refund settlement payout. Omit where
+   * the refund request behind it is not loaded; the item then reads only.
+   */
+  onReleaseSettlement?: (payout: SupplierSettlementPayout) => void;
+  /** Settlement payout id currently being recorded. */
+  releasingSettlement?: string | null;
 };
 
 export function PayoutMilestones({
@@ -72,6 +85,8 @@ export function PayoutMilestones({
   releasing = null,
   defaultOpen,
   emphasizeProof = false,
+  onReleaseSettlement,
+  releasingSettlement = null,
 }: Props) {
   const milestones = order.payoutMilestones ?? [];
   const [open, setOpen] = useState<string[]>(
@@ -109,8 +124,10 @@ export function PayoutMilestones({
           const status = presentReadiness(readiness);
           const proofs = milestoneProofs(order, milestone);
           const released = readiness === "released";
+          const superseded = readiness === "superseded";
           const record = released ? releaseRecord(order, milestone) : null;
-          const blocker = released ? null : blockerFor(readiness, order, milestone);
+          const blocker =
+            released || superseded ? null : blockerFor(readiness, order, milestone);
           const name = milestoneName(milestone);
           const needsProof = stageNeedsProof(order, milestone);
 
@@ -134,10 +151,15 @@ export function PayoutMilestones({
                   <span className="flex shrink-0 flex-col items-end gap-1">
                     {milestone.amountMinor !== undefined ? (
                       <span
-                        className="text-body text-text-primary tabular-nums"
-                        style={{ fontFamily: "var(--font-bold)" }}
+                        className={`text-body tabular-nums ${
+                          superseded ? "text-text-muted" : "text-text-primary"
+                        }`}
+                        style={{
+                          fontFamily: superseded ? "var(--font-sans)" : "var(--font-bold)",
+                        }}
                       >
                         {formatPhp(milestone.amountMinor)}
+                        {superseded ? <span className="sr-only">, not paid</span> : null}
                       </span>
                     ) : null}
                     <StatusChip
@@ -150,7 +172,17 @@ export function PayoutMilestones({
               </AccordionHeader>
               <AccordionContent>
                 <div className="flex flex-col gap-3 sm:pl-9">
-                  {proofs.length > 0 ? (
+                  {superseded ? (
+                    <p className="text-body text-text-secondary m-0">
+                      Not paid. A client refund settlement
+                      {milestone.supersededAt
+                        ? ` on ${formatDateTime(milestone.supersededAt)}`
+                        : ""}{" "}
+                      closed this share. What the shop is still owed, if anything, is
+                      the agreed refund settlement payout below.
+                    </p>
+                  ) : null}
+                  {superseded ? null : proofs.length > 0 ? (
                     emphasizeProof ? (
                       <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 md:grid-cols-2">
                         {proofs.map((proof) => (
@@ -210,7 +242,7 @@ export function PayoutMilestones({
                     <p className="text-caption text-text-secondary m-0">
                       Ready. Release it with the action above the shares.
                     </p>
-                  ) : onRelease && !released ? (
+                  ) : onRelease && !released && !superseded ? (
                     <div>
                       <Button
                         variant="secondary"
@@ -231,6 +263,14 @@ export function PayoutMilestones({
           );
         })}
       </Accordion>
+      {order.supplierSettlementPayouts?.length ? (
+        <SettlementPayouts
+          order={order}
+          holds={holds}
+          onRelease={onReleaseSettlement}
+          releasing={releasingSettlement}
+        />
+      ) : null}
     </div>
   );
 }
@@ -295,7 +335,7 @@ function WindowClosedRelease({
 export function defaultOpenCodes(order: Order, holds: readonly Claim[] = []): string[] {
   const ready = releasableMilestones(order, holds).map((m) => m.code);
   if (ready.length > 0) return ready;
-  const next = (order.payoutMilestones ?? []).find((m) => m.status !== "released");
+  const next = (order.payoutMilestones ?? []).find((m) => !milestoneIsClosed(m));
   return next ? [next.code] : [];
 }
 
@@ -319,6 +359,13 @@ function Marker({ index, readiness }: { index: number; readiness: MilestoneReadi
     return (
       <span className={cn(base, "border-success text-success")} aria-hidden>
         <CircleCheck size={14} strokeWidth={2} />
+      </span>
+    );
+  }
+  if (readiness === "superseded") {
+    return (
+      <span className={cn(base, "border-dashed border-outline text-text-muted")} aria-hidden>
+        <Minus size={12} strokeWidth={2} />
       </span>
     );
   }

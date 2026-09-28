@@ -155,7 +155,7 @@ describe("the payout desk", () => {
       within(ready).getByText("2 shares ready to release, ₱650.00 together."),
     ).toBeInTheDocument();
 
-    const held = screen.getByRole("region", { name: /Held by a claim/ });
+    const held = screen.getByRole("region", { name: /^Held/ });
     expect(within(held).getByRole("link", { name: /Stickers/ })).toBeInTheDocument();
 
     const waiting = screen.getByRole("region", {

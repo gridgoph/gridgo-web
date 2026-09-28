@@ -159,6 +159,58 @@ describe("rollupFinance", () => {
     expect(r.supplierOutstanding).toEqual({ kind: "amount", minor: 1500 });
   });
 
+  it("counts a refund settlement: superseded shares are neither paid nor owed", () => {
+    const settled = order({
+      id: "r",
+      state: "cancelled",
+      unpaidBalanceCancelled: true,
+      payments: payments({ status: "confirmed" }, { status: "not_submitted" }),
+      payoutMilestones: [
+        ...milestones(4000, 0).slice(0, 1),
+        {
+          code: "delivered",
+          sharePercent: 35,
+          amountMinor: 3500,
+          status: "superseded",
+          pofFileIds: [],
+        },
+      ],
+      supplierSettlementPayouts: [
+        {
+          id: "rspay_1",
+          settlementId: "rsettle_1",
+          orderId: "r",
+          supplierId: "s1",
+          amountMinor: 2000,
+          status: "pending",
+          reference: null,
+          receiptFileId: null,
+          releasedAt: null,
+          releasedBy: null,
+          createdAt: "2026-09-28T04:20:00.000Z",
+          code: "refund_settlement",
+          label: "Agreed refund settlement payout",
+          releaseRequires: "",
+        },
+      ],
+      refundFinance: {
+        approvedMinor: 4900,
+        paidMinor: 0,
+        refundedPrincipalMinor: 4000,
+        reservedMinor: 4900,
+      },
+    });
+    const r = rollupFinance([settled], []);
+    expect(r.supplierReleased).toEqual({ kind: "amount", minor: 4000 });
+    expect(r.supplierOutstanding).toEqual({ kind: "amount", minor: 2000 });
+    // The cancelled balance is history, not money still to collect.
+    expect(r.outstanding).toEqual({ kind: "amount", minor: 0 });
+    expect(r.refundedToClients).toEqual({ kind: "amount", minor: 0 });
+    expect(r.refundsApprovedNotSent).toEqual({ kind: "amount", minor: 4900 });
+    // Gross money in stays gross.
+    expect(r.confirmedIn).toEqual({ kind: "amount", minor: 7500 });
+  });
+
   it("counts the order total behind every active claim hold", () => {
     const claim: Claim = {
       id: "clm1",

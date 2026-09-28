@@ -369,6 +369,9 @@ export function presentMilestoneStatus(
   switch (status) {
     case "released":
       return { label: "Released", tone: "success", icon: "circle-check" };
+    case "superseded":
+      // Closed unpaid by a client refund settlement. Never "paid".
+      return { label: "Replaced by settlement", tone: "neutral", icon: "ban" };
     case "pof_attached":
       return { label: "Proof attached", tone: "info", icon: "circle-check" };
     case "pending_pof":

@@ -41,6 +41,16 @@ describe("notificationHref", () => {
     ).toBe("/supplier/jobs/ord_9");
   });
 
+  it("opens a client refund notice on the refund inbox for that order", () => {
+    for (const type of ["refund_requested", "refund_unknown", "refund_supplier_paid"]) {
+      const row = note({ type, orderId: "ord_9", title: "Client refund" });
+      expect(notificationHref("ops_admin", row)).toBe("/ops/refunds?order=ord_9");
+      expect(notificationHref("super_admin", row)).toBe("/admin/refunds?order=ord_9");
+      // The shop's copy never reaches a refund surface.
+      expect(notificationHref("supplier", row)).toBe("/supplier/jobs/ord_9");
+    }
+  });
+
   it("sends signup rows to the role's approval surface", () => {
     const row = note({ type: "ops_signup_submitted", approvalCaseId: "case_1" });
     expect(notificationHref("ops_admin", row)).toBe("/ops/approvals");

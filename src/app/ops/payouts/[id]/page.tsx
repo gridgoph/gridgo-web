@@ -16,12 +16,25 @@ import {
   type ReleaseDecision,
   type ReleaseTarget,
 } from "@/components/orders/ReleaseMilestoneDialog";
+import {
+  SettlementPayoutDialog,
+  type SettlementPayoutRecord,
+} from "@/components/refunds/dialogs";
+import { refundErrorMessage } from "@/components/refunds/RefundCase";
+import { useCommandKeys, useUploadOnce } from "@/components/refunds/useCommand";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonDetail } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
-import { getOrder, listClaims, releaseMilestoneWithReceipt } from "@/lib/api/client";
-import type { Claim, Order } from "@/lib/api/types";
+import {
+  getOrder,
+  listClaims,
+  listOrderRefunds,
+  recordSupplierSettlementPayout,
+  releaseMilestoneWithReceipt,
+  uploadPayoutReceipt,
+} from "@/lib/api/client";
+import type { Claim, Order, RefundRequest, SupplierSettlementPayout } from "@/lib/api/types";
 import { artworkSource } from "@/lib/design-links";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
@@ -33,6 +46,8 @@ import { describeQuantity } from "@/lib/quantity";
 type Loaded = {
   order: Order;
   holds: Claim[];
+  /** The order's refund requests, when it has settlement payouts to record. */
+  refunds: RefundRequest[];
 };
 
 /**
@@ -54,6 +69,11 @@ export default function OpsPayoutReviewPage() {
   const [release, setRelease] = useState<ReleaseTarget | null>(null);
   const [releaseError, setReleaseError] = useState<string | null>(null);
   const [released, setReleased] = useState<string | null>(null);
+  const [settling, setSettling] = useState<SupplierSettlementPayout | null>(null);
+  const [settleError, setSettleError] = useState<string | null>(null);
+  const [recording, setRecording] = useState<string | null>(null);
+  const keys = useCommandKeys();
+  const uploadShopReceipt = useUploadOnce(uploadPayoutReceipt);
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -61,7 +81,11 @@ export default function OpsPayoutReviewPage() {
       setError(null);
       try {
         const [order, claims] = await Promise.all([getOrder(orderId), listClaims()]);
-        setData({ order, holds: activeHolds(order, claims) });
+        // Only a settled refund carries a shop payout; read the requests then.
+        const refunds = order.supplierSettlementPayouts?.length
+          ? await listOrderRefunds(orderId).catch(() => [] as RefundRequest[])
+          : [];
+        setData({ order, holds: activeHolds(order, claims), refunds });
       } catch (err) {
         setData(null);
         setError(opsErrorMessage(err, "That payout could not be loaded."));
@@ -88,7 +112,7 @@ export default function OpsPayoutReviewPage() {
         milestone.code,
         decision,
       );
-      setData({ order: result.order, holds: data.holds });
+      setData({ ...data, order: result.order });
       setReleased(
         milestone.amountMinor !== undefined
           ? `${formatPhp(milestone.amountMinor)} released to the supplier.`
@@ -99,6 +123,42 @@ export default function OpsPayoutReviewPage() {
       setReleaseError(opsErrorMessage(err, "Could not release that share. Try again."));
     } finally {
       setReleasing(null);
+    }
+  }
+
+  /** The request whose settlement created this payout; its version guards the record. */
+  const refundFor = (payout: SupplierSettlementPayout): RefundRequest | null =>
+    data?.refunds.find((refund) => refund.settlement?.id === payout.settlementId) ?? null;
+
+  async function recordSettlement(record: SettlementPayoutRecord) {
+    if (!settling || !data) return;
+    const refund = refundFor(settling);
+    const account = refund?.supplierPayoutAccount ?? data.order.supplierPayoutAccount;
+    if (!refund || !account) {
+      setSettleError("The refund behind this payout could not be loaded. Refresh and try again.");
+      return;
+    }
+    setRecording(settling.id);
+    setSettleError(null);
+    try {
+      const receiptFileId = await uploadShopReceipt(record.receipt);
+      const input = {
+        reason: record.reason,
+        amountMinor: settling.amountMinor,
+        payoutAccountVersion: account.version,
+        destinationVerified: true as const,
+        reference: record.reference,
+        receiptFileId,
+      };
+      await recordSupplierSettlementPayout(refund, input, keys.keyFor({ shop: refund.version, ...input }));
+      setReleased(`${formatPhp(settling.amountMinor)} recorded to the shop.`);
+      setSettling(null);
+      keys.reset();
+      await load();
+    } catch (err) {
+      setSettleError(refundErrorMessage(err, "Could not record that payout. Try again."));
+    } finally {
+      setRecording(null);
     }
   }
 
@@ -179,7 +239,7 @@ export default function OpsPayoutReviewPage() {
 
           <section className="gg-card p-3" aria-labelledby="payout-shares-heading">
             <h2 id="payout-shares-heading" className="text-h3 text-text-primary m-0 mb-1">
-              {sharesHeading(progress.count)}
+              {sharesHeading(order.payoutMilestones?.length ?? 0)}
             </h2>
             <p className="text-caption text-text-muted m-0 mb-3">
               {windowStageOf(order)
@@ -196,6 +256,12 @@ export default function OpsPayoutReviewPage() {
                 setReleased(null);
                 setRelease({ order, milestone });
               }}
+              onReleaseSettlement={(payout) => {
+                setSettleError(null);
+                setReleased(null);
+                setSettling(payout);
+              }}
+              releasingSettlement={recording}
             />
           </section>
         </div>
@@ -207,7 +273,9 @@ export default function OpsPayoutReviewPage() {
           <section className="gg-card p-3">
             <h2 className="text-overline text-text-muted m-0 mb-2">Shop earnings</h2>
             <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 m-0">
-              <dt className="text-caption text-text-muted">Earns</dt>
+              <dt className="text-caption text-text-muted">
+                {progress.supersededCount > 0 ? "Earns, as settled" : "Earns"}
+              </dt>
               <dd className="text-body text-text-primary m-0 tabular-nums">
                 {progress.totalMinor !== null ? formatPhp(progress.totalMinor) : "—"}
               </dd>
@@ -225,8 +293,12 @@ export default function OpsPayoutReviewPage() {
               </dd>
             </dl>
             <p className="text-caption text-text-muted m-0 mt-2">
-              {progress.releasedCount} of {progress.count} shares released. The commission
-              and the delivery fee sit outside these.
+              {progress.supersededCount > 0
+                ? `A client refund settlement set what the shop earns. ${progress.supersededCount} unpaid ${
+                    progress.supersededCount === 1 ? "share was" : "shares were"
+                  } replaced, not paid; ${progress.releasedCount} of ${progress.count} payments released.`
+                : `${progress.releasedCount} of ${progress.count} shares released.`}{" "}
+              The commission and the delivery fee sit outside these.
             </p>
           </section>
 
@@ -286,6 +358,22 @@ export default function OpsPayoutReviewPage() {
           ) : null}
         </aside>
       </div>
+
+      <SettlementPayoutDialog
+        payout={settling}
+        account={
+          (settling ? refundFor(settling)?.supplierPayoutAccount : null) ??
+          order.supplierPayoutAccount ??
+          null
+        }
+        busy={recording !== null}
+        error={settleError}
+        onCancel={() => {
+          setSettling(null);
+          setSettleError(null);
+        }}
+        onRecord={(record) => void recordSettlement(record)}
+      />
 
       <ReleaseMilestoneDialog
         target={release}
