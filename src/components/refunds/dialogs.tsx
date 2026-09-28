@@ -9,7 +9,10 @@
 
 import { useEffect, useState } from "react";
 
-import { PayoutDestinationWords, PayoutQrPlate } from "@/components/orders/PayoutDestination";
+import {
+  PayoutDestinationWords,
+  PayoutQrPlate,
+} from "@/components/orders/PayoutDestination";
 import { ScreenshotField } from "@/components/refunds/parts";
 import {
   AlertDialog,
@@ -264,14 +267,20 @@ export function RecordTransferDialog({
   const paidIso = isoFromLocalInput(paidAt);
   const future = paidIso !== null && Date.parse(paidIso) > Date.now() + 60_000;
   const ready =
-    reference.trim().length > 0 && paidIso !== null && !future && evidence && reason.trim();
+    reference.trim().length > 0 &&
+    paidIso !== null &&
+    !future &&
+    evidence &&
+    reason.trim();
 
   return (
     <AlertDialog open={open} onOpenChange={(next) => !next && !busy && onCancel()}>
       <AlertDialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {unconfirmed ? "Record the transfer that went through" : "Record the transfer"}
+            {unconfirmed
+              ? "Record the transfer that went through"
+              : "Record the transfer"}
           </AlertDialogTitle>
           <AlertDialogDescription>
             {attempt
@@ -311,7 +320,9 @@ export function RecordTransferDialog({
             />
             <FieldDescription>
               {future ? (
-                <span className="text-error">The transfer time cannot be in the future.</span>
+                <span className="text-error">
+                  The transfer time cannot be in the future.
+                </span>
               ) : (
                 "The time on the wallet's confirmation screen, in your local time."
               )}
@@ -398,7 +409,10 @@ export function ReconcileDialog({
   const ready = reason.trim().length > 0 && (mode === "unknown" || confirmed);
 
   return (
-    <AlertDialog open={mode !== null} onOpenChange={(next) => !next && !busy && onCancel()}>
+    <AlertDialog
+      open={mode !== null}
+      onOpenChange={(next) => !next && !busy && onCancel()}
+    >
       <AlertDialogContent className="sm:max-w-lg">
         <AlertDialogHeader>
           <AlertDialogTitle>
@@ -504,7 +518,10 @@ export function SettlementPayoutDialog({
     reason.trim().length > 0;
 
   return (
-    <AlertDialog open={payout !== null} onOpenChange={(next) => !next && !busy && onCancel()}>
+    <AlertDialog
+      open={payout !== null}
+      onOpenChange={(next) => !next && !busy && onCancel()}
+    >
       <AlertDialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-2xl!">
         <AlertDialogHeader>
           <AlertDialogTitle>
@@ -516,10 +533,18 @@ export function SettlementPayoutDialog({
             record cannot be undone from the portal.
           </AlertDialogDescription>
         </AlertDialogHeader>
-        <div className="rounded-card border border-outline p-3" role="group" aria-label="Where this money goes">
+        <div
+          className="rounded-card border border-outline p-3"
+          role="group"
+          aria-label="Where this money goes"
+        >
           {account ? (
             <div className="grid gap-3 sm:grid-cols-[200px_minmax(0,1fr)]">
-              <PayoutQrPlate fileId={account.qr?.fileId} shopName={account.shopName} enlarge={false} />
+              <PayoutQrPlate
+                fileId={account.qr?.fileId}
+                shopName={account.shopName}
+                enlarge={false}
+              />
               <div className="min-w-0">
                 <PayoutDestinationWords account={account} />
                 <p className="text-caption text-text-muted m-0 mt-2 tabular-nums">
@@ -556,7 +581,9 @@ export function SettlementPayoutDialog({
             disabled={busy}
           />
           <Field>
-            <FieldLabel htmlFor="settlement-reference">Wallet reference number</FieldLabel>
+            <FieldLabel htmlFor="settlement-reference">
+              Wallet reference number
+            </FieldLabel>
             <Input
               id="settlement-reference"
               value={reference}
@@ -565,7 +592,9 @@ export function SettlementPayoutDialog({
               disabled={busy}
               onChange={(event) => setReference(event.target.value)}
             />
-            <FieldDescription>Required. The shop sees it with the payout.</FieldDescription>
+            <FieldDescription>
+              Required. The shop sees it with the payout.
+            </FieldDescription>
           </Field>
           <Field>
             <FieldLabel htmlFor="settlement-reason">Note for the record</FieldLabel>
@@ -592,7 +621,11 @@ export function SettlementPayoutDialog({
             disabled={busy || !ready}
             onClick={() =>
               receipt
-                ? onRecord({ reference: reference.trim(), receipt, reason: reason.trim() })
+                ? onRecord({
+                    reference: reference.trim(),
+                    receipt,
+                    reason: reason.trim(),
+                  })
                 : undefined
             }
           >
@@ -660,10 +693,17 @@ export function FileRefundDialog({
               {(
                 [
                   ["cancellation", "Cancellation", "They no longer want the order."],
-                  ["complaint", "Complaint", "Something is wrong with the work or the delivery."],
+                  [
+                    "complaint",
+                    "Complaint",
+                    "Something is wrong with the work or the delivery.",
+                  ],
                 ] as const
               ).map(([value, label, detail]) => (
-                <label key={value} className="flex min-h-11 cursor-pointer items-start gap-3 py-1">
+                <label
+                  key={value}
+                  className="flex min-h-11 cursor-pointer items-start gap-3 py-1"
+                >
                   <RadioGroupItem value={value} className="mt-1" aria-label={label} />
                   <span className="min-w-0">
                     <span className="text-body text-text-primary block">{label}</span>

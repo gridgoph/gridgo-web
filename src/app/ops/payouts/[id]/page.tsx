@@ -34,7 +34,12 @@ import {
   releaseMilestoneWithReceipt,
   uploadPayoutReceipt,
 } from "@/lib/api/client";
-import type { Claim, Order, RefundRequest, SupplierSettlementPayout } from "@/lib/api/types";
+import type {
+  Claim,
+  Order,
+  RefundRequest,
+  SupplierSettlementPayout,
+} from "@/lib/api/types";
 import { artworkSource } from "@/lib/design-links";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
@@ -135,7 +140,9 @@ export default function OpsPayoutReviewPage() {
     const refund = refundFor(settling);
     const account = refund?.supplierPayoutAccount ?? data.order.supplierPayoutAccount;
     if (!refund || !account) {
-      setSettleError("The refund behind this payout could not be loaded. Refresh and try again.");
+      setSettleError(
+        "The refund behind this payout could not be loaded. Refresh and try again.",
+      );
       return;
     }
     setRecording(settling.id);
@@ -150,7 +157,11 @@ export default function OpsPayoutReviewPage() {
         reference: record.reference,
         receiptFileId,
       };
-      await recordSupplierSettlementPayout(refund, input, keys.keyFor({ shop: refund.version, ...input }));
+      await recordSupplierSettlementPayout(
+        refund,
+        input,
+        keys.keyFor({ shop: refund.version, ...input }),
+      );
       setReleased(`${formatPhp(settling.amountMinor)} recorded to the shop.`);
       setSettling(null);
       keys.reset();

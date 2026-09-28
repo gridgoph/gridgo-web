@@ -13,7 +13,9 @@ import type { Order, RefundAttempt, RefundRequest } from "@/lib/api/types";
 vi.stubGlobal("React", React);
 vi.mock("next/navigation", () => ({ useParams: () => ({ id: "refund_1" }) }));
 vi.mock("@/lib/live/useLiveReload", () => ({ useLiveReload: () => {} }));
-vi.mock("@/lib/auth/AuthProvider", () => ({ useAuth: () => ({ user: { id: "ops_1" } }) }));
+vi.mock("@/lib/auth/AuthProvider", () => ({
+  useAuth: () => ({ user: { id: "ops_1" } }),
+}));
 vi.mock("@/components/orders/EvidencePreview", () => ({
   EvidencePlate: ({ label }: { label: string }) => <div>{label}</div>,
   EvidenceStrip: () => null,
@@ -44,7 +46,11 @@ function refund(patch: Partial<RefundRequest> = {}): RefundRequest {
     createdAt: "2026-09-28T04:00:00.000Z",
     updatedAt: "2026-09-28T04:00:00.000Z",
     history: [
-      { kind: "requested", reason: "The shop cannot fulfill this order.", at: "2026-09-28T04:00:00.000Z" },
+      {
+        kind: "requested",
+        reason: "The shop cannot fulfill this order.",
+        at: "2026-09-28T04:00:00.000Z",
+      },
     ],
     settlement: null,
     payment: null,
@@ -162,8 +168,17 @@ beforeEach(() => {
       const method = init?.method ?? "GET";
       const headers = (init?.headers ?? {}) as Record<string, string>;
       const body =
-        typeof init?.body === "string" ? JSON.parse(init.body) : init?.body ? "form" : null;
-      const call = { method, path: url.pathname.replace(/^\/api\/gridgo/, ""), body, key: headers["Idempotency-Key"] ?? null };
+        typeof init?.body === "string"
+          ? JSON.parse(init.body)
+          : init?.body
+            ? "form"
+            : null;
+      const call = {
+        method,
+        path: url.pathname.replace(/^\/api\/gridgo/, ""),
+        body,
+        key: headers["Idempotency-Key"] ?? null,
+      };
       calls.push(call);
       const custom = answer(call);
       if (custom) return custom;
@@ -171,7 +186,8 @@ beforeEach(() => {
       if (call.path === "/orders/order_1") return json({ order });
       if (call.path === "/claims") return json({ claims: [] });
       if (call.path.endsWith("/download-url")) return json({ url: "blob:qr" });
-      if (call.path.startsWith("/users/")) return json({ user: { id: "ops_2", name: "Bea Santos" } });
+      if (call.path.startsWith("/users/"))
+        return json({ user: { id: "ops_2", name: "Bea Santos" } });
       return json({ error: "not_found" }, 404);
     }),
   );
@@ -193,16 +209,22 @@ describe("the refund case", { timeout: 20_000 }, () => {
     const user = userEvent.setup();
     render(<RefundCase tree="ops" />);
 
-    expect(await screen.findByRole("heading", { name: /Refund on Tarpaulin 3x6/ })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: /Refund on Tarpaulin 3x6/ }),
+    ).toBeInTheDocument();
     expect(screen.getAllByText("Client Wallet Name").length).toBeGreaterThan(0);
     const review = screen.getByRole("button", { name: "Mark reviewed" });
     expect(review).toBeDisabled();
 
-    await user.click(screen.getByRole("checkbox", { name: /I scanned this QR in a wallet app/ }));
+    await user.click(
+      screen.getByRole("checkbox", { name: /I scanned this QR in a wallet app/ }),
+    );
     await user.click(review);
 
     await waitFor(() =>
-      expect(calls.find((c) => c.path === "/refund-requests/refund_1/review")).toBeTruthy(),
+      expect(
+        calls.find((c) => c.path === "/refund-requests/refund_1/review"),
+      ).toBeTruthy(),
     );
     const sent = calls.find((c) => c.path === "/refund-requests/refund_1/review")!;
     expect(sent.key).toBeTruthy();
@@ -217,7 +239,8 @@ describe("the refund case", { timeout: 20_000 }, () => {
   it("previews on the server, then approves exactly the previewed total with work stopped", async () => {
     current = refund({ status: "reviewed", version: 3 });
     answer = (call) => {
-      if (call.path === "/refund-requests/refund_1/settlement-preview") return json(preview);
+      if (call.path === "/refund-requests/refund_1/settlement-preview")
+        return json(preview);
       if (call.path === "/refund-requests/refund_1/settle") {
         return json({ refund: refund({ status: "approved", version: 4, settlement }) });
       }
@@ -250,18 +273,28 @@ describe("the refund case", { timeout: 20_000 }, () => {
 
     const approve = screen.getByRole("button", { name: "Approve ₱710.00 refund" });
     expect(approve).toBeDisabled();
-    await user.type(screen.getByLabelText("The shop’s agreement"), "Shop keeps the ₱400 it has.");
+    await user.type(
+      screen.getByLabelText("The shop’s agreement"),
+      "Shop keeps the ₱400 it has.",
+    );
     await user.type(screen.getByLabelText("Delivery and the rider"), "No trip started.");
-    await user.type(screen.getByLabelText("Decision for the client"), "You get back the print work not done.");
+    await user.type(
+      screen.getByLabelText("Decision for the client"),
+      "You get back the print work not done.",
+    );
     expect(approve).toBeDisabled();
-    await user.click(screen.getByRole("checkbox", { name: /Production and delivery have stopped/ }));
+    await user.click(
+      screen.getByRole("checkbox", { name: /Production and delivery have stopped/ }),
+    );
     await user.click(approve);
 
     const dialog = await screen.findByRole("alertdialog");
     expect(within(dialog).getByText(/It sends nothing/)).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "Approve ₱710.00" }));
 
-    await waitFor(() => expect(calls.find((c) => c.path.endsWith("/settle"))).toBeTruthy());
+    await waitFor(() =>
+      expect(calls.find((c) => c.path.endsWith("/settle"))).toBeTruthy(),
+    );
     const settle = calls.find((c) => c.path.endsWith("/settle"))!;
     expect(settle.key).toBeTruthy();
     expect(settle.body).toEqual({
@@ -320,19 +353,30 @@ describe("the refund case", { timeout: 20_000 }, () => {
     current = refund({ status: "approved", version: 4, settlement });
     answer = (call) =>
       call.path.endsWith("/payment-attempts")
-        ? json({ refund: refund({ status: "payment_in_progress", version: 5, settlement, attempt: attempt() }) })
+        ? json({
+            refund: refund({
+              status: "payment_in_progress",
+              version: 5,
+              settlement,
+              attempt: attempt(),
+            }),
+          })
         : null;
     const user = userEvent.setup();
     render(<RefundCase tree="ops" />);
 
-    expect(await screen.findByText(/approved. No money has been sent/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/approved. No money has been sent/),
+    ).toBeInTheDocument();
     await user.type(screen.getByLabelText(/Which of GRIDGO/), "ops-gcash-1");
     const reserve = screen.getByRole("button", { name: "Reserve this transfer for me" });
     expect(reserve).toBeDisabled();
     await user.click(screen.getByRole("checkbox", { name: /I will pay QR revision 1/ }));
     await user.click(reserve);
 
-    await waitFor(() => expect(calls.find((c) => c.path.endsWith("/payment-attempts"))).toBeTruthy());
+    await waitFor(() =>
+      expect(calls.find((c) => c.path.endsWith("/payment-attempts"))).toBeTruthy(),
+    );
     expect(calls.find((c) => c.path.endsWith("/payment-attempts"))!.body).toEqual({
       expectedVersion: 4,
       reason: "Your refund transfer is being sent.",
@@ -378,16 +422,26 @@ describe("the refund case", { timeout: 20_000 }, () => {
 
     expect(await screen.findByText("Do not send this refund again.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Reserve/ })).toBeNull();
-    expect(screen.getByRole("button", { name: "No money left the wallet" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "No money left the wallet" }),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Record the same transfer" }));
     const dialog = await screen.findByRole("alertdialog");
-    await user.type(within(dialog).getByLabelText("Wallet reference number"), "wallet-123");
+    await user.type(
+      within(dialog).getByLabelText("Wallet reference number"),
+      "wallet-123",
+    );
     const evidence = new File(["png"], "sent.png", { type: "image/png" });
-    await user.upload(within(dialog).getByLabelText("Wallet transfer evidence"), evidence);
+    await user.upload(
+      within(dialog).getByLabelText("Wallet transfer evidence"),
+      evidence,
+    );
     await user.click(within(dialog).getByRole("button", { name: "Record transfer" }));
 
-    await waitFor(() => expect(calls.find((c) => c.path.endsWith("/payments"))).toBeTruthy());
+    await waitFor(() =>
+      expect(calls.find((c) => c.path.endsWith("/payments"))).toBeTruthy(),
+    );
     const upload = calls.find((c) => c.path === "/files")!;
     expect(upload.body).toBe("form");
     const payment = calls.find((c) => c.path.endsWith("/payments"))!;
@@ -418,7 +472,9 @@ describe("the refund case", { timeout: 20_000 }, () => {
   it("shows Operations a late case read-only and lets Super Admin decide it", async () => {
     current = refund({ late: true, filingDeadlineAt: "2026-09-27T04:00:00.000Z" });
     render(<RefundCase tree="ops" />);
-    expect(await screen.findByText(/Filed after the complaint deadline/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Filed after the complaint deadline/),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Mark reviewed" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Reject/ })).toBeNull();
     cleanup();
@@ -426,7 +482,9 @@ describe("the refund case", { timeout: 20_000 }, () => {
     render(<RefundCase tree="admin" />);
     expect(await screen.findByText(/You decide this one/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Mark reviewed" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Reject with a reason" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Reject with a reason" }),
+    ).toBeInTheDocument();
   });
 
   it("rejects with a reason written for the client", async () => {
@@ -441,9 +499,14 @@ describe("the refund case", { timeout: 20_000 }, () => {
     const dialog = await screen.findByRole("alertdialog");
     const reject = within(dialog).getByRole("button", { name: "Reject request" });
     expect(reject).toBeDisabled();
-    await user.type(within(dialog).getByLabelText("Reason for the client"), "The job was delivered as ordered.");
+    await user.type(
+      within(dialog).getByLabelText("Reason for the client"),
+      "The job was delivered as ordered.",
+    );
     await user.click(reject);
-    await waitFor(() => expect(calls.find((c) => c.path.endsWith("/reject"))).toBeTruthy());
+    await waitFor(() =>
+      expect(calls.find((c) => c.path.endsWith("/reject"))).toBeTruthy(),
+    );
     expect(calls.find((c) => c.path.endsWith("/reject"))!.body).toEqual({
       expectedVersion: 1,
       reason: "The job was delivered as ordered.",
@@ -453,14 +516,23 @@ describe("the refund case", { timeout: 20_000 }, () => {
   it("explains a stale version and reloads", async () => {
     current = refund();
     answer = (call) =>
-      call.path.endsWith("/review") ? json({ error: "refund_stale", currentVersion: 2 }, 409) : null;
+      call.path.endsWith("/review")
+        ? json({ error: "refund_stale", currentVersion: 2 }, 409)
+        : null;
     const user = userEvent.setup();
     render(<RefundCase tree="ops" />);
-    await user.click(await screen.findByRole("checkbox", { name: /I scanned this QR in a wallet app/ }));
+    await user.click(
+      await screen.findByRole("checkbox", { name: /I scanned this QR in a wallet app/ }),
+    );
     await user.click(screen.getByRole("button", { name: "Mark reviewed" }));
-    expect(await screen.findByText(/Someone else changed this refund/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Someone else changed this refund/),
+    ).toBeInTheDocument();
     await waitFor(() =>
-      expect(calls.filter((c) => c.path === "/refund-requests/refund_1" && c.method === "GET").length).toBeGreaterThan(1),
+      expect(
+        calls.filter((c) => c.path === "/refund-requests/refund_1" && c.method === "GET")
+          .length,
+      ).toBeGreaterThan(1),
     );
   });
 });

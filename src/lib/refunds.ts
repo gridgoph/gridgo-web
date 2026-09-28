@@ -86,6 +86,16 @@ export function presentRefundStatus(status: string): StatePresentation {
   }
 }
 
+/** The status chip for a request, which also says when it waits on the client. */
+export function presentRefundState(
+  refund: Pick<RefundRequest, "status" | "destination">,
+): StatePresentation {
+  if (refund.status === "requested" && !refund.destination) {
+    return { label: "Waiting on the client's QR", tone: "neutral", icon: "clock" };
+  }
+  return presentRefundStatus(refund.status);
+}
+
 /** History rows in plain words. `supplier_paid` reaches staff only. */
 export function refundHistoryLabel(entry: Pick<RefundHistoryEntry, "kind">): string {
   switch (entry.kind) {
@@ -253,7 +263,9 @@ export function refundNeedsStaff(
   role: PortalRole | string,
 ): boolean {
   const group = refundInboxGroup(refund, role);
-  return group === "reconcile" || group === "review" || group === "settle" || group === "pay";
+  return (
+    group === "reconcile" || group === "review" || group === "settle" || group === "pay"
+  );
 }
 
 /** Pending shop settlement payouts across the inbox, with their request. */
@@ -262,7 +274,10 @@ export function pendingShopSettlements(
 ): { refund: RefundRequest; payout: SupplierSettlementPayout }[] {
   return refunds.flatMap((refund) =>
     (refund.supplierSettlementPayouts ?? [])
-      .filter((payout) => payout.status === "pending" && payout.settlementId === refund.settlement?.id)
+      .filter(
+        (payout) =>
+          payout.status === "pending" && payout.settlementId === refund.settlement?.id,
+      )
       .map((payout) => ({ refund, payout })),
   );
 }
@@ -319,7 +334,9 @@ export function sumComponents(parts: {
 }
 
 /** Total of every earlier settlement on the same order (approved, paid or not). */
-export function previousRefundTotal(refund: Pick<RefundRequest, "previousRefunds">): number {
+export function previousRefundTotal(
+  refund: Pick<RefundRequest, "previousRefunds">,
+): number {
   return (refund.previousRefunds ?? []).reduce((total, row) => total + row.totalMinor, 0);
 }
 

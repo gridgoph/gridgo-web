@@ -319,7 +319,10 @@ describe("after a client refund settlement", () => {
   });
 
   // Plan 2: ₱1,000 shop cost, 40% paid, the shop agreed ₱600 in all.
-  const settled = (payoutPatch: Record<string, unknown> = {}, extra: Partial<Order> = {}) =>
+  const settled = (
+    payoutPatch: Record<string, unknown> = {},
+    extra: Partial<Order> = {},
+  ) =>
     order({
       state: "cancelled",
       payoutPlanVersion: 2,
@@ -330,8 +333,16 @@ describe("after a client refund settlement", () => {
           status: "released",
           pofFileIds: ["f1"],
         }),
-        milestone("delivered", { sharePercent: 35, amountMinor: 35_000, status: "superseded" }),
-        milestone("issue_window", { sharePercent: 25, amountMinor: 25_000, status: "superseded" }),
+        milestone("delivered", {
+          sharePercent: 35,
+          amountMinor: 35_000,
+          status: "superseded",
+        }),
+        milestone("issue_window", {
+          sharePercent: 25,
+          amountMinor: 25_000,
+          status: "superseded",
+        }),
       ],
       supplierSettlementPayouts: [settlementPayout(payoutPatch)],
       ...extra,
@@ -374,7 +385,9 @@ describe("after a client refund settlement", () => {
   it("holds every share while a refund request is open", () => {
     const paused = order({
       refundHold: true,
-      payoutMilestones: [milestone("printing", { status: "pof_attached", pofFileIds: ["f"] })],
+      payoutMilestones: [
+        milestone("printing", { status: "pof_attached", pofFileIds: ["f"] }),
+      ],
     });
     expect(milestoneReadiness(paused, paused.payoutMilestones![0])).toBe("held");
     expect(payoutQueueGroup(paused)).toBe("held");

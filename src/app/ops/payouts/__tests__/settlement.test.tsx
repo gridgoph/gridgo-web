@@ -30,7 +30,13 @@ const account = {
   accountName: "Juan's Print Shop",
   accountNumber: "+639171234567",
   institution: null,
-  qr: { fileId: "file_shop_qr", originalFilename: null, detectedContentType: null, size: null, readyAt: null },
+  qr: {
+    fileId: "file_shop_qr",
+    originalFilename: null,
+    detectedContentType: null,
+    size: null,
+    readyAt: null,
+  },
   version: 3,
   updatedAt: "2026-09-20T00:00:00.000Z",
   shopName: "Juan's Print Shop",
@@ -73,9 +79,35 @@ const order = {
   timeline: [],
   payoutPlanVersion: 2,
   payoutMilestones: [
-    { code: "production_started", label: "Start of production", sharePercent: 40, amountMinor: 40000, status: "released", pofFileIds: ["f1"], releaseRequires: "shop_proof" },
-    { code: "delivered", label: "Delivered", sharePercent: 35, amountMinor: 35000, status: "superseded", pofFileIds: [], releaseRequires: "delivery_proof", supersededAt: "2026-09-28T04:20:00.000Z" },
-    { code: "issue_window", label: "After the complaint window", sharePercent: 25, amountMinor: 25000, status: "superseded", pofFileIds: [], releaseRequires: "issue_window_closed", supersededAt: "2026-09-28T04:20:00.000Z" },
+    {
+      code: "production_started",
+      label: "Start of production",
+      sharePercent: 40,
+      amountMinor: 40000,
+      status: "released",
+      pofFileIds: ["f1"],
+      releaseRequires: "shop_proof",
+    },
+    {
+      code: "delivered",
+      label: "Delivered",
+      sharePercent: 35,
+      amountMinor: 35000,
+      status: "superseded",
+      pofFileIds: [],
+      releaseRequires: "delivery_proof",
+      supersededAt: "2026-09-28T04:20:00.000Z",
+    },
+    {
+      code: "issue_window",
+      label: "After the complaint window",
+      sharePercent: 25,
+      amountMinor: 25000,
+      status: "superseded",
+      pofFileIds: [],
+      releaseRequires: "issue_window_closed",
+      supersededAt: "2026-09-28T04:20:00.000Z",
+    },
   ],
   supplierSettlementPayouts: [payout],
   supplierPayoutAccount: account,
@@ -103,22 +135,31 @@ beforeEach(() => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = new URL(String(input), "http://localhost").pathname.replace(/^\/api\/gridgo/, "");
+      const path = new URL(String(input), "http://localhost").pathname.replace(
+        /^\/api\/gridgo/,
+        "",
+      );
       const method = init?.method ?? "GET";
       const body =
         typeof init?.body === "string"
           ? JSON.parse(init.body)
           : init?.body instanceof FormData
-            ? Object.fromEntries([...init.body.entries()].filter(([k]) => k === "purpose"))
+            ? Object.fromEntries(
+                [...init.body.entries()].filter(([k]) => k === "purpose"),
+              )
             : null;
       calls.push({ method, path, body });
       const reply = (value: unknown, status = 200) =>
-        new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
+        new Response(JSON.stringify(value), {
+          status,
+          headers: { "Content-Type": "application/json" },
+        });
       if (path === "/orders/order_1") return reply({ order });
       if (path === "/claims") return reply({ claims: [] });
       if (path === "/orders/order_1/refund-requests") return reply({ refunds: [refund] });
       if (path.endsWith("/download-url")) return reply({ url: "blob:qr" });
-      if (path === "/files" && method === "POST") return reply({ file: { fileId: "file_payout_receipt" } }, 201);
+      if (path === "/files" && method === "POST")
+        return reply({ file: { fileId: "file_payout_receipt" } }, 201);
       if (path === "/refund-requests/refund_1/supplier-payout") return reply({ refund });
       return reply({ error: "not_found" }, 404);
     }),
@@ -143,7 +184,9 @@ describe("the payout review after a refund settlement", { timeout: 20_000 }, () 
 
     await user.click(screen.getByRole("button", { name: "Record ₱200.00 to the shop" }));
     const dialog = await screen.findByRole("alertdialog");
-    expect(within(dialog).getByText(/Agreed refund settlement payout: the exact amount/)).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/Agreed refund settlement payout: the exact amount/),
+    ).toBeInTheDocument();
     const record = within(dialog).getByRole("button", { name: "Record shop payout" });
     expect(record).toBeDisabled();
 
@@ -158,7 +201,9 @@ describe("the payout review after a refund settlement", { timeout: 20_000 }, () 
     await waitFor(() =>
       expect(calls.find((c) => c.path.endsWith("/supplier-payout"))).toBeTruthy(),
     );
-    expect(calls.find((c) => c.path === "/files")?.body).toEqual({ purpose: "payout_receipt" });
+    expect(calls.find((c) => c.path === "/files")?.body).toEqual({
+      purpose: "payout_receipt",
+    });
     expect(calls.find((c) => c.path.endsWith("/supplier-payout"))?.body).toEqual({
       expectedVersion: 4,
       reason: "Agreed remaining shop payment sent.",

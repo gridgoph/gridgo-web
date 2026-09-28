@@ -155,7 +155,9 @@ export function PayoutMilestones({
                           superseded ? "text-text-muted" : "text-text-primary"
                         }`}
                         style={{
-                          fontFamily: superseded ? "var(--font-sans)" : "var(--font-bold)",
+                          fontFamily: superseded
+                            ? "var(--font-sans)"
+                            : "var(--font-bold)",
                         }}
                       >
                         {formatPhp(milestone.amountMinor)}
@@ -178,8 +180,8 @@ export function PayoutMilestones({
                       {milestone.supersededAt
                         ? ` on ${formatDateTime(milestone.supersededAt)}`
                         : ""}{" "}
-                      closed this share. What the shop is still owed, if anything, is
-                      the agreed refund settlement payout below.
+                      closed this share. What the shop is still owed, if anything, is the
+                      agreed refund settlement payout below.
                     </p>
                   ) : null}
                   {superseded ? null : proofs.length > 0 ? (
@@ -364,7 +366,10 @@ function Marker({ index, readiness }: { index: number; readiness: MilestoneReadi
   }
   if (readiness === "superseded") {
     return (
-      <span className={cn(base, "border-dashed border-outline text-text-muted")} aria-hidden>
+      <span
+        className={cn(base, "border-dashed border-outline text-text-muted")}
+        aria-hidden
+      >
         <Minus size={12} strokeWidth={2} />
       </span>
     );

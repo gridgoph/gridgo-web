@@ -71,9 +71,15 @@ beforeEach(() => {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      const path = new URL(String(input), "http://localhost").pathname.replace(/^\/api\/gridgo/, "");
+      const path = new URL(String(input), "http://localhost").pathname.replace(
+        /^\/api\/gridgo/,
+        "",
+      );
       const reply = (value: unknown, status = 200) =>
-        new Response(JSON.stringify(value), { status, headers: { "Content-Type": "application/json" } });
+        new Response(JSON.stringify(value), {
+          status,
+          headers: { "Content-Type": "application/json" },
+        });
       if (init?.method === "POST") {
         const headers = (init.headers ?? {}) as Record<string, string>;
         posted.push({
@@ -115,9 +121,12 @@ describe("the order workspace's client refund row", { timeout: 20_000 }, () => {
     const banner = await screen.findByText("A client refund request is open");
     expect(banner.closest("[role=status]")).toBeInTheDocument();
     const links = screen.getAllByRole("link", { name: "Open the refund case" });
-    for (const link of links) expect(link).toHaveAttribute("href", "/admin/refunds/refund_1");
+    for (const link of links)
+      expect(link).toHaveAttribute("href", "/admin/refunds/refund_1");
     expect(screen.getByText("Complaint: Waiting for review.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "File a refund for the client" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "File a refund for the client" }),
+    ).toBeNull();
   });
 
   it("files a refund for the client, without a destination", async () => {
@@ -126,10 +135,17 @@ describe("the order workspace's client refund row", { timeout: 20_000 }, () => {
     const user = userEvent.setup();
     render(<OrderWorkspace queueHref="/ops/orders" />);
     await user.click(await screen.findByRole("button", { name: /Client refund/ }));
-    await user.click(screen.getByRole("button", { name: "File a refund for the client" }));
+    await user.click(
+      screen.getByRole("button", { name: "File a refund for the client" }),
+    );
     const dialog = await screen.findByRole("alertdialog");
-    await user.type(within(dialog).getByLabelText("The client’s reason"), "Wrong size ordered.");
-    await user.click(within(dialog).getByRole("button", { name: "File and pause the order" }));
+    await user.type(
+      within(dialog).getByLabelText("The client’s reason"),
+      "Wrong size ordered.",
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "File and pause the order" }),
+    );
     await waitFor(() => expect(posted).toHaveLength(1));
     expect(posted[0].path).toBe("/orders/order1/refund-requests");
     expect(posted[0].key).toBeTruthy();
@@ -145,13 +161,19 @@ describe("the order workspace's client refund row", { timeout: 20_000 }, () => {
     expect(refundFilingLate(base(), now)).toBe(false);
     expect(
       refundFilingLate(
-        base({ state: "issue_window_open", issueWindowExpiresAt: "2026-09-29T00:00:00Z" }),
+        base({
+          state: "issue_window_open",
+          issueWindowExpiresAt: "2026-09-29T00:00:00Z",
+        }),
         now,
       ),
     ).toBe(false);
     expect(
       refundFilingLate(
-        base({ state: "issue_window_open", issueWindowExpiresAt: "2026-09-28T12:00:00Z" }),
+        base({
+          state: "issue_window_open",
+          issueWindowExpiresAt: "2026-09-28T12:00:00Z",
+        }),
         now,
       ),
     ).toBe(true);

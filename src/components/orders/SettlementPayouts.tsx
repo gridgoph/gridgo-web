@@ -48,7 +48,12 @@ export function presentSettlementPayout(
   return { label: "Ready to record", tone: "info", icon: "circle-check" };
 }
 
-export function SettlementPayouts({ order, holds = [], onRelease, releasing = null }: Props) {
+export function SettlementPayouts({
+  order,
+  holds = [],
+  onRelease,
+  releasing = null,
+}: Props) {
   const payouts = order.supplierSettlementPayouts ?? [];
   if (!payouts.length) return null;
   const held = settlementPayoutHeld(order, holds);
@@ -74,8 +79,8 @@ export function SettlementPayouts({ order, holds = [], onRelease, releasing = nu
             After the client refund
           </h3>
           <p className="text-caption text-text-muted m-0 mt-0.5">
-            The shop agreed what it keeps. What it is still owed is paid as this
-            separate item, not as the shares above.
+            The shop agreed what it keeps. What it is still owed is paid as this separate
+            item, not as the shares above.
           </p>
         </div>
       </div>
@@ -120,7 +125,9 @@ export function SettlementPayouts({ order, holds = [], onRelease, releasing = nu
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <span
                     className={`text-body tabular-nums ${
-                      payout.status === "superseded" ? "text-text-muted" : "text-text-primary"
+                      payout.status === "superseded"
+                        ? "text-text-muted"
+                        : "text-text-primary"
                     }`}
                     style={{
                       fontFamily:
@@ -131,7 +138,11 @@ export function SettlementPayouts({ order, holds = [], onRelease, releasing = nu
                   >
                     {formatPhp(payout.amountMinor)}
                   </span>
-                  <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
+                  <StatusChip
+                    tone={status.tone}
+                    label={status.label}
+                    icon={status.icon}
+                  />
                 </div>
               </div>
 

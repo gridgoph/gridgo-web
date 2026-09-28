@@ -91,11 +91,7 @@ import {
   releasableMilestones,
 } from "@/lib/payouts";
 import { describeQuantity } from "@/lib/quantity";
-import {
-  presentRefundStatus,
-  refundIsActive,
-  refundKindLabel,
-} from "@/lib/refunds";
+import { presentRefundStatus, refundIsActive, refundKindLabel } from "@/lib/refunds";
 import { cn } from "@/lib/utils";
 import { orderDeliverySplit, platformShareBps } from "@/lib/delivery-split";
 
@@ -325,7 +321,9 @@ export function OrderWorkspace({
       setFiling(false);
       await load();
     } catch (err) {
-      setFileError(opsErrorMessage(err, "The refund request could not be filed. Try again."));
+      setFileError(
+        opsErrorMessage(err, "The refund request could not be filed. Try again."),
+      );
     } finally {
       setActing(null);
     }
@@ -391,9 +389,7 @@ export function OrderWorkspace({
         </div>
       ) : null}
 
-      {order.refundHold ? (
-        <RefundHoldBanner refunds={refunds} tree={tree} />
-      ) : null}
+      {order.refundHold ? <RefundHoldBanner refunds={refunds} tree={tree} /> : null}
 
       {/*
         Steps take the width they need and the rail is fixed, because the rail's
@@ -1353,11 +1349,17 @@ export type { PayoutMilestone };
 // Client refund
 // ---------------------------------------------------------------------------
 
-const HANDOVER_STATES = new Set(["delivered", "issue_window_open", "completed", "payout_released"]);
+const HANDOVER_STATES = new Set([
+  "delivered",
+  "issue_window_open",
+  "completed",
+  "payout_released",
+]);
 
 /** After handover, filing closes at the complaint deadline; late cases are Super Admin's. */
 export function refundFilingLate(order: Order, now = Date.now()): boolean {
-  const handedOver = Boolean(order.issueWindowOpenedAt) || HANDOVER_STATES.has(order.state);
+  const handedOver =
+    Boolean(order.issueWindowOpenedAt) || HANDOVER_STATES.has(order.state);
   if (!handedOver) return false;
   if (order.state === "completed" || order.state === "payout_released") return true;
   if (!order.issueWindowExpiresAt) return true;
@@ -1368,7 +1370,9 @@ export function refundFilingLate(order: Order, now = Date.now()): boolean {
 export function canFileRefund(order: Order, refunds: RefundRequest[] | null): boolean {
   if (refunds === null || order.refundHold) return false;
   if (refunds.some(refundIsActive)) return false;
-  return Object.values(order.payments ?? {}).some((payment) => payment?.status === "confirmed");
+  return Object.values(order.payments ?? {}).some(
+    (payment) => payment?.status === "confirmed",
+  );
 }
 
 function latestRefund(refunds: RefundRequest[] | null): RefundRequest | null {
@@ -1410,9 +1414,15 @@ function RefundHoldBanner({
 }) {
   const active = refunds?.find(refundIsActive) ?? null;
   return (
-    <div className="gg-card flex flex-wrap items-center justify-between gap-3 p-3" role="status">
+    <div
+      className="gg-card flex flex-wrap items-center justify-between gap-3 p-3"
+      role="status"
+    >
       <div className="min-w-0 max-w-prose">
-        <p className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+        <p
+          className="text-body text-text-primary m-0"
+          style={{ fontFamily: "var(--font-medium)" }}
+        >
           A client refund request is open
         </p>
         <p className="text-body text-text-secondary m-0 mt-1">
@@ -1443,14 +1453,17 @@ function RefundRowPanel({
   busy: boolean;
   onFile: () => void;
 }) {
-  const sorted = [...(refunds ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const sorted = [...(refunds ?? [])].sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  );
   const late = refundFilingLate(order);
   const mayFile = canFileRefund(order, refunds) && (!late || tree === "admin");
   return (
     <div className="flex flex-col gap-3">
       {refunds === null ? (
         <p className="text-body text-text-secondary m-0">
-          Refund requests on this order could not be loaded. Refresh the order to try again.
+          Refund requests on this order could not be loaded. Refresh the order to try
+          again.
         </p>
       ) : null}
       {sorted.length ? (
@@ -1463,14 +1476,19 @@ function RefundRowPanel({
                 key={refund.id}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-outline-subtle px-3 py-2"
               >
-                <div className="flex min-w-0 flex-col gap-1">
+                <div className="flex min-w-0 flex-col items-start gap-1">
                   <span className="text-body text-text-primary">
-                    {refundKindLabel(refund.kind)}, filed {formatDateTime(refund.createdAt)}
+                    {refundKindLabel(refund.kind)}, filed{" "}
+                    {formatDateTime(refund.createdAt)}
                     {amount !== undefined ? (
                       <span className="tabular-nums">, {formatPhp(amount)}</span>
                     ) : null}
                   </span>
-                  <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
+                  <StatusChip
+                    tone={status.tone}
+                    label={status.label}
+                    icon={status.icon}
+                  />
                 </div>
                 <Link
                   href={`/${tree}/refunds/${refund.id}`}
@@ -1491,8 +1509,8 @@ function RefundRowPanel({
       {mayFile ? (
         <div className="flex flex-col gap-2">
           <p className="text-caption text-text-muted m-0">
-            If the client asked you instead, file it for them. Filing pauses work and payouts
-            at once; the client still adds their own receiving QR.
+            If the client asked you instead, file it for them. Filing pauses work and
+            payouts at once; the client still adds their own receiving QR.
           </p>
           <div>
             <Button variant="secondary" disabled={busy} onClick={onFile}>

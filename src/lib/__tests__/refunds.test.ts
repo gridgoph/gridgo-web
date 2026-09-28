@@ -60,7 +60,9 @@ const fortyReleased: RefundAmounts = {
 describe("refund status words", () => {
   it("never reads an approval as money sent", () => {
     expect(presentRefundStatus("approved").label).toBe("Approved, not yet sent");
-    expect(presentRefundStatus("payment_in_progress").label).not.toMatch(/paid|refunded/i);
+    expect(presentRefundStatus("payment_in_progress").label).not.toMatch(
+      /paid|refunded/i,
+    );
     expect(presentRefundStatus("paid").label).toBe("Paid to the client");
     expect(presentRefundStatus("payment_unknown").tone).toBe("error");
   });
@@ -106,7 +108,9 @@ describe("the refund inbox", () => {
     expect(refundInboxGroup(refund({ status: "payment_unknown" }), "ops_admin")).toBe(
       "reconcile",
     );
-    expect(refundInboxGroup(refund({ destination: null }), "ops_admin")).toBe("client-qr");
+    expect(refundInboxGroup(refund({ destination: null }), "ops_admin")).toBe(
+      "client-qr",
+    );
     expect(refundInboxGroup(refund(), "ops_admin")).toBe("review");
     expect(refundInboxGroup(refund({ status: "reviewed" }), "ops_admin")).toBe("settle");
     expect(refundInboxGroup(refund({ status: "destination_review" }), "ops_admin")).toBe(
@@ -123,7 +127,9 @@ describe("the refund inbox", () => {
     expect(refundNeedsStaff(late, "ops_admin")).toBe(false);
     expect(refundNeedsStaff(late, "super_admin")).toBe(true);
     // A reserved transfer waits on its payer, not the whole desk.
-    expect(refundNeedsStaff(refund({ status: "payment_in_progress" }), "ops_admin")).toBe(false);
+    expect(refundNeedsStaff(refund({ status: "payment_in_progress" }), "ops_admin")).toBe(
+      false,
+    );
   });
 
   it("lists only the live settlement's pending shop payout", () => {
@@ -159,7 +165,9 @@ describe("the refund inbox", () => {
         { ...payout, id: "rspay_0", settlementId: "rsettle_0", status: "superseded" },
       ],
     });
-    expect(pendingShopSettlements([settled]).map((row) => row.payout.id)).toEqual(["rspay_1"]);
+    expect(pendingShopSettlements([settled]).map((row) => row.payout.id)).toEqual([
+      "rspay_1",
+    ]);
   });
 });
 
@@ -211,7 +219,9 @@ describe("the settlement ledger", () => {
       remainingShopMinor: 20000,
       shopEntitlementMinor: 60000,
     });
-    expect(lines.find((line) => line.label === "Still owed to the shop")?.minor).toBe(20000);
+    expect(lines.find((line) => line.label === "Still owed to the shop")?.minor).toBe(
+      20000,
+    );
     expect(lines.at(-1)?.minor).toBe(49000);
   });
 });

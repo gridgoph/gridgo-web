@@ -15,7 +15,7 @@
 
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronRight, Handshake } from "lucide-react";
@@ -34,7 +34,7 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
 import {
   REFUND_INBOX_GROUPS,
   pendingShopSettlements,
-  presentRefundStatus,
+  presentRefundState,
   refundInboxGroup,
   refundIsActive,
   refundKindLabel,
@@ -65,7 +65,10 @@ export function RefundInbox({ tree }: { tree: Tree }) {
   const orderParam = params.get("order");
   const { user } = useAuth();
   const viewer: RefundViewer = useMemo(
-    () => ({ role: tree === "admin" ? "super_admin" : "ops_admin", userId: user?.id ?? null }),
+    () => ({
+      role: tree === "admin" ? "super_admin" : "ops_admin",
+      userId: user?.id ?? null,
+    }),
     [tree, user?.id],
   );
 
@@ -140,6 +143,60 @@ export function RefundInbox({ tree }: { tree: Tree }) {
     );
   }
 
+  const titleOfOrder = (orderId: string) => data?.titles[orderId] || "Untitled order";
+  const shopSection = (
+    <section aria-labelledby="refund-group-shop" className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 id="refund-group-shop" className="text-h3 text-text-primary m-0">
+          Shop settlement payouts to record
+          <span className="text-text-muted tabular-nums"> {shopPayouts.length}</span>
+        </h2>
+        <p className="text-caption text-text-muted m-0">
+          What a shop is still owed after a refund. Pay its current QR, then record it.
+        </p>
+      </div>
+      <ul className="gg-card-flush m-0 flex list-none flex-col p-0">
+        {shopPayouts.map(({ refund, payout }) => (
+          <li key={payout.id} className="border-b border-outline-subtle last:border-b-0">
+            <Link
+              href={`/${tree}/refunds/${refund.id}`}
+              className={rowLink}
+              aria-label={`Record the shop settlement payout on ${titleOfOrder(refund.orderId)}`}
+            >
+              <Handshake
+                size={18}
+                strokeWidth={1.75}
+                className="text-text-secondary shrink-0"
+                aria-hidden
+              />
+              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                <p
+                  className="text-body text-text-primary m-0 truncate"
+                  style={{ fontFamily: "var(--font-medium)" }}
+                >
+                  {titleOfOrder(refund.orderId)}
+                </p>
+                <p className="text-body text-text-secondary m-0">{payout.label}</p>
+              </div>
+              <span
+                className="text-body text-text-primary shrink-0 tabular-nums"
+                style={{ fontFamily: "var(--font-bold)" }}
+              >
+                {formatPhp(payout.amountMinor)}
+              </span>
+              <ChevronRight
+                size={16}
+                strokeWidth={2}
+                aria-hidden
+                className="shrink-0 text-text-muted"
+              />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+
   const pending = loading && !data;
   const openCount = (data?.refunds ?? []).filter(refundIsActive).length;
   const titleOf = (orderId: string) => data?.titles[orderId] || "Untitled order";
@@ -186,82 +243,59 @@ export function RefundInbox({ tree }: { tree: Tree }) {
 
           {REFUND_INBOX_GROUPS.map((definition) => {
             const members = grouped.get(definition.id) ?? [];
-            if (!members.length) return null;
             const closed = definition.id === "closed";
+            // What a shop is owed after a settlement sits above the record.
+            const shop = closed && shopPayouts.length ? shopSection : null;
+            if (!members.length)
+              return shop ? <Fragment key="shop">{shop}</Fragment> : null;
             const shown = closed && !showClosed ? [] : members;
             return (
-              <section
-                key={definition.id}
-                aria-labelledby={`refund-group-${definition.id}`}
-                className="flex flex-col gap-2"
-              >
-                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                  <h2 id={`refund-group-${definition.id}`} className="text-h3 text-text-primary m-0">
-                    {definition.label}
-                    <span className="text-text-muted tabular-nums"> {members.length}</span>
-                  </h2>
-                  <p className="text-caption text-text-muted m-0">{definition.hint}</p>
-                </div>
-                {closed ? (
-                  <div>
-                    <Button variant="ghost" onClick={() => setShowClosed((value) => !value)}>
-                      {showClosed ? "Hide closed requests" : "Show closed requests"}
-                    </Button>
+              <Fragment key={definition.id}>
+                {shop}
+                <section
+                  aria-labelledby={`refund-group-${definition.id}`}
+                  className="flex flex-col gap-2"
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                    <h2
+                      id={`refund-group-${definition.id}`}
+                      className="text-h3 text-text-primary m-0"
+                    >
+                      {definition.label}
+                      <span className="text-text-muted tabular-nums">
+                        {" "}
+                        {members.length}
+                      </span>
+                    </h2>
+                    <p className="text-caption text-text-muted m-0">{definition.hint}</p>
                   </div>
-                ) : null}
-                {shown.length ? (
-                  <ul className="gg-card-flush m-0 flex list-none flex-col p-0">
-                    {shown.map((refund) => (
-                      <RefundRow
-                        key={refund.id}
-                        refund={refund}
-                        title={titleOf(refund.orderId)}
-                        tree={tree}
-                        viewer={viewer}
-                      />
-                    ))}
-                  </ul>
-                ) : null}
-              </section>
+                  {closed ? (
+                    <div>
+                      <Button
+                        variant="ghost"
+                        onClick={() => setShowClosed((value) => !value)}
+                      >
+                        {showClosed ? "Hide closed requests" : "Show closed requests"}
+                      </Button>
+                    </div>
+                  ) : null}
+                  {shown.length ? (
+                    <ul className="gg-card-flush m-0 flex list-none flex-col p-0">
+                      {shown.map((refund) => (
+                        <RefundRow
+                          key={refund.id}
+                          refund={refund}
+                          title={titleOf(refund.orderId)}
+                          tree={tree}
+                          viewer={viewer}
+                        />
+                      ))}
+                    </ul>
+                  ) : null}
+                </section>
+              </Fragment>
             );
           })}
-
-          {shopPayouts.length ? (
-            <section aria-labelledby="refund-group-shop" className="flex flex-col gap-2">
-              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                <h2 id="refund-group-shop" className="text-h3 text-text-primary m-0">
-                  Shop settlement payouts to record
-                  <span className="text-text-muted tabular-nums"> {shopPayouts.length}</span>
-                </h2>
-                <p className="text-caption text-text-muted m-0">
-                  What a shop is still owed after a refund. Pay its current QR, then record it.
-                </p>
-              </div>
-              <ul className="gg-card-flush m-0 flex list-none flex-col p-0">
-                {shopPayouts.map(({ refund, payout }) => (
-                  <li key={payout.id} className="border-b border-outline-subtle last:border-b-0">
-                    <Link
-                      href={`/${tree}/refunds/${refund.id}`}
-                      className={rowLink}
-                      aria-label={`Record the shop settlement payout on ${titleOf(refund.orderId)}`}
-                    >
-                      <Handshake size={18} strokeWidth={1.75} className="text-text-secondary shrink-0" aria-hidden />
-                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <p className="text-body text-text-primary m-0 truncate" style={{ fontFamily: "var(--font-medium)" }}>
-                          {titleOf(refund.orderId)}
-                        </p>
-                        <p className="text-body text-text-secondary m-0">{payout.label}</p>
-                      </div>
-                      <span className="text-body text-text-primary shrink-0 tabular-nums" style={{ fontFamily: "var(--font-bold)" }}>
-                        {formatPhp(payout.amountMinor)}
-                      </span>
-                      <ChevronRight size={16} strokeWidth={2} aria-hidden className="shrink-0 text-text-muted" />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
         </>
       )}
     </div>
@@ -284,14 +318,21 @@ function RefundRow({
   tree: Tree;
   viewer: RefundViewer;
 }) {
-  const status = presentRefundStatus(refund.status);
+  const status = presentRefundState(refund);
   const amount = refund.payment?.amountMinor ?? refund.settlement?.totalMinor ?? null;
   return (
     <li className="border-b border-outline-subtle last:border-b-0">
-      <Link href={`/${tree}/refunds/${refund.id}`} className={rowLink} aria-label={`Open the refund on ${title}`}>
+      <Link
+        href={`/${tree}/refunds/${refund.id}`}
+        className={rowLink}
+        aria-label={`Open the refund on ${title}`}
+      >
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <p className="text-body text-text-primary m-0 truncate" style={{ fontFamily: "var(--font-medium)" }}>
+            <p
+              className="text-body text-text-primary m-0 truncate"
+              style={{ fontFamily: "var(--font-medium)" }}
+            >
               {title}
             </p>
             <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
@@ -299,14 +340,19 @@ function RefundRow({
               <StatusChip tone="warning" label="Filed late" icon="triangle-alert" />
             ) : null}
           </div>
-          <p className="text-body text-text-secondary m-0">{refundNextStep(refund, viewer)}</p>
+          <p className="text-body text-text-secondary m-0">
+            {refundNextStep(refund, viewer)}
+          </p>
           <p className="text-caption text-text-muted m-0">
             {refundKindLabel(refund.kind)} filed {formatDate(refund.createdAt)}
             {refund.beforeProduction ? ", before production" : ""}
           </p>
         </div>
         {amount !== null ? (
-          <span className="text-body text-text-primary shrink-0 tabular-nums" style={{ fontFamily: "var(--font-bold)" }}>
+          <span
+            className="text-body text-text-primary shrink-0 tabular-nums"
+            style={{ fontFamily: "var(--font-bold)" }}
+          >
             {formatPhp(amount)}
           </span>
         ) : null}

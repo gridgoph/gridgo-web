@@ -105,7 +105,8 @@ const NAV_COUNT_SOURCES: Record<NavCountKey, CountSource> = {
     resources: ["orders", "payouts", "claims"],
     load: async () => {
       const role = getWorkspaceRole() ?? "ops_admin";
-      return (await listRefunds()).filter((refund) => refundNeedsStaff(refund, role)).length;
+      return (await listRefunds()).filter((refund) => refundNeedsStaff(refund, role))
+        .length;
     },
   },
   // GitHub is the source, so no stream covers it. The API caches its GitHub

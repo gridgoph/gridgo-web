@@ -17,9 +17,15 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => search,
 }));
 vi.mock("@/lib/live/useLiveReload", () => ({ useLiveReload: () => {} }));
-vi.mock("@/lib/auth/AuthProvider", () => ({ useAuth: () => ({ user: { id: "ops_1" } }) }));
+vi.mock("@/lib/auth/AuthProvider", () => ({
+  useAuth: () => ({ user: { id: "ops_1" } }),
+}));
 
-function refund(id: string, orderId: string, patch: Partial<RefundRequest> = {}): RefundRequest {
+function refund(
+  id: string,
+  orderId: string,
+  patch: Partial<RefundRequest> = {},
+): RefundRequest {
   return {
     id,
     orderId,
@@ -85,7 +91,10 @@ const refunds: RefundRequest[] = [
       },
     ],
   }),
-  refund("r_old", "o_review", { status: "rejected", createdAt: "2026-09-20T04:00:00.000Z" }),
+  refund("r_old", "o_review", {
+    status: "rejected",
+    createdAt: "2026-09-20T04:00:00.000Z",
+  }),
 ];
 
 const titles: Record<string, string> = {
@@ -133,8 +142,8 @@ describe("the refund inbox", () => {
       "refund-group-pay",
       "refund-group-client-qr",
       "refund-group-super-admin",
-      "refund-group-closed",
       "refund-group-shop",
+      "refund-group-closed",
     ]);
     const reconcile = screen.getByRole("region", { name: /Transfer unconfirmed/ });
     expect(within(reconcile).getByRole("link", { name: /Stickers/ })).toHaveAttribute(
@@ -146,7 +155,9 @@ describe("the refund inbox", () => {
     const late = screen.getByRole("region", { name: /Late, with Super Admin/ });
     expect(within(late).getByText("Filed late")).toBeInTheDocument();
 
-    const shop = screen.getByRole("region", { name: /Shop settlement payouts to record/ });
+    const shop = screen.getByRole("region", {
+      name: /Shop settlement payouts to record/,
+    });
     expect(within(shop).getByText("₱200.00")).toBeInTheDocument();
     expect(within(shop).getByText("Agreed refund settlement payout")).toBeInTheDocument();
   });

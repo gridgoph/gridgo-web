@@ -110,7 +110,9 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
                     className={`text-body m-0 tabular-nums ${
                       superseded ? "text-text-muted" : "text-text-primary"
                     }`}
-                    style={{ fontFamily: superseded ? "var(--font-sans)" : "var(--font-bold)" }}
+                    style={{
+                      fontFamily: superseded ? "var(--font-sans)" : "var(--font-bold)",
+                    }}
                   >
                     {formatPhp(milestone.amountMinor)}
                     {superseded ? <span className="sr-only">, not paid</span> : null}
@@ -188,7 +190,9 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
           );
         })}
       </ol>
-      {order.supplierSettlementPayouts?.length ? <SettlementPayouts order={order} /> : null}
+      {order.supplierSettlementPayouts?.length ? (
+        <SettlementPayouts order={order} />
+      ) : null}
     </div>
   );
 }

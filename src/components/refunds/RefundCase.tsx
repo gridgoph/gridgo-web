@@ -91,7 +91,13 @@ import type {
   SupplierSettlementPayout,
 } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/AuthProvider";
-import { formatDate, formatDateTime, formatPhp, minorToPesosInput, pesosToMinor } from "@/lib/format";
+import {
+  formatDate,
+  formatDateTime,
+  formatPhp,
+  minorToPesosInput,
+  pesosToMinor,
+} from "@/lib/format";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { presentOrderState } from "@/lib/order-state";
 import {
@@ -99,7 +105,7 @@ import {
   TRANSFER_EVIDENCE_LABEL,
   canDecideRefund,
   canRecordTransfer,
-  presentRefundStatus,
+  presentRefundState,
   previousRefundTotal,
   refundHistoryLabel,
   refundIsUndecided,
@@ -121,7 +127,12 @@ type Loaded = {
 
 type StepId = "request" | "account" | "settlement" | "transfer" | "history";
 
-const HANDOVER_STATES = new Set(["delivered", "issue_window_open", "completed", "payout_released"]);
+const HANDOVER_STATES = new Set([
+  "delivered",
+  "issue_window_open",
+  "completed",
+  "payout_released",
+]);
 
 /** After handover a settlement completes the order; before it, it cancels it. */
 export function settlementCancelsOrder(order: Order | null): boolean {
@@ -134,9 +145,11 @@ export function settlementCancelsOrder(order: Order | null): boolean {
 export function refundErrorMessage(err: unknown, fallback: string): string {
   if (isApiError(err)) {
     const available =
-      err.detail<number>("availableTotalMinor") ?? err.detail<number>("availablePrincipalMinor");
+      err.detail<number>("availableTotalMinor") ??
+      err.detail<number>("availablePrincipalMinor");
     if (err.code === "refund_exceeds_available_funds" && typeof available === "number") {
-      const which = err.detail("availableTotalMinor") !== undefined ? "in all" : "for the print work";
+      const which =
+        err.detail("availableTotalMinor") !== undefined ? "in all" : "for the print work";
       return `At most ${formatPhp(available)} can go back ${which}. There is no override: refer anything larger to Super Admin.`;
     }
     if (err.code === "refund_stale") {
@@ -150,7 +163,10 @@ export function RefundCase({ tree }: { tree: Tree }) {
   const { id: refundId } = useParams<{ id: string }>();
   const { user } = useAuth();
   const viewer: RefundViewer = useMemo(
-    () => ({ role: tree === "admin" ? "super_admin" : "ops_admin", userId: user?.id ?? null }),
+    () => ({
+      role: tree === "admin" ? "super_admin" : "ops_admin",
+      userId: user?.id ?? null,
+    }),
     [tree, user?.id],
   );
 
@@ -212,7 +228,9 @@ export function RefundCase({ tree }: { tree: Tree }) {
     setOpen((existing) => {
       // While undecided, the request itself is read alongside the review.
       if (existing === null) {
-        return refundIsUndecided(refund) && current !== "request" ? ["request", current] : [current];
+        return refundIsUndecided(refund) && current !== "request"
+          ? ["request", current]
+          : [current];
       }
       return existing.includes(current) ? existing : [...existing, current];
     });
@@ -239,7 +257,8 @@ export function RefundCase({ tree }: { tree: Tree }) {
         ),
       ),
     ).then((found) => {
-      if (!cancelled) setNames((current) => ({ ...current, ...Object.fromEntries(found) }));
+      if (!cancelled)
+        setNames((current) => ({ ...current, ...Object.fromEntries(found) }));
     });
     return () => {
       cancelled = true;
@@ -272,10 +291,16 @@ export function RefundCase({ tree }: { tree: Tree }) {
       void load();
       return true;
     } catch (err) {
-      const message = refundErrorMessage(err, "That did not go through. Reload the refund and try again.");
+      const message = refundErrorMessage(
+        err,
+        "That did not go through. Reload the refund and try again.",
+      );
       if (inDialog) setDialogError(message);
       else setActionError(message);
-      if (isApiError(err) && (err.code === "refund_stale" || err.code === "refund_state_conflict")) {
+      if (
+        isApiError(err) &&
+        (err.code === "refund_stale" || err.code === "refund_state_conflict")
+      ) {
         void load();
       }
       return false;
@@ -299,7 +324,7 @@ export function RefundCase({ tree }: { tree: Tree }) {
   }
 
   const { order, claims } = data;
-  const status = presentRefundStatus(refund.status);
+  const status = presentRefundState(refund);
   const decides = canDecideRefund(refund, viewer);
   const busy = acting !== null;
   const openClaims = claims.filter(
@@ -330,9 +355,14 @@ export function RefundCase({ tree }: { tree: Tree }) {
 
       {refund.late ? (
         <div className="rounded-card border border-warning px-4 py-3" role="note">
-          <p className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+          <p
+            className="text-body text-text-primary m-0"
+            style={{ fontFamily: "var(--font-medium)" }}
+          >
             Filed after the complaint deadline
-            {refund.filingDeadlineAt ? ` (${formatDateTime(refund.filingDeadlineAt)})` : ""}
+            {refund.filingDeadlineAt
+              ? ` (${formatDateTime(refund.filingDeadlineAt)})`
+              : ""}
           </p>
           <p className="text-body text-text-secondary m-0 mt-1">
             {viewer.role === "super_admin"
@@ -390,7 +420,12 @@ export function RefundCase({ tree }: { tree: Tree }) {
               onReview={(input) =>
                 act(
                   "review",
-                  () => reviewRefund(refund, input, keys.keyFor({ review: refund.version, ...input })),
+                  () =>
+                    reviewRefund(
+                      refund,
+                      input,
+                      keys.keyFor({ review: refund.version, ...input }),
+                    ),
                   refund.status === "destination_review"
                     ? "New receiving QR verified. The approved refund can be paid."
                     : "Marked reviewed. Settle the refund next.",
@@ -427,7 +462,12 @@ export function RefundCase({ tree }: { tree: Tree }) {
                 onApprove={(input) =>
                   act(
                     "settle",
-                    () => settleRefund(refund, input, keys.keyFor({ settle: refund.version, ...input })),
+                    () =>
+                      settleRefund(
+                        refund,
+                        input,
+                        keys.keyFor({ settle: refund.version, ...input }),
+                      ),
                     `Approved ${formatPhp(input.totalMinor)}. No money has been sent yet.`,
                     true,
                   )
@@ -497,9 +537,13 @@ export function RefundCase({ tree }: { tree: Tree }) {
                       <span className="text-caption text-text-muted"> (staff only)</span>
                     ) : null}
                   </span>
-                  <span className="text-caption text-text-muted">{formatDateTime(entry.at)}</span>
+                  <span className="text-caption text-text-muted">
+                    {formatDateTime(entry.at)}
+                  </span>
                   {entry.reason ? (
-                    <span className="text-body text-text-secondary">&ldquo;{entry.reason}&rdquo;</span>
+                    <span className="text-body text-text-secondary">
+                      &ldquo;{entry.reason}&rdquo;
+                    </span>
                   ) : null}
                 </li>
               ))}
@@ -507,7 +551,10 @@ export function RefundCase({ tree }: { tree: Tree }) {
           </Step>
         </Accordion>
 
-        <aside className="flex flex-col gap-3 lg:sticky lg:top-4 lg:self-start" aria-label="Refund details">
+        <aside
+          className="flex flex-col gap-3 lg:sticky lg:top-4 lg:self-start"
+          aria-label="Refund details"
+        >
           <MoneyCard refund={refund} />
           <OrderCard refund={refund} order={order} tree={tree} />
           <ClaimsCard claims={openClaims} tree={tree} />
@@ -522,7 +569,12 @@ export function RefundCase({ tree }: { tree: Tree }) {
         onReject={async (reason) => {
           const ok = await act(
             "reject",
-            () => rejectRefund(refund, reason, keys.keyFor({ reject: refund.version, reason })),
+            () =>
+              rejectRefund(
+                refund,
+                reason,
+                keys.keyFor({ reject: refund.version, reason }),
+              ),
             "Rejected. The client has your reason, and the order's work and payouts resume.",
             true,
           );
@@ -552,7 +604,11 @@ export function RefundCase({ tree }: { tree: Tree }) {
                 receiptFileId,
                 paidAt: record.paidAt,
               };
-              return recordRefundPayment(refund, input, keys.keyFor({ pay: refund.version, ...input }));
+              return recordRefundPayment(
+                refund,
+                input,
+                keys.keyFor({ pay: refund.version, ...input }),
+              );
             },
             `Recorded. ${formatPhp(attempt.amountMinor)} is on record as paid to the client.`,
             true,
@@ -575,7 +631,11 @@ export function RefundCase({ tree }: { tree: Tree }) {
           const ok = await act(
             "reconcile",
             () =>
-              reconcileRefundPayment(refund, input, keys.keyFor({ reconcile: refund.version, ...input })),
+              reconcileRefundPayment(
+                refund,
+                input,
+                keys.keyFor({ reconcile: refund.version, ...input }),
+              ),
             dialog.mode === "failed"
               ? "No transfer happened. The refund can be reserved and sent again."
               : "Marked unconfirmed. Nobody can send again until the wallet history settles it.",
@@ -628,7 +688,13 @@ export function RefundCase({ tree }: { tree: Tree }) {
 // Header pieces
 // ---------------------------------------------------------------------------
 
-function NextStepPanel({ refund, viewer }: { refund: RefundRequest; viewer: RefundViewer }) {
+function NextStepPanel({
+  refund,
+  viewer,
+}: {
+  refund: RefundRequest;
+  viewer: RefundViewer;
+}) {
   const warning = refund.status === "payment_unknown";
   return (
     <div
@@ -639,11 +705,23 @@ function NextStepPanel({ refund, viewer }: { refund: RefundRequest; viewer: Refu
       role={warning ? "alert" : "note"}
     >
       {warning ? (
-        <TriangleAlert size={20} strokeWidth={2} className="text-error mt-0.5 shrink-0" aria-hidden />
+        <TriangleAlert
+          size={20}
+          strokeWidth={2}
+          className="text-error mt-0.5 shrink-0"
+          aria-hidden
+        />
       ) : (
-        <CircleDot size={20} strokeWidth={2} className="text-text-secondary mt-0.5 shrink-0" aria-hidden />
+        <CircleDot
+          size={20}
+          strokeWidth={2}
+          className="text-text-secondary mt-0.5 shrink-0"
+          aria-hidden
+        />
       )}
-      <p className="text-body text-text-primary m-0 max-w-prose">{refundNextStep(refund, viewer)}</p>
+      <p className="text-body text-text-primary m-0 max-w-prose">
+        {refundNextStep(refund, viewer)}
+      </p>
     </div>
   );
 }
@@ -724,7 +802,9 @@ function Step({
       render={<section aria-current={marker.tone === "current" ? "step" : undefined} />}
     >
       <AccordionHeader render={<h2 className="m-0 flex text-h3" />}>
-        <AccordionTrigger className={cn(marker.tone === "current" && "bg-surface-variant/40")}>
+        <AccordionTrigger
+          className={cn(marker.tone === "current" && "bg-surface-variant/40")}
+        >
           <Marker {...marker} />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="text-h3 text-text-primary">{heading}</span>
@@ -743,7 +823,9 @@ function requestSummary(refund: RefundRequest): string {
   const base = `${refundKindLabel(refund.kind)}, ${formatDate(refund.createdAt)}`;
   if (refund.status === "rejected") return `${base}. Rejected.`;
   if (refund.status === "withdrawn") return `${base}. Withdrawn by the client.`;
-  return refund.beforeProduction ? `${base}, before production.` : `${base}, after production started.`;
+  return refund.beforeProduction
+    ? `${base}, before production.`
+    : `${base}, after production started.`;
 }
 
 function accountSummary(refund: RefundRequest): string {
@@ -759,7 +841,8 @@ function settlementSummary(refund: RefundRequest): string {
   const s = refund.settlement;
   if (!s) {
     if (refund.status === "reviewed") return "Reviewed. Ready to preview and approve.";
-    if (refund.status === "rejected" || refund.status === "withdrawn") return "Not settled.";
+    if (refund.status === "rejected" || refund.status === "withdrawn")
+      return "Not settled.";
     return "Not settled yet.";
   }
   const when = s.approvedAt ?? s.createdAt;
@@ -806,13 +889,19 @@ function RequestPanel({
   return (
     <div className="flex flex-col gap-3">
       <blockquote className="m-0 border-l-2 border-outline pl-3">
-        <p className="text-body text-text-primary m-0 whitespace-pre-line">{refund.reason}</p>
+        <p className="text-body text-text-primary m-0 whitespace-pre-line">
+          {refund.reason}
+        </p>
       </blockquote>
       <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
         <dt className="text-caption text-text-muted">Asked for</dt>
-        <dd className="m-0 text-body text-text-secondary">{refundKindLabel(refund.kind)}</dd>
+        <dd className="m-0 text-body text-text-secondary">
+          {refundKindLabel(refund.kind)}
+        </dd>
         <dt className="text-caption text-text-muted">Filed</dt>
-        <dd className="m-0 text-body text-text-secondary">{formatDateTime(refund.createdAt)}</dd>
+        <dd className="m-0 text-body text-text-secondary">
+          {formatDateTime(refund.createdAt)}
+        </dd>
         <dt className="text-caption text-text-muted">Timing</dt>
         <dd className="m-0 text-body text-text-secondary">
           {refund.beforeProduction
@@ -871,9 +960,14 @@ function AccountPanel({
   refund: RefundRequest;
   decides: boolean;
   busy: boolean;
-  onReview: (input: { reason: string; destinationVerified: true; substantiated?: boolean }) => void;
+  onReview: (input: {
+    reason: string;
+    destinationVerified: true;
+    substantiated?: boolean;
+  }) => void;
 }) {
-  const reviewing = refund.status === "requested" || refund.status === "destination_review";
+  const reviewing =
+    refund.status === "requested" || refund.status === "destination_review";
   const replaced = refund.status === "destination_review";
   const complaint = refund.kind === "complaint" && !replaced;
   const [verified, setVerified] = useState(false);
@@ -908,23 +1002,38 @@ function AccountPanel({
     <div className="flex flex-col gap-4">
       {replaced ? (
         <p className="text-body text-text-primary m-0 rounded-card border border-warning px-3 py-2">
-          The client replaced their receiving QR after approval. Nobody can pay until the new
-          one is verified.
+          The client replaced their receiving QR after approval. Nobody can pay until the
+          new one is verified.
         </p>
       ) : null}
       <RefundDestinationView destination={refund.destination} />
       {reviewing && decides ? (
         <FieldGroup>
-          <Confirmation id="destination-verified" checked={verified} onChange={setVerified} disabled={busy}>
-            I scanned this QR in a wallet app and it named{" "}
-            <span style={{ fontFamily: "var(--font-medium)" }}>{refund.destination.accountName}</span>.
-          </Confirmation>
-          {complaint ? (
-            <Confirmation id="complaint-substantiated" checked={substantiated} onChange={setSubstantiated} disabled={busy}>
-              The evidence substantiates the complaint. If it does not, reject the request
-              with a reason instead.
+          <div className="flex flex-col gap-1">
+            <Confirmation
+              id="destination-verified"
+              checked={verified}
+              onChange={setVerified}
+              disabled={busy}
+            >
+              I scanned this QR in a wallet app and it named{" "}
+              <span style={{ fontFamily: "var(--font-medium)" }}>
+                {refund.destination.accountName}
+              </span>
+              .
             </Confirmation>
-          ) : null}
+            {complaint ? (
+              <Confirmation
+                id="complaint-substantiated"
+                checked={substantiated}
+                onChange={setSubstantiated}
+                disabled={busy}
+              >
+                The evidence substantiates the complaint. If it does not, reject the
+                request with a reason instead.
+              </Confirmation>
+            ) : null}
+          </div>
           <Field>
             <FieldLabel htmlFor="review-reason">Note for the client</FieldLabel>
             <Textarea
@@ -954,7 +1063,9 @@ function AccountPanel({
           </div>
         </FieldGroup>
       ) : reviewing ? (
-        <p className="text-caption text-text-muted m-0">Super Admin verifies this late case.</p>
+        <p className="text-caption text-text-muted m-0">
+          Super Admin verifies this late case.
+        </p>
       ) : (
         <p className="text-caption text-text-muted m-0">
           Verified against revision {refund.destination.revision}. A replaced QR must be
@@ -992,11 +1103,17 @@ function SettlementForm({
 }) {
   const early = refund.beforeProduction;
   const released = refund.releasedShopMinor ?? 0;
-  const directStore = (order as (Order & { directStoreDueMinor?: number }) | null)?.directStoreDueMinor ?? 0;
+  const directStore =
+    (order as (Order & { directStoreDueMinor?: number }) | null)?.directStoreDueMinor ??
+    0;
   const [shop, setShop] = useState(() => minorToPesosInput(early ? 0 : released));
   const [rider, setRider] = useState(() => minorToPesosInput(0));
   const [principal, setPrincipal] = useState("");
-  const [preview, setPreview] = useState<{ signature: string; result: RefundPreview; input: SettlementInput } | null>(null);
+  const [preview, setPreview] = useState<{
+    signature: string;
+    result: RefundPreview;
+    input: SettlementInput;
+  } | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [agreement, setAgreement] = useState(
@@ -1010,8 +1127,7 @@ function SettlementForm({
   const shopMinor = early ? 0 : pesosToMinor(shop);
   const riderMinor = early ? 0 : pesosToMinor(rider);
   const principalMinor = principal.trim() ? pesosToMinor(principal) : undefined;
-  const inputValid =
-    shopMinor !== null && riderMinor !== null && principalMinor !== null;
+  const inputValid = shopMinor !== null && riderMinor !== null && principalMinor !== null;
   const input: SettlementInput | null = inputValid
     ? {
         shopEntitlementMinor: shopMinor as number,
@@ -1033,7 +1149,9 @@ function SettlementForm({
       setPreview({ signature, result, input });
     } catch (err) {
       setPreview(null);
-      setPreviewError(refundErrorMessage(err, "The preview could not be calculated. Try again."));
+      setPreviewError(
+        refundErrorMessage(err, "The preview could not be calculated. Try again."),
+      );
     } finally {
       setPreviewing(false);
     }
@@ -1052,13 +1170,15 @@ function SettlementForm({
       <FieldGroup>
         {early ? (
           <p className="text-body text-text-secondary m-0">
-            Filed before production, so every verified peso goes back: the shop and the rider
-            are owed nothing. Preview the full refund, then approve it.
+            Filed before production, so every verified peso goes back: the shop and the
+            rider are owed nothing. Preview the full refund, then approve it.
           </p>
         ) : (
           <>
             <Field>
-              <FieldLabel htmlFor="shop-entitlement">What the shop keeps in all (₱)</FieldLabel>
+              <FieldLabel htmlFor="shop-entitlement">
+                What the shop keeps in all (₱)
+              </FieldLabel>
               <Input
                 id="shop-entitlement"
                 inputMode="decimal"
@@ -1069,11 +1189,14 @@ function SettlementForm({
               />
               <FieldDescription>
                 The shop&rsquo;s agreed final amount for this order, including the{" "}
-                {formatPhp(released)} it has already been paid. It cannot be less than that.
+                {formatPhp(released)} it has already been paid. It cannot be less than
+                that.
               </FieldDescription>
             </Field>
             <Field>
-              <FieldLabel htmlFor="rider-entitlement">What the rider earned (₱)</FieldLabel>
+              <FieldLabel htmlFor="rider-entitlement">
+                What the rider earned (₱)
+              </FieldLabel>
               <Input
                 id="rider-entitlement"
                 inputMode="decimal"
@@ -1084,11 +1207,16 @@ function SettlementForm({
               />
               <FieldDescription>
                 0 when no trip started. A completed delivery keeps the rider&rsquo;s share
-                {order?.riderPayoutMinor !== undefined ? ` (${formatPhp(order.riderPayoutMinor)})` : ""}.
+                {order?.riderPayoutMinor !== undefined
+                  ? ` (${formatPhp(order.riderPayoutMinor)})`
+                  : ""}
+                .
               </FieldDescription>
             </Field>
             <Field>
-              <FieldLabel htmlFor="principal">Print work to refund (₱, optional)</FieldLabel>
+              <FieldLabel htmlFor="principal">
+                Print work to refund (₱, optional)
+              </FieldLabel>
               <Input
                 id="principal"
                 inputMode="decimal"
@@ -1107,13 +1235,21 @@ function SettlementForm({
         )}
         {directStore > 0 ? (
           <p className="text-caption text-text-muted m-0">
-            This order had a direct-store part. The preview assumes the shop collected nothing
-            directly; if it did, stop and refer the case to Super Admin.
+            This order had a direct-store part. The preview assumes the shop collected
+            nothing directly; if it did, stop and refer the case to Super Admin.
           </p>
         ) : null}
         <div>
-          <Button variant="secondary" disabled={busy || previewing || !input} onClick={() => void runPreview()}>
-            {previewing ? "Calculating…" : current ? "Preview again" : "Preview the refund"}
+          <Button
+            variant="secondary"
+            disabled={busy || previewing || !input}
+            onClick={() => void runPreview()}
+          >
+            {previewing
+              ? "Calculating…"
+              : current
+                ? "Preview again"
+                : "Preview the refund"}
           </Button>
         </div>
         {previewError ? (
@@ -1130,26 +1266,38 @@ function SettlementForm({
       ) : null}
 
       {current && amounts ? (
-        <section aria-labelledby="settlement-preview-heading" className="flex flex-col gap-3">
-          <h3 id="settlement-preview-heading" className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+        <section
+          aria-labelledby="settlement-preview-heading"
+          className="flex flex-col gap-3"
+        >
+          <h3
+            id="settlement-preview-heading"
+            className="text-body text-text-primary m-0"
+            style={{ fontFamily: "var(--font-medium)" }}
+          >
             The server&rsquo;s calculation
           </h3>
           <SettlementLedger amounts={amounts} />
           {current.result.availableTotalMinor > amounts.totalMinor ? (
             <p className="text-caption text-text-muted m-0">
-              Up to {formatPhp(current.result.availableTotalMinor)} could go back with these
-              obligations. This is a partial refund.
+              Up to {formatPhp(current.result.availableTotalMinor)} could go back with
+              these obligations. This is a partial refund.
             </p>
           ) : null}
           {!current.result.canSettle ? (
-            <p className="text-body text-text-primary m-0 rounded-card border border-warning px-3 py-2" role="status">
-              No money is left to return with these figures. There is no override. Refer the
-              client&rsquo;s remedy to Super Admin.
+            <p
+              className="text-body text-text-primary m-0 rounded-card border border-warning px-3 py-2"
+              role="status"
+            >
+              No money is left to return with these figures. There is no override. Refer
+              the client&rsquo;s remedy to Super Admin.
             </p>
           ) : (
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="shop-agreement">The shop&rsquo;s agreement</FieldLabel>
+                <FieldLabel htmlFor="shop-agreement">
+                  The shop&rsquo;s agreement
+                </FieldLabel>
                 <Textarea
                   id="shop-agreement"
                   rows={2}
@@ -1159,10 +1307,14 @@ function SettlementForm({
                   placeholder={`e.g. The shop keeps ${formatPhp(amounts.shopEntitlementMinor)} and waives the rest.`}
                   onChange={(event) => setAgreement(event.target.value)}
                 />
-                <FieldDescription>Who agreed, and how. Operations and Super Admin only.</FieldDescription>
+                <FieldDescription>
+                  Who agreed, and how. Operations and Super Admin only.
+                </FieldDescription>
               </Field>
               <Field>
-                <FieldLabel htmlFor="delivery-evidence">Delivery and the rider</FieldLabel>
+                <FieldLabel htmlFor="delivery-evidence">
+                  Delivery and the rider
+                </FieldLabel>
                 <Textarea
                   id="delivery-evidence"
                   rows={2}
@@ -1172,7 +1324,9 @@ function SettlementForm({
                   placeholder="e.g. No trip started; no rider earnings."
                   onChange={(event) => setDeliveryNote(event.target.value)}
                 />
-                <FieldDescription>What happened on the road. Operations and Super Admin only.</FieldDescription>
+                <FieldDescription>
+                  What happened on the road. Operations and Super Admin only.
+                </FieldDescription>
               </Field>
               <Field>
                 <FieldLabel htmlFor="decision-reason">Decision for the client</FieldLabel>
@@ -1185,9 +1339,16 @@ function SettlementForm({
                   placeholder="e.g. You get back the print work not done, its service fee, and the unused delivery."
                   onChange={(event) => setReason(event.target.value)}
                 />
-                <FieldDescription>{CLIENT_READS_THIS} Explain what comes back and what does not.</FieldDescription>
+                <FieldDescription>
+                  {CLIENT_READS_THIS} Explain what comes back and what does not.
+                </FieldDescription>
               </Field>
-              <Confirmation id="work-stopped" checked={stopped} onChange={setStopped} disabled={busy}>
+              <Confirmation
+                id="work-stopped"
+                checked={stopped}
+                onChange={setStopped}
+                disabled={busy}
+              >
                 Production and delivery have stopped for this order.
               </Confirmation>
               <div>
@@ -1251,7 +1412,10 @@ function SettlementRecord({
   return (
     <div className="flex flex-col gap-4">
       {settlement.snapshot ? (
-        <SettlementLedger amounts={settlement.snapshot} caption="What the approved refund is made of" />
+        <SettlementLedger
+          amounts={settlement.snapshot}
+          caption="What the approved refund is made of"
+        />
       ) : null}
       <dl className="m-0 grid grid-cols-1 gap-3 sm:grid-cols-[auto_minmax(0,1fr)] sm:gap-x-4">
         <dt className="text-caption text-text-muted">Approved</dt>
@@ -1262,17 +1426,27 @@ function SettlementRecord({
             : "The order closed as delivered, with this refund."}
         </dd>
         <dt className="text-caption text-text-muted">Decision for the client</dt>
-        <dd className="m-0 text-body text-text-primary">&ldquo;{settlement.reason}&rdquo;</dd>
+        <dd className="m-0 text-body text-text-primary">
+          &ldquo;{settlement.reason}&rdquo;
+        </dd>
         {settlement.shopAgreement ? (
           <>
-            <dt className="text-caption text-text-muted">Shop&rsquo;s agreement (staff only)</dt>
-            <dd className="m-0 text-body text-text-secondary">{settlement.shopAgreement}</dd>
+            <dt className="text-caption text-text-muted">
+              Shop&rsquo;s agreement (staff only)
+            </dt>
+            <dd className="m-0 text-body text-text-secondary">
+              {settlement.shopAgreement}
+            </dd>
           </>
         ) : null}
         {settlement.deliveryEvidence ? (
           <>
-            <dt className="text-caption text-text-muted">Delivery and rider (staff only)</dt>
-            <dd className="m-0 text-body text-text-secondary">{settlement.deliveryEvidence}</dd>
+            <dt className="text-caption text-text-muted">
+              Delivery and rider (staff only)
+            </dt>
+            <dd className="m-0 text-body text-text-secondary">
+              {settlement.deliveryEvidence}
+            </dd>
           </>
         ) : null}
       </dl>
@@ -1335,14 +1509,21 @@ function TransferPanel({
   if (refund.status === "paid" && payment) {
     return (
       <div className="flex flex-col gap-3">
-        <p className="text-h3 text-text-primary m-0 tabular-nums" style={{ fontFamily: "var(--font-bold)" }}>
+        <p
+          className="text-h3 text-text-primary m-0 tabular-nums"
+          style={{ fontFamily: "var(--font-bold)" }}
+        >
           {formatPhp(payment.amountMinor)} sent
         </p>
         <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
           <dt className="text-caption text-text-muted">Sent at</dt>
-          <dd className="m-0 text-body text-text-secondary">{formatDateTime(payment.paidAt)}</dd>
+          <dd className="m-0 text-body text-text-secondary">
+            {formatDateTime(payment.paidAt)}
+          </dd>
           <dt className="text-caption text-text-muted">Reference</dt>
-          <dd className="m-0 text-body text-text-primary tabular-nums">{payment.reference}</dd>
+          <dd className="m-0 text-body text-text-primary tabular-nums">
+            {payment.reference}
+          </dd>
           {payment.provider ? (
             <>
               <dt className="text-caption text-text-muted">From</dt>
@@ -1352,7 +1533,9 @@ function TransferPanel({
             </>
           ) : null}
           <dt className="text-caption text-text-muted">Recorded by</dt>
-          <dd className="m-0 text-body text-text-secondary">{nameOf(payment.recordedBy, "Operations")}</dd>
+          <dd className="m-0 text-body text-text-secondary">
+            {nameOf(payment.recordedBy, "Operations")}
+          </dd>
         </dl>
         <div className="max-w-sm">
           <EvidencePlate
@@ -1388,11 +1571,14 @@ function TransferPanel({
     return (
       <div className="flex flex-col gap-4">
         <p className="text-body text-text-primary m-0">
-          <span className="text-h3 tabular-nums" style={{ fontFamily: "var(--font-bold)" }}>
+          <span
+            className="text-h3 tabular-nums"
+            style={{ fontFamily: "var(--font-bold)" }}
+          >
             {formatPhp(settlement.totalMinor)}
           </span>{" "}
-          approved. No money has been sent. Reserve it before opening a wallet, so only one
-          person pays.
+          approved. No money has been sent. Reserve it before opening a wallet, so only
+          one person pays.
         </p>
         <RefundDestinationView destination={destination} />
         <FieldGroup>
@@ -1406,7 +1592,10 @@ function TransferPanel({
               className="grid-cols-2 gap-1 sm:grid-cols-4"
             >
               {SENDING_WALLET_PROVIDERS.map((option) => (
-                <label key={option.value} className="flex min-h-11 cursor-pointer items-center gap-2">
+                <label
+                  key={option.value}
+                  className="flex min-h-11 cursor-pointer items-center gap-2"
+                >
                   <RadioGroupItem value={option.value} aria-label={option.label} />
                   <span className="text-body text-text-primary">{option.label}</span>
                 </label>
@@ -1414,7 +1603,9 @@ function TransferPanel({
             </RadioGroup>
           </Field>
           <Field>
-            <FieldLabel htmlFor="source-wallet">Which of GRIDGO&rsquo;s wallets</FieldLabel>
+            <FieldLabel htmlFor="source-wallet">
+              Which of GRIDGO&rsquo;s wallets
+            </FieldLabel>
             <Input
               id="source-wallet"
               value={wallet}
@@ -1428,9 +1619,17 @@ function TransferPanel({
               A stable name for the sending wallet. Never a password or a PIN.
             </FieldDescription>
           </Field>
-          <Confirmation id="payment-destination-verified" checked={verified} onChange={setVerified} disabled={busy}>
+          <Confirmation
+            id="payment-destination-verified"
+            checked={verified}
+            onChange={setVerified}
+            disabled={busy}
+          >
             I will pay QR revision {destination.revision}, and the wallet names{" "}
-            <span style={{ fontFamily: "var(--font-medium)" }}>{destination.accountName}</span>.
+            <span style={{ fontFamily: "var(--font-medium)" }}>
+              {destination.accountName}
+            </span>
+            .
           </Confirmation>
           <Field>
             <FieldLabel htmlFor="reserve-reason">Note for the client</FieldLabel>
@@ -1466,31 +1665,41 @@ function TransferPanel({
     );
   }
 
-  if (attempt && (refund.status === "payment_in_progress" || refund.status === "payment_unknown")) {
+  if (
+    attempt &&
+    (refund.status === "payment_in_progress" || refund.status === "payment_unknown")
+  ) {
     const mine = canRecordTransfer(refund, viewer);
     const unknown = refund.status === "payment_unknown";
     return (
       <div className="flex flex-col gap-4">
         {unknown ? (
           <div className="rounded-card border border-error px-4 py-3" role="alert">
-            <p className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+            <p
+              className="text-body text-text-primary m-0"
+              style={{ fontFamily: "var(--font-medium)" }}
+            >
               Do not send this refund again.
             </p>
             <p className="text-body text-text-secondary m-0 mt-1">
-              The wallet did not confirm whether money moved. Check the sending wallet&rsquo;s
-              history. If the transfer is there, record that same transfer. If nothing left,
-              confirm it so the refund can be sent again.
+              The wallet did not confirm whether money moved. Check the sending
+              wallet&rsquo;s history. If the transfer is there, record that same transfer.
+              If nothing left, confirm it so the refund can be sent again.
             </p>
           </div>
         ) : null}
         <div className="flex flex-col gap-1">
           <p className="text-caption text-text-muted m-0">Send exactly</p>
-          <p className="text-h2 text-text-primary m-0 tabular-nums" style={{ fontFamily: "var(--font-bold)" }}>
+          <p
+            className="text-h2 text-text-primary m-0 tabular-nums"
+            style={{ fontFamily: "var(--font-bold)" }}
+          >
             {formatPhp(attempt.amountMinor)}
           </p>
           <p className="text-caption text-text-secondary m-0">
-            Reserved by {nameOf(attempt.payerId, "another payer")} {formatDateTime(attempt.createdAt)}, from{" "}
-            {walletLabel(attempt.provider)} ({attempt.sourceWallet}).
+            Reserved by {nameOf(attempt.payerId, "another payer")}{" "}
+            {formatDateTime(attempt.createdAt)}, from {walletLabel(attempt.provider)} (
+            {attempt.sourceWallet}).
           </p>
         </div>
         <RefundDestinationView destination={attempt.destination} />
@@ -1500,18 +1709,26 @@ function TransferPanel({
               {unknown ? "Record the same transfer" : "Record the transfer"}
             </Button>
             {unknown ? null : (
-              <Button variant="secondary" disabled={busy} onClick={() => onReconcile("unknown")}>
+              <Button
+                variant="secondary"
+                disabled={busy}
+                onClick={() => onReconcile("unknown")}
+              >
                 The wallet did not confirm
               </Button>
             )}
-            <Button variant="secondary" disabled={busy} onClick={() => onReconcile("failed")}>
+            <Button
+              variant="secondary"
+              disabled={busy}
+              onClick={() => onReconcile("failed")}
+            >
               No money left the wallet
             </Button>
           </div>
         ) : (
           <p className="text-body text-text-secondary m-0">
-            Only {nameOf(attempt.payerId, "the reserved payer")} or Super Admin can record or
-            reconcile this transfer. Do not send it yourself.
+            Only {nameOf(attempt.payerId, "the reserved payer")} or Super Admin can record
+            or reconcile this transfer. Do not send it yourself.
           </p>
         )}
       </div>
@@ -1525,7 +1742,15 @@ function TransferPanel({
 // Rail
 // ---------------------------------------------------------------------------
 
-function MoneyRow({ label, minor, strong = false }: { label: string; minor: number; strong?: boolean }) {
+function MoneyRow({
+  label,
+  minor,
+  strong = false,
+}: {
+  label: string;
+  minor: number;
+  strong?: boolean;
+}) {
   return (
     <>
       <dt className="text-caption text-text-muted">{label}</dt>
@@ -1544,7 +1769,8 @@ function MoneyCard({ refund }: { refund: RefundRequest }) {
   const previous = previousRefundTotal(refund);
   const s = refund.settlement;
   const reserved =
-    refund.attempt && (refund.attempt.status === "in_progress" || refund.attempt.status === "unknown")
+    refund.attempt &&
+    (refund.attempt.status === "in_progress" || refund.attempt.status === "unknown")
       ? refund.attempt.amountMinor
       : null;
   return (
@@ -1553,7 +1779,9 @@ function MoneyCard({ refund }: { refund: RefundRequest }) {
         Where the money stands
       </h2>
       <dl className="m-0 grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5">
-        {collected !== null ? <MoneyRow label="Verified from the client" minor={collected} strong /> : null}
+        {collected !== null ? (
+          <MoneyRow label="Verified from the client" minor={collected} strong />
+        ) : null}
         {refund.collections ? (
           <>
             <MoneyRow label="Print work" minor={refund.collections.principalMinor} />
@@ -1561,11 +1789,24 @@ function MoneyCard({ refund }: { refund: RefundRequest }) {
             <MoneyRow label="Delivery" minor={refund.collections.deliveryMinor} />
           </>
         ) : null}
-        <MoneyRow label="Already paid to the shop" minor={refund.releasedShopMinor ?? 0} />
+        <MoneyRow
+          label="Already paid to the shop"
+          minor={refund.releasedShopMinor ?? 0}
+        />
         <MoneyRow label="Earlier refunds on this order" minor={previous} />
-        {s ? <MoneyRow label="This refund, approved" minor={s.totalMinor} strong /> : null}
-        {reserved !== null ? <MoneyRow label="Reserved for one payer" minor={reserved} /> : null}
-        {refund.payment ? <MoneyRow label="Paid to the client" minor={refund.payment.amountMinor} strong /> : null}
+        {s ? (
+          <MoneyRow label="This refund, approved" minor={s.totalMinor} strong />
+        ) : null}
+        {reserved !== null ? (
+          <MoneyRow label="Reserved for one payer" minor={reserved} />
+        ) : null}
+        {refund.payment ? (
+          <MoneyRow
+            label="Paid to the client"
+            minor={refund.payment.amountMinor}
+            strong
+          />
+        ) : null}
       </dl>
       <p className="text-caption text-text-muted m-0 mt-2">
         Money already paid to the shop or earned by the rider is never taken back.
@@ -1574,14 +1815,25 @@ function MoneyCard({ refund }: { refund: RefundRequest }) {
   );
 }
 
-function OrderCard({ refund, order, tree }: { refund: RefundRequest; order: Order | null; tree: Tree }) {
+function OrderCard({
+  refund,
+  order,
+  tree,
+}: {
+  refund: RefundRequest;
+  order: Order | null;
+  tree: Tree;
+}) {
   const state = order ? presentOrderState(order.state, order) : null;
   return (
     <section className="gg-card p-3" aria-labelledby="refund-order-heading">
       <h2 id="refund-order-heading" className="text-overline text-text-muted m-0 mb-2">
         The order
       </h2>
-      <p className="text-body-lg text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+      <p
+        className="text-body-lg text-text-primary m-0"
+        style={{ fontFamily: "var(--font-medium)" }}
+      >
         {order?.title || "Untitled order"}
       </p>
       {state ? (
@@ -1589,7 +1841,9 @@ function OrderCard({ refund, order, tree }: { refund: RefundRequest; order: Orde
           <StatusChip tone={state.tone} label={state.label} icon={state.icon} />
         </div>
       ) : (
-        <p className="text-caption text-text-muted m-0 mt-1">The order could not be loaded.</p>
+        <p className="text-caption text-text-muted m-0 mt-1">
+          The order could not be loaded.
+        </p>
       )}
       {order?.refundHold ? (
         <p className="text-caption text-text-secondary m-0 mt-2">
@@ -1634,8 +1888,8 @@ function ClaimsCard({ claims, tree }: { claims: Claim[]; tree: Tree }) {
         <p className="text-body text-text-secondary m-0">None open.</p>
       )}
       <p className="text-caption text-text-muted m-0 mt-2">
-        Claims are separate. Settling or rejecting this refund does not resolve them, and an
-        open claim still holds the shop&rsquo;s settlement payout.
+        Claims are separate. Settling or rejecting this refund does not resolve them, and
+        an open claim still holds the shop&rsquo;s settlement payout.
         {tree === "ops" ? (
           <>
             {" "}

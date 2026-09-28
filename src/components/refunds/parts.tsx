@@ -8,7 +8,10 @@
 
 import { useEffect, useState } from "react";
 
-import { PAYOUT_PROVIDER_LABELS, PayoutQrPlate } from "@/components/orders/PayoutDestination";
+import {
+  PAYOUT_PROVIDER_LABELS,
+  PayoutQrPlate,
+} from "@/components/orders/PayoutDestination";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import type { RefundAmounts, RefundDestination } from "@/lib/api/types";
 import { formatPhp } from "@/lib/format";
@@ -115,7 +118,9 @@ export function SettlementLedger({
               className={`m-0 text-right tabular-nums text-text-primary ${
                 line.sign === "total" ? "text-h3" : "text-body"
               }`}
-              style={line.sign === "total" ? { fontFamily: "var(--font-bold)" } : undefined}
+              style={
+                line.sign === "total" ? { fontFamily: "var(--font-bold)" } : undefined
+              }
             >
               <span className="sr-only">{line.sign === "minus" ? "less " : ""}</span>
               {formatPhp(line.minor)}
@@ -131,7 +136,9 @@ export function SettlementLedger({
           {components.map((part) => (
             <li key={part.label} className="text-caption text-text-secondary">
               {part.label}{" "}
-              <span className="text-text-primary tabular-nums">{formatPhp(part.minor)}</span>
+              <span className="text-text-primary tabular-nums">
+                {formatPhp(part.minor)}
+              </span>
             </li>
           ))}
         </ul>
@@ -208,7 +215,11 @@ export function ScreenshotField({
         <div className="flex items-start gap-3">
           <div className="w-28 shrink-0 overflow-hidden rounded-card border border-outline bg-white">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={preview} alt={`${label}: ${file.name}`} className="block h-auto w-full" />
+            <img
+              src={preview}
+              alt={`${label}: ${file.name}`}
+              className="block h-auto w-full"
+            />
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-body text-text-primary m-0 truncate">{file.name}</p>

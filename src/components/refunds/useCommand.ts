@@ -12,7 +12,10 @@ import { commandKeyCache } from "@/lib/refunds";
  * replays the saved answer instead of acting twice. `reset` starts a fresh
  * session (a dialog reopened for a new decision).
  */
-export function useCommandKeys(): { keyFor: (body: unknown) => string; reset: () => void } {
+export function useCommandKeys(): {
+  keyFor: (body: unknown) => string;
+  reset: () => void;
+} {
   const cache = useRef(commandKeyCache(newIdempotencyKey));
   const keyFor = useCallback((body: unknown) => cache.current(body), []);
   const reset = useCallback(() => {
