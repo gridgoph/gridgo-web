@@ -5,7 +5,14 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ChevronLeft, CircleCheck, CircleDot, Lock, type LucideIcon } from "lucide-react";
+import {
+  ChevronLeft,
+  CircleCheck,
+  CircleDot,
+  Lock,
+  ShieldAlert,
+  type LucideIcon,
+} from "lucide-react";
 
 import {
   STAGES,
@@ -16,6 +23,7 @@ import {
   type WorkspaceStep,
 } from "@/app/ops/_lib/pipeline";
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
+import { CorrectProductionDialog } from "@/components/orders/CorrectProductionDialog";
 import { CounterCheck } from "@/components/orders/CounterCheck";
 import { EvidencePlate, EvidenceStrip } from "@/components/orders/EvidencePreview";
 import {
@@ -24,6 +32,7 @@ import {
   OrderArtwork,
 } from "@/components/orders/DesignLinks";
 import { PaymentSummary } from "@/components/orders/PaymentSummary";
+import { ProgressGallery, WaitingForPhoto } from "@/components/orders/ProductionProgress";
 import { ResolveEscalationDialog } from "@/components/orders/ResolveEscalationDialog";
 import { formatRatePercent } from "@/components/settings/service-fee";
 import { PayoutMilestones } from "@/components/orders/PayoutMilestones";
@@ -55,6 +64,7 @@ import {
   fileRefundRequest,
   getOrder,
   getUser,
+  listAudit,
   listEscalations,
   listOrderRefunds,
   newIdempotencyKey,
@@ -90,6 +100,18 @@ import {
   payoutSummary,
   releasableMilestones,
 } from "@/lib/payouts";
+import {
+  PRODUCTION_OVERRIDE_ACTION,
+  PRODUCTION_PHOTO_COPY,
+  canCorrectProduction,
+  canAddProgressPhoto,
+  productionCorrections,
+  productionPhotoMissing,
+  productionProgressOf,
+  progressPhotos,
+  progressReached,
+  type ProductionCorrection,
+} from "@/lib/production-progress";
 import { describeQuantity } from "@/lib/quantity";
 import { presentRefundStatus, refundIsActive, refundKindLabel } from "@/lib/refunds";
 import { cn } from "@/lib/utils";
@@ -159,6 +181,9 @@ export function OrderWorkspace({
   const [resolveId, setResolveId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [refunds, setRefunds] = useState<RefundRequest[] | null>(null);
+  const [corrections, setCorrections] = useState<ProductionCorrection[]>([]);
+  const [correcting, setCorrecting] = useState(false);
+  const [correctError, setCorrectError] = useState<string | null>(null);
   const [filing, setFiling] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const fileKey = useRef<{ signature: string; key: string } | null>(null);
@@ -172,7 +197,7 @@ export function OrderWorkspace({
       try {
         // The attempt history is its own read: if it fails, the order and its
         // latest counter check still show, with a line saying so.
-        const [next, history, orderRefunds] = await Promise.all([
+        const [next, history, orderRefunds, overrides] = await Promise.all([
           getOrder(orderId),
           listEscalations({ orderId }).then(
             (list) => ({ list, error: null }),
@@ -184,8 +209,12 @@ export function OrderWorkspace({
           ),
           // Best effort: the refund row says so when it could not be read.
           listOrderRefunds(orderId).catch(() => null),
+          // Best effort: staff corrections of the production step, from the
+          // audit log that records them. Without it the step still shows.
+          listAudit({ orderId, action: PRODUCTION_OVERRIDE_ACTION }).catch(() => null),
         ]);
         setRefunds(orderRefunds);
+        setCorrections(productionCorrections(overrides, orderId));
         setOrder(next);
         if (history.list) setEscalations(history.list);
         setEscalationsError(history.error);
@@ -229,8 +258,11 @@ export function OrderWorkspace({
       if (escalation.riderId) ids.add(escalation.riderId);
       if (escalation.resolvedBy) ids.add(escalation.resolvedBy);
     }
+    for (const correction of corrections) {
+      if (correction.actorId) ids.add(correction.actorId);
+    }
     return [...ids].sort().join(",");
-  }, [order, escalations]);
+  }, [order, escalations, corrections]);
 
   useEffect(() => {
     const missing = people.split(",").filter((id) => id && !(id in names));
@@ -264,6 +296,25 @@ export function OrderWorkspace({
     } catch (err) {
       setActionError(
         opsErrorMessage(err, "That did not go through. Refresh the order and try again."),
+      );
+    } finally {
+      setActing(null);
+    }
+  }
+
+  async function correctProduction(reason: string) {
+    if (!order) return;
+    setActing("correct-production");
+    setCorrectError(null);
+    try {
+      // The reason is the audit record; the note carries it into the history
+      // Operations and the shop read. The client's history never shows it.
+      await transitionOrder(order.id, "ready_for_dispatch", { reason, note: reason });
+      setCorrecting(false);
+      await load();
+    } catch (err) {
+      setCorrectError(
+        opsErrorMessage(err, "The job could not be moved on. Refresh the order and try again."),
       );
     } finally {
       setActing(null);
@@ -440,6 +491,12 @@ export function OrderWorkspace({
                       transitionOrder(order.id, "cancelled", { reason: note }),
                     )
                   }
+                  corrections={corrections}
+                  names={names}
+                  onCorrectProduction={() => {
+                    setCorrectError(null);
+                    setCorrecting(true);
+                  }}
                 />
                 {/*
                 Between the shop and the road: the rider's count and six
@@ -565,6 +622,18 @@ export function OrderWorkspace({
           setResolveError(null);
         }}
         onSend={(instruction) => void sendInstruction(instruction)}
+      />
+
+      <CorrectProductionDialog
+        open={correcting}
+        photoMissing={productionPhotoMissing(order)}
+        busy={acting === "correct-production"}
+        error={correctError}
+        onCancel={() => {
+          setCorrecting(false);
+          setCorrectError(null);
+        }}
+        onConfirm={(reason) => void correctProduction(reason)}
       />
 
       <FileRefundDialog
@@ -792,6 +861,9 @@ type StepRowProps = {
   onApprove: () => void;
   onCorrection: () => void;
   onCancel: () => void;
+  corrections: ProductionCorrection[];
+  names: Record<string, string>;
+  onCorrectProduction: () => void;
 };
 
 /**
@@ -822,6 +894,9 @@ function StepRow({
   onApprove,
   onCorrection,
   onCancel,
+  corrections,
+  names,
+  onCorrectProduction,
 }: StepRowProps) {
   const definition = STAGES.find((entry) => entry.id === step.id);
   const current = step.status === "current";
@@ -934,7 +1009,14 @@ function StepRow({
       ) : null}
 
       {step.id === "production" ? (
-        <ProductionStep order={order} hint={definition?.hint} />
+        <ProductionStep
+          order={order}
+          hint={definition?.hint}
+          corrections={corrections}
+          names={names}
+          busy={busy}
+          onCorrect={onCorrectProduction}
+        />
       ) : null}
 
       {step.id === "delivery" ? (
@@ -1089,22 +1171,100 @@ function PaymentStep({
 }
 
 /**
- * The shop's own record of the job: the proofs it filed on the floor — the
- * start of production on the escrow plan, printing and packing on a legacy
- * order. They belong to the payout, but they are also the only sight
- * Operations gets of the work before a rider collects it.
+ * The shop's own record of the job.
+ *
+ * First the progress photos, the same gallery the client sees, or the empty
+ * frame that says none has arrived; a shop cannot pack without one. Then any
+ * correction Operations made on the shop's behalf, from the audit log. Then
+ * the payout proofs the gallery does not already show (a PDF, a legacy file):
+ * they belong to the payout, but they are also a sight of the work.
  */
-function ProductionStep({ order, hint }: { order: Order; hint?: string }) {
-  const filed = shopProofStages(order)
-    .map((m) => ({ milestone: m, proofs: milestoneProofs(order, m) }))
+function ProductionStep({
+  order,
+  hint,
+  corrections,
+  names,
+  busy,
+  onCorrect,
+}: {
+  order: Order;
+  hint?: string;
+  corrections: ProductionCorrection[];
+  names: Record<string, string>;
+  busy: boolean;
+  onCorrect: () => void;
+}) {
+  const progress = productionProgressOf(order);
+  const photos = progressPhotos(order);
+  const photoMissing = productionPhotoMissing(order);
+  const showProgress = progress !== null && progressReached(order);
+  // An API that predates the gallery does not take the correction either.
+  const correctable = progress !== null && canCorrectProduction(order);
+  const shopProofs = shopProofStages(order).map((milestone) => ({
+    milestone,
+    proofs: milestoneProofs(order, milestone),
+  }));
+
+  // A start-of-production photo is both a gallery photo and a payout proof.
+  // Say so under the photo, and do not show the same picture twice.
+  const galleryIds = new Set(photos.map((photo) => photo.fileId));
+  const proofOf = new Map<string, string>();
+  for (const { milestone, proofs } of shopProofs) {
+    for (const proof of proofs) {
+      if (galleryIds.has(proof.fileId)) proofOf.set(proof.fileId, milestoneName(milestone));
+    }
+  }
+  const filed = shopProofs
+    .map(({ milestone, proofs }) => ({
+      milestone,
+      proofs: proofs.filter((proof) => !galleryIds.has(proof.fileId)),
+    }))
     .filter((entry) => entry.proofs.length > 0);
 
-  if (filed.length === 0) {
+  if (!showProgress && filed.length === 0 && corrections.length === 0 && !correctable) {
     return <p className="text-body text-text-secondary m-0">{hint}</p>;
   }
 
   return (
     <div className="flex flex-col gap-4">
+      {showProgress ? (
+        <div>
+          <p
+            className="text-body text-text-primary m-0"
+            style={{ fontFamily: "var(--font-medium)" }}
+          >
+            Progress photos
+          </p>
+          <p className="text-caption text-text-muted m-0 mb-2">
+            {photoMissing
+              ? "The client sees the same thing on their order."
+              : "The client sees these on their order too."}
+          </p>
+          {photoMissing ? (
+            <WaitingForPhoto
+              tone={canAddProgressPhoto(order) ? "attention" : "neutral"}
+              body={
+                canAddProgressPhoto(order)
+                  ? PRODUCTION_PHOTO_COPY.staffWaiting
+                  : PRODUCTION_PHOTO_COPY.staffMovedOnWithout
+              }
+            />
+          ) : (
+            <ProgressGallery
+              photos={photos}
+              noteFor={(photo) => {
+                const stage = proofOf.get(photo.fileId);
+                return stage ? `Also the payout proof for ${stage.toLowerCase()}` : null;
+              }}
+            />
+          )}
+        </div>
+      ) : null}
+
+      {corrections.map((correction) => (
+        <CorrectionNote key={correction.id} correction={correction} names={names} />
+      ))}
+
       {filed.map(({ milestone, proofs }) => (
         <div key={milestone.code}>
           <p
@@ -1128,6 +1288,63 @@ function ProductionStep({ order, hint }: { order: Order; hint?: string }) {
           </ul>
         </div>
       ))}
+
+      {correctable ? (
+        <div className="border-outline-subtle flex flex-col items-start gap-2 border-t pt-3">
+          <p className="text-caption text-text-muted m-0 max-w-prose">
+            {photoMissing
+              ? "If you have seen the finished job yourself, you can move it on without the photo. You will be asked why."
+              : "The shop has not packed this job yet. You can move it on for them. You will be asked why."}
+          </p>
+          <Button variant="secondary" disabled={busy} onClick={onCorrect}>
+            Move to ready for dispatch
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Who moved the job, the edge, whether a photo existed, and the reason in their words. */
+function CorrectionNote({
+  correction,
+  names,
+}: {
+  correction: ProductionCorrection;
+  names: Record<string, string>;
+}) {
+  const who =
+    (correction.actorId && names[correction.actorId]) ||
+    (correction.actorRole === "super_admin" ? "Super Admin" : "Operations");
+  const from = correction.from ? presentOrderState(correction.from).label : null;
+  const to = correction.to ? presentOrderState(correction.to).label : null;
+  return (
+    <div
+      className="border-outline bg-surface-variant rounded-card flex gap-3 border p-3"
+      role="note"
+      aria-label="Production step corrected by staff"
+    >
+      <ShieldAlert
+        size={18}
+        strokeWidth={1.75}
+        className="text-warning mt-0.5 shrink-0"
+        aria-hidden
+      />
+      <div className="flex min-w-0 flex-col gap-1">
+        <p className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+          Moved on by {who}
+        </p>
+        <p className="text-caption text-text-muted m-0">
+          {formatDateTime(correction.at)}
+          {from && to ? `. From ${from} to ${to}.` : "."}
+          {correction.photoMissing ? " No progress photo was on file." : ""}
+        </p>
+        {correction.reason ? (
+          <blockquote className="border-outline text-body text-text-secondary m-0 mt-1 border-l-2 pl-3">
+            {correction.reason}
+          </blockquote>
+        ) : null}
+      </div>
     </div>
   );
 }

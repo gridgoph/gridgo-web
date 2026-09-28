@@ -14,18 +14,25 @@
  * change the order state, and it does not release money. Operations reviews
  * the evidence later. Package for pickup is offered only after every shop
  * proof is filed.
+ *
+ * Packing also needs one progress photo (`productionProgress`, see
+ * `src/lib/production-progress.ts`). A start-of-production photo counts, so on
+ * most jobs the proof above already covers it; a PDF proof does not, and then
+ * the shop is asked for a photo before packing is offered.
  */
 
 import type { Order, PayoutMilestone } from "@/lib/api/types";
 import { milestoneName } from "@/lib/order-state";
 import { isLegacyPayoutPlan, shopProofStages } from "@/lib/payout-plan";
+import { productionPhotoMissing } from "@/lib/production-progress";
 
 export type SupplierActionKind =
   | "accept"
   | "decline"
   | "start_production"
   | "ready_for_pickup"
-  | "add_proof";
+  | "add_proof"
+  | "add_progress_photo";
 
 /** A stage the shop files its own proof for. The order's plan decides which. */
 export type ShopProofCode = "production_started" | "printing" | "packaging_qc" | (string & {});
@@ -35,7 +42,8 @@ export type SupplierAction = {
   label: string;
   /**
    * The `state` value sent to the transition endpoint.
-   * Null when the step is not a transition — filing proof does not move the job.
+   * Null when the step is not a transition — filing proof or a progress photo
+   * does not move the job.
    */
   targetState: string | null;
   primary: boolean;
@@ -51,7 +59,7 @@ export type SupplierAction = {
 };
 
 type ShopOrder = Pick<Order, "state" | "payoutMilestones" | "payoutHold"> &
-  Partial<Pick<Order, "payoutPlanVersion">>;
+  Partial<Pick<Order, "payoutPlanVersion" | "productionProgress">>;
 
 type ShopProofWords = { label: string; noun: string; hint: string };
 export type OwedShopProof = ShopProofWords & { code: ShopProofCode };
@@ -142,6 +150,13 @@ function proofAction(owed: OwedShopProof): SupplierAction {
   };
 }
 
+const ADD_PROGRESS_PHOTO: SupplierAction = {
+  kind: "add_progress_photo",
+  label: "Add a progress photo",
+  targetState: null,
+  primary: true,
+};
+
 const PACKAGE_FOR_PICKUP: SupplierAction = {
   kind: "ready_for_pickup",
   label: "Package for pickup",
@@ -182,7 +197,10 @@ export function actionsForJob(order: ShopOrder): SupplierAction[] {
     case "supplier_self_qc":
       // While a shop proof is still empty, that is the only step. Packaging
       // the job for a rider before the photo exists is the bug this blocks.
-      return owed ? [proofAction(owed)] : [PACKAGE_FOR_PICKUP];
+      if (owed) return [proofAction(owed)];
+      // Proof filed as a PDF, or no proof stage at all: still no picture of
+      // the job, and the API refuses to pack it without one.
+      return productionPhotoMissing(order) ? [ADD_PROGRESS_PHOTO] : [PACKAGE_FOR_PICKUP];
     default:
       return owed ? [proofAction(owed)] : [];
   }
@@ -196,9 +214,12 @@ export function needsSupplierAction(order: ShopOrder): boolean {
   return actionsForJob(order).some((a) => a.primary);
 }
 
-/** True when a shop proof is still unfiled, so the job must not leave the floor. */
+/**
+ * True when a shop proof or the progress photo is still missing, so the job
+ * must not leave the floor.
+ */
 export function shopProofOutstanding(order: ShopOrder): boolean {
-  return nextShopProof(order) !== null;
+  return nextShopProof(order) !== null || productionPhotoMissing(order);
 }
 
 /**
