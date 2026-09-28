@@ -52,6 +52,7 @@ export type NavIconKey =
   | "chat"
   | "reports"
   | "tracker"
+  | "refunds"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -97,7 +98,8 @@ export type NavCountKey =
   | "chat-unread"
   | "issue-reports-new"
   | "jobs-need-action"
-  | "tracker-needs-decision";
+  | "tracker-needs-decision"
+  | "refunds-waiting";
 
 /**
  * One rail section. A missing `label` is a top-level cluster (Overview / Jobs)
@@ -359,6 +361,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          id: "ops-refunds",
+          href: "/ops/refunds",
+          label: "Client refunds",
+          title: "Client refunds",
+          icon: "refunds",
+          ready: true,
+          placeholderBody: "",
+          count: "refunds-waiting",
+        },
+        {
           id: "ops-claims",
           href: "/ops/claims",
           label: "Claims & holds",
@@ -520,6 +532,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
         },
+        {
+          id: "admin-refunds",
+          href: "/admin/refunds",
+          label: "Client refunds",
+          title: "Client refunds",
+          icon: "refunds",
+          ready: true,
+          placeholderBody: "",
+          count: "refunds-waiting",
+        },
       ],
     },
     {
@@ -655,6 +677,9 @@ export function contextTitleForPath(
   if (pathname.startsWith("/admin/catalogue/categories/")) return "Category";
   if (pathname.startsWith("/ops/orders/")) return "Order workspace";
   if (pathname.startsWith("/ops/payouts/")) return "Payout review";
+  if (pathname.startsWith("/ops/refunds/") || pathname.startsWith("/admin/refunds/")) {
+    return "Refund case";
+  }
   if (pathname.startsWith("/admin/orders/")) return "Order workspace";
   if (pathname === "/admin/escalations" || pathname.startsWith("/admin/escalations/")) {
     return "Pickup escalations";

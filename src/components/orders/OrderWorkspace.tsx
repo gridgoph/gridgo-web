@@ -33,6 +33,7 @@ import {
   type ReleaseTarget,
 } from "@/components/orders/ReleaseMilestoneDialog";
 import { Timeline } from "@/components/orders/Timeline";
+import { FileRefundDialog, type FiledRequest } from "@/components/refunds/dialogs";
 import {
   Accordion,
   AccordionContent,
@@ -51,20 +52,25 @@ import { deliveryEvidenceItems } from "@/lib/evidence";
 import { artworkQaCheckLabel, artworkSource, orderDesignLinks } from "@/lib/design-links";
 import {
   confirmPayment,
+  fileRefundRequest,
   getOrder,
   getUser,
   listEscalations,
+  listOrderRefunds,
+  newIdempotencyKey,
   promisePhysicalInvoice,
   rejectPayment,
   releaseMilestoneWithReceipt,
   resolveEscalation,
   transitionOrder,
+  uploadRefundEvidence,
 } from "@/lib/api/client";
 import type {
   Escalation,
   Order,
   PaymentInstallment,
   PayoutMilestone,
+  RefundRequest,
 } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
@@ -85,6 +91,7 @@ import {
   releasableMilestones,
 } from "@/lib/payouts";
 import { describeQuantity } from "@/lib/quantity";
+import { presentRefundStatus, refundIsActive, refundKindLabel } from "@/lib/refunds";
 import { cn } from "@/lib/utils";
 import { orderDeliverySplit, platformShareBps } from "@/lib/delivery-split";
 
@@ -104,6 +111,7 @@ type SectionId =
   | "counter"
   | "delivery"
   | "payout"
+  | "refund"
   | "physical-invoice"
   | "history";
 
@@ -150,6 +158,12 @@ export function OrderWorkspace({
   const [names, setNames] = useState<Record<string, string>>({});
   const [resolveId, setResolveId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
+  const [refunds, setRefunds] = useState<RefundRequest[] | null>(null);
+  const [filing, setFiling] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const fileKey = useRef<{ signature: string; key: string } | null>(null);
+  // The mount point says which tree this is; links stay inside it.
+  const tree = queueHref.startsWith("/admin") ? "admin" : "ops";
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -158,7 +172,7 @@ export function OrderWorkspace({
       try {
         // The attempt history is its own read: if it fails, the order and its
         // latest counter check still show, with a line saying so.
-        const [next, history] = await Promise.all([
+        const [next, history, orderRefunds] = await Promise.all([
           getOrder(orderId),
           listEscalations({ orderId }).then(
             (list) => ({ list, error: null }),
@@ -168,7 +182,10 @@ export function OrderWorkspace({
                 "Earlier counter attempts could not be loaded. Refresh the order to try again.",
             }),
           ),
+          // Best effort: the refund row says so when it could not be read.
+          listOrderRefunds(orderId).catch(() => null),
         ]);
+        setRefunds(orderRefunds);
         setOrder(next);
         if (history.list) setEscalations(history.list);
         setEscalationsError(history.error);
@@ -286,6 +303,32 @@ export function OrderWorkspace({
     }
   }
 
+  async function fileRefund(request: FiledRequest) {
+    if (!order) return;
+    setActing("file-refund");
+    setFileError(null);
+    try {
+      const evidenceFileIds = request.evidence
+        ? [(await uploadRefundEvidence(request.evidence)).fileId]
+        : [];
+      const body = { kind: request.kind, reason: request.reason, evidenceFileIds };
+      const signature = JSON.stringify(body);
+      if (fileKey.current?.signature !== signature) {
+        fileKey.current = { signature, key: newIdempotencyKey() };
+      }
+      await fileRefundRequest(order.id, body, fileKey.current.key);
+      fileKey.current = null;
+      setFiling(false);
+      await load();
+    } catch (err) {
+      setFileError(
+        opsErrorMessage(err, "The refund request could not be filed. Try again."),
+      );
+    } finally {
+      setActing(null);
+    }
+  }
+
   if (loading && !order) return <SkeletonDetail label="Loading this order…" />;
   if (error || !order) {
     return (
@@ -345,6 +388,8 @@ export function OrderWorkspace({
           </p>
         </div>
       ) : null}
+
+      {order.refundHold ? <RefundHoldBanner refunds={refunds} tree={tree} /> : null}
 
       {/*
         Steps take the width they need and the rail is fixed, because the rail's
@@ -447,6 +492,26 @@ export function OrderWorkspace({
               </SectionRow>
             ) : null}
 
+            {refunds?.length || order.refundHold || canFileRefund(order, refunds) ? (
+              <SectionRow
+                id="refund"
+                heading="Client refund"
+                summary={refundRowSummary(order, refunds)}
+                marker={refundMarker(order, refunds)}
+              >
+                <RefundRowPanel
+                  order={order}
+                  refunds={refunds}
+                  tree={tree}
+                  busy={busy}
+                  onFile={() => {
+                    setFileError(null);
+                    setFiling(true);
+                  }}
+                />
+              </SectionRow>
+            ) : null}
+
             {order.physicalInvoiceRequest ? (
               <SectionRow
                 id="physical-invoice"
@@ -502,6 +567,15 @@ export function OrderWorkspace({
         onSend={(instruction) => void sendInstruction(instruction)}
       />
 
+      <FileRefundDialog
+        open={filing}
+        late={refundFilingLate(order)}
+        busy={acting === "file-refund"}
+        error={fileError}
+        onCancel={() => setFiling(false)}
+        onFile={(request) => void fileRefund(request)}
+      />
+
       {release ? (
         <ReleaseMilestoneDialog
           target={release}
@@ -528,6 +602,7 @@ export function defaultOpenSections(order: Order): SectionId[] {
   const ids = new Set<SectionId>();
   const current = stepsFor(order).find((step) => step.status === "current");
   if (current) ids.add(current.id as SectionId);
+  if (order.refundHold) ids.add("refund");
   if (counterStep(order) === "current") ids.add("counter");
   if (installmentsAwaitingConfirmation(order).length > 0) ids.add("payment");
   if (order.physicalInvoiceRequest && !order.physicalInvoiceRequest.promisedDeliveryAt) {
@@ -1269,3 +1344,186 @@ function SpecRail({ order, payoutsHref }: { order: Order; payoutsHref?: string }
 // Keep the milestone type in this module's public surface for callers that
 // pass a release target through.
 export type { PayoutMilestone };
+
+// ---------------------------------------------------------------------------
+// Client refund
+// ---------------------------------------------------------------------------
+
+const HANDOVER_STATES = new Set([
+  "delivered",
+  "issue_window_open",
+  "completed",
+  "payout_released",
+]);
+
+/** After handover, filing closes at the complaint deadline; late cases are Super Admin's. */
+export function refundFilingLate(order: Order, now = Date.now()): boolean {
+  const handedOver =
+    Boolean(order.issueWindowOpenedAt) || HANDOVER_STATES.has(order.state);
+  if (!handedOver) return false;
+  if (order.state === "completed" || order.state === "payout_released") return true;
+  if (!order.issueWindowExpiresAt) return true;
+  return now >= Date.parse(order.issueWindowExpiresAt);
+}
+
+/** Money was confirmed and no request is open: a refund can be filed for the client. */
+export function canFileRefund(order: Order, refunds: RefundRequest[] | null): boolean {
+  if (refunds === null || order.refundHold) return false;
+  if (refunds.some(refundIsActive)) return false;
+  return Object.values(order.payments ?? {}).some(
+    (payment) => payment?.status === "confirmed",
+  );
+}
+
+function latestRefund(refunds: RefundRequest[] | null): RefundRequest | null {
+  if (!refunds?.length) return null;
+  const sorted = [...refunds].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return sorted.find(refundIsActive) ?? sorted[0];
+}
+
+function refundRowSummary(order: Order, refunds: RefundRequest[] | null): string {
+  const latest = latestRefund(refunds);
+  if (!latest) {
+    if (refunds === null && order.refundHold) {
+      return "A refund request is open. It could not be loaded here.";
+    }
+    return "No refund requested.";
+  }
+  const status = presentRefundStatus(latest.status).label;
+  const amount = latest.payment?.amountMinor ?? latest.settlement?.totalMinor;
+  return `${refundKindLabel(latest.kind)}: ${status}${
+    amount !== undefined ? `, ${formatPhp(amount)}` : ""
+  }.`;
+}
+
+function refundMarker(order: Order, refunds: RefundRequest[] | null): MarkerSpec {
+  const latest = latestRefund(refunds);
+  if (order.refundHold || (latest && refundIsActive(latest))) {
+    return { icon: CircleDot, tone: "current" };
+  }
+  if (latest?.status === "paid") return { icon: CircleCheck, tone: "success" };
+  return { icon: CircleDot, tone: "muted" };
+}
+
+function RefundHoldBanner({
+  refunds,
+  tree,
+}: {
+  refunds: RefundRequest[] | null;
+  tree: "ops" | "admin";
+}) {
+  const active = refunds?.find(refundIsActive) ?? null;
+  return (
+    <div
+      className="gg-card flex flex-wrap items-center justify-between gap-3 p-3"
+      role="status"
+    >
+      <div className="min-w-0 max-w-prose">
+        <p
+          className="text-body text-text-primary m-0"
+          style={{ fontFamily: "var(--font-medium)" }}
+        >
+          A client refund request is open
+        </p>
+        <p className="text-body text-text-secondary m-0 mt-1">
+          Work and every payout on this order are paused until the refund is settled or
+          rejected. Claims on the order stay separate.
+        </p>
+      </div>
+      <Link
+        href={active ? `/${tree}/refunds/${active.id}` : `/${tree}/refunds`}
+        className="text-body text-text-primary inline-flex min-h-11 items-center underline-offset-2 hover:underline"
+      >
+        Open the refund case
+      </Link>
+    </div>
+  );
+}
+
+function RefundRowPanel({
+  order,
+  refunds,
+  tree,
+  busy,
+  onFile,
+}: {
+  order: Order;
+  refunds: RefundRequest[] | null;
+  tree: "ops" | "admin";
+  busy: boolean;
+  onFile: () => void;
+}) {
+  const sorted = [...(refunds ?? [])].sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  );
+  const late = refundFilingLate(order);
+  const mayFile = canFileRefund(order, refunds) && (!late || tree === "admin");
+  return (
+    <div className="flex flex-col gap-3">
+      {refunds === null ? (
+        <p className="text-body text-text-secondary m-0">
+          Refund requests on this order could not be loaded. Refresh the order to try
+          again.
+        </p>
+      ) : null}
+      {sorted.length ? (
+        <ul className="m-0 flex list-none flex-col gap-2 p-0">
+          {sorted.map((refund) => {
+            const status = presentRefundStatus(refund.status);
+            const amount = refund.payment?.amountMinor ?? refund.settlement?.totalMinor;
+            return (
+              <li
+                key={refund.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-card border border-outline-subtle px-3 py-2"
+              >
+                <div className="flex min-w-0 flex-col items-start gap-1">
+                  <span className="text-body text-text-primary">
+                    {refundKindLabel(refund.kind)}, filed{" "}
+                    {formatDateTime(refund.createdAt)}
+                    {amount !== undefined ? (
+                      <span className="tabular-nums">, {formatPhp(amount)}</span>
+                    ) : null}
+                  </span>
+                  <StatusChip
+                    tone={status.tone}
+                    label={status.label}
+                    icon={status.icon}
+                  />
+                </div>
+                <Link
+                  href={`/${tree}/refunds/${refund.id}`}
+                  className="text-caption text-text-secondary inline-flex min-h-11 items-center underline-offset-2 hover:underline"
+                >
+                  Open the refund case
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      ) : refunds !== null ? (
+        <p className="text-body text-text-secondary m-0">
+          The client has not asked for a refund. They can from their order in the GRIDGO
+          app.
+        </p>
+      ) : null}
+      {mayFile ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-caption text-text-muted m-0">
+            If the client asked you instead, file it for them. Filing pauses work and
+            payouts at once; the client still adds their own receiving QR.
+          </p>
+          <div>
+            <Button variant="secondary" disabled={busy} onClick={onFile}>
+              File a refund for the client
+            </Button>
+          </div>
+        </div>
+      ) : canFileRefund(order, refunds) && late ? (
+        <p className="text-caption text-text-muted m-0">
+          The complaint deadline has passed. Super Admin files and decides late refund
+          cases.
+        </p>
+      ) : null}
+    </div>
+  );
+}

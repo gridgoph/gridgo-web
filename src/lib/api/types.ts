@@ -299,7 +299,12 @@ export type PayoutMilestoneCode =
   | "issue_window"
   | "retention";
 
-export type PayoutMilestoneStatus = "pending_pof" | "pof_attached" | "released";
+/**
+ * `superseded`: a client refund settlement closed this unpaid stage. It was
+ * never paid and never will be; what the shop is still owed became a separate
+ * `SupplierSettlementPayout`. Never present it as paid.
+ */
+export type PayoutMilestoneStatus = "pending_pof" | "pof_attached" | "released" | "superseded";
 
 /**
  * What a stage's release waits on: the shop's own proof, the rider's delivery
@@ -330,6 +335,9 @@ export type PayoutMilestone = {
   receiptFileId?: string | null;
   /** The wallet's reference number typed at release. Same visibility. */
   reference?: string | null;
+  /** Set when a refund settlement closed this stage unpaid. */
+  supersededAt?: string | null;
+  supersededBySettlementId?: string | null;
 };
 
 /** Released against outstanding, as the API reports it to Operations. */
@@ -595,6 +603,25 @@ export type Order = {
   payoutMilestones?: PayoutMilestone[];
   /** Ops / Super Admin only. The API's own released-versus-outstanding roll-up. */
   supplierSettlement?: SupplierSettlement;
+  /**
+   * Client refunds (`gridgo-api/docs/REFUNDS_API.md`). `refundHold`: an active
+   * refund request stops work and every payout. `refundDisposition` is set once
+   * a settlement is approved; `unpaidBalanceCancelled` means the original
+   * unpaid installment is history, not money to collect.
+   */
+  refundHold?: boolean;
+  refundDisposition?: RefundDisposition | null;
+  unpaidBalanceCancelled?: boolean;
+  /**
+   * Ops / Super Admin and the assigned shop. What the shop is still owed after
+   * a refund settlement, paid as its own separately labelled item. Never on a
+   * client payload.
+   */
+  supplierSettlementPayouts?: SupplierSettlementPayout[];
+  /** Ops / Super Admin only. Client refund totals on this order. */
+  refundFinance?: RefundFinance;
+  /** Ops / Super Admin and the rider, once settled. */
+  refundDeliverySettlement?: { riderEntitlementMinor: number; settlementId: string } | null;
   /**
    * Ops / Super Admin only. Where the assigned shop wants this money sent:
    * the receiving QR the release desk scans plus the words to check it by.
@@ -1462,3 +1489,188 @@ export type IssueReport = {
 
 /** `tracked` is missing from an API that predates the tracker link. */
 export type IssueReportCounts = Record<Exclude<IssueReportStatus, "tracked">, number> & { tracked?: number };
+
+// ---- Client refunds (available-funds settlement, `available_funds_v1`) ----
+// Contract: gridgo-api/docs/REFUNDS_API.md. Every `*Minor` is integer centavos.
+
+export type RefundStatus =
+  | "requested"
+  | "reviewed"
+  | "approved"
+  | "destination_review"
+  | "payment_in_progress"
+  | "payment_unknown"
+  | "paid"
+  | "rejected"
+  | "withdrawn";
+
+export type RefundKind = "cancellation" | "complaint";
+
+/** `cancelled` before handover; `fulfilled_with_refund` after it. */
+export type RefundDisposition = "cancelled" | "fulfilled_with_refund";
+
+/** The client's own receiving account. Only the client can set or replace it. */
+export type RefundDestination = {
+  provider: PayoutProvider | string;
+  accountName: string;
+  qrFileId: string;
+  ownershipConfirmed: boolean;
+  /** Increments on every replacement; a payment reserves one revision. */
+  revision: number;
+};
+
+/** One client-visible event. Staff also see internal `supplier_paid` events. */
+export type RefundHistoryEntry = {
+  kind: string;
+  reason: string;
+  at: string;
+};
+
+export type RefundComponents = {
+  principalMinor: number;
+  feeMinor: number;
+  deliveryMinor: number;
+};
+
+/** The server's calculation; also frozen on a settlement as `snapshot`. */
+export type RefundAmounts = RefundComponents & {
+  totalMinor: number;
+  collected: RefundComponents;
+  previous: RefundComponents;
+  releasedMinor: number;
+  remainingShopMinor: number;
+  shopEntitlementMinor: number;
+  riderEntitlementMinor: number;
+  availablePrincipalMinor: number;
+  directStoreDueMinor?: number;
+  directStoreCollectedMinor?: number;
+};
+
+export type RefundPreview = {
+  amounts: RefundAmounts;
+  availableTotalMinor: number;
+  canSettle: boolean;
+};
+
+/** Staff projection. The client's copy drops everything after `reason`. */
+export type RefundSettlement = RefundComponents & {
+  id: string;
+  totalMinor: number;
+  disposition: RefundDisposition;
+  /** Client-visible decision reason. */
+  reason: string;
+  approvedAt?: string;
+  requestId?: string;
+  orderId?: string;
+  sequence?: number;
+  createdBy?: string;
+  createdAt?: string;
+  /** Staff only. */
+  shopAgreement?: string;
+  deliveryEvidence?: string;
+  shopEntitlementMinor?: number;
+  riderEntitlementMinor?: number;
+  platformDeliveryMinor?: number;
+  snapshot?: RefundAmounts;
+};
+
+export type RefundAttemptStatus = "in_progress" | "unknown" | "failed" | "paid";
+
+/** One reserved payer, frozen destination and amount. Staff only. */
+export type RefundAttempt = {
+  id: string;
+  requestId: string;
+  settlementId: string;
+  payerId: string;
+  status: RefundAttemptStatus;
+  destination: RefundDestination;
+  amountMinor: number;
+  /** The sending wallet, lowercase. */
+  provider: string;
+  sourceWallet: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RefundPayment = {
+  id: string;
+  reference: string;
+  receiptFileId: string;
+  amountMinor: number;
+  paidAt: string;
+  /** Always "Wallet transfer evidence" — never an official receipt. */
+  evidenceLabel: string;
+  requestId?: string;
+  attemptId?: string;
+  provider?: string;
+  sourceWallet?: string;
+  recordedBy?: string;
+  createdAt?: string;
+};
+
+export type SupplierSettlementPayoutStatus = "pending" | "released" | "superseded";
+
+/** What the shop is still owed after a settlement, paid as its own item. */
+export type SupplierSettlementPayout = {
+  id: string;
+  settlementId: string;
+  orderId: string;
+  supplierId: string;
+  amountMinor: number;
+  status: SupplierSettlementPayoutStatus | string;
+  reference: string | null;
+  receiptFileId: string | null;
+  releasedAt: string | null;
+  releasedBy: string | null;
+  createdAt: string;
+  code: "refund_settlement" | string;
+  /** "Agreed refund settlement payout" — the API's own label. */
+  label: string;
+  releaseRequires: string;
+};
+
+export type RefundFinance = {
+  approvedMinor: number;
+  paidMinor: number;
+  refundedPrincipalMinor: number;
+  reservedMinor: number;
+};
+
+export type RefundRequest = {
+  id: string;
+  orderId: string;
+  status: RefundStatus | string;
+  version: number;
+  policyVersion: string;
+  kind: RefundKind | string;
+  /** The client's own words (or Operations', filing for them). */
+  reason: string;
+  evidenceFileIds: string[];
+  destination: RefundDestination | null;
+  beforeProduction: boolean;
+  /** Filed after the complaint deadline: Super Admin decides. */
+  late: boolean;
+  filingDeadlineAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  history: RefundHistoryEntry[];
+  settlement: RefundSettlement | null;
+  payment: RefundPayment | null;
+  // Staff projection
+  clientId?: string;
+  collections?: RefundComponents;
+  releasedShopMinor?: number;
+  previousRefunds?: RefundSettlement[];
+  supplierSettlementPayouts?: SupplierSettlementPayout[];
+  supplierPayoutAccount?: SupplierPayoutAccount | null;
+  attempt?: RefundAttempt | null;
+};
+
+export type SettlementInput = {
+  shopEntitlementMinor: number;
+  riderEntitlementMinor: number;
+  /** Omit for the maximum available. */
+  principalMinor?: number;
+  /** Historical direct-store plans only. */
+  directStoreCollectedMinor?: 0;
+};

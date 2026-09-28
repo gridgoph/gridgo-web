@@ -61,6 +61,71 @@ const CODE_COPY: Record<string, string> = {
   invalid_physical_invoice: "Choose a date and a time for the paper invoice, then set the promise.",
   physical_invoice_not_found:
     "This order no longer has a paper-invoice request. Refresh the order.",
+  // Client refunds (gridgo-api/docs/REFUNDS_API.md § Refusals).
+  refund_window_closed:
+    "The filing window has closed. Super Admin files and decides late refund cases.",
+  refund_super_admin_required:
+    "This refund was filed after the complaint deadline, so Super Admin decides it.",
+  refund_requires_super_admin:
+    "That settlement would take back money already paid to the shop or earned by the rider. There is no override. Refer the remedy to Super Admin.",
+  refund_exceeds_available_funds:
+    "That is more than the money GRIDGO still holds for this order. There is no override. Refer anything larger to Super Admin.",
+  refund_no_available_funds:
+    "No money is left to return on this order. Refer the client's remedy to Super Admin.",
+  refund_amount_mismatch:
+    "The figures moved since the preview. Preview the settlement again and approve the new total.",
+  refund_collection_reconciliation_required:
+    "A payment on this order is not settled yet. Confirm or reject the submitted payment first, then preview again.",
+  refund_payment_not_verified:
+    "No confirmed payment exists on this order, so there is nothing to refund yet.",
+  refund_fulfillment_stopped:
+    "This order is stopped for a refund. Resolve the refund before continuing work on it.",
+  refund_already_open:
+    "This order already has an open refund request. Work that one instead.",
+  refund_stale:
+    "Someone else changed this refund while you were reading it. Reload it and check again.",
+  refund_idempotency_conflict:
+    "This action was already sent with different details. Reload the refund and start again.",
+  refund_destination_locked:
+    "A transfer is reserved or unconfirmed, so the receiving account cannot change now.",
+  refund_destination_stale:
+    "The client's receiving QR changed. Reload, verify the current one, then reserve again.",
+  refund_destination_verification_required:
+    "Open the client's receiving QR and confirm the wallet shows the same name before marking it reviewed.",
+  refund_complaint_not_substantiated:
+    "A complaint needs substantiating evidence before it can be reviewed. If it has none, reject it with a reason.",
+  refund_work_stop_required:
+    "Confirm that production and delivery have stopped before approving.",
+  refund_payment_reserved:
+    "Another payer already reserved this transfer. Do not send money. Reload to see who.",
+  refund_payer_required:
+    "Only the person who reserved this transfer, or Super Admin, can record or reconcile it.",
+  refund_payment_attempt_required:
+    "Reserve the transfer first. If money was already sent, record that same transfer; never send again.",
+  refund_duplicate_transfer:
+    "That wallet reference is already recorded against a refund. Reconcile the original transfer; do not send a second one.",
+  refund_payment_mismatch:
+    "Record the exact reserved transfer and amount. Reload the refund and try again.",
+  refund_no_transfer_confirmation_required:
+    "Confirm that no money left the wallet before freeing this refund for another attempt.",
+  invalid_refund_paid_at: "Enter when the wallet sent the money. It cannot be in the future.",
+  invalid_refund_file:
+    "Upload the screenshot again. It must be a JPEG, PNG or WebP you uploaded yourself.",
+  refund_supplier_payout_not_pending:
+    "No shop settlement payout is waiting on this refund. Reload it.",
+  refund_supplier_payout_amount_mismatch:
+    "Pay the shop exactly the agreed settlement amount. Reload and try again.",
+  refund_supplier_destination_verification_required:
+    "The shop's receiving QR changed or was not verified. Reload, check the current QR, then record the payment.",
+  refund_supplier_transfer_evidence_required:
+    "Add the wallet reference and the transfer screenshot. Both are required.",
+  refund_supplier_reconciliation_required:
+    "This order has no shop to owe a settlement to. Reconcile it with Super Admin before approving.",
+  refund_state_conflict:
+    "This refund has moved on since you opened it. Reload it and take the step it shows now.",
+  refund_settlement_payout_hold:
+    "A refund settlement replaced this order's remaining shares. Pay what the shop is still owed as the settlement payout.",
+  refund_not_found: "That refund request was not found. Refresh the inbox.",
 };
 
 export function opsErrorMessage(err: unknown, fallback: string): string {

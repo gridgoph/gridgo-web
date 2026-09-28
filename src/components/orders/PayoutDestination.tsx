@@ -63,6 +63,10 @@ type PlateProps = {
   className?: string;
   /** Whether a click opens the scan-sized view. */
   enlarge?: boolean;
+  /** Accessible name when the plate is not a shop's (a client's refund QR). */
+  alt?: string;
+  /** The words under the scan-sized view. */
+  scanHint?: string;
 };
 
 export function PayoutQrPlate({
@@ -70,6 +74,8 @@ export function PayoutQrPlate({
   shopName,
   className,
   enlarge = true,
+  alt: altOverride,
+  scanHint,
 }: PlateProps) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -92,7 +98,7 @@ export function PayoutQrPlate({
     };
   }, [fileId]);
 
-  const alt = shopName ? `${shopName}'s payout QR` : "Payout QR";
+  const alt = altOverride ?? (shopName ? `${shopName}'s payout QR` : "Payout QR");
   const frame = cn(
     "flex aspect-square w-full items-center justify-center overflow-hidden rounded-card border border-outline bg-white",
     className,
@@ -150,8 +156,8 @@ export function PayoutQrPlate({
         >
           <DialogTitle className="text-black">{alt}</DialogTitle>
           <DialogDescription className="text-black/70">
-            Hold your phone up to the screen. The wallet app should name the account
-            below.
+            {scanHint ??
+              "Hold your phone up to the screen. The wallet app should name the account below."}
           </DialogDescription>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img

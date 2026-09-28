@@ -47,6 +47,17 @@ export function notificationHref(role: Role, notification: Notification): string
     return null;
   }
 
+  // Client refund notices name the order, not the request, so staff land on
+  // the refund inbox with that order and it opens the request. The shop's copy
+  // falls through to its job, where the settled payout shows. A shop
+  // settlement payout notice is money for Operations: it goes to the refund
+  // too, where that payout is recorded.
+  if (isRefund(type) && notification.orderId) {
+    const order = encodeURIComponent(notification.orderId);
+    if (role === "super_admin") return `/admin/refunds?order=${order}`;
+    if (role === "ops_admin") return `/ops/refunds?order=${order}`;
+  }
+
   if (type.includes("credit") && role === "super_admin") {
     return "/admin/overview";
   }
@@ -119,4 +130,8 @@ function isRoleEvent(type: string): boolean {
     type === "role_changed" ||
     type.startsWith("privileged_role")
   );
+}
+
+function isRefund(type: string): boolean {
+  return type.startsWith("refund_");
 }

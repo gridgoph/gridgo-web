@@ -14,12 +14,14 @@ import { waitingOnOperationsCount } from "@/app/ops/_lib/pipeline";
 import { isAwaitingSignupReview } from "@/components/approvals/signup-queue";
 import {
   getTracker,
+  getWorkspaceRole,
   listApprovalCases,
   listClaims,
   listEscalations,
   listIssueReports,
   listJobs,
   listOrders,
+  listRefunds,
   listUsers,
 } from "@/lib/api/client";
 import { claimBlocksPayout } from "@/lib/api/constraints";
@@ -29,6 +31,7 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import type { NavCountKey } from "@/lib/nav";
 import type { NavCounts } from "@/lib/nav-counts";
+import { refundNeedsStaff } from "@/lib/refunds";
 import { needsSupplierAction } from "@/lib/supplier-actions";
 
 type CountSource = {
@@ -95,6 +98,16 @@ const NAV_COUNT_SOURCES: Record<NavCountKey, CountSource> = {
   "jobs-need-action": {
     resources: ["jobs"],
     load: async () => (await listJobs()).filter((job) => needsSupplierAction(job)).length,
+  },
+  // Refund events invalidate orders, payouts and claims; any of them may move
+  // a request. A late case counts only on Super Admin's rail, who decides it.
+  "refunds-waiting": {
+    resources: ["orders", "payouts", "claims"],
+    load: async () => {
+      const role = getWorkspaceRole() ?? "ops_admin";
+      return (await listRefunds()).filter((refund) => refundNeedsStaff(refund, role))
+        .length;
+    },
   },
   // GitHub is the source, so no stream covers it. The API caches its GitHub
   // read for 60 s, so re-reading on each page move stays cheap.
