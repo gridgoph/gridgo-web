@@ -104,6 +104,11 @@ including `/admin/escalations`. These Super Admin
 destinations are inbox workspaces, not rail items, and stay within its authorized route tree.
 Payout releases open the Operations payout desk (`/ops/payouts/:id`); Super Admin has no
 payout tree, so its copy opens the order.
+Client refund notices (`refund_*`) name only the order, so staff land on
+`/ops/refunds?order=:id` or `/admin/refunds?order=:id`, which opens that order's open
+request (or its latest). The shop's copy opens its job. Refund events invalidate
+`orders`, `payouts` and `claims`; the refund inbox, the case and the rail count reload on
+any of them.
 
 Operations approvals and Super Admin verification mount the same sign-up and service-line
 queues. Service-review links select `?tab=services`; sign-up links select the default tab.

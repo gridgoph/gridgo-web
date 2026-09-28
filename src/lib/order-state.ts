@@ -115,6 +115,9 @@ export function presentOrderState(
       return { label: "Completed", tone: "success", icon: "circle-check" };
     case "payout_released":
       return { label: "Payout released", tone: "success", icon: "circle-check" };
+    // A refund settlement before handover cancels the order too.
+    case "cancelled":
+      return { label: "Cancelled", tone: "neutral", icon: "ban" };
     default:
       return { label: "In progress", tone: "neutral", icon: "clock" };
   }
@@ -369,6 +372,9 @@ export function presentMilestoneStatus(
   switch (status) {
     case "released":
       return { label: "Released", tone: "success", icon: "circle-check" };
+    case "superseded":
+      // Closed unpaid by a client refund settlement. Never "paid".
+      return { label: "Replaced by settlement", tone: "neutral", icon: "ban" };
     case "pof_attached":
       return { label: "Proof attached", tone: "info", icon: "circle-check" };
     case "pending_pof":

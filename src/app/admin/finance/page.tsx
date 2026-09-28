@@ -316,6 +316,8 @@ export default function AdminFinancePage() {
   const released = rollup ? formatFigure(rollup.supplierReleased) : blank;
   const owed = rollup ? formatFigure(rollup.supplierOutstanding) : blank;
   const held = rollup ? formatFigure(rollup.heldOnOrders) : blank;
+  const refunded = rollup ? formatFigure(rollup.refundedToClients) : blank;
+  const refundsPending = rollup ? formatFigure(rollup.refundsApprovedNotSent) : blank;
 
   return (
     <div className="flex flex-col gap-3">
@@ -334,7 +336,7 @@ export default function AdminFinancePage() {
         <h2 id="in-heading" className="text-h3 text-text-primary m-0">
           Money in from clients
         </h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <FigureCard
             label="Confirmed"
             value={confirmedIn.value}
@@ -355,6 +357,12 @@ export default function AdminFinancePage() {
             label="Not sent yet"
             value={outstanding.value}
             hint="Billed but the client has not transferred"
+            loading={pending}
+          />
+          <FigureCard
+            label="Refunded to clients"
+            value={refunded.value}
+            hint={`Wallet transfers on record. ${refundsPending.value} approved, not yet sent`}
             loading={pending}
           />
         </div>
@@ -390,13 +398,13 @@ export default function AdminFinancePage() {
           <FigureCard
             label="Paid to suppliers"
             value={released.value}
-            hint="Milestones already released"
+            hint="Shares and refund settlement payouts released"
             loading={pending}
           />
           <FigureCard
             label="Still owed to suppliers"
             value={owed.value}
-            hint="Milestones awaiting proof or release"
+            hint="Shares and settlement payouts not yet released"
             loading={pending}
           />
           <FigureCard

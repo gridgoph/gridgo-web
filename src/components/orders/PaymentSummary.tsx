@@ -112,6 +112,11 @@ export function PaymentSummary({ order, renderActions }: Props) {
                 Sent back {formatDateTime(payment.rejectedAt)}: &ldquo;
                 {payment.rejectionReason}&rdquo; The client can submit a new reference.
               </p>
+            ) : order.unpaidBalanceCancelled && payment.status !== "confirmed" ? (
+              <p className="text-caption text-text-secondary m-0 mt-2">
+                Not collected. A client refund settlement cancelled this unpaid
+                installment; it stays here as history.
+              </p>
             ) : (
               <p className="text-caption text-text-muted m-0 mt-2">
                 {code === "downpayment"

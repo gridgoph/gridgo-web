@@ -37,6 +37,13 @@ export type FinanceRollup = {
   supplierOutstanding: MoneyFigure;
   /** Order totals where an active claim holds payout. */
   heldOnOrders: MoneyFigure;
+  /**
+   * Client refunds recorded as sent (a wallet transfer on record), and those
+   * approved but not yet sent. Gross money in stays gross: refunds are shown
+   * beside it, never netted out of it.
+   */
+  refundedToClients: MoneyFigure;
+  refundsApprovedNotSent: MoneyFigure;
   activeHoldClaims: number;
   orderCount: number;
   /** Orders whose money is still only an estimate — no supplier price yet. */
@@ -74,7 +81,10 @@ export function rollupFinance(orders: Order[], claims: Claim[]): FinanceRollup {
 
   const outstanding = sum(
     live.flatMap((order) =>
-      installmentAmounts(order, (payment) => payment.status === "not_submitted"),
+      // A refund settlement cancels an unpaid installment: history, not money owed.
+      order.unpaidBalanceCancelled
+        ? []
+        : installmentAmounts(order, (payment) => payment.status === "not_submitted"),
     ),
   );
 
@@ -91,13 +101,20 @@ export function rollupFinance(orders: Order[], claims: Claim[]): FinanceRollup {
       "The API has not split any delivery fee yet, so the whole fee still reads as the rider's.",
   };
 
+  // A superseded stage was closed unpaid by a refund settlement: neither paid
+  // nor owed. What the shop is still owed after it is its settlement payout.
   const milestones = live.flatMap((o) => o.payoutMilestones ?? []);
-  const released = sum(
-    milestones.filter((m) => m.status === "released").map((m) => m.amountMinor ?? 0),
-  );
-  const stillOwed = sum(
-    milestones.filter((m) => m.status !== "released").map((m) => m.amountMinor ?? 0),
-  );
+  const settlements = live.flatMap((o) => o.supplierSettlementPayouts ?? []);
+  const released = sum([
+    ...milestones.filter((m) => m.status === "released").map((m) => m.amountMinor ?? 0),
+    ...settlements.filter((p) => p.status === "released").map((p) => p.amountMinor),
+  ]);
+  const stillOwed = sum([
+    ...milestones
+      .filter((m) => m.status !== "released" && m.status !== "superseded")
+      .map((m) => m.amountMinor ?? 0),
+    ...settlements.filter((p) => p.status === "pending").map((p) => p.amountMinor),
+  ]);
 
   const held = sum(
     live.filter((o) => o.payoutHold === true).map((o) => o.totalMinor ?? 0),
@@ -126,6 +143,14 @@ export function rollupFinance(orders: Order[], claims: Claim[]): FinanceRollup {
     supplierReleased: { kind: "amount", minor: released },
     supplierOutstanding: { kind: "amount", minor: stillOwed },
     heldOnOrders: { kind: "amount", minor: held },
+    refundedToClients: {
+      kind: "amount",
+      minor: sum(live.map((o) => o.refundFinance?.paidMinor ?? 0)),
+    },
+    refundsApprovedNotSent: {
+      kind: "amount",
+      minor: sum(live.map((o) => o.refundFinance?.reservedMinor ?? 0)),
+    },
     activeHoldClaims: claims.filter((c) => claimBlocksPayout(c.status)).length,
     orderCount: live.length,
     unpricedOrderCount: live.length - priced.length,

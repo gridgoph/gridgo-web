@@ -94,6 +94,7 @@ describe("payoutProgress", () => {
       releasedMinor: 50_000,
       totalMinor: 100_000,
       outstandingMinor: 50_000,
+      supersededCount: 0,
     });
   });
 
@@ -297,3 +298,99 @@ function settled(amountMinor: number) {
     confirmationSource: "manual_ops",
   };
 }
+
+describe("after a client refund settlement", () => {
+  const settlementPayout = (patch: Record<string, unknown> = {}) => ({
+    id: "rspay_1",
+    settlementId: "rsettle_1",
+    orderId: "ord_1",
+    supplierId: "s1",
+    amountMinor: 20_000,
+    status: "pending",
+    reference: null,
+    receiptFileId: null,
+    releasedAt: null,
+    releasedBy: null,
+    createdAt: "2026-09-28T04:20:00Z",
+    code: "refund_settlement",
+    label: "Agreed refund settlement payout",
+    releaseRequires: "Operations records the exact remaining shop obligation.",
+    ...patch,
+  });
+
+  // Plan 2: ₱1,000 shop cost, 40% paid, the shop agreed ₱600 in all.
+  const settled = (
+    payoutPatch: Record<string, unknown> = {},
+    extra: Partial<Order> = {},
+  ) =>
+    order({
+      state: "cancelled",
+      payoutPlanVersion: 2,
+      payoutMilestones: [
+        milestone("production_started", {
+          sharePercent: 40,
+          amountMinor: 40_000,
+          status: "released",
+          pofFileIds: ["f1"],
+        }),
+        milestone("delivered", {
+          sharePercent: 35,
+          amountMinor: 35_000,
+          status: "superseded",
+        }),
+        milestone("issue_window", {
+          sharePercent: 25,
+          amountMinor: 25_000,
+          status: "superseded",
+        }),
+      ],
+      supplierSettlementPayouts: [settlementPayout(payoutPatch)],
+      ...extra,
+    });
+
+  it("never calls a superseded share paid or releasable", () => {
+    const current = settled();
+    const stage = current.payoutMilestones![1];
+    expect(milestoneReadiness(current, stage)).toBe("superseded");
+    expect(releasableMilestones(current)).toEqual([]);
+  });
+
+  it("counts what the shop earns as settled: paid shares plus the settlement payout", () => {
+    expect(payoutProgress(settled())).toEqual({
+      count: 2,
+      releasedCount: 1,
+      releasedMinor: 40_000,
+      totalMinor: 60_000,
+      outstandingMinor: 20_000,
+      supersededCount: 2,
+    });
+    expect(payoutProgress(settled({ status: "released" }))).toMatchObject({
+      releasedMinor: 60_000,
+      outstandingMinor: 0,
+    });
+  });
+
+  it("puts a pending settlement payout on the ready queue, and a claim holds it", () => {
+    expect(payoutQueueGroup(settled())).toBe("ready");
+    expect(payoutSummary(settled())).toBe(
+      "Agreed refund settlement payout ready to record, ₱200.00.",
+    );
+    expect(payoutQueueGroup(settled(), [hold])).toBe("held");
+    expect(payoutQueueGroup(settled({ status: "released" }))).toBe("settled");
+    expect(payoutSummary(settled({ status: "released" }))).toBe(
+      "Settled with a client refund. ₱600.00 paid to the shop in all.",
+    );
+  });
+
+  it("holds every share while a refund request is open", () => {
+    const paused = order({
+      refundHold: true,
+      payoutMilestones: [
+        milestone("printing", { status: "pof_attached", pofFileIds: ["f"] }),
+      ],
+    });
+    expect(milestoneReadiness(paused, paused.payoutMilestones![0])).toBe("held");
+    expect(payoutQueueGroup(paused)).toBe("held");
+    expect(payoutSummary(paused)).toMatch(/^Paused for a client refund request/);
+  });
+});

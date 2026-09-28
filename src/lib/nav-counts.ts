@@ -43,6 +43,8 @@ export const NAV_COUNT_MEANING: Record<NavCountKey, CountMeaning> = {
   },
   "jobs-need-action": { phrase: needAction, attention: false },
   // The captain's own calls: quiet, because no order waits on them.
+  // Monochrome: yellow is reserved for the orders queue.
+  "refunds-waiting": { phrase: needAction, attention: false },
   "tracker-needs-decision": {
     phrase: (count) => `${compactCount(count)} ${count === 1 ? "needs" : "need"} a decision`,
     attention: false,

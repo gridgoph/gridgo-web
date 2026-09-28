@@ -227,6 +227,30 @@ export function milestoneIsReleased(milestone: Pick<PayoutMilestone, "status">):
   return milestone.status === "released";
 }
 
+/**
+ * A refund settlement closed this stage unpaid. It is neither paid nor owed:
+ * whatever the shop is still owed became a separate settlement payout.
+ */
+export function milestoneIsSuperseded(milestone: Pick<PayoutMilestone, "status">): boolean {
+  return milestone.status === "superseded";
+}
+
+/** Released or replaced by a settlement: nothing left to decide on this stage. */
+export function milestoneIsClosed(milestone: Pick<PayoutMilestone, "status">): boolean {
+  return milestoneIsReleased(milestone) || milestoneIsSuperseded(milestone);
+}
+
+export const SUPERSEDED_STAGE_COPY =
+  "Not paid. A refund settlement replaced this share. What the shop is still owed is the agreed refund settlement payout.";
+
+export const REFUND_HOLD_COPY =
+  "A client refund request is open, so work and every payout are paused. Settle or reject it on the refund case first.";
+
+/** An open refund request stops every payout, independently of any claim. */
+export function orderHasRefundHold(order: Partial<Pick<Order, "refundHold">>): boolean {
+  return Boolean(order.refundHold);
+}
+
 /*
  The steps each stage names, mirrored from the platform's own gates.
 
@@ -277,11 +301,14 @@ const WINDOW_CLOSED_STATES = new Set(["completed", "payout_released"]);
  */
 export function milestoneReleaseBlocker(
   order: Pick<Order, "payoutHold" | "payments" | "state" | "deliveryEvidence"> &
+    Partial<Pick<Order, "refundHold">> &
     PlanOrder,
   milestone: Pick<PayoutMilestone, "code" | "status" | "pofFileIds"> &
     Partial<Pick<PayoutMilestone, "releaseRequires" | "label" | "sharePercent">>,
 ): string | null {
   if (milestoneIsReleased(milestone)) return null;
+  if (milestoneIsSuperseded(milestone)) return SUPERSEDED_STAGE_COPY;
+  if (orderHasRefundHold(order)) return REFUND_HOLD_COPY;
   if (orderHasPayoutHold(order)) {
     return PLATFORM_CONSTRAINT_COPY.payout_held.guidance;
   }
