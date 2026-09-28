@@ -579,6 +579,42 @@ export async function attachFulfilmentProof(
 }
 
 /**
+ * Supplier. Upload a progress photo of the job (JPEG, PNG or WebP). Like a
+ * proof, the upload alone shows nobody anything; `attachProductionPhoto` binds
+ * it to the order.
+ */
+export async function uploadProductionPhoto(file: File): Promise<StoredFile> {
+  const body = new FormData();
+  body.append("purpose", "production_photo");
+  body.append("file", file);
+  const uploaded = await request<{ file: StoredFile }>("/files", {
+    method: "POST",
+    body,
+  });
+  return uploaded.file;
+}
+
+/**
+ * Bind a progress photo to the order while it is `production` or
+ * `supplier_self_qc` (`409 production_photo_upload_not_allowed` otherwise).
+ * It lets the job be packed and shows in the client's gallery; it never
+ * satisfies or releases a payout stage.
+ */
+export async function attachProductionPhoto(
+  fileId: string,
+  orderId: string,
+): Promise<{ file: StoredFile; order?: Order }> {
+  const result = await request<{ file: StoredFile; order?: Order }>(
+    `/files/${fileId}/attach`,
+    {
+      method: "POST",
+      body: JSON.stringify({ orderId }),
+    },
+  );
+  return result.order ? { ...result, order: normalizeOrder(result.order) } : result;
+}
+
+/**
  * Ops / Super Admin. Stores the receipt screenshot first, then releases the
  * share with its id and the reference, so a refused screenshot never leaves
  * a released share with no proof behind it.

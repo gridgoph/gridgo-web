@@ -18,6 +18,12 @@ import type { Order } from "@/lib/api/types";
 import { paymentIsSettled } from "@/lib/api/constraints";
 import { balanceNotRequired, paymentOf } from "@/lib/payments";
 import { shopProofStages } from "@/lib/payout-plan";
+import {
+  canAddProgressPhoto,
+  productionPhotoMissing,
+  productionProgressOf,
+  progressPhotoCount,
+} from "@/lib/production-progress";
 
 export type Stage = "payment" | "qa" | "production" | "delivery" | "done";
 
@@ -199,7 +205,8 @@ export function stageSummary(
     | "issueWindowExpiresAt"
     | "readyAt"
     | "cancelledAt"
-  >,
+  > &
+    Partial<Pick<Order, "productionProgress">>,
   stage: Exclude<Stage, "done">,
   formatMoney: (minor: number) => string,
   formatWhen: (iso: string) => string,
@@ -255,8 +262,17 @@ export function stageSummary(
 
   if (stage === "production") {
     const proofs = shopProofStages(order).filter((m) => m.pofFileIds.length > 0);
-    const filed =
-      proofs.length === 0
+    const progress = productionProgressOf(order);
+    // The gallery is what a shop must send before packing, so once the API
+    // reports it, it is what the closed row counts. An older API keeps the
+    // proof count.
+    const filed = progress
+      ? productionPhotoMissing(order)
+        ? canAddProgressPhoto(order)
+          ? "No progress photo from the shop yet."
+          : "Moved on with no progress photo from the shop."
+        : `${progressPhotoCount(progress.photos.length)} from the shop.`
+      : proofs.length === 0
         ? null
         : `${proofs.length === 1 ? "One proof" : `${proofs.length} proofs`} on file from the shop.`;
     if (status === "locked") return "Opens once the artwork is approved.";
@@ -276,6 +292,9 @@ export function stageSummary(
       const handed = order.readyAt
         ? `Handed over ${formatWhen(order.readyAt)}.`
         : "Handed over to a rider.";
+      if (progress && productionPhotoMissing(order)) {
+        return `${handed} No progress photo was sent.`;
+      }
       return filed ? `${handed} ${filed}` : handed;
     }
     return filed ?? "With the shop.";

@@ -656,6 +656,13 @@ export type Order = {
   proofFileIds?: string[];
   fulfilmentProofFileIds?: string[];
   deliveryPhotoFileIds?: string[];
+  /** Progress-only shop photos (`production_photo`). The gallery is `productionProgress`. */
+  productionPhotoFileIds?: string[];
+  /**
+   * The shop's progress photos, signed for this reader. Absent on an API that
+   * predates it; read it through `src/lib/production-progress.ts`.
+   */
+  productionProgress?: ProductionProgress;
   /** Wallet receipts Operations bound to released shares. Never sent to clients. */
   payoutReceiptFileIds?: string[];
 
@@ -902,6 +909,28 @@ export type DetectedArtwork = {
   /** "A4", "Letter" — null when the size matches no name GRIDGO knows. */
   pageSize: string | null;
   orientation: "portrait" | "landscape" | "square" | null;
+};
+
+/**
+ * One progress photo, as `productionProgress.photos` carries it. It names no
+ * uploader, filename, payout stage or proof code. `downloadUrl` is missing when
+ * signing failed; `GET /files/:fileId/download-url` retries it.
+ */
+export type ProductionPhoto = {
+  fileId: string;
+  contentType: string;
+  at: string;
+  downloadUrl?: string | null;
+  downloadUrlExpiresAt?: string | null;
+};
+
+/**
+ * Contract "Production progress photos" in the API doc. One ready, attached
+ * shop image is enough to pack a job; the start-of-production image counts.
+ */
+export type ProductionProgress = {
+  status: "waiting_for_photo" | "photos_available";
+  photos: ProductionPhoto[];
 };
 
 export type StoredFile = {

@@ -46,6 +46,12 @@ const CODE_COPY: Record<string, string> = {
     "Someone has already given an instruction on this escalation. Refresh to see it.",
   resolution_required:
     "Write the instruction. The rider is waiting at the shop and this is what they act on.",
+  production_override_reason_required:
+    "Write why you are moving this job on without the shop's photo. The reason is kept in the audit log.",
+  production_photo_required:
+    "The shop has not sent a progress photo. Move the job on with a written reason instead.",
+  production_photo_upload_not_allowed:
+    "This job has left production, so it no longer takes progress photos. Refresh the order.",
   transition_not_allowed:
     "That step is not available from where this order is now. Refresh and take the action the order offers.",
   payment_method_not_allowed:
