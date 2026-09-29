@@ -1755,6 +1755,25 @@ export async function attachCatalogItemPhoto(
   });
 }
 
+/**
+ * Board order of the samples that stay. The first id is the wide sample.
+ * A shorter list takes the missing photos off the listing. The stored files
+ * stay; this does not call file DELETE.
+ */
+export async function reorderCatalogPhotos(
+  itemId: string,
+  fileIds: string[],
+  expectedVersion: number,
+): Promise<unknown> {
+  return request<unknown>(
+    `/me/catalog-items/${encodeURIComponent(itemId)}/photos/reorder`,
+    {
+      method: "POST",
+      ...versioned(expectedVersion, { fileIds }),
+    },
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Public issue reports — Operations and Super Admin
 // ---------------------------------------------------------------------------

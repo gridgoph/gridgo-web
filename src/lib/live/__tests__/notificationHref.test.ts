@@ -90,6 +90,23 @@ describe("notificationHref", () => {
     expect(notificationHref("super_admin", row)).toBe("/admin/escalations");
   });
 
+  it("opens a filed issue report on that role's reports desk", () => {
+    const row = note({ type: "ops_issue_report_filed" });
+    expect(notificationHref("ops_admin", row)).toBe("/ops/issue-reports");
+    expect(notificationHref("super_admin", row)).toBe("/admin/issue-reports");
+    expect(notificationHref("client", row)).toBeNull();
+    expect(notificationHref("supplier", row)).toBeNull();
+    expect(notificationHref("rider", row)).toBeNull();
+  });
+
+  it("opens a party support message on that role's chat desk", () => {
+    const row = note({ type: "ops_support_message" });
+    expect(notificationHref("ops_admin", row)).toBe("/ops/chat");
+    expect(notificationHref("super_admin", row)).toBe("/admin/chat");
+    expect(notificationHref("supplier", row)).toBeNull();
+    expect(notificationHref("super_admin", row)).not.toMatch(/^\/ops\//);
+  });
+
   it("opens role events on the Super Admin roles desk", () => {
     const privileged = note({ type: "privileged_role_changed" });
     expect(notificationHref("super_admin", privileged)).toBe("/admin/roles");
