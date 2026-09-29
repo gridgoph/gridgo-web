@@ -676,8 +676,12 @@ export default function ListingEditorPage() {
     focusField(FIELD_IDS[field]);
   }
 
+  // A nested function declaration is hoisted, so the null check above does not
+  // narrow `listing` inside it; read the photos once here.
+  const photos = listing.photos;
+
   function photoControls(index: number) {
-    const photo = listing.photos[index];
+    const photo = photos[index];
     if (!photo) return null;
     const place = index === 0 ? "the wide sample" : `sample ${index + 1}`;
     return (
@@ -693,7 +697,7 @@ export default function ListingEditorPage() {
             <ChevronLeft aria-hidden />
           </Button>
         ) : null}
-        {index < listing.photos.length - 1 ? (
+        {index < photos.length - 1 ? (
           <Button
             type="button"
             size="icon"
