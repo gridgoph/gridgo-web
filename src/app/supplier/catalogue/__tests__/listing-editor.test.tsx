@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
   updateCatalogItem: vi.fn(),
   updateCatalogOption: vi.fn(),
   reorderCatalogPhotos: vi.fn(),
+  uploadCatalogItemPhoto: vi.fn(),
+  attachCatalogItemPhoto: vi.fn(),
 }));
 
 vi.stubGlobal("React", React);
@@ -58,6 +60,8 @@ vi.mock("@/lib/api/client", async () => {
     updateCatalogItem: mocks.updateCatalogItem,
     updateCatalogOption: mocks.updateCatalogOption,
     reorderCatalogPhotos: mocks.reorderCatalogPhotos,
+    uploadCatalogItemPhoto: mocks.uploadCatalogItemPhoto,
+    attachCatalogItemPhoto: mocks.attachCatalogItemPhoto,
   };
 });
 
@@ -637,6 +641,9 @@ describe("listing editor sample photos", () => {
 
   function stubPhotos(list = photos) {
     stubLoad(catalogItem({ photos: list }));
+    mocks.getFileDownloadUrl.mockImplementation(
+      async (fileId: string) => `https://files.test/${fileId}`,
+    );
     mocks.reorderCatalogPhotos.mockImplementation(
       async (_itemId: string, fileIds: string[], expectedVersion: number) =>
         catalogItem({
@@ -646,73 +653,222 @@ describe("listing editor sample photos", () => {
     );
   }
 
-  it("posts the samples that stay when a photo is removed", async () => {
+  /** The wide sample in "What clients see". */
+  async function previewSample(fileId: string) {
+    const preview = screen.getByTestId("listing-preview-sample");
+    await waitFor(() =>
+      expect(within(preview).getByRole("img")).toHaveAttribute(
+        "src",
+        `https://files.test/${fileId}`,
+      ),
+    );
+  }
+
+  async function choose(user: ReturnType<typeof userEvent.setup>, photo: string, item: string) {
+    await user.click(screen.getByRole("button", { name: `Edit ${photo}` }));
+    await user.click(await screen.findByRole("menuitem", { name: item }));
+  }
+
+  it("labels every photo's controls and offers only the moves that make sense", async () => {
     const user = userEvent.setup();
     stubPhotos();
     render(<ListingEditorPage />);
     await openEditorStep("About");
 
-    await user.click(screen.getByRole("button", { name: "Remove sample 2" }));
+    for (const name of ["Edit wide sample", "Edit photo 2", "Edit photo 3"]) {
+      expect(screen.getByRole("button", { name })).toBeVisible();
+    }
+    await user.click(screen.getByRole("button", { name: "Edit wide sample" }));
+    const wideItems = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
+    expect(wideItems).toEqual(["Move later", "Replace photo…", "Remove photo…"]);
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("button", { name: "Edit photo 3" }));
+    const lastItems = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
+    expect(lastItems).toEqual([
+      "Make wide sample",
+      "Move earlier",
+      "Replace photo…",
+      "Remove photo…",
+    ]);
+  });
+
+  it("confirms, then posts the photos that stay when one is removed", async () => {
+    const user = userEvent.setup();
+    stubPhotos();
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+
+    await choose(user, "photo 2", "Remove photo…");
     const dialog = await screen.findByRole("alertdialog");
-    expect(within(dialog).getByText("It comes off this listing. The other samples stay in their order.")).toBeVisible();
-    await user.click(within(dialog).getByRole("button", { name: "Remove this sample" }));
+    expect(within(dialog).getByRole("heading", { name: "Remove photo 2?" })).toBeVisible();
+    expect(
+      within(dialog).getByText(
+        "It comes off this listing. The other photos keep their order. Orders already placed are not changed.",
+      ),
+    ).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: "Remove photo" }));
 
     await waitFor(() =>
       expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith("sci_1", ["file_1", "file_3"], 3),
     );
     expect(mocks.reorderCatalogPhotos).toHaveBeenCalledTimes(1);
-    expect(screen.queryByRole("button", { name: "Remove sample 3" })).not.toBeInTheDocument();
+    expect(await screen.findByText("Photo 2 removed.")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Edit photo 3" })).not.toBeInTheDocument();
   });
 
-  it("posts a later photo at index 0 when it moves earlier into the wide sample", async () => {
+  it("removes the wide sample, says the next photo took its place, and updates the preview", async () => {
     const user = userEvent.setup();
     stubPhotos();
     render(<ListingEditorPage />);
     await openEditorStep("About");
+    await previewSample("file_1");
 
-    await user.click(screen.getByRole("button", { name: "Move sample 2 earlier" }));
+    await choose(user, "wide sample", "Remove photo…");
+    const dialog = await screen.findByRole("alertdialog");
+    expect(
+      within(dialog).getByRole("heading", { name: "Remove the wide sample?" }),
+    ).toBeVisible();
+    expect(
+      within(dialog).getByText(/Photo 2 becomes the wide sample clients see first\./),
+    ).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: "Remove photo" }));
 
     await waitFor(() =>
-      expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith(
-        "sci_1",
-        ["file_2", "file_1", "file_3"],
-        3,
-      ),
+      expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith("sci_1", ["file_2", "file_3"], 3),
     );
-    expect(mocks.reorderCatalogPhotos.mock.calls[0]?.[1][0]).toBe("file_2");
+    expect(
+      await screen.findByText("Wide sample removed. The next photo is now the wide sample."),
+    ).toBeVisible();
+    await previewSample("file_2");
   });
 
-  it("does not call the API when the shop keeps the sample", async () => {
+  it("does not call the API when the shop keeps the photo", async () => {
     const user = userEvent.setup();
     stubPhotos();
     render(<ListingEditorPage />);
     await openEditorStep("About");
 
-    await user.click(screen.getByRole("button", { name: "Remove the wide sample" }));
+    await choose(user, "wide sample", "Remove photo…");
     const dialog = await screen.findByRole("alertdialog");
     await user.click(within(dialog).getByRole("button", { name: "Keep it" }));
 
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
     expect(mocks.reorderCatalogPhotos).not.toHaveBeenCalled();
+    await previewSample("file_1");
   });
 
-  it("warns that the last sample takes the listing off the board", async () => {
+  it("warns that removing the only photo takes the listing off the board", async () => {
     const user = userEvent.setup();
     stubPhotos([{ fileId: "file_1", sortOrder: 0 }]);
     render(<ListingEditorPage />);
     await openEditorStep("About");
 
-    await user.click(screen.getByRole("button", { name: "Remove the wide sample" }));
+    await choose(user, "wide sample", "Remove photo…");
     const dialog = await screen.findByRole("alertdialog");
-    expect(
-      within(dialog).getByText(
-        "This listing cannot go on the board until another photo is added.",
-      ),
-    ).toBeVisible();
-    await user.click(within(dialog).getByRole("button", { name: "Remove this sample" }));
+    expect(within(dialog).getByRole("heading", { name: "Remove the only photo?" })).toBeVisible();
+    expect(within(dialog).getByText(/clients stop seeing it until you add another/)).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: "Remove photo" }));
 
     await waitFor(() =>
       expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith("sci_1", [], 3),
+    );
+    expect(await screen.findByRole("button", { name: /Add the wide sample/ })).toBeVisible();
+  });
+
+  it("makes a later photo the wide sample in one step and the preview follows", async () => {
+    const user = userEvent.setup();
+    stubPhotos();
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+
+    await choose(user, "photo 3", "Make wide sample");
+
+    await waitFor(() =>
+      expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith(
+        "sci_1",
+        ["file_3", "file_1", "file_2"],
+        3,
+      ),
+    );
+    expect(await screen.findByText("Photo 3 is now the wide sample.")).toBeVisible();
+    await previewSample("file_3");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Edit wide sample" })).toHaveFocus(),
+    );
+  });
+
+  it("keeps the step-by-step move", async () => {
+    const user = userEvent.setup();
+    stubPhotos();
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+
+    await choose(user, "photo 2", "Move later");
+
+    await waitFor(() =>
+      expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith(
+        "sci_1",
+        ["file_1", "file_3", "file_2"],
+        3,
+      ),
+    );
+    expect(await screen.findByText("Photo 2 is now photo 3.")).toBeVisible();
+  });
+
+  it("replaces a photo in its own slot and the preview shows the new one", async () => {
+    const user = userEvent.setup();
+    stubPhotos();
+    mocks.uploadCatalogItemPhoto.mockResolvedValue({ fileId: "file_new" });
+    mocks.attachCatalogItemPhoto.mockImplementation(async () => {
+      mocks.getCatalogItem.mockResolvedValue(
+        catalogItem({
+          photos: [
+            { fileId: "file_new", sortOrder: 0 },
+            { fileId: "file_2", sortOrder: 1 },
+            { fileId: "file_3", sortOrder: 2 },
+          ],
+          version: 4,
+        }),
+      );
+      return {};
+    });
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+    await previewSample("file_1");
+
+    await choose(user, "wide sample", "Replace photo…");
+    const picked = new File(["x"], "sharper.jpg", { type: "image/jpeg" });
+    await user.upload(screen.getByLabelText("Choose a replacement photo"), picked);
+
+    await waitFor(() =>
+      expect(mocks.attachCatalogItemPhoto).toHaveBeenCalledWith("file_new", "sci_1", 0, undefined),
+    );
+    expect(mocks.uploadCatalogItemPhoto).toHaveBeenCalledWith(picked);
+    expect(mocks.reorderCatalogPhotos).not.toHaveBeenCalled();
+    expect(await screen.findByText("Wide sample replaced. It kept its place.")).toBeVisible();
+    await previewSample("file_new");
+  });
+
+  it("replaces a later photo at its own sort order", async () => {
+    const user = userEvent.setup();
+    stubPhotos([
+      { fileId: "file_1", sortOrder: 0 },
+      { fileId: "file_2", sortOrder: 4 },
+    ]);
+    mocks.uploadCatalogItemPhoto.mockResolvedValue({ fileId: "file_new" });
+    mocks.attachCatalogItemPhoto.mockResolvedValue({});
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+
+    await choose(user, "photo 2", "Replace photo…");
+    await user.upload(
+      screen.getByLabelText("Choose a replacement photo"),
+      new File(["x"], "b.png", { type: "image/png" }),
+    );
+
+    await waitFor(() =>
+      expect(mocks.attachCatalogItemPhoto).toHaveBeenCalledWith("file_new", "sci_1", 4, undefined),
     );
   });
 
@@ -725,7 +881,7 @@ describe("listing editor sample photos", () => {
     render(<ListingEditorPage />);
     await openEditorStep("About");
 
-    await user.click(screen.getByRole("button", { name: "Move sample 3 earlier" }));
+    await choose(user, "photo 3", "Move earlier");
 
     expect(
       await screen.findByText("This listing changed on another screen. Refresh and try again."),

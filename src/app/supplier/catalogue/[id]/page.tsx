@@ -7,7 +7,7 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { useParams, useRouter } from "next/navigation";
-import { Check, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
+import { Check, Trash2 } from "lucide-react";
 
 import { ListingPreviewBody } from "@/app/supplier/_components/ListingPreviewBody";
 import { PrinterMaxWidthField } from "@/app/supplier/_components/PrinterMaxWidthField";
@@ -16,7 +16,10 @@ import {
   ReadinessChecklist,
   requirementRowId,
 } from "@/app/supplier/_components/ReadinessChecklist";
-import { SamplePhoto } from "@/app/supplier/_components/SamplePhoto";
+import {
+  ListingPhotoManager,
+  type PhotoReorder,
+} from "@/app/supplier/_components/ListingPhotoManager";
 import {
   AUTOSAVE_DELAY_MS,
   SaveStatus,
@@ -98,6 +101,7 @@ import {
   type ServiceLine,
   type SpecGroup,
 } from "@/lib/listings";
+import { changeNotice, replacedNotice } from "@/lib/listing-photos";
 import { cn } from "@/lib/utils";
 
 type Draft = {
@@ -248,11 +252,12 @@ export default function ListingEditorPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [removeOpen, setRemoveOpen] = useState(false);
-  const [photoToRemove, setPhotoToRemove] = useState<string | null>(null);
+  const [photoNotice, setPhotoNotice] = useState<string | null>(null);
+  const [replacingPhoto, setReplacingPhoto] = useState<string | null>(null);
+  const [addingPhoto, setAddingPhoto] = useState(false);
   const [step, setStep] = useState<EditorStepId>("pick");
   const dirtyRef = useRef(false);
   const busyRef = useRef(false);
-  const photoInput = useRef<HTMLInputElement | null>(null);
 
   const working = draft ?? (listing ? draftFrom(listing) : null);
 
@@ -428,15 +433,15 @@ export default function ListingEditorPage() {
     // `working` is the draft object; a new one means the shop typed.
   }, [dirty, working]);
 
-  async function applyPhotoOrder(fileIds: string[]) {
+  async function applyPhotoOrder({ action, fileId, fileIds }: PhotoReorder) {
     if (!listing || listing.version == null) {
       setActionError("This listing changed on another screen. Refresh and try again.");
-      setPhotoToRemove(null);
       return;
     }
+    const before = listing.photos.map((photo) => photo.fileId);
     setBusy(true);
     setActionError(null);
-    setPhotoToRemove(null);
+    setPhotoNotice(null);
     try {
       const saved = normalizeListing(
         await reorderCatalogPhotos(listing.id, fileIds, listing.version),
@@ -446,6 +451,14 @@ export default function ListingEditorPage() {
       setDraft((current) =>
         current ? { ...current, version: saved.version } : draftFrom(saved),
       );
+      setPhotoNotice(
+        changeNotice(
+          action,
+          fileId,
+          before,
+          saved.photos.map((photo) => photo.fileId),
+        ),
+      );
     } catch (err) {
       setActionError(listingErrorMessage(err, "Could not update these sample photos."));
     } finally {
@@ -453,22 +466,12 @@ export default function ListingEditorPage() {
     }
   }
 
-  function movePhoto(fileId: string, direction: -1 | 1) {
-    if (!listing) return;
-    const ids = listing.photos.map((photo) => photo.fileId);
-    const index = ids.indexOf(fileId);
-    const target = index + direction;
-    if (index < 0 || target < 0 || target >= ids.length) return;
-    const next = [...ids];
-    const [moved] = next.splice(index, 1);
-    next.splice(target, 0, moved);
-    void applyPhotoOrder(next);
-  }
-
   async function addPhoto(file: File) {
     if (!listing) return;
     setBusy(true);
+    setAddingPhoto(true);
     setActionError(null);
+    setPhotoNotice(null);
     try {
       const uploaded = await uploadCatalogItemPhoto(file);
       await attachCatalogItemPhoto(
@@ -480,9 +483,42 @@ export default function ListingEditorPage() {
         ),
       );
       await load();
+      setPhotoNotice(
+        listing.photos.length === 0 ? "Wide sample added." : "Photo added at the end.",
+      );
     } catch (err) {
       setActionError(listingErrorMessage(err, "Could not add that sample photo."));
     } finally {
+      setAddingPhoto(false);
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Swap one photo in place. Attaching at a slot that is already taken makes
+   * the API detach the old photo and put the new one there, so the board order
+   * never changes and there is no moment with the photo missing.
+   */
+  async function replacePhoto(photo: Listing["photos"][number], index: number, file: File) {
+    if (!listing) return;
+    setBusy(true);
+    setReplacingPhoto(photo.fileId);
+    setActionError(null);
+    setPhotoNotice(null);
+    try {
+      const uploaded = await uploadCatalogItemPhoto(file);
+      await attachCatalogItemPhoto(
+        uploaded.fileId,
+        listing.id,
+        photo.sortOrder,
+        photo.altText ?? undefined,
+      );
+      await load();
+      setPhotoNotice(replacedNotice(index));
+    } catch (err) {
+      setActionError(listingErrorMessage(err, "Could not replace that sample photo."));
+    } finally {
+      setReplacingPhoto(null);
       setBusy(false);
     }
   }
@@ -676,54 +712,6 @@ export default function ListingEditorPage() {
     focusField(FIELD_IDS[field]);
   }
 
-  // A nested function declaration is hoisted, so the null check above does not
-  // narrow `listing` inside it; read the photos once here.
-  const photos = listing.photos;
-
-  function photoControls(index: number) {
-    const photo = photos[index];
-    if (!photo) return null;
-    const place = index === 0 ? "the wide sample" : `sample ${index + 1}`;
-    return (
-      <div className="flex flex-wrap gap-1">
-        {index > 0 ? (
-          <Button
-            type="button"
-            size="icon"
-            aria-label={`Move ${place} earlier`}
-            disabled={busy}
-            onClick={() => movePhoto(photo.fileId, -1)}
-          >
-            <ChevronLeft aria-hidden />
-          </Button>
-        ) : null}
-        {index < photos.length - 1 ? (
-          <Button
-            type="button"
-            size="icon"
-            aria-label={`Move ${place} later`}
-            disabled={busy}
-            onClick={() => movePhoto(photo.fileId, 1)}
-          >
-            <ChevronRight aria-hidden />
-          </Button>
-        ) : null}
-        <Button
-          type="button"
-          size="icon"
-          variant="danger"
-          aria-label={`Remove ${place}`}
-          disabled={busy}
-          onClick={() => setPhotoToRemove(photo.fileId)}
-        >
-          <Trash2 aria-hidden />
-        </Button>
-      </div>
-    );
-  }
-
-  const removingLastPhoto = listing.photos.length === 1 && photoToRemove != null;
-
   return (
     <div className="flex flex-col gap-6 pb-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -843,67 +831,20 @@ export default function ListingEditorPage() {
                   id="section-photos"
                   step="02"
                   title="Sample photos"
-                  help="Up to eight samples of this kind of work. The first one is the wide sample clients see. Move a photo earlier to put it first."
+                  help="Up to eight samples of this kind of work. The wide sample is the one clients see first. Use Edit on a photo to replace it, remove it, or make it the wide sample."
                 >
-                  <div className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)] gap-4 md:grid-cols-[minmax(0,11rem)_minmax(0,1fr)]">
-                    <div className="flex flex-col gap-2">
-                      <p
-                        className="text-body text-text-primary m-0"
-                        style={{ fontFamily: "var(--font-medium)" }}
-                      >
-                        Wide sample
-                      </p>
-                      <SamplePhoto
-                        fileId={listing.photos[0]?.fileId}
-                        alt={listing.photos[0]?.altText ?? listing.name}
-                        emptyLabel="Add a sample so clients can see the work"
-                        className="aspect-[4/3]"
-                      />
-                      {photoControls(0)}
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <p className="text-caption text-text-secondary m-0">
-                        {listing.photos.length > 1
-                          ? "Other photos"
-                          : "The rest, if you have them"}
-                      </p>
-                      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                        {listing.photos.slice(1).map((photo, offset) => (
-                          <div key={photo.fileId} className="flex flex-col gap-1">
-                            <SamplePhoto
-                              fileId={photo.fileId}
-                              alt={photo.altText ?? listing.name}
-                            />
-                            {photoControls(offset + 1)}
-                          </div>
-                        ))}
-                        {listing.photos.length < LISTING_CAPS.photos ? (
-                          <button
-                            type="button"
-                            id={FIELD_IDS.photos}
-                            onClick={() => photoInput.current?.click()}
-                            className="rounded-card border-outline bg-surface hover:bg-overlay-hover active:bg-overlay-pressed flex aspect-square min-h-11 min-w-11 cursor-pointer flex-col items-center justify-center gap-1 border border-dashed disabled:cursor-not-allowed disabled:opacity-[0.38]"
-                          >
-                            <Plus aria-hidden className="size-4" />
-                            <span className="text-caption">Add</span>
-                          </button>
-                        ) : null}
-                      </div>
-                      <input
-                        ref={photoInput}
-                        type="file"
-                        aria-label="Add a sample photo"
-                        accept="image/jpeg,image/png,image/webp"
-                        className="sr-only"
-                        tabIndex={-1}
-                        onChange={(event) => {
-                          const file = event.target.files?.[0];
-                          if (file) void addPhoto(file);
-                          event.target.value = "";
-                        }}
-                      />
-                    </div>
-                  </div>
+                  <ListingPhotoManager
+                    photos={listing.photos}
+                    listingName={listing.name}
+                    busy={busy}
+                    replacingFileId={replacingPhoto}
+                    adding={addingPhoto}
+                    notice={photoNotice}
+                    addId={FIELD_IDS.photos}
+                    onAdd={(file) => void addPhoto(file)}
+                    onReplace={(photo, index, file) => void replacePhoto(photo, index, file)}
+                    onReorder={(change) => void applyPhotoOrder(change)}
+                  />
                 </Section>
                 <Section
                   id="section-what"
@@ -1305,40 +1246,6 @@ export default function ListingEditorPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog
-        open={photoToRemove != null}
-        onOpenChange={(open) => {
-          if (!open) setPhotoToRemove(null);
-        }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {removingLastPhoto ? "Remove the last sample?" : "Remove this sample?"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {removingLastPhoto
-                ? "This listing cannot go on the board until another photo is added."
-                : "It comes off this listing. The other samples stay in their order."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Keep it</AlertDialogCancel>
-            <AlertDialogAction
-              variant="danger"
-              onClick={() => {
-                if (!photoToRemove) return;
-                const remaining = listing.photos
-                  .filter((photo) => photo.fileId !== photoToRemove)
-                  .map((photo) => photo.fileId);
-                void applyPhotoOrder(remaining);
-              }}
-            >
-              Remove this sample
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }
