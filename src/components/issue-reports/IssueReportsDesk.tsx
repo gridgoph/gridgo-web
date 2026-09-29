@@ -23,6 +23,7 @@ import type {
   IssueReportStatus,
 } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
+import { useLiveReload } from "@/lib/live/useLiveReload";
 import { cn } from "@/lib/utils";
 
 const STATUS_TABS: { value: IssueReportStatus; label: string }[] = [
@@ -145,6 +146,8 @@ export function IssueReportsDesk() {
       return result.reports[0]?.id ?? null;
     });
   }, [status]);
+
+  useLiveReload("issue-reports", load);
 
   useEffect(() => {
     let cancelled = false;

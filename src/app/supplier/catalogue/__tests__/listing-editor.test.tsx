@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -23,6 +23,9 @@ const mocks = vi.hoisted(() => ({
   getFileDownloadUrl: vi.fn(),
   updateCatalogItem: vi.fn(),
   updateCatalogOption: vi.fn(),
+  reorderCatalogPhotos: vi.fn(),
+  uploadCatalogItemPhoto: vi.fn(),
+  attachCatalogItemPhoto: vi.fn(),
 }));
 
 vi.stubGlobal("React", React);
@@ -56,6 +59,9 @@ vi.mock("@/lib/api/client", async () => {
     getFileDownloadUrl: mocks.getFileDownloadUrl,
     updateCatalogItem: mocks.updateCatalogItem,
     updateCatalogOption: mocks.updateCatalogOption,
+    reorderCatalogPhotos: mocks.reorderCatalogPhotos,
+    uploadCatalogItemPhoto: mocks.uploadCatalogItemPhoto,
+    attachCatalogItemPhoto: mocks.attachCatalogItemPhoto,
   };
 });
 
@@ -68,6 +74,10 @@ afterEach(() => {
 
 /** Autosave fires once the shop pauses; give it that pause plus slack. */
 const AUTOSAVE_WAIT = { timeout: AUTOSAVE_DELAY_MS + 2000 };
+
+async function openEditorStep(label: string) {
+  fireEvent.click(await screen.findByRole("tab", { name: label }));
+}
 
 const taxonomy: Taxonomy = {
   categories: [
@@ -167,9 +177,14 @@ describe("listing editor printer cap", () => {
     stubLoad(catalogItem());
     render(<ListingEditorPage />);
 
-    expect(await screen.findByLabelText("Name")).toHaveValue("Flyers");
+    expect(await screen.findByRole("tab", { name: "Pick" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     expect(screen.queryByLabelText("Max printer width")).not.toBeInTheDocument();
     expect(screen.queryByText(/^feet$/)).not.toBeInTheDocument();
+    await openEditorStep("About");
+    expect(screen.getByLabelText("Name")).toHaveValue("Flyers");
   });
 
   it("requires max printer width in feet on tarpaulin listings", async () => {
@@ -188,14 +203,13 @@ describe("listing editor printer cap", () => {
 
     expect(await screen.findByLabelText("Max printer width")).toBeVisible();
     expect(screen.getByText("feet")).toBeVisible();
+    await openEditorStep("Review");
     expect(
       screen.getAllByText(
         "Set the max printer width in feet before it can go on the board.",
       ).length,
     ).toBeGreaterThan(0);
-    expect(
-      screen.getAllByRole("button", { name: "Put it on the board" })[0],
-    ).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Put it on the board" })).toBeDisabled();
   });
 
   it("saves printerMaxWidthFeet for tarpaulin and sends null after switching away", async () => {
@@ -266,7 +280,8 @@ it("preserves an edited listing draft when a live catalogue refresh arrives", as
       <ListingEditorPage />
     </LiveContext.Provider>,
   );
-  expect(await screen.findByLabelText("Name")).toHaveValue("Flyers");
+  await openEditorStep("About");
+  expect(screen.getByLabelText("Name")).toHaveValue("Flyers");
   // The autosave that follows the edit meets a stale version; the draft stays.
   mocks.updateCatalogItem.mockRejectedValueOnce(
     new ApiError(409, { error: "version_conflict" }),
@@ -304,7 +319,8 @@ describe("listing editor autosave", () => {
   it("saves a paused edit on its own and says so, without a Save button", async () => {
     stubLoad(catalogItem());
     render(<ListingEditorPage />);
-    expect(await screen.findByLabelText("Name")).toHaveValue("Flyers");
+    await openEditorStep("About");
+    expect(screen.getByLabelText("Name")).toHaveValue("Flyers");
     expect(screen.queryByRole("button", { name: /^Save/ })).not.toBeInTheDocument();
     expect(screen.queryByText("Saved")).not.toBeInTheDocument();
 
@@ -333,7 +349,8 @@ describe("listing editor autosave", () => {
         }),
     );
     render(<ListingEditorPage />);
-    const name = await screen.findByLabelText("Name");
+    await openEditorStep("About");
+    const name = screen.getByLabelText("Name");
     fireEvent.change(name, { target: { value: "Business " } });
     await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalledTimes(1), AUTOSAVE_WAIT);
     expect(screen.getByText("Saving…")).toBeVisible();
@@ -357,7 +374,8 @@ describe("listing editor autosave", () => {
   it("holds a draft the API would refuse instead of sending it", async () => {
     stubLoad(catalogItem());
     render(<ListingEditorPage />);
-    const price = await screen.findByLabelText("Your price");
+    await openEditorStep("Price");
+    const price = screen.getByLabelText("Your price");
     fireEvent.change(price, { target: { value: "" } });
     expect(await screen.findByText(/Not saved yet — enter a price/)).toBeVisible();
     await new Promise((resolve) => setTimeout(resolve, AUTOSAVE_DELAY_MS + 200));
@@ -366,19 +384,13 @@ describe("listing editor autosave", () => {
 });
 
 describe("listing editor readiness checklist", () => {
-  it("lists what is missing once, previews the board tile, and takes you to the field", async () => {
+  it("lists what is missing once, and takes you to the field", async () => {
     stubLoad(catalogItem({ description: "", active: false }));
     const scrollIntoView = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoView;
     render(<ListingEditorPage />);
-    expect(await screen.findByLabelText("Name")).toHaveValue("Flyers");
+    await openEditorStep("Review");
 
-    // The preview tile carries the standing chip; the header does not repeat it.
-    const preview = screen.getByTestId("listing-preview");
-    expect(preview).toHaveTextContent("Flyers");
-    expect(preview).toHaveTextContent("₱400.00 per pack of 100");
-    expect(preview).toHaveTextContent("Not ready yet");
-    expect(screen.getAllByText("Not ready yet")).toHaveLength(1);
     expect(screen.getByText("1 thing before it can go up")).toBeVisible();
 
     const row = screen.getByRole("button", {
@@ -390,24 +402,82 @@ describe("listing editor readiness checklist", () => {
 
     fireEvent.click(row);
     expect(scrollIntoView).toHaveBeenCalled();
+    expect(screen.getByRole("tab", { name: "About" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByLabelText("Description")).toHaveFocus();
 
     fireEvent.change(screen.getByLabelText("Description"), {
       target: { value: "Single-sheet colour printing." },
     });
+    await openEditorStep("Review");
     expect(await screen.findByText("Ready for the board")).toBeVisible();
-    expect(screen.queryByText("Not ready yet")).not.toBeInTheDocument();
-    await waitFor(() => expect(cta).toBeEnabled(), AUTOSAVE_WAIT);
+    expect(screen.getByRole("button", { name: "Put it on the board" })).toBeEnabled();
   });
 
   it("shows the standing chip in the header only for a live or hidden listing", async () => {
     stubLoad(catalogItem());
     render(<ListingEditorPage />);
-    expect(await screen.findByLabelText("Name")).toHaveValue("Flyers");
-    expect(screen.getByRole("heading", { level: 2, name: "Flyers" })).toBeVisible();
-    // The board tile does not chip a live listing, so the header chip is the one.
+    expect(await screen.findByRole("heading", { level: 2, name: "Flyers" })).toBeVisible();
+    // The client reading does not chip a live listing, so the header chip is the one.
     expect(screen.getAllByText("On the board")).toHaveLength(1);
+    await openEditorStep("Review");
     expect(screen.getByRole("button", { name: "Take it off the board" })).toBeEnabled();
+  });
+});
+
+describe("listing editor wizard", () => {
+  it("walks all seven steps", async () => {
+    stubLoad(catalogItem());
+    render(<ListingEditorPage />);
+    const steps = [
+      ["Pick", "Pick printing category"],
+      ["About", "Describe your product"],
+      ["Price", "Set your product price"],
+      ["Speed", "Set your capacity & speed"],
+      ["Steps", "How will the client choose?"],
+      ["Artwork", "How can the client help you?"],
+      ["Review", "Finalize your product"],
+    ] as const;
+
+    expect(await screen.findByRole("tab", { name: "Pick" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    for (const [label, title] of steps) {
+      fireEvent.click(screen.getByRole("tab", { name: label }));
+      expect(screen.getByRole("tab", { name: label })).toHaveAttribute("aria-selected", "true");
+      expect(screen.getByRole("heading", { level: 3, name: title })).toBeVisible();
+    }
+  });
+
+  it("shows the draft price and sample in the client reading", async () => {
+    stubLoad(catalogItem());
+    render(<ListingEditorPage />);
+    const preview = await screen.findByTestId("listing-preview");
+    expect(preview).toHaveTextContent("₱400.00");
+    expect(preview).toHaveTextContent("per pack of 100");
+    expect(await within(preview).findByRole("img", { name: "Flyers" })).toBeVisible();
+
+    await openEditorStep("Price");
+    fireEvent.change(screen.getByLabelText("Your price"), { target: { value: "550" } });
+    expect(preview).toHaveTextContent("₱550.00");
+    expect(within(preview).getByRole("img", { name: "Flyers" })).toBeVisible();
+    expect(mocks.updateCatalogItem).not.toHaveBeenCalled();
+  });
+
+  it("keeps publish on Review blocked until the checklist is clear", async () => {
+    stubLoad(catalogItem({ description: "", active: false }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Review");
+    expect(screen.getByRole("button", { name: "Put it on the board" })).toBeDisabled();
+    expect(screen.getByText("1 thing before it can go up")).toBeVisible();
+
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "Single-sheet colour printing." },
+    });
+    await openEditorStep("Review");
+    expect(await screen.findByText("Ready for the board")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Put it on the board" })).toBeEnabled();
   });
 });
 
@@ -435,7 +505,8 @@ it.each([true, false])(
         <ListingEditorPage />
       </LiveContext.Provider>,
     );
-    const price = await screen.findByLabelText("A5 extra pesos");
+    await openEditorStep("Steps");
+    const price = screen.getByLabelText("A5 extra pesos");
     if (edited) fireEvent.change(price, { target: { value: "12.50" } });
     const remote = catalogItem();
     remote.item.optionGroups[0].version = 2;
@@ -504,7 +575,8 @@ function renderLiveListing() {
 
 it("retains an option price draft and its version through transient failure and recovery", async () => {
   const ping = renderLiveListing();
-  const price = await screen.findByLabelText("A5 extra pesos");
+  await openEditorStep("Steps");
+  const price = screen.getByLabelText("A5 extra pesos");
   fireEvent.change(price, { target: { value: "12.50" } });
   price.focus();
   mocks.getTaxonomy.mockRejectedValueOnce(new TypeError("Offline"));
@@ -537,7 +609,8 @@ it.each([401, 403, 404])(
   "clears the loaded listing on HTTP %s and keeps it hidden during a failed retry",
   async (status) => {
     const ping = renderLiveListing();
-    const price = await screen.findByLabelText("A5 extra pesos");
+    await openEditorStep("Steps");
+    const price = screen.getByLabelText("A5 extra pesos");
     fireEvent.change(price, { target: { value: "12.50" } });
     mocks.getTaxonomy.mockRejectedValueOnce(
       new ApiError(status, {
@@ -559,6 +632,263 @@ it.each([401, 403, 404])(
   },
 );
 
+describe("listing editor sample photos", () => {
+  const photos = [
+    { fileId: "file_1", sortOrder: 0 },
+    { fileId: "file_2", sortOrder: 1 },
+    { fileId: "file_3", sortOrder: 2 },
+  ];
+
+  function stubPhotos(list = photos) {
+    stubLoad(catalogItem({ photos: list }));
+    mocks.getFileDownloadUrl.mockImplementation(
+      async (fileId: string) => `https://files.test/${fileId}`,
+    );
+    mocks.reorderCatalogPhotos.mockImplementation(
+      async (_itemId: string, fileIds: string[], expectedVersion: number) =>
+        catalogItem({
+          photos: fileIds.map((fileId, sortOrder) => ({ fileId, sortOrder })),
+          version: expectedVersion + 1,
+        }),
+    );
+  }
+
+  /** The wide sample in "What clients see". */
+  async function previewSample(fileId: string) {
+    const preview = screen.getByTestId("listing-preview-sample");
+    await waitFor(() =>
+      expect(within(preview).getByRole("img")).toHaveAttribute(
+        "src",
+        `https://files.test/${fileId}`,
+      ),
+    );
+  }
+
+  async function choose(user: ReturnType<typeof userEvent.setup>, photo: string, item: string) {
+    await user.click(screen.getByRole("button", { name: `Edit ${photo}` }));
+    await user.click(await screen.findByRole("menuitem", { name: item }));
+  }
+
+  it("labels every photo's controls and offers only the moves that make sense", async () => {
+    const user = userEvent.setup();
+    stubPhotos();
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+
+    for (const name of ["Edit wide sample", "Edit photo 2", "Edit photo 3"]) {
+      expect(screen.getByRole("button", { name })).toBeVisible();
+    }
+    await user.click(screen.getByRole("button", { name: "Edit wide sample" }));
+    const wideItems = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
+    expect(wideItems).toEqual(["Move later", "Replace photo…", "Remove photo…"]);
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("button", { name: "Edit photo 3" }));
+    const lastItems = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
+    expect(lastItems).toEqual([
+      "Make wide sample",
+      "Move earlier",
+      "Replace photo…",
+      "Remove photo…",
+    ]);
+  });
+
+  it("confirms, then posts the photos that stay when one is removed", async () => {
+    const user = userEvent.setup();
+    stubPhotos();
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+
+    await choose(user, "photo 2", "Remove photo…");
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByRole("heading", { name: "Remove photo 2?" })).toBeVisible();
+    expect(
+      within(dialog).getByText(
+        "It comes off this listing. The other photos keep their order. Orders already placed are not changed.",
+      ),
+    ).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: "Remove photo" }));
+
+    await waitFor(() =>
+      expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith("sci_1", ["file_1", "file_3"], 3),
+    );
+    expect(mocks.reorderCatalogPhotos).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Photo 2 removed.")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Edit photo 3" })).not.toBeInTheDocument();
+  });
+
+  it("removes the wide sample, says the next photo took its place, and updates the preview", async () => {
+    const user = userEvent.setup();
+    stubPhotos();
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+    await previewSample("file_1");
+
+    await choose(user, "wide sample", "Remove photo…");
+    const dialog = await screen.findByRole("alertdialog");
+    expect(
+      within(dialog).getByRole("heading", { name: "Remove the wide sample?" }),
+    ).toBeVisible();
+    expect(
+      within(dialog).getByText(/Photo 2 becomes the wide sample clients see first\./),
+    ).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: "Remove photo" }));
+
+    await waitFor(() =>
+      expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith("sci_1", ["file_2", "file_3"], 3),
+    );
+    expect(
+      await screen.findByText("Wide sample removed. The next photo is now the wide sample."),
+    ).toBeVisible();
+    await previewSample("file_2");
+  });
+
+  it("does not call the API when the shop keeps the photo", async () => {
+    const user = userEvent.setup();
+    stubPhotos();
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+
+    await choose(user, "wide sample", "Remove photo…");
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Keep it" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(mocks.reorderCatalogPhotos).not.toHaveBeenCalled();
+    await previewSample("file_1");
+  });
+
+  it("warns that removing the only photo takes the listing off the board", async () => {
+    const user = userEvent.setup();
+    stubPhotos([{ fileId: "file_1", sortOrder: 0 }]);
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+
+    await choose(user, "wide sample", "Remove photo…");
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByRole("heading", { name: "Remove the only photo?" })).toBeVisible();
+    expect(within(dialog).getByText(/clients stop seeing it until you add another/)).toBeVisible();
+    await user.click(within(dialog).getByRole("button", { name: "Remove photo" }));
+
+    await waitFor(() =>
+      expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith("sci_1", [], 3),
+    );
+    expect(await screen.findByRole("button", { name: /Add the wide sample/ })).toBeVisible();
+  });
+
+  it("makes a later photo the wide sample in one step and the preview follows", async () => {
+    const user = userEvent.setup();
+    stubPhotos();
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+
+    await choose(user, "photo 3", "Make wide sample");
+
+    await waitFor(() =>
+      expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith(
+        "sci_1",
+        ["file_3", "file_1", "file_2"],
+        3,
+      ),
+    );
+    expect(await screen.findByText("Photo 3 is now the wide sample.")).toBeVisible();
+    await previewSample("file_3");
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Edit wide sample" })).toHaveFocus(),
+    );
+  });
+
+  it("keeps the step-by-step move", async () => {
+    const user = userEvent.setup();
+    stubPhotos();
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+
+    await choose(user, "photo 2", "Move later");
+
+    await waitFor(() =>
+      expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith(
+        "sci_1",
+        ["file_1", "file_3", "file_2"],
+        3,
+      ),
+    );
+    expect(await screen.findByText("Photo 2 is now photo 3.")).toBeVisible();
+  });
+
+  it("replaces a photo in its own slot and the preview shows the new one", async () => {
+    const user = userEvent.setup();
+    stubPhotos();
+    mocks.uploadCatalogItemPhoto.mockResolvedValue({ fileId: "file_new" });
+    mocks.attachCatalogItemPhoto.mockImplementation(async () => {
+      mocks.getCatalogItem.mockResolvedValue(
+        catalogItem({
+          photos: [
+            { fileId: "file_new", sortOrder: 0 },
+            { fileId: "file_2", sortOrder: 1 },
+            { fileId: "file_3", sortOrder: 2 },
+          ],
+          version: 4,
+        }),
+      );
+      return {};
+    });
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+    await previewSample("file_1");
+
+    await choose(user, "wide sample", "Replace photo…");
+    const picked = new File(["x"], "sharper.jpg", { type: "image/jpeg" });
+    await user.upload(screen.getByLabelText("Choose a replacement photo"), picked);
+
+    await waitFor(() =>
+      expect(mocks.attachCatalogItemPhoto).toHaveBeenCalledWith("file_new", "sci_1", 0, undefined),
+    );
+    expect(mocks.uploadCatalogItemPhoto).toHaveBeenCalledWith(picked);
+    expect(mocks.reorderCatalogPhotos).not.toHaveBeenCalled();
+    expect(await screen.findByText("Wide sample replaced. It kept its place.")).toBeVisible();
+    await previewSample("file_new");
+  });
+
+  it("replaces a later photo at its own sort order", async () => {
+    const user = userEvent.setup();
+    stubPhotos([
+      { fileId: "file_1", sortOrder: 0 },
+      { fileId: "file_2", sortOrder: 4 },
+    ]);
+    mocks.uploadCatalogItemPhoto.mockResolvedValue({ fileId: "file_new" });
+    mocks.attachCatalogItemPhoto.mockResolvedValue({});
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+
+    await choose(user, "photo 2", "Replace photo…");
+    await user.upload(
+      screen.getByLabelText("Choose a replacement photo"),
+      new File(["x"], "b.png", { type: "image/png" }),
+    );
+
+    await waitFor(() =>
+      expect(mocks.attachCatalogItemPhoto).toHaveBeenCalledWith("file_new", "sci_1", 4, undefined),
+    );
+  });
+
+  it("asks the shop to refresh when the photo set is stale", async () => {
+    const user = userEvent.setup();
+    stubPhotos();
+    mocks.reorderCatalogPhotos.mockRejectedValueOnce(
+      new ApiError(409, { error: "catalog_item_stale" }),
+    );
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+
+    await choose(user, "photo 3", "Move earlier");
+
+    expect(
+      await screen.findByText("This listing changed on another screen. Refresh and try again."),
+    ).toBeVisible();
+  });
+});
+
 it("shows a recoverable error when the initial listing load fails", async () => {
   stubLoad(catalogItem());
   mocks.getTaxonomy.mockRejectedValueOnce(new TypeError("Offline"));
@@ -571,7 +901,8 @@ it.each([false, true])(
   "reconciles a saved option price after refresh (initial refresh fails: %s)",
   async (refreshFails) => {
     const ping = renderLiveListing();
-    const price = await screen.findByLabelText("A5 extra pesos");
+    await openEditorStep("Steps");
+    const price = screen.getByLabelText("A5 extra pesos");
     fireEvent.change(price, { target: { value: "12.50" } });
     const updated = catalogItem();
     updated.item.optionGroups[0].version = 2;

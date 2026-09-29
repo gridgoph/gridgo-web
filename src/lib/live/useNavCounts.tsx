@@ -82,7 +82,9 @@ const NAV_COUNT_SOURCES: Record<NavCountKey, CountSource> = {
       ).length,
   },
   "chat-unread": {
-    resources: [],
+    resources: ["chat"],
+    // Opening a thread marks it read in this tab without a ping, so the badge
+    // also refreshes when the person leaves the page.
     refreshOnNavigate: true,
     load: async () =>
       (await listSupportChatThreads()).reduce(
@@ -91,7 +93,7 @@ const NAV_COUNT_SOURCES: Record<NavCountKey, CountSource> = {
       ),
   },
   "issue-reports-new": {
-    resources: [],
+    resources: ["issue-reports"],
     refreshOnNavigate: true,
     load: async () => (await listIssueReports("new")).counts.new ?? 0,
   },

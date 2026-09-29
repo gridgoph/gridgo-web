@@ -43,6 +43,18 @@ describe("SSE event readers", () => {
       resource: "orders",
       id: "ord_1",
     });
+    expect(readInvalidateEvent({
+      event: "invalidate",
+      data: '{"resource":"issue-reports","id":"report-1"}',
+      id: null,
+      retryMs: null,
+    })).toEqual({ resource: "issue-reports", id: "report-1" });
+    expect(readInvalidateEvent({
+      event: "invalidate",
+      data: '{"resource":"chat"}',
+      id: null,
+      retryMs: null,
+    })).toEqual({ resource: "chat" });
     expect(
       readInvalidateEvent({
         event: "invalidate",
