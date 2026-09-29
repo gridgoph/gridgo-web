@@ -5,12 +5,14 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { useParams, useRouter } from "next/navigation";
-import { Check, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 
-import { ListingCard } from "@/app/supplier/_components/ListingCard";
+import { ListingPreviewBody } from "@/app/supplier/_components/ListingPreviewBody";
 import { PrinterMaxWidthField } from "@/app/supplier/_components/PrinterMaxWidthField";
 import {
+  focusField,
   ReadinessChecklist,
   requirementRowId,
 } from "@/app/supplier/_components/ReadinessChecklist";
@@ -57,6 +59,7 @@ import {
   listAcceptedFileFormats,
   listCatalogItemPrepSteps,
   putCatalogItemFileFormats,
+  reorderCatalogPhotos,
   updateCatalogItem,
   updateCatalogItemPrepStep,
   updateCatalogOption,
@@ -124,6 +127,36 @@ const FIELD_IDS: Record<BoardField, string> = {
   turnaround: "section-ready-in",
   groups: "section-picks",
   formats: "section-artwork",
+};
+
+/**
+ * The same seven steps as the supplier app's add-a-listing interview.
+ * Add-ons sit on Steps. Publish sits on Review.
+ */
+const EDITOR_STEPS = [
+  { id: "pick", label: "Pick", title: "Pick printing category" },
+  { id: "about", label: "About", title: "Describe your product" },
+  { id: "price", label: "Price", title: "Set your product price" },
+  { id: "speed", label: "Speed", title: "Set your capacity & speed" },
+  { id: "steps", label: "Steps", title: "How will the client choose?" },
+  { id: "artwork", label: "Artwork", title: "How can the client help you?" },
+  { id: "review", label: "Review", title: "Finalize your product" },
+] as const;
+
+type EditorStepId = (typeof EDITOR_STEPS)[number]["id"];
+
+const STEP_OF_FIELD: Record<BoardField, EditorStepId> = {
+  photos: "about",
+  name: "about",
+  description: "about",
+  price: "price",
+  packageQty: "speed",
+  measureUnit: "price",
+  billableSize: "price",
+  printerMaxWidth: "pick",
+  turnaround: "speed",
+  groups: "steps",
+  formats: "artwork",
 };
 
 const PRICING_CHOICES = PRICING_UNITS.map((unit) => ({
@@ -215,6 +248,8 @@ export default function ListingEditorPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [removeOpen, setRemoveOpen] = useState(false);
+  const [photoToRemove, setPhotoToRemove] = useState<string | null>(null);
+  const [step, setStep] = useState<EditorStepId>("pick");
   const dirtyRef = useRef(false);
   const busyRef = useRef(false);
   const photoInput = useRef<HTMLInputElement | null>(null);
@@ -392,6 +427,43 @@ export default function ListingEditorPage() {
     return () => window.clearTimeout(timer);
     // `working` is the draft object; a new one means the shop typed.
   }, [dirty, working]);
+
+  async function applyPhotoOrder(fileIds: string[]) {
+    if (!listing || listing.version == null) {
+      setActionError("This listing changed on another screen. Refresh and try again.");
+      setPhotoToRemove(null);
+      return;
+    }
+    setBusy(true);
+    setActionError(null);
+    setPhotoToRemove(null);
+    try {
+      const saved = normalizeListing(
+        await reorderCatalogPhotos(listing.id, fileIds, listing.version),
+      );
+      if (!saved) throw new Error("unreadable");
+      setListing(saved);
+      setDraft((current) =>
+        current ? { ...current, version: saved.version } : draftFrom(saved),
+      );
+    } catch (err) {
+      setActionError(listingErrorMessage(err, "Could not update these sample photos."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function movePhoto(fileId: string, direction: -1 | 1) {
+    if (!listing) return;
+    const ids = listing.photos.map((photo) => photo.fileId);
+    const index = ids.indexOf(fileId);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= ids.length) return;
+    const next = [...ids];
+    const [moved] = next.splice(index, 1);
+    next.splice(target, 0, moved);
+    void applyPhotoOrder(next);
+  }
 
   async function addPhoto(file: File) {
     if (!listing) return;
@@ -597,6 +669,56 @@ export default function ListingEditorPage() {
       ? listing.formatCodes
       : (context?.inheritedFormatCodes ?? []);
   const showStanding = standing && standing.label !== "Not ready yet";
+  const stepIndex = EDITOR_STEPS.findIndex((entry) => entry.id === step);
+
+  function jumpTo(field: BoardField) {
+    flushSync(() => setStep(STEP_OF_FIELD[field]));
+    focusField(FIELD_IDS[field]);
+  }
+
+  function photoControls(index: number) {
+    const photo = listing.photos[index];
+    if (!photo) return null;
+    const place = index === 0 ? "the wide sample" : `sample ${index + 1}`;
+    return (
+      <div className="flex flex-wrap gap-1">
+        {index > 0 ? (
+          <Button
+            type="button"
+            size="icon"
+            aria-label={`Move ${place} earlier`}
+            disabled={busy}
+            onClick={() => movePhoto(photo.fileId, -1)}
+          >
+            <ChevronLeft aria-hidden />
+          </Button>
+        ) : null}
+        {index < listing.photos.length - 1 ? (
+          <Button
+            type="button"
+            size="icon"
+            aria-label={`Move ${place} later`}
+            disabled={busy}
+            onClick={() => movePhoto(photo.fileId, 1)}
+          >
+            <ChevronRight aria-hidden />
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          size="icon"
+          variant="danger"
+          aria-label={`Remove ${place}`}
+          disabled={busy}
+          onClick={() => setPhotoToRemove(photo.fileId)}
+        >
+          <Trash2 aria-hidden />
+        </Button>
+      </div>
+    );
+  }
+
+  const removingLastPhoto = listing.photos.length === 1 && photoToRemove != null;
 
   return (
     <div className="flex flex-col gap-6 pb-6">
@@ -624,10 +746,10 @@ export default function ListingEditorPage() {
         {notice ? <p className="text-body text-text-secondary m-0">{notice}</p> : null}
       </div>
 
-      <div className="lg:grid lg:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)] lg:items-start lg:gap-8 xl:grid-cols-[minmax(18rem,24rem)_minmax(0,1fr)] xl:gap-10">
+      <div className="lg:grid lg:grid-cols-[minmax(18rem,28rem)_minmax(0,1fr)] lg:items-start lg:gap-8 xl:gap-10">
         <aside
           aria-label="What clients see"
-          className="flex flex-col gap-4 lg:sticky lg:top-[4.75rem]"
+          className="flex flex-col gap-4 lg:sticky lg:top-[4.75rem] lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto"
         >
           <div className="flex flex-col gap-1">
             <p className="text-overline text-text-muted m-0 uppercase">
@@ -635,453 +757,526 @@ export default function ListingEditorPage() {
             </p>
             <SaveStatus state={saveState} onRetry={() => void persist()} />
           </div>
-          <div className="max-w-xs">
-            <ListingCard
-              listing={merged}
-              taxonomy={taxonomy}
-              services={services}
-              shopApproved={shopApproved}
-              preview
-            />
-          </div>
-          <ReadinessChecklist requirements={checklist} targets={FIELD_IDS} />
-          <Button
-            variant="primary"
-            fullWidth
-            disabled={busy || firstMissing != null}
-            aria-describedby={
-              firstMissing ? requirementRowId(firstMissing.key) : undefined
-            }
-            onClick={() => void persist(!listing.onTheBoard)}
-          >
-            {listing.onTheBoard ? "Take it off the board" : "Put it on the board"}
-          </Button>
+          <ListingPreviewBody
+            listing={merged}
+            taxonomy={taxonomy}
+            services={services}
+            prepSteps={prepSteps}
+            formats={formats}
+          />
         </aside>
 
-        <div className="mt-10 flex flex-col gap-8 lg:mt-0">
-          <Section
-            id="section-photos"
-            step="01"
-            title="Photos"
-            help="Up to eight samples of this kind of work. The first one is what clients see on your board."
-          >
-            <div className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)] gap-4 md:grid-cols-[minmax(0,11rem)_minmax(0,1fr)]">
-              <div className="flex flex-col gap-2">
-                <p
-                  className="text-body text-text-primary m-0"
-                  style={{ fontFamily: "var(--font-medium)" }}
+        <div className="mt-10 flex flex-col gap-6 lg:mt-0">
+          <div role="tablist" aria-label="Listing steps" className="flex flex-wrap gap-1">
+            {EDITOR_STEPS.map((entry) => {
+              const selected = step === entry.id;
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  role="tab"
+                  id={`listing-step-${entry.id}`}
+                  aria-selected={selected}
+                  aria-controls="listing-step-panel"
+                  tabIndex={selected ? 0 : -1}
+                  onClick={() => setStep(entry.id)}
+                  className={cn(
+                    "text-button min-h-11 rounded-[var(--radius-field)] border px-3",
+                    selected
+                      ? "border-transparent bg-primary text-primary-foreground"
+                      : "border-border bg-card text-foreground hover:bg-overlay-hover",
+                  )}
                 >
-                  Board photo
-                </p>
-                <SamplePhoto
-                  fileId={listing.photos[0]?.fileId}
-                  alt={listing.photos[0]?.altText ?? listing.name}
-                  emptyLabel="Add a sample so clients can see the work"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <p className="text-caption text-text-secondary m-0">
-                  {listing.photos.length > 1
-                    ? "More samples"
-                    : "The rest, if you have them"}
-                </p>
-                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                  {listing.photos.slice(1).map((photo) => (
-                    <SamplePhoto
-                      key={photo.fileId}
-                      fileId={photo.fileId}
-                      alt={photo.altText ?? listing.name}
+                  {entry.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div
+            id="listing-step-panel"
+            role="tabpanel"
+            aria-labelledby={`listing-step-${step}`}
+            className="flex flex-col gap-8"
+          >
+            {step === "pick" ? (
+              <Section
+                id="section-kind"
+                step="01"
+                title="Pick printing category"
+                help={`Filed under ${subcategoryName(taxonomy, working.subcategoryCode)}. You can move it within that category, not out of it.`}
+              >
+                <FieldGroup className="gap-4">
+                  {covers.length ? (
+                    <SegmentedControl
+                      id="kind"
+                      aria-label="Kind of work"
+                      options={covers.map((cover) => ({
+                        value: cover.code,
+                        label: cover.name,
+                      }))}
+                      value={working.subcategoryCode}
+                      onChange={(subcategoryCode) =>
+                        setDraft({ ...working, subcategoryCode })
+                      }
                     />
-                  ))}
-                  {listing.photos.length < LISTING_CAPS.photos ? (
-                    <button
-                      type="button"
-                      id={FIELD_IDS.photos}
-                      onClick={() => photoInput.current?.click()}
-                      className="rounded-card border-outline bg-surface hover:bg-overlay-hover active:bg-overlay-pressed flex aspect-square min-h-11 min-w-11 cursor-pointer flex-col items-center justify-center gap-1 border border-dashed disabled:cursor-not-allowed disabled:opacity-[0.38]"
-                    >
-                      <Plus aria-hidden className="size-4" />
-                      <span className="text-caption">Add</span>
-                    </button>
                   ) : null}
-                </div>
-                <input
-                  ref={photoInput}
-                  type="file"
-                  aria-label="Add a sample photo"
-                  accept="image/jpeg,image/png,image/webp"
-                  className="sr-only"
-                  tabIndex={-1}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void addPhoto(file);
-                    event.target.value = "";
-                  }}
-                />
-              </div>
-            </div>
-          </Section>
-
-          <Section
-            id="section-what"
-            step="02"
-            title="What it is"
-            help="Name it the way a client would ask for it."
-          >
-            <FieldGroup className="gap-4">
-              <Field>
-                <FieldLabel htmlFor="listing-name">Name</FieldLabel>
-                <Input
-                  id="listing-name"
-                  value={working.name}
-                  maxLength={LISTING_CAPS.nameChars}
-                  onChange={(event) => setDraft({ ...working, name: event.target.value })}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="listing-body">Description</FieldLabel>
-                <Textarea
-                  id="listing-body"
-                  value={working.description}
-                  maxLength={LISTING_CAPS.descriptionChars}
-                  onChange={(event) =>
-                    setDraft({ ...working, description: event.target.value })
-                  }
-                  placeholder="Single-sheet colour printing on 70gsm or 80gsm bond."
-                />
-                <FieldDescription>
-                  One or two sentences a client reads on your board.
-                </FieldDescription>
-              </Field>
-            </FieldGroup>
-          </Section>
-
-          <Section
-            id="section-kind"
-            step="03"
-            title="Kind of work"
-            help={`Filed under ${subcategoryName(taxonomy, working.subcategoryCode)}. You can move it within that category, not out of it.`}
-          >
-            <FieldGroup className="gap-4">
-              {covers.length ? (
-                <SegmentedControl
-                  id="kind"
-                  aria-label="Kind of work"
-                  options={covers.map((cover) => ({
-                    value: cover.code,
-                    label: cover.name,
-                  }))}
-                  value={working.subcategoryCode}
-                  onChange={(subcategoryCode) =>
-                    setDraft({ ...working, subcategoryCode })
-                  }
-                />
-              ) : null}
-              {needsPrinterMaxWidth(working.subcategoryCode) ? (
-                <PrinterMaxWidthField
-                  value={working.printerMaxWidthFeet}
-                  onChange={(printerMaxWidthFeet) =>
-                    setDraft({ ...working, printerMaxWidthFeet })
-                  }
-                />
-              ) : null}
-            </FieldGroup>
-          </Section>
-
-          <Section
-            id="section-price"
-            step="04"
-            title="Price"
-            help="Your own asking price. What GRIDGO charges the client on top is not yours to set."
-          >
-            <FieldGroup className="gap-4">
-              <SegmentedControl
-                id="pricing-unit"
-                aria-label="Pricing unit"
-                options={PRICING_CHOICES}
-                value={working.pricingUnit}
-                onChange={(pricingUnit) => setDraft({ ...working, pricingUnit })}
-              />
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field>
-                  <FieldLabel htmlFor="price">Your price</FieldLabel>
-                  <div className="relative">
-                    <span
-                      aria-hidden
-                      className="text-body text-text-secondary pointer-events-none absolute top-1/2 left-3 -translate-y-1/2"
-                    >
-                      ₱
-                    </span>
-                    <Input
-                      id="price"
-                      inputMode="decimal"
-                      className="pr-24 pl-7"
-                      value={working.price}
-                      aria-describedby="price-unit"
-                      onChange={(event) =>
-                        setDraft({ ...working, price: event.target.value })
+                  {needsPrinterMaxWidth(working.subcategoryCode) ? (
+                    <PrinterMaxWidthField
+                      value={working.printerMaxWidthFeet}
+                      onChange={(printerMaxWidthFeet) =>
+                        setDraft({ ...working, printerMaxWidthFeet })
                       }
                     />
-                    <span
-                      id="price-unit"
-                      className="text-caption text-text-muted pointer-events-none absolute top-1/2 right-3 -translate-y-1/2"
-                    >
-                      {priceSuffix(merged)}
-                    </span>
-                  </div>
-                </Field>
-                {working.pricingUnit === "per_package" ? (
-                  <Field>
-                    <FieldLabel htmlFor="pack">Pieces in a pack</FieldLabel>
-                    <Input
-                      id="pack"
-                      type="number"
-                      min={2}
-                      value={working.packageQty}
-                      onChange={(event) =>
-                        setDraft({
-                          ...working,
-                          packageQty: Number(event.target.value) || 0,
-                        })
-                      }
-                    />
-                  </Field>
-                ) : null}
-                {asksQuantity(working.pricingUnit) ? (
-                  <Field>
-                    <FieldLabel htmlFor="min-qty">Minimum order</FieldLabel>
-                    <Input
-                      id="min-qty"
-                      type="number"
-                      min={0}
-                      value={working.minimumOrderQuantity}
-                      onChange={(event) =>
-                        setDraft({
-                          ...working,
-                          minimumOrderQuantity: Number(event.target.value) || 0,
-                        })
-                      }
-                    />
-                    <FieldDescription>0 means no minimum.</FieldDescription>
-                  </Field>
-                ) : null}
-              </div>
-            </FieldGroup>
-          </Section>
+                  ) : null}
+                </FieldGroup>
+              </Section>
+            ) : null}
 
-          <Section
-            id="section-ready-in"
-            step="05"
-            title="Ready in"
-            help="How long a client waits from paying to pickup."
-          >
-            <FieldGroup className="gap-4">
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <SegmentedControl
-                  id="turnaround-mode"
-                  aria-label="Ready-in time"
-                  options={TURNAROUND_CHOICES}
-                  value={working.turnaroundMode}
-                  onChange={(turnaroundMode) => setDraft({ ...working, turnaroundMode })}
-                />
-                <p className="text-body text-text-secondary m-0" role="status">
-                  {readyInLine(resolvedHours)}
-                </p>
-              </div>
-              {working.turnaroundMode === "override" ? (
-                <Field className="max-w-48">
-                  <FieldLabel htmlFor="hours">Hours</FieldLabel>
-                  <Input
-                    id="hours"
-                    type="number"
-                    min={1}
-                    value={working.turnaroundHours}
-                    onChange={(event) =>
-                      setDraft({
-                        ...working,
-                        turnaroundHours: Number(event.target.value) || 0,
-                      })
-                    }
-                  />
-                </Field>
-              ) : (
-                <p className="text-caption text-text-secondary m-0">
-                  {inheritedHours
-                    ? `Your shop's usual time is ${inheritedHours} hours.`
-                    : "Your shop has no usual turnaround yet. Set the hours for this listing."}
-                </p>
-              )}
-            </FieldGroup>
-          </Section>
-
-          <Section
-            id="section-artwork"
-            step="06"
-            title="Artwork you accept"
-            help="What a client may send you for this listing."
-          >
-            <FieldGroup className="gap-4">
-              <SegmentedControl
-                id="artwork-mode"
-                aria-label="Artwork you accept"
-                options={ARTWORK_CHOICES}
-                value={listing.fileFormatMode}
-                onChange={(mode) => {
-                  if (mode === listing.fileFormatMode) return;
-                  void saveFormats(
-                    mode,
-                    mode === "override" ? (fileCodes.length ? fileCodes : ["pdf"]) : [],
-                  );
-                }}
-              />
-              {listing.fileFormatMode === "override" ? (
-                <div
-                  role="group"
-                  aria-label="File formats you accept"
-                  className="flex flex-wrap gap-2"
+            {step === "about" ? (
+              <>
+                <Section
+                  id="section-photos"
+                  step="02"
+                  title="Sample photos"
+                  help="Up to eight samples of this kind of work. The first one is the wide sample clients see. Move a photo earlier to put it first."
                 >
-                  {formats.map((format) => {
-                    const on = listing.formatCodes.includes(format.code);
-                    return (
-                      <FormatChip
-                        key={format.code}
-                        label={format.displayName}
-                        on={on}
-                        onToggle={() => {
-                          const next = on
-                            ? listing.formatCodes.filter((code) => code !== format.code)
-                            : [...listing.formatCodes, format.code];
-                          void saveFormats("override", next);
+                  <div className="grid grid-cols-[minmax(0,9rem)_minmax(0,1fr)] gap-4 md:grid-cols-[minmax(0,11rem)_minmax(0,1fr)]">
+                    <div className="flex flex-col gap-2">
+                      <p
+                        className="text-body text-text-primary m-0"
+                        style={{ fontFamily: "var(--font-medium)" }}
+                      >
+                        Wide sample
+                      </p>
+                      <SamplePhoto
+                        fileId={listing.photos[0]?.fileId}
+                        alt={listing.photos[0]?.altText ?? listing.name}
+                        emptyLabel="Add a sample so clients can see the work"
+                        className="aspect-[4/3]"
+                      />
+                      {photoControls(0)}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <p className="text-caption text-text-secondary m-0">
+                        {listing.photos.length > 1
+                          ? "Other photos"
+                          : "The rest, if you have them"}
+                      </p>
+                      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                        {listing.photos.slice(1).map((photo, offset) => (
+                          <div key={photo.fileId} className="flex flex-col gap-1">
+                            <SamplePhoto
+                              fileId={photo.fileId}
+                              alt={photo.altText ?? listing.name}
+                            />
+                            {photoControls(offset + 1)}
+                          </div>
+                        ))}
+                        {listing.photos.length < LISTING_CAPS.photos ? (
+                          <button
+                            type="button"
+                            id={FIELD_IDS.photos}
+                            onClick={() => photoInput.current?.click()}
+                            className="rounded-card border-outline bg-surface hover:bg-overlay-hover active:bg-overlay-pressed flex aspect-square min-h-11 min-w-11 cursor-pointer flex-col items-center justify-center gap-1 border border-dashed disabled:cursor-not-allowed disabled:opacity-[0.38]"
+                          >
+                            <Plus aria-hidden className="size-4" />
+                            <span className="text-caption">Add</span>
+                          </button>
+                        ) : null}
+                      </div>
+                      <input
+                        ref={photoInput}
+                        type="file"
+                        aria-label="Add a sample photo"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="sr-only"
+                        tabIndex={-1}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) void addPhoto(file);
+                          event.target.value = "";
                         }}
                       />
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-caption text-text-secondary m-0">
-                  {fileCodes.length
-                    ? `This listing follows its category: ${fileCodes.join(", ")}.`
-                    : "This category has no accepted files yet. Choose “Just this listing” and tick what you take."}
-                </p>
-              )}
-            </FieldGroup>
-          </Section>
-
-          <Section
-            id="section-picks"
-            step="07"
-            title="What a client picks"
-            help="In this order, the way they will see it. Each one saves as you add it."
-          >
-            {specs(listing).length ? (
-              <div className="grid gap-3 xl:grid-cols-2">
-                {specs(listing).map((group, index) => (
-                  <GroupEditor
-                    key={group.id}
-                    group={group}
-                    index={index + 1}
-                    onAddChoice={() => void addOption(group)}
-                    onSavePrice={saveOptionPrice}
-                    onRemoveChoice={(optionId) => void dropOption(group, optionId)}
-                    onRemoveGroup={() => void dropGroup(group)}
-                  />
-                ))}
-              </div>
-            ) : null}
-            {specs(listing).length < LISTING_CAPS.specGroups ? (
-              <div>
-                <Button onClick={() => void addChoice("spec")}>Add a step</Button>
-              </div>
-            ) : null}
-          </Section>
-
-          <Section
-            id="section-addons"
-            step="08"
-            title="Add-ons"
-            help="Priced extras a client can add. Rush, grommets, lamination."
-          >
-            {addOns(listing).length ? (
-              <div className="grid gap-3 xl:grid-cols-2">
-                {addOns(listing).map((group) => (
-                  <GroupEditor
-                    key={group.id}
-                    group={group}
-                    onAddChoice={() => void addOption(group)}
-                    onSavePrice={saveOptionPrice}
-                    onRemoveChoice={(optionId) => void dropOption(group, optionId)}
-                    onRemoveGroup={() => void dropGroup(group)}
-                  />
-                ))}
-              </div>
-            ) : null}
-            {addOns(listing).length < LISTING_CAPS.specGroups ? (
-              <div>
-                <Button onClick={() => void addChoice("addon")}>Add an add-on</Button>
-              </div>
-            ) : null}
-          </Section>
-
-          <Section
-            id="section-prep"
-            step="09"
-            title="Prep steps"
-            help="What a client should do before sending work. Numbered — they read it in order."
-          >
-            {prepSteps.length === 0 ? (
-              <p className="text-body text-text-secondary m-0 max-w-prose">
-                Nothing yet. On specialised work this is where a job is won or lost —
-                flatten the art, outline the fonts, export the 3MF at the right scale.
-              </p>
-            ) : (
-              <div className="grid gap-3 xl:grid-cols-2">
-                {prepSteps.map((step, index) => (
-                  <div
-                    key={step.id}
-                    className="rounded-card border-outline flex flex-col gap-2 border p-3"
-                  >
-                    <p className="text-caption text-text-muted m-0">{index + 1}.</p>
-                    <Input
-                      defaultValue={step.title}
-                      aria-label={`Step ${index + 1} title`}
-                      onBlur={(event) => {
-                        if (event.target.value.trim() !== step.title) {
-                          void saveStep(step, { title: event.target.value.trim() });
+                    </div>
+                  </div>
+                </Section>
+                <Section
+                  id="section-what"
+                  step="02"
+                  title="Describe your product"
+                  help="Name it the way a client would ask for it."
+                >
+                  <FieldGroup className="gap-4">
+                    <Field>
+                      <FieldLabel htmlFor="listing-name">Name</FieldLabel>
+                      <Input
+                        id="listing-name"
+                        value={working.name}
+                        maxLength={LISTING_CAPS.nameChars}
+                        onChange={(event) => setDraft({ ...working, name: event.target.value })}
+                      />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="listing-body">Description</FieldLabel>
+                      <Textarea
+                        id="listing-body"
+                        value={working.description}
+                        maxLength={LISTING_CAPS.descriptionChars}
+                        onChange={(event) =>
+                          setDraft({ ...working, description: event.target.value })
                         }
+                        placeholder="Single-sheet colour printing on 70gsm or 80gsm bond."
+                      />
+                      <FieldDescription>
+                        One or two sentences a client reads before they order.
+                      </FieldDescription>
+                    </Field>
+                  </FieldGroup>
+                </Section>
+              </>
+            ) : null}
+
+            {step === "price" ? (
+              <Section
+                id="section-price"
+                step="03"
+                title="Set your product price"
+                help="Your own asking price. What GRIDGO charges the client on top is not yours to set."
+              >
+                <FieldGroup className="gap-4">
+                  <SegmentedControl
+                    id="pricing-unit"
+                    aria-label="Pricing unit"
+                    options={PRICING_CHOICES}
+                    value={working.pricingUnit}
+                    onChange={(pricingUnit) => setDraft({ ...working, pricingUnit })}
+                  />
+                  <Field className="max-w-sm">
+                    <FieldLabel htmlFor="price">Your price</FieldLabel>
+                    <div className="relative">
+                      <span
+                        aria-hidden
+                        className="text-body text-text-secondary pointer-events-none absolute top-1/2 left-3 -translate-y-1/2"
+                      >
+                        ₱
+                      </span>
+                      <Input
+                        id="price"
+                        inputMode="decimal"
+                        className="pr-24 pl-7"
+                        value={working.price}
+                        aria-describedby="price-unit"
+                        onChange={(event) =>
+                          setDraft({ ...working, price: event.target.value })
+                        }
+                      />
+                      <span
+                        id="price-unit"
+                        className="text-caption text-text-muted pointer-events-none absolute top-1/2 right-3 -translate-y-1/2"
+                      >
+                        {priceSuffix(merged)}
+                      </span>
+                    </div>
+                  </Field>
+                </FieldGroup>
+              </Section>
+            ) : null}
+
+            {step === "speed" ? (
+              <Section
+                id="section-ready-in"
+                step="04"
+                title="Set your capacity & speed"
+                help="How many you will take, and how long a client waits from paying to pickup."
+              >
+                <FieldGroup className="gap-4">
+                  {working.pricingUnit === "per_package" ? (
+                    <Field className="max-w-xs">
+                      <FieldLabel htmlFor="pack">Pieces in a pack</FieldLabel>
+                      <Input
+                        id="pack"
+                        type="number"
+                        min={2}
+                        value={working.packageQty}
+                        onChange={(event) =>
+                          setDraft({
+                            ...working,
+                            packageQty: Number(event.target.value) || 0,
+                          })
+                        }
+                      />
+                    </Field>
+                  ) : null}
+                  {asksQuantity(working.pricingUnit) ? (
+                    <Field className="max-w-xs">
+                      <FieldLabel htmlFor="min-qty">Minimum order</FieldLabel>
+                      <Input
+                        id="min-qty"
+                        type="number"
+                        min={0}
+                        value={working.minimumOrderQuantity}
+                        onChange={(event) =>
+                          setDraft({
+                            ...working,
+                            minimumOrderQuantity: Number(event.target.value) || 0,
+                          })
+                        }
+                      />
+                      <FieldDescription>0 means no minimum.</FieldDescription>
+                    </Field>
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <SegmentedControl
+                      id="turnaround-mode"
+                      aria-label="Ready-in time"
+                      options={TURNAROUND_CHOICES}
+                      value={working.turnaroundMode}
+                      onChange={(turnaroundMode) => setDraft({ ...working, turnaroundMode })}
+                    />
+                    <p className="text-body text-text-secondary m-0" role="status">
+                      {readyInLine(resolvedHours)}
+                    </p>
+                  </div>
+                  {working.turnaroundMode === "override" ? (
+                    <Field className="max-w-48">
+                      <FieldLabel htmlFor="hours">Hours</FieldLabel>
+                      <Input
+                        id="hours"
+                        type="number"
+                        min={1}
+                        value={working.turnaroundHours}
+                        onChange={(event) =>
+                          setDraft({
+                            ...working,
+                            turnaroundHours: Number(event.target.value) || 0,
+                          })
+                        }
+                      />
+                    </Field>
+                  ) : (
+                    <p className="text-caption text-text-secondary m-0">
+                      {inheritedHours
+                        ? `Your shop's usual time is ${inheritedHours} hours.`
+                        : "Your shop has no usual turnaround yet. Set the hours for this listing."}
+                    </p>
+                  )}
+                </FieldGroup>
+              </Section>
+            ) : null}
+
+            {step === "steps" ? (
+              <>
+                <Section
+                  id="section-picks"
+                  step="05"
+                  title="How will the client choose?"
+                  help="In this order, the way they will see it. Each one saves as you add it."
+                >
+                  {specs(listing).length ? (
+                    <div className="grid gap-3 xl:grid-cols-2">
+                      {specs(listing).map((group, index) => (
+                        <GroupEditor
+                          key={group.id}
+                          group={group}
+                          index={index + 1}
+                          onAddChoice={() => void addOption(group)}
+                          onSavePrice={saveOptionPrice}
+                          onRemoveChoice={(optionId) => void dropOption(group, optionId)}
+                          onRemoveGroup={() => void dropGroup(group)}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                  {specs(listing).length < LISTING_CAPS.specGroups ? (
+                    <div>
+                      <Button onClick={() => void addChoice("spec")}>Add a step</Button>
+                    </div>
+                  ) : null}
+                </Section>
+                <Section
+                  id="section-addons"
+                  step="05"
+                  title="Add-ons"
+                  help="Priced extras a client can add. Rush, grommets, lamination."
+                >
+                  {addOns(listing).length ? (
+                    <div className="grid gap-3 xl:grid-cols-2">
+                      {addOns(listing).map((group) => (
+                        <GroupEditor
+                          key={group.id}
+                          group={group}
+                          onAddChoice={() => void addOption(group)}
+                          onSavePrice={saveOptionPrice}
+                          onRemoveChoice={(optionId) => void dropOption(group, optionId)}
+                          onRemoveGroup={() => void dropGroup(group)}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                  {addOns(listing).length < LISTING_CAPS.specGroups ? (
+                    <div>
+                      <Button onClick={() => void addChoice("addon")}>Add an add-on</Button>
+                    </div>
+                  ) : null}
+                </Section>
+              </>
+            ) : null}
+
+            {step === "artwork" ? (
+              <>
+                <Section
+                  id="section-prep"
+                  step="06"
+                  title="How can the client help you?"
+                  help="What a client should do before sending work. Numbered — they read it in order."
+                >
+                  {prepSteps.length === 0 ? (
+                    <p className="text-body text-text-secondary m-0 max-w-prose">
+                      Nothing yet. On specialised work this is where a job is won or lost —
+                      flatten the art, outline the fonts, export the 3MF at the right scale.
+                    </p>
+                  ) : (
+                    <div className="grid gap-3 xl:grid-cols-2">
+                      {prepSteps.map((prep, index) => (
+                        <div
+                          key={prep.id}
+                          className="rounded-card border-outline flex flex-col gap-2 border p-3"
+                        >
+                          <p className="text-caption text-text-muted m-0">{index + 1}.</p>
+                          <Input
+                            defaultValue={prep.title}
+                            aria-label={`Step ${index + 1} title`}
+                            onBlur={(event) => {
+                              if (event.target.value.trim() !== prep.title) {
+                                void saveStep(prep, { title: event.target.value.trim() });
+                              }
+                            }}
+                          />
+                          <Textarea
+                            defaultValue={prep.body}
+                            aria-label={`Step ${index + 1} details`}
+                            onBlur={(event) => {
+                              if (event.target.value !== prep.body) {
+                                void saveStep(prep, { body: event.target.value });
+                              }
+                            }}
+                          />
+                          <Button variant="ghost" onClick={() => void dropStep(prep)}>
+                            Remove this step
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {prepSteps.length < LISTING_CAPS.prepSteps ? (
+                    <div>
+                      <Button onClick={() => void addStep()}>Add a step</Button>
+                    </div>
+                  ) : null}
+                </Section>
+                <Section
+                  id="section-artwork"
+                  step="06"
+                  title="Artwork you accept"
+                  help="What a client may send you for this listing."
+                >
+                  <FieldGroup className="gap-4">
+                    <SegmentedControl
+                      id="artwork-mode"
+                      aria-label="Artwork you accept"
+                      options={ARTWORK_CHOICES}
+                      value={listing.fileFormatMode}
+                      onChange={(mode) => {
+                        if (mode === listing.fileFormatMode) return;
+                        void saveFormats(
+                          mode,
+                          mode === "override" ? (fileCodes.length ? fileCodes : ["pdf"]) : [],
+                        );
                       }}
                     />
-                    <Textarea
-                      defaultValue={step.body}
-                      aria-label={`Step ${index + 1} details`}
-                      onBlur={(event) => {
-                        if (event.target.value !== step.body) {
-                          void saveStep(step, { body: event.target.value });
-                        }
-                      }}
-                    />
-                    <Button variant="ghost" onClick={() => void dropStep(step)}>
-                      Remove this step
+                    {listing.fileFormatMode === "override" ? (
+                      <div
+                        role="group"
+                        aria-label="File formats you accept"
+                        className="flex flex-wrap gap-2"
+                      >
+                        {formats.map((format) => {
+                          const on = listing.formatCodes.includes(format.code);
+                          return (
+                            <FormatChip
+                              key={format.code}
+                              label={format.displayName}
+                              on={on}
+                              onToggle={() => {
+                                const next = on
+                                  ? listing.formatCodes.filter((code) => code !== format.code)
+                                  : [...listing.formatCodes, format.code];
+                                void saveFormats("override", next);
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-caption text-text-secondary m-0">
+                        {fileCodes.length
+                          ? `This listing follows its category: ${fileCodes.join(", ")}.`
+                          : "This category has no accepted files yet. Choose “Just this listing” and tick what you take."}
+                      </p>
+                    )}
+                  </FieldGroup>
+                </Section>
+              </>
+            ) : null}
+
+            {step === "review" ? (
+              <Section
+                id="section-review"
+                step="07"
+                title="Finalize your product"
+                help="The reading beside this is what a client sees, including a price or sample you have not saved yet. It goes on the board only when the list below is clear."
+              >
+                <ReadinessChecklist
+                  requirements={checklist}
+                  targets={FIELD_IDS}
+                  onJump={jumpTo}
+                />
+                <Button
+                  variant="primary"
+                  disabled={busy || firstMissing != null}
+                  aria-describedby={
+                    firstMissing ? requirementRowId(firstMissing.key) : undefined
+                  }
+                  onClick={() => void persist(!listing.onTheBoard)}
+                >
+                  {listing.onTheBoard ? "Take it off the board" : "Put it on the board"}
+                </Button>
+                <div className="border-outline flex flex-col gap-2 border-t pt-6">
+                  <p className="text-caption text-text-secondary m-0">
+                    Taking it down for good? A listing a client has already ordered from is kept
+                    for that job&apos;s history.
+                  </p>
+                  <div>
+                    <Button variant="danger" onClick={() => setRemoveOpen(true)}>
+                      Remove this listing
                     </Button>
                   </div>
-                ))}
-              </div>
-            )}
-            {prepSteps.length < LISTING_CAPS.prepSteps ? (
-              <div>
-                <Button onClick={() => void addStep()}>Add a step</Button>
-              </div>
+                </div>
+              </Section>
             ) : null}
-          </Section>
 
-          <div className="border-outline flex flex-col gap-2 border-t pt-6">
-            <p className="text-caption text-text-secondary m-0">
-              Taking it down for good? A listing a client has already ordered from is kept
-              for that job&apos;s history.
-            </p>
-            <div>
-              <Button variant="danger" onClick={() => setRemoveOpen(true)}>
-                Remove this listing
-              </Button>
+            <div className="flex flex-wrap gap-2">
+              {stepIndex > 0 ? (
+                <Button type="button" onClick={() => setStep(EDITOR_STEPS[stepIndex - 1].id)}>
+                  Back
+                </Button>
+              ) : null}
+              {stepIndex < EDITOR_STEPS.length - 1 ? (
+                <Button type="button" onClick={() => setStep(EDITOR_STEPS[stepIndex + 1].id)}>
+                  Next
+                </Button>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1102,6 +1297,41 @@ export default function ListingEditorPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Keep it</AlertDialogCancel>
             <AlertDialogAction onClick={() => void remove()}>Remove it</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={photoToRemove != null}
+        onOpenChange={(open) => {
+          if (!open) setPhotoToRemove(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {removingLastPhoto ? "Remove the last sample?" : "Remove this sample?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {removingLastPhoto
+                ? "This listing cannot go on the board until another photo is added."
+                : "It comes off this listing. The other samples stay in their order."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep it</AlertDialogCancel>
+            <AlertDialogAction
+              variant="danger"
+              onClick={() => {
+                if (!photoToRemove) return;
+                const remaining = listing.photos
+                  .filter((photo) => photo.fileId !== photoToRemove)
+                  .map((photo) => photo.fileId);
+                void applyPhotoOrder(remaining);
+              }}
+            >
+              Remove this sample
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

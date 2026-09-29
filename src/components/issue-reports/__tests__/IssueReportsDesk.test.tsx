@@ -7,6 +7,8 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { IssueReportsDesk, reportReference } from "@/components/issue-reports/IssueReportsDesk";
+import type { InvalidatePing } from "@/lib/api/types";
+import { LiveContext, type LiveContextValue } from "@/lib/live/LiveProvider";
 
 vi.stubGlobal("React", React);
 
@@ -194,5 +196,54 @@ describe("IssueReportsDesk", () => {
         trackerIssueUrl: TRACKER_URL,
       }),
     );
+  });
+
+  it("reloads when issue reports change and keeps the open report", async () => {
+    const open = {
+      ...report,
+      id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      issue: "Second report stays open",
+    };
+    const arrived = {
+      ...report,
+      id: "bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      issue: "A third report arrived",
+    };
+    listIssueReports.mockResolvedValue({
+      reports: [report, open],
+      counts: { new: 2, tracked: 0, published: 0, dismissed: 0 },
+    });
+    const listeners = new Set<(ping: InvalidatePing) => void>();
+    const live: LiveContextValue = {
+      notifications: [],
+      unreadCount: 0,
+      snapshot: null,
+      live: true,
+      subscribe: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+      markRead: async () => undefined,
+      markAllRead: async () => undefined,
+      remove: async () => undefined,
+      refreshInbox: async () => undefined,
+    };
+    render(
+      <LiveContext.Provider value={live}>
+        <IssueReportsDesk />
+      </LiveContext.Provider>,
+    );
+    await screen.findByRole("heading", { name: /Report 50D4F603/ });
+    fireEvent.click(screen.getByRole("button", { name: /Second report stays open/ }));
+    expect(await screen.findByRole("heading", { name: /Report AAAAAAAA/ })).toBeInTheDocument();
+    const calls = listIssueReports.mock.calls.length;
+    listIssueReports.mockResolvedValue({
+      reports: [report, open, arrived],
+      counts: { new: 3, tracked: 0, published: 0, dismissed: 0 },
+    });
+    for (const listener of listeners) listener({ resource: "issue-reports" });
+    expect(await screen.findByRole("button", { name: /A third report arrived/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Report AAAAAAAA/ })).toBeInTheDocument();
+    expect(listIssueReports.mock.calls.length).toBeGreaterThan(calls);
   });
 });

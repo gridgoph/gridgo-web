@@ -40,6 +40,11 @@ type Props = {
   requirements: BoardRequirement[];
   /** DOM id of the field or section that owns each requirement. */
   targets: Record<BoardField, string>;
+  /**
+   * When a requirement lives on a step that is not showing, switch to that
+   * step before focus. The editor commits the step, then focuses the field.
+   */
+  onJump?: (key: BoardField) => void;
 };
 
 /**
@@ -47,7 +52,7 @@ type Props = {
  * button that takes the shop to the field; a met row is a quiet tick. Colour
  * never carries the state alone — every row has an icon and a sentence.
  */
-export function ReadinessChecklist({ requirements, targets }: Props) {
+export function ReadinessChecklist({ requirements, targets, onJump }: Props) {
   const missing = requirements.filter((requirement) => !requirement.done);
   if (!missing.length) {
     return (
@@ -99,7 +104,10 @@ export function ReadinessChecklist({ requirements, targets }: Props) {
               <button
                 type="button"
                 id={requirementRowId(requirement.key)}
-                onClick={() => focusField(targets[requirement.key])}
+                onClick={() => {
+                  if (onJump) onJump(requirement.key);
+                  else focusField(targets[requirement.key]);
+                }}
                 className="text-body text-text-primary hover:bg-overlay-hover active:bg-overlay-pressed flex min-h-11 w-full items-start gap-2 rounded-[var(--radius-sm)] px-2 py-2 text-left"
               >
                 <TriangleAlert

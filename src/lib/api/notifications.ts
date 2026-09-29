@@ -25,6 +25,8 @@ const RESOURCES = new Set<InvalidateResource>([
   "settings",
   "location",
   "credits",
+  "issue-reports",
+  "chat",
 ]);
 
 async function notificationRequest<T>(

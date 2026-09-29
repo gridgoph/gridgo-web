@@ -717,7 +717,9 @@ export type InvalidateResource =
   | "availability"
   | "settings"
   | "location"
-  | "credits";
+  | "credits"
+  | "issue-reports"
+  | "chat";
 
 export type InvalidatePing = {
   resource: InvalidateResource;

@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,17 +10,19 @@ import { SupportChatDesk } from "@/components/chat/SupportChatDesk";
 
 vi.stubGlobal("React", React);
 
-const { listSupportChatThreads, getSupportChatThread, replySupportChat } = vi.hoisted(() => ({
+const { listSupportChatThreads, getSupportChatThread, replySupportChat, openSupportChatStream, chatStream } = vi.hoisted(() => ({
   listSupportChatThreads: vi.fn(),
   getSupportChatThread: vi.fn(),
   replySupportChat: vi.fn(),
+  openSupportChatStream: vi.fn(),
+  chatStream: { current: null as null | { onEvent: (event: unknown) => void } },
 }));
 
 vi.mock("@/lib/api/support-chat", () => ({
   listSupportChatThreads,
   getSupportChatThread,
   replySupportChat,
-  openSupportChatStream: () => ({ close: vi.fn() }),
+  openSupportChatStream,
 }));
 
 const thread = {
@@ -45,6 +47,16 @@ beforeEach(() => {
   listSupportChatThreads.mockReset();
   getSupportChatThread.mockReset();
   replySupportChat.mockReset();
+  openSupportChatStream.mockReset();
+  chatStream.current = null;
+  openSupportChatStream.mockImplementation((handlers: { onEvent: (event: unknown) => void }) => {
+    chatStream.current = handlers;
+    return {
+      close: () => {
+        if (chatStream.current === handlers) chatStream.current = null;
+      },
+    };
+  });
   listSupportChatThreads.mockResolvedValue([thread]);
   getSupportChatThread.mockResolvedValue({
     thread: { ...thread, unreadCount: 0 },
@@ -94,5 +106,29 @@ describe("SupportChatDesk", () => {
     await waitFor(() => {
       expect(replySupportChat).toHaveBeenCalledWith("thread-1", "Send a daylight photo.");
     });
+  });
+
+  it("shows a party message from the chat stream without reloading the desk", async () => {
+    render(<SupportChatDesk />);
+    await screen.findAllByText("Ana Client");
+    await waitFor(() => expect(chatStream.current).toBeTruthy());
+    const calls = listSupportChatThreads.mock.calls.length;
+    act(() => {
+      chatStream.current?.onEvent({
+        thread: { ...thread, lastMessagePreview: "The gate code changed." },
+        message: {
+          id: "m9",
+          threadId: thread.id,
+          body: "The gate code changed.",
+          senderUserId: "user_client",
+          senderRole: "client",
+          senderName: "Ana Client",
+          createdAt: "2026-09-20T03:02:00.000Z",
+          mine: false,
+        },
+      });
+    });
+    expect(await screen.findAllByText("The gate code changed.")).toHaveLength(2);
+    expect(listSupportChatThreads).toHaveBeenCalledTimes(calls);
   });
 });
