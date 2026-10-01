@@ -6,6 +6,7 @@ import React from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { LiveContext, type LiveContextValue } from "@/lib/live/LiveProvider";
 import type { InvalidatePing } from "@/lib/api/types";
+import { deliveryZones } from "@/test/delivery-zones";
 
 vi.stubGlobal("React", React);
 const { OperationalSettings } = await import("@/components/settings/OperationalSettings");
@@ -22,13 +23,13 @@ it("updates clean settings fields and retains edited fields on live refresh", as
       version: 1,
       issueWindowHours: 24,
       serviceFeeRateBps: 1000,
-      deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 2500 }],
+      deliveryFeeBands: deliveryZones(),
     })
     .mockResolvedValueOnce({
       version: 2,
       issueWindowHours: 36,
       serviceFeeRateBps: 1250,
-      deliveryFeeBands: [{ maxDistanceMeters: null, feeMinor: 5000 }],
+      deliveryFeeBands: deliveryZones({ nearby: 3000 }),
     });
   let listener!: (ping: InvalidatePing) => void;
   const live: LiveContextValue = {
@@ -57,7 +58,7 @@ it("updates clean settings fields and retains edited fields on live refresh", as
   await act(async () => {
     listener({ resource: "settings" });
   });
-  await waitFor(() => expect(screen.getByLabelText("Fee (₱)")).toHaveValue("50.00"));
+  await waitFor(() => expect(screen.getByLabelText("Nearby flat fee")).toHaveValue("30.00"));
   expect(screen.getByLabelText("Hours after delivery")).toHaveValue("48");
   // Untouched, so the live refresh is allowed to move it.
   expect(screen.getByLabelText("Rate on the shop price")).toHaveValue("12.5");

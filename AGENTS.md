@@ -480,11 +480,11 @@ Releasing a share is a person scanning the shop's own receiving QR (GCash / Maya
 - **Cash on delivery**, everywhere. This is a risk decision about rider cash handling, not a temporary simplification.
 - **Paying with Pilot Credits.** Balances and grants remain (`admin/credits`); `POST /credits/authorize` is `410`.
 - **The supplier proof approve / request-changes loop.** States `supplier_proof_*` and `awaiting_payment` are never accepted.
-- **Flat per-zone delivery fees.** `Zone.deliveryFeeMinor` no longer exists; distance bands in Operational settings are the only authority.
+- **Flat per-zone delivery fees.** `Zone.deliveryFeeMinor` no longer exists; the delivery distance zones in Operational settings are the only authority.
 
 ### Settings the captain owns
 
-`issueWindowHours` and `deliveryFeeBands` live in configuration so they change without a release. The shipped band figures (₱25 / ₱50 / ₱75) are **Firstmate's suggestion, not the captain's prices** — the screen says so, and should keep saying so until they set real ones.
+`issueWindowHours` and `deliveryFeeBands` live in configuration so they change without a release. `deliveryFeeBands` is the four fixed **delivery distance zones** (Nearby 0–5 km, Away 5–10 km, Long Distance 10–15 km, Out of Zone over 15 km; gridgo-api#121, contract "Delivery distance zones" in the API doc): one table for the client's distance word and the delivery fee. Operations edits only prices, a flat fee on the first three and base + per-km on Out of Zone (whole distance, rounded up); rows are never added, removed, renamed or re-limited, and saving sends the full table back with only prices changed. Rules and the worked example live in `src/lib/delivery-zones.ts`, the card in `src/components/settings/DeliveryZones.tsx`. The shipped prices (₱25 / ₱50 / ₱75, Out of Zone ₱75 + ₱10/km) are **placeholders, not the captain's prices**: a row at its shipped figure shows a Placeholder chip until someone sets a real one. Screenshots: `docs/screenshots/distance-zones/`.
 
 ## Push broadcasts — the one control that leaves the platform
 
