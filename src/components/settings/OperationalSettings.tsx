@@ -8,24 +8,22 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
  * Platform settings held in configuration rather than code: GRIDGO's service
  * fee on top of every shop price, the rider's share of each delivery fee, how much
  * of a new order the client pays at checkout, how long a client has to raise an issue
- * after delivery, what delivery costs at each distance, and the GCash plate
- * checkout scans.
+ * after delivery, what delivery costs in each distance zone, and the GCash
+ * plate checkout scans.
  *
  * The service fee is folded into the client's printing price. Operations can
  * name that fee on checkout or hide the row; Operations and Super Admin still
  * see the split on every order. The screen shows both receipts side by side
  * so a rate change can be read as money before it is saved.
  *
- * The band figures shipped as Firstmate's suggestion, not the captain's — the
- * screen says so, because someone has to decide the real ones. One
- * implementation, mounted for Operations and Super Admin alike.
+ * The zone prices ship as placeholders, not the captain's — the screen marks
+ * them so, because someone has to decide the real ones. One implementation,
+ * mounted for Operations and Super Admin alike.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
-import { pesosToMinor } from "@/app/admin/_lib/errors";
 import {
   bpsToPercentInput,
   formatRatePercent,
@@ -38,11 +36,11 @@ import {
   riderShareInput,
 } from "@/components/settings/RiderDeliveryShare";
 import { CheckoutPayment, checkoutPaymentLabel } from "@/components/settings/CheckoutPayment";
+import { DeliveryZones, DeliveryZonesSkeleton } from "@/components/settings/DeliveryZones";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { SkeletonLines } from "@/components/ui/loading";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   ApiError,
@@ -55,6 +53,14 @@ import { ISSUE_WINDOW_MAX_HOURS, ISSUE_WINDOW_MIN_HOURS, productionNudgeValueBou
 import type { DeliveryFeeBand, PlatformSettings, ProductionNudge, ProductionNudgeUnit } from "@/lib/api/types";
 import { Switch } from "@/components/ui/switch";
 import { RIDER_SHARE_INVALID } from "@/lib/delivery-split";
+import {
+  applyZonePrices,
+  isZonedTable,
+  mergeZoneDrafts,
+  zonePriceChanges,
+  zonePriceDraft,
+  type ZonePriceDraft,
+} from "@/lib/delivery-zones";
 import { formatPhp } from "@/lib/format";
 
 /**
@@ -92,14 +98,6 @@ const ISSUE_WINDOW_COPY = (
     completes and the shop&rsquo;s last share is ready for Operations to release. Closing
     the window never pays anyone by itself; only orders placed before 25 September 2026
     still release their retention automatically.
-  </>
-);
-
-const BANDS_COPY = (
-  <>
-    A fixed fee per distance band, measured from the supplier&rsquo;s shop to the delivery
-    address. Each band reaches further than the one above it, and the last one covers
-    everything beyond.
   </>
 );
 
@@ -220,31 +218,9 @@ const HOURS_HELP = (
   </>
 );
 
-/** A band as it is being edited — text, so a half-typed number is not lost. */
-type BandDraft = {
-  /** Kilometres, or "" for the open-ended final band. */
-  maxKm: string;
-  feePesos: string;
-};
-
-function toDraft(bands: DeliveryFeeBand[]): BandDraft[] {
-  return bands.map((band) => ({
-    maxKm:
-      band.maxDistanceMeters === null
-        ? ""
-        : String(Math.round(band.maxDistanceMeters / 100) / 10),
-    feePesos: (band.feeMinor / 100).toFixed(2),
-  }));
-}
-
-function describeBand(band: DeliveryFeeBand, previous: number | null): string {
-  const from = previous === null ? 0 : previous / 1000;
-  if (band.maxDistanceMeters === null) {
-    return `Over ${from.toLocaleString("en-PH")} km`;
-  }
-  const to = band.maxDistanceMeters / 1000;
-  if (previous === null) return `Up to ${to.toLocaleString("en-PH")} km`;
-  return `${from.toLocaleString("en-PH")}–${to.toLocaleString("en-PH")} km`;
+/** The zone prices as typed, or null when the API does not hold the four zones. */
+function zonesFrom(bands: DeliveryFeeBand[]): ZonePriceDraft | null {
+  return isZonedTable(bands) ? zonePriceDraft(bands) : null;
 }
 
 export function OperationalSettings() {
@@ -262,7 +238,7 @@ export function OperationalSettings() {
   /** Undefined while the API holds no checkout split; nothing is sent for it then. */
   const [checkoutPercent, setCheckoutPercent] = useState<number | undefined>(undefined);
   const [hours, setHours] = useState("");
-  const [bands, setBands] = useState<BandDraft[]>([]);
+  const [zones, setZones] = useState<ZonePriceDraft | null>(null);
   const [nudge, setNudge] = useState<NudgeDraft>(toNudgeDraft({ version: 0, issueWindowHours: 24, serviceFeeRateBps: 1000, deliveryFeeBands: [] }));
   const [feeVisible, setFeeVisible] = useState(true);
   const [qrBusy, setQrBusy] = useState(false);
@@ -298,12 +274,14 @@ export function OperationalSettings() {
             ? current
             : String(next.issueWindowHours),
         );
-        setBands((current) =>
-          preserveDraft &&
-          previous &&
-          JSON.stringify(current) !== JSON.stringify(toDraft(previous.deliveryFeeBands))
-            ? current
-            : toDraft(next.deliveryFeeBands),
+        setZones((current) =>
+          preserveDraft && previous
+            ? mergeZoneDrafts(
+                current,
+                zonesFrom(previous.deliveryFeeBands),
+                zonesFrom(next.deliveryFeeBands),
+              )
+            : zonesFrom(next.deliveryFeeBands),
         );
         setNudge((current) =>
           preserveDraft &&
@@ -340,52 +318,13 @@ export function OperationalSettings() {
 
   useLiveReload("settings", () => load(true));
 
-  /** Turn the drafts into what the API wants, or explain what is wrong. */
-  function readBands(): { bands: DeliveryFeeBand[] } | { problem: string } {
-    if (bands.length === 0) {
-      return { problem: "Keep at least one band — every delivery needs a fee." };
-    }
-    const out: DeliveryFeeBand[] = [];
-    let previousMeters = -1;
-
-    for (let i = 0; i < bands.length; i += 1) {
-      const draft = bands[i];
-      const isLast = i === bands.length - 1;
-      const feeMinor = pesosToMinor(draft.feePesos);
-      if (feeMinor === null) {
-        return {
-          problem: `Band ${i + 1} needs a fee in pesos, like 25.00.`,
-        };
-      }
-
-      if (isLast) {
-        if (draft.maxKm.trim() !== "") {
-          return {
-            problem:
-              "The last band covers everything further out, so leave its distance blank.",
-          };
-        }
-        out.push({ maxDistanceMeters: null, feeMinor });
-        continue;
-      }
-
-      const km = Number(draft.maxKm.trim());
-      if (!draft.maxKm.trim() || !Number.isFinite(km) || km <= 0) {
-        return {
-          problem: `Band ${i + 1} needs a distance in kilometres, like 5.`,
-        };
-      }
-      const meters = Math.round(km * 1000);
-      if (meters <= previousMeters) {
-        return {
-          problem: `Band ${i + 1} must reach further than the one above it.`,
-        };
-      }
-      previousMeters = meters;
-      out.push({ maxDistanceMeters: meters, feeMinor });
-    }
-
-    return { bands: out };
+  /**
+   * The full table to send: the four zones with the typed prices, or, on an
+   * API from before the zones, its bands exactly as stored.
+   */
+  function readBands(stored: DeliveryFeeBand[]): { bands: DeliveryFeeBand[] } | { problem: string } {
+    if (!zones || !isZonedTable(stored)) return { bands: stored };
+    return applyZonePrices(stored, zones);
   }
 
   async function save() {
@@ -415,7 +354,7 @@ export function OperationalSettings() {
       );
       return;
     }
-    const parsedBands = readBands();
+    const parsedBands = readBands(settings.deliveryFeeBands);
     if ("problem" in parsedBands) {
       setSaveError(parsedBands.problem);
       return;
@@ -440,10 +379,12 @@ export function OperationalSettings() {
         issueWindowHours: parsedHours,
         deliveryFeeBands: parsedBands.bands,
         productionNudge: parsedNudge.nudge,
-        reason: settingsChangeReason(settings.riderCommissionBps, parsedRiderShare, {
-          from: settings.downpaymentPercent,
-          to: checkoutPercent,
-        }),
+        reason: settingsChangeReason(
+          settings.riderCommissionBps,
+          parsedRiderShare,
+          { from: settings.downpaymentPercent, to: checkoutPercent },
+          { from: settings.deliveryFeeBands, to: parsedBands.bands },
+        ),
       });
       setSettings(next);
       setRate(bpsToPercentInput(next.serviceFeeRateBps));
@@ -451,7 +392,7 @@ export function OperationalSettings() {
       setRiderShare(riderShareInput(next.riderCommissionBps));
       setCheckoutPercent(next.downpaymentPercent);
       setHours(String(next.issueWindowHours));
-      setBands(toDraft(next.deliveryFeeBands));
+      setZones(zonesFrom(next.deliveryFeeBands));
       setNudge(toNudgeDraft(next));
       const riderPart =
         next.riderCommissionBps !== undefined
@@ -462,7 +403,7 @@ export function OperationalSettings() {
           ? ` Checkout: ${checkoutPaymentLabel(next.downpaymentPercent)}.`
           : "";
       setSaveOk(
-        `Saved. Orders placed from now on carry a ${formatRatePercent(next.serviceFeeRateBps)} service fee${riderPart} and price delivery from these bands, and issue windows opened from now use the new length.${checkoutPart} Orders already placed keep the figures they were given.`,
+        `Saved. Orders placed from now on carry a ${formatRatePercent(next.serviceFeeRateBps)} service fee${riderPart} and price delivery from these zones, and issue windows opened from now use the new length.${checkoutPart} Orders already placed keep the figures they were given.`,
       );
     } catch (err) {
       if (err instanceof ApiError && err.code === "settings_version_conflict") {
@@ -528,7 +469,7 @@ export function OperationalSettings() {
     riderShare !== riderShareInput(settings.riderCommissionBps) ||
     checkoutPercent !== settings.downpaymentPercent ||
     hours !== String(settings.issueWindowHours) ||
-    JSON.stringify(bands) !== JSON.stringify(toDraft(settings.deliveryFeeBands)) ||
+    JSON.stringify(zones) !== JSON.stringify(zonesFrom(settings.deliveryFeeBands)) ||
     JSON.stringify(nudge) !== JSON.stringify(toNudgeDraft(settings));
 
   // The example follows the field as it is typed; an unreadable draft shows
@@ -655,116 +596,14 @@ export function OperationalSettings() {
           </FieldGroup>
         </section>
 
-        <section className="gg-card p-3" aria-labelledby="bands-heading">
-          <h2 id="bands-heading" className="text-h3 text-text-primary m-0">
-            Delivery distance bands
-          </h2>
-          <p className="text-body text-text-secondary m-0 mt-1 max-w-prose">
-            {BANDS_COPY}
-          </p>
-          <p className="text-body text-warning m-0 mt-2 max-w-prose">
-            The figures below are Firstmate&rsquo;s starting suggestion, not prices the
-            captain set. Replace them with the real ones.
-          </p>
-
-          <div className="mt-4 flex flex-col gap-3">
-            {bands.map((band, index) => {
-              const isLast = index === bands.length - 1;
-              return (
-                <div
-                  key={index}
-                  className="flex flex-wrap items-end gap-3 rounded-card border border-outline-subtle p-3"
-                >
-                  <Field className="min-w-32 flex-1">
-                    <FieldLabel htmlFor={`band-km-${index}`}>Up to (km)</FieldLabel>
-                    <Input
-                      id={`band-km-${index}`}
-                      inputMode="decimal"
-                      value={band.maxKm}
-                      disabled={isLast}
-                      placeholder={isLast ? "No limit" : "5"}
-                      onChange={(e) =>
-                        setBands((prev) =>
-                          prev.map((b, i) =>
-                            i === index ? { ...b, maxKm: e.target.value } : b,
-                          ),
-                        )
-                      }
-                    />
-                  </Field>
-                  <Field className="min-w-32 flex-1">
-                    <FieldLabel htmlFor={`band-fee-${index}`}>Fee (₱)</FieldLabel>
-                    <Input
-                      id={`band-fee-${index}`}
-                      inputMode="decimal"
-                      value={band.feePesos}
-                      onChange={(e) =>
-                        setBands((prev) =>
-                          prev.map((b, i) =>
-                            i === index ? { ...b, feePesos: e.target.value } : b,
-                          ),
-                        )
-                      }
-                    />
-                  </Field>
-                  <Button
-                    variant="danger"
-                    aria-label={`Remove band ${index + 1}`}
-                    disabled={bands.length <= 1}
-                    onClick={() => setBands((prev) => prev.filter((_, i) => i !== index))}
-                  >
-                    <Trash2 aria-hidden />
-                  </Button>
-                </div>
-              );
-            })}
-
-            <div>
-              <Button
-                variant="secondary"
-                onClick={() =>
-                  setBands((prev) => {
-                    const next = [...prev];
-                    const last = next[next.length - 1];
-                    // The open-ended band always stays last; the new one goes above it.
-                    next.splice(next.length - 1, 0, {
-                      maxKm: "",
-                      feePesos: last?.feePesos ?? "0.00",
-                    });
-                    return next;
-                  })
-                }
-              >
-                <Plus data-icon="inline-start" aria-hidden />
-                Add a band
-              </Button>
-            </div>
-          </div>
-
-          <div className="mt-4 border-t border-outline-subtle pt-4">
-            <h3 className="text-caption text-text-muted m-0">In force right now</h3>
-            <ul className="m-0 mt-2 flex list-none flex-col gap-1 p-0">
-              {settings.deliveryFeeBands.map((band, index) => (
-                <li
-                  key={index}
-                  className="text-body text-text-secondary flex flex-wrap justify-between gap-x-4"
-                >
-                  <span>
-                    {describeBand(
-                      band,
-                      index === 0
-                        ? null
-                        : settings.deliveryFeeBands[index - 1].maxDistanceMeters,
-                    )}
-                  </span>
-                  <span className="text-text-primary tabular-nums">
-                    {formatPhp(band.feeMinor)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </section>
+        <DeliveryZones
+          stored={settings.deliveryFeeBands}
+          draft={zones}
+          onChange={(field, value) =>
+            setZones((current) => (current ? { ...current, [field]: value } : current))
+          }
+          disabled={busy}
+        />
       </div>
 
       <section className="gg-card p-3" aria-labelledby="production-nudge-heading">
@@ -907,7 +746,7 @@ export function OperationalSettings() {
             setRiderShare(riderShareInput(settings.riderCommissionBps));
             setCheckoutPercent(settings.downpaymentPercent);
             setHours(String(settings.issueWindowHours));
-            setBands(toDraft(settings.deliveryFeeBands));
+            setZones(zonesFrom(settings.deliveryFeeBands));
             setNudge(toNudgeDraft(settings));
             setSaveError(null);
             setSaveOk(null);
@@ -921,9 +760,9 @@ export function OperationalSettings() {
 }
 
 /**
- * The audit line saved with the change. The API requires one; a rider share
- * or checkout payment change is named in it so the audit log says who moved
- * that money and to what.
+ * The audit line saved with the change. The API requires one; a rider share,
+ * checkout payment or delivery zone price change is named in it so the audit
+ * log says who moved that money and to what.
  */
 export function settingsChangeReason(
   previousRiderBps: number | undefined,
@@ -932,6 +771,7 @@ export function settingsChangeReason(
     from: undefined,
     to: undefined,
   },
+  zones: { from: DeliveryFeeBand[]; to: DeliveryFeeBand[] } = { from: [], to: [] },
 ): string {
   const changes: string[] = [];
   if (previousRiderBps !== undefined && nextRiderBps !== null && previousRiderBps !== nextRiderBps) {
@@ -941,6 +781,10 @@ export function settingsChangeReason(
   }
   if (checkout.from !== undefined && checkout.to !== undefined && checkout.from !== checkout.to) {
     changes.push(`checkout payment ${checkout.from}% to ${checkout.to}% up front`);
+  }
+  if (isZonedTable(zones.from) && isZonedTable(zones.to)) {
+    const moved = zonePriceChanges(zones.from, zones.to);
+    if (moved.length) changes.push(`delivery zones ${moved.join(", ")}`);
   }
   return changes.length
     ? `Updated from the portal: ${changes.join("; ")}`
@@ -1161,34 +1005,7 @@ function SettingsSkeleton() {
           </p>
         </section>
 
-        <section className="gg-card p-3">
-          <h2 className="text-h3 text-text-primary m-0">Delivery distance bands</h2>
-          <p className="text-body text-text-secondary m-0 mt-1 max-w-prose">
-            {BANDS_COPY}
-          </p>
-          <div className="mt-4 flex flex-col gap-3" aria-hidden>
-            {[0, 1, 2].map((row) => (
-              <div
-                key={row}
-                className="flex flex-wrap items-end gap-3 rounded-card border border-outline-subtle p-3"
-              >
-                <div className="min-w-32 flex-1">
-                  <p className="text-caption text-text-secondary m-0 mb-1">Up to (km)</p>
-                  <Skeleton className="h-11 w-full rounded-field" />
-                </div>
-                <div className="min-w-32 flex-1">
-                  <p className="text-caption text-text-secondary m-0 mb-1">Fee (₱)</p>
-                  <Skeleton className="h-11 w-full rounded-field" />
-                </div>
-                <Skeleton className="h-11 w-11 rounded-field" />
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 border-t border-outline-subtle pt-4">
-            <h3 className="text-caption text-text-muted m-0">In force right now</h3>
-            <SkeletonLines lines={3} className="mt-2" />
-          </div>
-        </section>
+        <DeliveryZonesSkeleton />
       </div>
 
       <section className="gg-card p-3">
