@@ -17,6 +17,7 @@ import {
 import { DesignLinkLead, DesignLinkList } from "@/components/orders/DesignLinks";
 import { EvidencePlate } from "@/components/orders/EvidencePreview";
 import { orderDesignLinks } from "@/lib/design-links";
+import { artworkEvidence, mockupEvidence } from "@/lib/evidence";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentZone } from "@/lib/order-state";
 import type { Order } from "@/lib/api/types";
@@ -68,8 +69,8 @@ export function OrderMeta({ order, showMoney = true }: Props) {
 
   rows.push({ label: "Address", value: order.address || "—", icon: Home });
 
-  const artworkId = order.artworkFileIds?.[order.artworkFileIds.length - 1] ?? null;
-  const mockupId = order.mockupFileIds?.[order.mockupFileIds.length - 1] ?? null;
+  const artwork = artworkEvidence(order);
+  const mockups = mockupEvidence(order);
   const designLinks = orderDesignLinks(order);
 
   return (
@@ -112,14 +113,26 @@ export function OrderMeta({ order, showMoney = true }: Props) {
           A design link is artwork too: the file is behind it. A link-only
           order says so plainly instead of the plate's "None on file".
         */}
-        {artworkId || designLinks.length === 0 ? (
+        {artwork.length || designLinks.length === 0 ? (
           <div className="flex min-w-0 flex-col gap-3">
-            <EvidencePlate
-              fileId={artworkId}
-              label="Artwork"
-              caption={order.artworkName}
-              empty="None on file"
-            />
+            {/*
+              One plate per file. The last id used to be the only one drawn,
+              so a second print file never reached the shop.
+            */}
+            {artwork.length ? (
+              artwork.map((item) => (
+                <EvidencePlate
+                  key={item.fileId}
+                  fileId={item.fileId}
+                  label={item.label}
+                  caption={item.caption}
+                  empty="None on file"
+                  downloadable
+                />
+              ))
+            ) : (
+              <EvidencePlate fileId={null} label="Artwork" empty="None on file" />
+            )}
             {designLinks.length ? (
               <div className="flex flex-col gap-2">
                 <DesignLinkLead fileToo />
@@ -134,7 +147,20 @@ export function OrderMeta({ order, showMoney = true }: Props) {
             <DesignLinkList links={designLinks} />
           </div>
         )}
-        <EvidencePlate fileId={mockupId} label="Mockup" empty="No mockup on file" />
+        <div className="flex min-w-0 flex-col gap-3">
+          {mockups.length ? (
+            mockups.map((item) => (
+              <EvidencePlate
+                key={item.fileId}
+                fileId={item.fileId}
+                label={item.label}
+                downloadable
+              />
+            ))
+          ) : (
+            <EvidencePlate fileId={null} label="Mockup" empty="No mockup on file" />
+          )}
+        </div>
       </div>
     </div>
   );
