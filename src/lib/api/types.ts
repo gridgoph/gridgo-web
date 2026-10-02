@@ -729,13 +729,45 @@ export type InvalidatePing = {
 // ---- Platform settings (v2) ----
 
 /**
- * One band of the distance-based delivery fee. `maxDistanceMeters` is the
- * inclusive ceiling; the final band is open-ended (`null`).
+ * The four fixed delivery distance zones (gridgo-api#121, "Delivery distance
+ * zones" in `OPERATIONAL_MODEL_V2_API.md`). One table drives the distance word
+ * a client sees and the delivery fee. Keys, labels, order and limits are fixed;
+ * Operations edits only the prices. Rules live in `src/lib/delivery-zones.ts`.
  */
-export type DeliveryFeeBand = {
+export type DeliveryZoneKey = "nearby" | "away" | "long_distance" | "out_of_zone";
+
+/** Nearby, Away and Long Distance: one flat fee. `maxDistanceMeters` is inclusive. */
+export type FlatDeliveryZoneBand = {
+  zone: Exclude<DeliveryZoneKey, "out_of_zone">;
+  label: string;
+  maxDistanceMeters: number;
+  feeMinor: number;
+};
+
+/**
+ * Out of Zone, over 15 km, open-ended. No `feeMinor`: the fee is
+ * `baseFeeMinor + perKmMinor × ceil(distanceMeters / 1000)` over the whole
+ * distance.
+ */
+export type OutOfZoneDeliveryBand = {
+  zone: "out_of_zone";
+  label: string;
+  maxDistanceMeters: null;
+  baseFeeMinor: number;
+  perKmMinor: number;
+};
+
+/**
+ * A distance band from an API before the zones: a flat fee up to an
+ * inclusive ceiling, the last one open-ended (`null`). Shown, never edited.
+ */
+export type LegacyDeliveryFeeBand = {
+  zone?: undefined;
   maxDistanceMeters: number | null;
   feeMinor: number;
 };
+
+export type DeliveryFeeBand = FlatDeliveryZoneBand | OutOfZoneDeliveryBand | LegacyDeliveryFeeBand;
 
 export type PaymentQr = {
   method: "qr_manual" | string;
