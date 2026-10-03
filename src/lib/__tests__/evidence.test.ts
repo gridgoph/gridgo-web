@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Order, OrderPayments, PaymentRecord } from "@/lib/api/types";
+import type { Order, OrderPayments, PaymentRecord, ProductionItem } from "@/lib/api/types";
 import {
   ARTWORK_SIZE_MISMATCH,
   artworkEvidence,
@@ -10,6 +10,7 @@ import {
   detectedPrintSummary,
   fileLooksLikeImage,
   formatFileBytes,
+  jobFileEvidence,
   mockupEvidence,
   paymentProofEvidence,
 } from "@/lib/evidence";
@@ -308,6 +309,82 @@ describe("order evidence", () => {
 
   it("does not invent a mockup", () => {
     expect(mockupEvidence({})).toEqual([]);
+  });
+
+  describe("a shop's job files", () => {
+    const line = (
+      partial: Partial<ProductionItem> & Pick<ProductionItem, "id" | "itemName">,
+    ): ProductionItem => ({ quantity: 100, measurement: null, ...partial });
+
+    it("reads only the job's lines, never the order-wide ids", () => {
+      const { artwork, mockups } = jobFileEvidence({
+        artworkFileIds: ["art_a", "art_other_shop"],
+        mockupFileIds: ["mock_a", "mock_other_shop"],
+        artworkName: "other-shop.png",
+        productionItems: [
+          line({ id: "a", itemName: "Flyers A5", artworkFileId: "art_a", mockupFileId: "mock_a" }),
+        ],
+      });
+      expect(artwork.map((item) => [item.fileId, item.label, item.caption])).toEqual([
+        ["art_a", "Artwork · Flyers A5", undefined],
+      ]);
+      expect(mockups.map((item) => [item.fileId, item.label])).toEqual([
+        ["mock_a", "Mockup · Flyers A5"],
+      ]);
+    });
+
+    it("shows nothing for a job whose lines carry only design links", () => {
+      const { artwork, mockups } = jobFileEvidence({
+        artworkFileIds: ["art_other_shop"],
+        mockupFileIds: ["mock_other_shop"],
+        artworkName: null,
+        productionItems: [line({ id: "a", itemName: "Flyers A5" })],
+      });
+      expect(artwork).toEqual([]);
+      expect(mockups).toEqual([]);
+    });
+
+    it("numbers plates only when two would read the same", () => {
+      const { artwork } = jobFileEvidence({
+        artworkName: null,
+        productionItems: [
+          line({ id: "a", itemName: "Flyers A5", artworkFileId: "art_1" }),
+          line({ id: "b", itemName: "Flyers A5", artworkFileId: "art_2" }),
+          line({ id: "c", itemName: "Posters A3", artworkFileId: "art_3" }),
+          line({ id: "d", itemName: "Stickers", artworkFileId: "art_3" }),
+          line({ id: "e", itemName: "", artworkFileId: "art_4" }),
+        ],
+      });
+      expect(artwork.map((item) => item.label)).toEqual([
+        "Artwork 1 · Flyers A5",
+        "Artwork 2 · Flyers A5",
+        "Artwork · Posters A3, Stickers",
+        "Artwork",
+      ]);
+    });
+
+    it("keeps each line's size for the artwork check", () => {
+      const { artwork } = jobFileEvidence({
+        size: "A4",
+        artworkName: null,
+        productionItems: [
+          line({ id: "a", itemName: "Flyers", artworkFileId: "art_1", structuredSpec: { size: "A5" } }),
+          line({ id: "b", itemName: "Posters", artworkFileId: "art_2" }),
+        ],
+      });
+      expect(artwork.map((item) => item.productSize)).toEqual(["A5", "A4"]);
+    });
+
+    it("falls back to the order-wide ids for an order with no lines", () => {
+      const { artwork, mockups } = jobFileEvidence({
+        artworkFileIds: ["art_1", "art_2"],
+        mockupFileIds: ["mock_1"],
+        artworkName: null,
+        productionItems: [],
+      });
+      expect(artwork.map((item) => item.label)).toEqual(["Artwork 1", "Artwork 2"]);
+      expect(mockups.map((item) => item.label)).toEqual(["Mockup"]);
+    });
   });
 
   it("finds a live API initial proof under the portal downpayment name", () => {

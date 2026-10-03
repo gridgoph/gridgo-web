@@ -83,6 +83,84 @@ export function mockupEvidence(order: Pick<Order, "mockupFileIds">): EvidenceIte
   }));
 }
 
+/**
+ * The artwork and mockup files a shop's job page may show.
+ *
+ * On a two-shop order the API sends `artworkFileIds` / `mockupFileIds` for
+ * every line on the order, but `productionItems` holds only this shop's own
+ * job lines. So the lines are the list whenever there are any; the
+ * order-wide ids are only for older orders with no lines at all. Never mix
+ * the two, or a shop sees the other shop's files.
+ *
+ * Each plate is named by its line ("Artwork · Flyers A5"). A number appears
+ * only when two plates would otherwise read the same.
+ */
+export function jobFileEvidence(
+  order: Pick<
+    Order,
+    "artworkFileIds" | "artworkName" | "size" | "mockupFileIds" | "productionItems"
+  >,
+): { artwork: EvidenceItem[]; mockups: EvidenceItem[] } {
+  const items = order.productionItems ?? [];
+  if (items.length === 0) {
+    return { artwork: artworkEvidence(order), mockups: mockupEvidence(order) };
+  }
+  return {
+    artwork: lineFileEvidence(items, "artwork", "Artwork", (item) => item.artworkFileId, order.size),
+    mockups: lineFileEvidence(items, "mockup", "Mockup", (item) => item.mockupFileId, null),
+  };
+}
+
+function lineFileEvidence(
+  items: ProductionItem[],
+  kind: "artwork" | "mockup",
+  noun: string,
+  fileOf: (item: ProductionItem) => string | null | undefined,
+  orderSize: string | null | undefined,
+): EvidenceItem[] {
+  // One plate per file; a file shared by two lines names both.
+  const byFile = new Map<string, { names: string[]; line: ProductionItem }>();
+  for (const item of items) {
+    const fileId = fileOf(item);
+    if (!fileId) continue;
+    const name = item.itemName?.trim();
+    const entry = byFile.get(fileId);
+    if (entry) {
+      if (name && !entry.names.includes(name)) entry.names.push(name);
+    } else {
+      byFile.set(fileId, { names: name ? [name] : [], line: item });
+    }
+  }
+  const plates = [...byFile].map(([fileId, { names, line }]) => ({
+    fileId,
+    line,
+    name: names.join(", "),
+  }));
+  const seen = new Map<string, number>();
+  for (const plate of plates) seen.set(plate.name, (seen.get(plate.name) ?? 0) + 1);
+  const counter = new Map<string, number>();
+  return plates.map(({ fileId, line, name }) => {
+    let label = noun;
+    if ((seen.get(name) ?? 0) > 1) {
+      const n = (counter.get(name) ?? 0) + 1;
+      counter.set(name, n);
+      label = `${noun} ${n}`;
+    }
+    if (name) label = `${label} · ${name}`;
+    return {
+      fileId,
+      kind,
+      label,
+      ...(kind === "artwork"
+        ? {
+            productSize: specSize(line.structuredSpec) || orderSize || null,
+            productMeasurement: line.measurement ?? null,
+          }
+        : {}),
+    };
+  });
+}
+
 export function paymentProofEvidence(order: Pick<Order, "payments">): EvidenceItem[] {
   return listedInstallments(order).flatMap((code) => {
     const payment = paymentOf(order, code);
