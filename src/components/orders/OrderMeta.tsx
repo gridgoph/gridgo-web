@@ -17,7 +17,7 @@ import {
 import { DesignLinkLead, DesignLinkList } from "@/components/orders/DesignLinks";
 import { EvidencePlate } from "@/components/orders/EvidencePreview";
 import { orderDesignLinks } from "@/lib/design-links";
-import { artworkEvidence, mockupEvidence } from "@/lib/evidence";
+import { jobFileEvidence } from "@/lib/evidence";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentZone } from "@/lib/order-state";
 import type { Order } from "@/lib/api/types";
@@ -69,8 +69,9 @@ export function OrderMeta({ order, showMoney = true }: Props) {
 
   rows.push({ label: "Address", value: order.address || "—", icon: Home });
 
-  const artwork = artworkEvidence(order);
-  const mockups = mockupEvidence(order);
+  // Only this shop's own lines: on a two-shop order the order-wide ids also
+  // carry the other shop's files.
+  const { artwork, mockups } = jobFileEvidence(order);
   const designLinks = orderDesignLinks(order);
 
   return (

@@ -201,6 +201,9 @@ export function EvidencePlate({
  * signed host is not this site, so a link with `download` opens the file
  * instead of saving it.
  */
+/** Long enough for any browser to have started the save from the blob. */
+const REVOKE_AFTER_MS = 10_000;
+
 function FileDownload({ fileId, filename }: { fileId: string; filename: string }) {
   const [failed, setFailed] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -230,7 +233,9 @@ function FileDownload({ fileId, filename }: { fileId: string; filename: string }
         anchor.click();
       } finally {
         anchor.remove();
-        URL.revokeObjectURL(objectUrl);
+        // Safari and some Firefox builds drop a save whose URL is revoked in
+        // the same task as the click, so let the save start first.
+        setTimeout(() => URL.revokeObjectURL(objectUrl), REVOKE_AFTER_MS);
       }
     } catch {
       if (live.current) setFailed(true);
@@ -247,9 +252,10 @@ function FileDownload({ fileId, filename }: { fileId: string; filename: string }
         size="sm"
         onClick={() => void onDownload()}
         disabled={saving}
+        aria-label={saving ? `Downloading ${filename}` : `Download ${filename}`}
       >
         <Download size={16} strokeWidth={1.75} aria-hidden />
-        Download
+        {saving ? "Downloading…" : "Download"}
       </Button>
       {failed ? (
         <p className="text-caption text-error m-0 mt-1" role="alert">
