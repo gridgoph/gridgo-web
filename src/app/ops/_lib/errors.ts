@@ -50,6 +50,11 @@ const CODE_COPY: Record<string, string> = {
     "Write why you are moving this job on without the shop's photo. The reason is kept in the audit log.",
   production_photo_required:
     "The shop has not sent a progress photo. Move the job on with a written reason instead.",
+  production_penalty_pending:
+    "This order was finished late and its late-production deduction has not been worked out yet. It is settled within a minute or so; refresh, then release the reduced share.",
+  production_deadline_not_missed:
+    "This job is no longer open and overdue, so there is nothing to record. Refresh to see where it stands.",
+  supplier_not_found: "That account is not a shop, so it has no late jobs to show.",
   production_photo_upload_not_allowed:
     "This job has left production, so it no longer takes progress photos. Refresh the order.",
   transition_not_allowed:

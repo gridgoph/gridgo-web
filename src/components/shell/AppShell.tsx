@@ -53,6 +53,7 @@ import {
   UserSearch,
   Users,
   Wallet,
+  TimerOff,
   type LucideIcon,
 } from "lucide-react";
 
@@ -167,6 +168,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   dispatch: Truck,
   riders: Bike,
   rankings: Trophy,
+  lapses: TimerOff,
   escalations: Siren,
   claims: Scale,
   settings: Settings,
