@@ -74,6 +74,11 @@ import type {
   RefundRequest,
   RefundStatus,
   SettlementInput,
+  SeasonPushDryRun,
+  SeasonPushSettings,
+  SeasonWindow,
+  SeasonWindowInput,
+  SeasonWindowsEnvelope,
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
 
@@ -905,6 +910,74 @@ export async function uploadAnnouncementImage(file: File): Promise<string> {
     body,
   });
   return announcementImagePublicPath(result.file.fileId);
+}
+
+// ---------------------------------------------------------------------------
+// Season windows — Super Admin only. Contract: gridgo-api
+// docs/SEASON_WINDOWS_API.md. Saving a window never notifies a client; only
+// the push switch (off by default) lets the scheduler send one notice per
+// window when its banner opens.
+// ---------------------------------------------------------------------------
+
+/** Every window, past ones included, plus the server's Manila `today`. */
+export async function listSeasonWindows(): Promise<SeasonWindowsEnvelope> {
+  return request<SeasonWindowsEnvelope>("/admin/season-windows");
+}
+
+export async function createSeasonWindow(input: SeasonWindowInput): Promise<SeasonWindow> {
+  const result = await request<{ window: SeasonWindow }>("/admin/season-windows", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.window;
+}
+
+/** Sends only the changed fields; a stale version is `409 season_window_version_conflict`. */
+export async function updateSeasonWindow(
+  id: string,
+  expectedVersion: number,
+  changes: Partial<SeasonWindowInput>,
+): Promise<SeasonWindow> {
+  const result = await request<{ window: SeasonWindow }>(
+    `/admin/season-windows/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify({ ...changes, expectedVersion }) },
+  );
+  return result.window;
+}
+
+export async function deleteSeasonWindow(id: string, expectedVersion: number): Promise<void> {
+  await request<{ ok: true }>(`/admin/season-windows/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    body: JSON.stringify({ expectedVersion }),
+  });
+}
+
+export async function getSeasonPushSettings(): Promise<SeasonPushSettings> {
+  return request<SeasonPushSettings>("/admin/season-windows/push-settings");
+}
+
+/**
+ * Turning this on lets the next scheduler tick notify every client with a
+ * registered phone for each window whose banner is showing. `reason` is
+ * required (1–500 characters) and lands in the audit log.
+ */
+export async function updateSeasonPushSettings(input: {
+  enabled: boolean;
+  expectedVersion: number;
+  reason: string;
+}): Promise<SeasonPushSettings> {
+  return request<SeasonPushSettings>("/admin/season-windows/push-settings", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+/** Who would be notified, counted without sending or changing anything. */
+export async function seasonPushDryRun(): Promise<SeasonPushDryRun> {
+  return request<SeasonPushDryRun>("/admin/season-windows/push-dry-run", {
+    method: "POST",
+    body: "{}",
+  });
 }
 
 // ---------------------------------------------------------------------------

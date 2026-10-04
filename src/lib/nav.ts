@@ -48,6 +48,7 @@ export type NavIconKey =
   | "credits"
   | "finance"
   | "planning"
+  | "seasons"
   | "broadcast"
   | "chat"
   | "reports"
@@ -574,6 +575,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Planning calendar",
           title: "Planning calendar",
           icon: "planning",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-season-windows",
+          href: "/admin/season-windows",
+          label: "Season windows",
+          title: "Season windows",
+          icon: "seasons",
           ready: true,
           placeholderBody: "",
         },

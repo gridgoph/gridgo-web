@@ -62,6 +62,7 @@ describe("ROLE_NAV", () => {
       "/admin/settings",
       "/admin/audit",
       "/admin/planning",
+      "/admin/season-windows",
       "/admin/tracker",
       "/admin/broadcast",
     ]);
@@ -85,6 +86,7 @@ describe("ROLE_NAV", () => {
       "/admin/refunds",
       "/admin/riders",
       "/admin/roles",
+      "/admin/season-windows",
       "/admin/settings",
       "/admin/tracker",
       "/admin/verification",
@@ -218,6 +220,7 @@ describe("ROLE_NAV", () => {
       "/admin/settings",
       "/admin/audit",
       "/admin/planning",
+      "/admin/season-windows",
       "/admin/tracker",
       "/admin/broadcast",
     ]);
