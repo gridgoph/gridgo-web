@@ -3,11 +3,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   attachFulfilmentProof,
+  deleteSeasonWindow,
   getApiBase,
   getAuthMe,
   getPortalRoleProjection,
   isApiError,
+  seasonPushDryRun,
   setTokenProvider,
+  updateSeasonPushSettings,
+  updateSeasonWindow,
 } from "@/lib/api/client";
 import {
   allMilestonesReleased,
@@ -320,5 +324,56 @@ describe("proof of fulfilment attach", () => {
       releaseRequires: "shop_proof",
       status: "pof_attached",
     });
+  });
+});
+
+describe("season windows", () => {
+  function okFetch(body: unknown) {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    setTokenProvider(() => "clerk-session-token");
+    return fetchMock;
+  }
+
+  it("edits only the changed fields against the version read", async () => {
+    const fetchMock = okFetch({ window: { id: "sea_a", version: 3 } });
+    await updateSeasonWindow("sea_a", 2, { message: "New words." });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${getApiBase()}/admin/season-windows/sea_a`);
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(String(init.body))).toEqual({ message: "New words.", expectedVersion: 2 });
+  });
+
+  it("deletes with the expected version in a JSON body", async () => {
+    const fetchMock = okFetch({ ok: true });
+    await deleteSeasonWindow("sea_a", 4);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${getApiBase()}/admin/season-windows/sea_a`);
+    expect(init.method).toBe("DELETE");
+    expect(JSON.parse(String(init.body))).toEqual({ expectedVersion: 4 });
+    expect((init.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
+  });
+
+  it("counts recipients with a POST that carries nothing to change", async () => {
+    const fetchMock = okFetch({ enabled: false, version: 1, eligibleClients: 0, eligibleDevices: 0, windows: [] });
+    await seasonPushDryRun();
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${getApiBase()}/admin/season-windows/push-dry-run`);
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({});
+  });
+
+  it("sends the switch with its reason and version", async () => {
+    const fetchMock = okFetch({ enabled: false, version: 2 });
+    await updateSeasonPushSettings({ enabled: false, expectedVersion: 1, reason: "Pause" });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${getApiBase()}/admin/season-windows/push-settings`);
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(String(init.body))).toEqual({ enabled: false, expectedVersion: 1, reason: "Pause" });
   });
 });

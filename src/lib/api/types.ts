@@ -1368,6 +1368,84 @@ export type Announcement = {
   unclaimedDevices: number;
 };
 
+// ---------------------------------------------------------------------------
+// Season windows — Super Admin writes them; clients see them on the deadline
+// calendar, a home banner six to four weeks ahead, and (only once the push
+// switch is on) one pre-season notice. Awareness only: no date is ever blocked.
+//
+// Contract: gridgo-api docs/SEASON_WINDOWS_API.md.
+
+export type SeasonDemandLevel = "Normal" | "Busy" | "Peak";
+
+export type SeasonWindowStatus = "upcoming" | "current" | "past";
+
+/** Inclusive `YYYY-MM-DD` dates in Asia/Manila, computed by the server. */
+export type SeasonBannerInterval = {
+  startDate: string;
+  endDate: string;
+  active: boolean;
+};
+
+export type SeasonWindow = {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  demandLevel: SeasonDemandLevel;
+  message: string;
+  status: SeasonWindowStatus;
+  banner: SeasonBannerInterval;
+  version: number;
+  /** When the pre-season notice was queued. Once set, never cleared. */
+  noticeQueuedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SeasonWindowsEnvelope = {
+  timeZone: string;
+  /** Manila calendar day on the server clock. */
+  today: string;
+  awarenessOnly: true;
+  windows: SeasonWindow[];
+  banners: SeasonWindow[];
+};
+
+export type SeasonWindowInput = {
+  name: string;
+  startDate: string;
+  endDate: string;
+  demandLevel: SeasonDemandLevel;
+  message: string;
+};
+
+export type SeasonPushSettings = {
+  enabled: boolean;
+  version: number;
+};
+
+export type SeasonPushDryRunWindow = {
+  id: string;
+  name: string;
+  banner: SeasonBannerInterval;
+  noticeQueuedAt: string | null;
+  /** Inside the banner interval and never queued. */
+  due: boolean;
+  wouldNotifyClients: number;
+  wouldNotifyDevices: number;
+};
+
+/** Prospective counts, reported even while the switch is off. Mutates nothing. */
+export type SeasonPushDryRun = {
+  enabled: boolean;
+  version: number;
+  timeZone: string;
+  today: string;
+  eligibleClients: number;
+  eligibleDevices: number;
+  windows: SeasonPushDryRunWindow[];
+};
+
 export type PostAnnouncementInput = {
   audience: AnnouncementAudience;
   title: string;
