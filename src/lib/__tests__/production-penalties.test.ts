@@ -33,7 +33,14 @@ function lapse(p: Partial<ProductionLapse> = {}): ProductionLapse {
     rateBps: 500,
     settingsVersion: 3,
     policy: DEFAULT_PRODUCTION_PENALTY,
-    warnings: [{ tier: "minor", at: "2026-10-03T00:01:00.000Z", message: "This order missed…", formal: false }],
+    warnings: [
+      {
+        tier: "minor",
+        at: "2026-10-03T00:01:00.000Z",
+        message: "This order missed…",
+        formal: false,
+      },
+    ],
     remainingBalanceMinor: 0,
     deductionMinor: 0,
     appliedAt: null,
@@ -45,13 +52,27 @@ function lapse(p: Partial<ProductionLapse> = {}): ProductionLapse {
 }
 
 function order(p: Partial<Order> = {}): Order {
-  return { id: "ord_1", clientId: "c", supplierId: "sup_1", riderId: null, state: "production", title: "Flyers", deadline: null, address: "", ...p } as Order;
+  return {
+    id: "ord_1",
+    clientId: "c",
+    supplierId: "sup_1",
+    riderId: null,
+    state: "production",
+    title: "Flyers",
+    deadline: null,
+    address: "",
+    ...p,
+  } as Order;
 }
 
 describe("lateness", () => {
   it("reads the order's ready time when it has one", () => {
     const l = lapse();
-    const late = latenessOf(l, order({ readyAt: "2026-10-03T03:20:00.000Z", state: "ready_for_dispatch" }), NOW);
+    const late = latenessOf(
+      l,
+      order({ readyAt: "2026-10-03T03:20:00.000Z", state: "ready_for_dispatch" }),
+      NOW,
+    );
     expect(late).toEqual({ kind: "finished", lateMs: 3 * HOUR + 20 * 60_000 });
     expect(latenessText(late, "minor")).toBe("Ready 3 h 20 min late");
   });
@@ -79,9 +100,28 @@ describe("money", () => {
   it("adds the unpaid, non-superseded shares", () => {
     const o = order({
       payoutMilestones: [
-        { code: "a", sharePercent: 40, amountMinor: 4000, status: "released", pofFileIds: [] },
-        { code: "b", sharePercent: 35, amountMinor: 3500, status: "pending", pofFileIds: [] },
-        { code: "c", sharePercent: 25, amountMinor: 2000, productionDeductionMinor: 500, status: "pending", pofFileIds: [] },
+        {
+          code: "a",
+          sharePercent: 40,
+          amountMinor: 4000,
+          status: "released",
+          pofFileIds: [],
+        },
+        {
+          code: "b",
+          sharePercent: 35,
+          amountMinor: 3500,
+          status: "pending",
+          pofFileIds: [],
+        },
+        {
+          code: "c",
+          sharePercent: 25,
+          amountMinor: 2000,
+          productionDeductionMinor: 500,
+          status: "pending",
+          pofFileIds: [],
+        },
       ],
     });
     expect(unpaidPayoutMinor(o)).toBe(5500);
@@ -98,8 +138,12 @@ describe("money", () => {
 
 describe("status", () => {
   it("reads a pending deduction as paused when the switch is off", () => {
-    expect(presentLapseStatus(lapse({ status: "warned" }), true).label).toBe("Deduction pending");
-    expect(presentLapseStatus(lapse({ status: "warned" }), false).label).toBe("Deduction paused");
+    expect(presentLapseStatus(lapse({ status: "warned" }), true).label).toBe(
+      "Deduction pending",
+    );
+    expect(presentLapseStatus(lapse({ status: "warned" }), false).label).toBe(
+      "Deduction paused",
+    );
     expect(presentLapseStatus(lapse({ status: "applied" }), true).label).toBe("Deducted");
     expect(presentLapseStatus(lapse(), true).label).toBe("Warning only");
   });
@@ -107,9 +151,19 @@ describe("status", () => {
   it("offers no-communication only on an open, overdue, not yet severe job", () => {
     expect(canRecordNoCommunication(lapse(), order(), NOW)).toBe(true);
     expect(canRecordNoCommunication(lapse({ tier: "severe" }), order(), NOW)).toBe(false);
-    expect(canRecordNoCommunication(lapse(), order({ readyAt: "2026-10-03T01:00:00.000Z" }), NOW)).toBe(false);
-    expect(canRecordNoCommunication(lapse(), order({ state: "cancelled" }), NOW)).toBe(false);
-    expect(canRecordNoCommunication(lapse({ status: "closed" }), order(), NOW)).toBe(false);
+    expect(
+      canRecordNoCommunication(
+        lapse(),
+        order({ readyAt: "2026-10-03T01:00:00.000Z" }),
+        NOW,
+      ),
+    ).toBe(false);
+    expect(canRecordNoCommunication(lapse(), order({ state: "cancelled" }), NOW)).toBe(
+      false,
+    );
+    expect(canRecordNoCommunication(lapse({ status: "closed" }), order(), NOW)).toBe(
+      false,
+    );
     expect(canRecordNoCommunication(lapse(), undefined, NOW)).toBe(false);
   });
 });
@@ -126,8 +180,17 @@ describe("fleet", () => {
       "sup_1",
       "Shop A",
       [
-        lapse({ id: "1", tier: "moderate", warnings: [{ tier: "moderate", at: "x", message: "", formal: true }] }),
-        lapse({ id: "2", status: "applied", deductionMinor: 1200, deadlineAt: "2026-08-01T00:00:00.000Z" }),
+        lapse({
+          id: "1",
+          tier: "moderate",
+          warnings: [{ tier: "moderate", at: "x", message: "", formal: true }],
+        }),
+        lapse({
+          id: "2",
+          status: "applied",
+          deductionMinor: 1200,
+          deadlineAt: "2026-08-01T00:00:00.000Z",
+        }),
         lapse({ id: "3", status: "warned", tier: "severe" }),
       ],
       NOW,
@@ -143,7 +206,12 @@ describe("fleet", () => {
   it("puts problem shops first", () => {
     const old = "2026-07-01T00:00:00.000Z";
     const rows = sortFleet([
-      summarizeShop("a", "Shop A", [lapse({ deadlineAt: old }), lapse({ deadlineAt: old })], NOW),
+      summarizeShop(
+        "a",
+        "Shop A",
+        [lapse({ deadlineAt: old }), lapse({ deadlineAt: old })],
+        NOW,
+      ),
       summarizeShop("b", "Shop B", [lapse()], NOW),
       summarizeShop("c", "Shop C", [lapse({ tier: "severe" })], NOW),
       summarizeShop("d", "Shop D", [lapse(), lapse()], NOW),
@@ -154,23 +222,49 @@ describe("fleet", () => {
 
 describe("settings", () => {
   it("parses the three rates into the complete policy", () => {
-    const parsed = parsePenaltyRates({ minor: "5", moderate: "12.5", severe: "30" }, false);
+    const parsed = parsePenaltyRates(
+      { minor: "5", moderate: "12.5", severe: "30" },
+      false,
+    );
     expect(parsed).toEqual({
-      policy: { deductionsEnabled: false, minorBps: 500, moderateBps: 1250, severeBps: 3000 },
+      policy: {
+        deductionsEnabled: false,
+        minorBps: 500,
+        moderateBps: 1250,
+        severeBps: 3000,
+      },
     });
-    expect(penaltyRateDraft(DEFAULT_PRODUCTION_PENALTY)).toEqual({ minor: "5", moderate: "15", severe: "30" });
+    expect(penaltyRateDraft(DEFAULT_PRODUCTION_PENALTY)).toEqual({
+      minor: "5",
+      moderate: "15",
+      severe: "30",
+    });
   });
 
   it("refuses unreadable rates and a later tier taking less", () => {
-    expect(parsePenaltyRates({ minor: "", moderate: "15", severe: "30" }, false)).toMatchObject({ tier: "minor" });
-    expect(parsePenaltyRates({ minor: "5", moderate: "101", severe: "30" }, false)).toMatchObject({ tier: "moderate" });
-    expect(parsePenaltyRates({ minor: "20", moderate: "15", severe: "30" }, false)).toMatchObject({ tier: "moderate" });
-    expect(parsePenaltyRates({ minor: "5", moderate: "35", severe: "30" }, false)).toMatchObject({ tier: "severe" });
+    expect(
+      parsePenaltyRates({ minor: "", moderate: "15", severe: "30" }, false),
+    ).toMatchObject({ tier: "minor" });
+    expect(
+      parsePenaltyRates({ minor: "5", moderate: "101", severe: "30" }, false),
+    ).toMatchObject({ tier: "moderate" });
+    expect(
+      parsePenaltyRates({ minor: "20", moderate: "15", severe: "30" }, false),
+    ).toMatchObject({ tier: "moderate" });
+    expect(
+      parsePenaltyRates({ minor: "5", moderate: "35", severe: "30" }, false),
+    ).toMatchObject({ tier: "severe" });
   });
 
   it("names every change in the audit reason", () => {
     expect(
-      penaltyChangeReason(DEFAULT_PRODUCTION_PENALTY, { ...DEFAULT_PRODUCTION_PENALTY, minorBps: 800, deductionsEnabled: true }),
-    ).toBe("Late-production penalties from the portal: minor 5% to 8%; real deductions turned on");
+      penaltyChangeReason(DEFAULT_PRODUCTION_PENALTY, {
+        ...DEFAULT_PRODUCTION_PENALTY,
+        minorBps: 800,
+        deductionsEnabled: true,
+      }),
+    ).toBe(
+      "Late-production penalties from the portal: minor 5% to 8%; real deductions turned on",
+    );
   });
 });

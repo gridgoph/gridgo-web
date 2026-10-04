@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -20,16 +27,33 @@ vi.mock("@/lib/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/client")>()),
   ...api,
 }));
-const { LateProductionFleet } = await import("@/components/production-lapses/LateProductionFleet");
+const { LateProductionFleet } =
+  await import("@/components/production-lapses/LateProductionFleet");
 const { ShopLapses } = await import("@/components/production-lapses/ShopLapses");
 
 const HOUR = 3_600_000;
 const NOW = Date.now();
 const iso = (ms: number) => new Date(ms).toISOString();
-const policy = { deductionsEnabled: false, minorBps: 500, moderateBps: 1500, severeBps: 3000 };
+const policy = {
+  deductionsEnabled: false,
+  minorBps: 500,
+  moderateBps: 1500,
+  severeBps: 3000,
+};
 
 function shop(supplierId: string, shopName: string): ShopRankingRow {
-  return { supplierId, shopName, position: null, count: 0, quality: null, speed: null, value: null, overall: null, onTime: null, fromPriceMinor: null };
+  return {
+    supplierId,
+    shopName,
+    position: null,
+    count: 0,
+    quality: null,
+    speed: null,
+    value: null,
+    overall: null,
+    onTime: null,
+    fromPriceMinor: null,
+  };
 }
 
 function lapse(p: Partial<ProductionLapse> = {}): ProductionLapse {
@@ -43,7 +67,14 @@ function lapse(p: Partial<ProductionLapse> = {}): ProductionLapse {
     rateBps: 500,
     settingsVersion: 3,
     policy,
-    warnings: [{ tier: "minor", at: iso(NOW - 29 * HOUR), message: "This order missed its ready-by deadline.", formal: false }],
+    warnings: [
+      {
+        tier: "minor",
+        at: iso(NOW - 29 * HOUR),
+        message: "This order missed its ready-by deadline.",
+        formal: false,
+      },
+    ],
     remainingBalanceMinor: 0,
     deductionMinor: 0,
     appliedAt: null,
@@ -65,9 +96,27 @@ function order(p: Partial<Order> = {}): Order {
     deadline: null,
     address: "",
     payoutMilestones: [
-      { code: "start", sharePercent: 40, amountMinor: 40_000, status: "released", pofFileIds: [] },
-      { code: "delivered", sharePercent: 35, amountMinor: 35_000, status: "pending", pofFileIds: [] },
-      { code: "window", sharePercent: 25, amountMinor: 25_000, status: "pending", pofFileIds: [] },
+      {
+        code: "start",
+        sharePercent: 40,
+        amountMinor: 40_000,
+        status: "released",
+        pofFileIds: [],
+      },
+      {
+        code: "delivered",
+        sharePercent: 35,
+        amountMinor: 35_000,
+        status: "pending",
+        pofFileIds: [],
+      },
+      {
+        code: "window",
+        sharePercent: 25,
+        amountMinor: 25_000,
+        status: "pending",
+        pofFileIds: [],
+      },
     ],
     ...p,
   } as Order;
@@ -103,11 +152,19 @@ describe("fleet", () => {
 
     const table = await screen.findByRole("table", { name: "Shops with late jobs" });
     const rows = within(table).getAllByRole("row").slice(1);
-    expect(rows.map((row) => within(row).getAllByRole("link")[0].textContent)).toEqual(["Shop B", "Shop A"]);
-    expect(within(rows[0]).getAllByRole("link")[0]).toHaveAttribute("href", "/admin/late-production/sup_b");
+    expect(rows.map((row) => within(row).getAllByRole("link")[0].textContent)).toEqual([
+      "Shop B",
+      "Shop A",
+    ]);
+    expect(within(rows[0]).getAllByRole("link")[0]).toHaveAttribute(
+      "href",
+      "/admin/late-production/sup_b",
+    );
     expect(within(rows[0]).getByText("−4 of 10 quality")).toBeInTheDocument();
     expect(within(rows[0]).getByText("1 severe, 1 moderate")).toBeInTheDocument();
-    expect(screen.getByText("1 other shop has no late jobs on record.")).toBeInTheDocument();
+    expect(
+      screen.getByText("1 other shop has no late jobs on record."),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("deduction-gate")).toHaveTextContent("Warnings only");
   });
 
@@ -124,23 +181,40 @@ describe("fleet", () => {
     });
     render(<LateProductionFleet tree="ops" />);
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Could not read late jobs for 1 shop: Shop B");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not read late jobs for 1 shop: Shop B",
+    );
     expect(screen.getByText("No late jobs on record")).toBeInTheDocument();
   });
 
   it("invites the next step when no shop has been late", async () => {
-    api.getShopRankings.mockResolvedValue({ categories: [], categoryCode: null, rankedCount: 0, rows: [shop("sup_a", "Shop A")] });
-    api.listSupplierProductionLapses.mockResolvedValue({ supplierId: "sup_a", lapses: [] });
+    api.getShopRankings.mockResolvedValue({
+      categories: [],
+      categoryCode: null,
+      rankedCount: 0,
+      rows: [shop("sup_a", "Shop A")],
+    });
+    api.listSupplierProductionLapses.mockResolvedValue({
+      supplierId: "sup_a",
+      lapses: [],
+    });
     render(<LateProductionFleet tree="ops" />);
 
     expect(await screen.findByText("No late jobs on record")).toBeInTheDocument();
-    expect(screen.getByText(/Every shop has marked its jobs ready on time so far/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Every shop has marked its jobs ready on time so far/),
+    ).toBeInTheDocument();
   });
 });
 
 describe("one shop", () => {
   beforeEach(() => {
-    api.getShopRankings.mockResolvedValue({ categories: [], categoryCode: null, rankedCount: 0, rows: [shop("sup_a", "Shop A")] });
+    api.getShopRankings.mockResolvedValue({
+      categories: [],
+      categoryCode: null,
+      rankedCount: 0,
+      rows: [shop("sup_a", "Shop A")],
+    });
   });
 
   it("shows how late, the tier, the warning, the deduction and what is still owed", async () => {
@@ -156,7 +230,14 @@ describe("one shop", () => {
           remainingBalanceMinor: 60_000,
           deductionMinor: 9_000,
           appliedAt: iso(NOW),
-          warnings: [{ tier: "moderate", at: iso(NOW - HOUR), message: "A formal warning has been added.", formal: true }],
+          warnings: [
+            {
+              tier: "moderate",
+              at: iso(NOW - HOUR),
+              message: "A formal warning has been added.",
+              formal: true,
+            },
+          ],
         }),
         lapse(),
       ],
@@ -169,9 +250,28 @@ describe("one shop", () => {
         state: "ready_for_dispatch",
         readyAt: iso(NOW - 30 * HOUR + 8 * HOUR),
         payoutMilestones: [
-          { code: "start", sharePercent: 40, amountMinor: 40_000, status: "released", pofFileIds: [] },
-          { code: "delivered", sharePercent: 35, amountMinor: 35_000, status: "pending", pofFileIds: [] },
-          { code: "window", sharePercent: 25, amountMinor: 16_000, productionDeductionMinor: 9_000, status: "pending", pofFileIds: [] },
+          {
+            code: "start",
+            sharePercent: 40,
+            amountMinor: 40_000,
+            status: "released",
+            pofFileIds: [],
+          },
+          {
+            code: "delivered",
+            sharePercent: 35,
+            amountMinor: 35_000,
+            status: "pending",
+            pofFileIds: [],
+          },
+          {
+            code: "window",
+            sharePercent: 25,
+            amountMinor: 16_000,
+            productionDeductionMinor: 9_000,
+            status: "pending",
+            pofFileIds: [],
+          },
         ],
       }),
     ]);
@@ -181,7 +281,10 @@ describe("one shop", () => {
     expect(screen.getByRole("heading", { name: "Shop A" })).toBeInTheDocument();
     const [applied, open] = within(table).getAllByRole("row").slice(1);
 
-    expect(within(applied).getByRole("link", { name: "Tarpaulin 3x6" })).toHaveAttribute("href", "/ops/orders/ord_2");
+    expect(within(applied).getByRole("link", { name: "Tarpaulin 3x6" })).toHaveAttribute(
+      "href",
+      "/ops/orders/ord_2",
+    );
     expect(within(applied).getByText("Ready 8 h late")).toBeInTheDocument();
     expect(within(applied).getByText("Moderate")).toBeInTheDocument();
     expect(within(applied).getByText("Formal warning")).toBeInTheDocument();
@@ -192,19 +295,26 @@ describe("one shop", () => {
 
     expect(within(open).getByText(/Not ready, 1 d 6 h past/)).toBeInTheDocument();
     expect(within(open).getByText("₱600.00")).toBeInTheDocument();
-    expect(within(open).getByText("Deductions were off when it began")).toBeInTheDocument();
+    expect(
+      within(open).getByText("Deductions were off when it began"),
+    ).toBeInTheDocument();
     expect(within(open).getByText("Warning only")).toBeInTheDocument();
-    expect(screen.getByTestId("shop-lapse-summary")).toHaveTextContent("2 late in the last 30 days");
+    expect(screen.getByTestId("shop-lapse-summary")).toHaveTextContent(
+      "2 late in the last 30 days",
+    );
   });
 
   it("records no word from the shop on an open overdue job, with a reason", async () => {
-    api.listSupplierProductionLapses.mockResolvedValue({ supplierId: "sup_a", lapses: [lapse()] });
+    api.listSupplierProductionLapses.mockResolvedValue({
+      supplierId: "sup_a",
+      lapses: [lapse()],
+    });
     api.listOrders.mockResolvedValue([order()]);
     api.recordProductionNoCommunication.mockResolvedValue([lapse({ tier: "severe" })]);
     render(<ShopLapses tree="admin" supplierId="sup_a" />);
 
     const table = await screen.findByRole("table", { name: "Shop A: late jobs" });
-    fireEvent.click(within(table).getByRole("button", { name: "Record no word from the shop" }));
+    fireEvent.click(within(table).getByRole("button", { name: "No word from the shop" }));
     const dialog = await screen.findByRole("alertdialog");
     const confirm = within(dialog).getByRole("button", { name: "Record no word" });
     expect(confirm).toBeDisabled();
@@ -214,13 +324,19 @@ describe("one shop", () => {
     fireEvent.click(confirm);
 
     await waitFor(() =>
-      expect(api.recordProductionNoCommunication).toHaveBeenCalledWith("ord_1", "Called twice, no answer."),
+      expect(api.recordProductionNoCommunication).toHaveBeenCalledWith(
+        "ord_1",
+        "Called twice, no answer.",
+      ),
     );
     expect(await screen.findByText(/is now a severe lapse/)).toBeInTheDocument();
   });
 
   it("says when the shop has never been late", async () => {
-    api.listSupplierProductionLapses.mockResolvedValue({ supplierId: "sup_a", lapses: [] });
+    api.listSupplierProductionLapses.mockResolvedValue({
+      supplierId: "sup_a",
+      lapses: [],
+    });
     api.listOrders.mockResolvedValue([]);
     render(<ShopLapses tree="ops" supplierId="sup_a" />);
 

@@ -27,7 +27,11 @@ import {
   percentInputToBps,
 } from "@/components/settings/service-fee";
 
-export const PENALTY_TIERS: readonly ProductionPenaltyTier[] = ["minor", "moderate", "severe"];
+export const PENALTY_TIERS: readonly ProductionPenaltyTier[] = [
+  "minor",
+  "moderate",
+  "severe",
+];
 
 /** Shipped rates (the captain, 4 Oct 2026): 5% / 15% / 30%, deductions off. */
 export const DEFAULT_PRODUCTION_PENALTY: ProductionPenaltyPolicy = {
@@ -66,7 +70,8 @@ export type Presentation = { label: string; tone: StatusTone; icon: StatusIconNa
 export function presentTier(tier: string): Presentation {
   const known = tierOf(tier);
   if (known === "severe") return { label: "Severe", tone: "error", icon: "circle-x" };
-  if (known === "moderate") return { label: "Moderate", tone: "warning", icon: "triangle-alert" };
+  if (known === "moderate")
+    return { label: "Moderate", tone: "warning", icon: "triangle-alert" };
   return { label: "Minor", tone: "neutral", icon: "clock" };
 }
 
@@ -75,7 +80,10 @@ export function presentTier(tier: string): Presentation {
  * assessment, but only while the live switch is on: turning it off stops
  * pending deductions, so it reads as paused rather than pending.
  */
-export function presentLapseStatus(lapse: ProductionLapse, deductionsOn: boolean | null): Presentation {
+export function presentLapseStatus(
+  lapse: ProductionLapse,
+  deductionsOn: boolean | null,
+): Presentation {
   switch (lapse.status) {
     case "applied":
       return { label: "Deducted", tone: "warning", icon: "circle-check" };
@@ -102,7 +110,11 @@ export function formatDuration(ms: number): string {
   return `${mins} min`;
 }
 
-const ACTIVE_PRODUCTION = new Set(["payment_authorized", "production", "supplier_self_qc"]);
+const ACTIVE_PRODUCTION = new Set([
+  "payment_authorized",
+  "production",
+  "supplier_self_qc",
+]);
 
 export type Lateness =
   /** Marked ready this long after the deadline. */
@@ -113,20 +125,29 @@ export type Lateness =
   | { kind: "unknown" };
 
 /** How late the job was, from the order's own ready time when the portal has it. */
-export function latenessOf(lapse: ProductionLapse, order: Order | undefined, now: number): Lateness {
+export function latenessOf(
+  lapse: ProductionLapse,
+  order: Order | undefined,
+  now: number,
+): Lateness {
   const deadline = Date.parse(lapse.deadlineAt);
   if (!order || !Number.isFinite(deadline)) return { kind: "unknown" };
   if (order.readyAt) {
     const ready = Date.parse(order.readyAt);
-    return Number.isFinite(ready) ? { kind: "finished", lateMs: ready - deadline } : { kind: "unknown" };
+    return Number.isFinite(ready)
+      ? { kind: "finished", lateMs: ready - deadline }
+      : { kind: "unknown" };
   }
-  if (ACTIVE_PRODUCTION.has(order.state)) return { kind: "running", lateMs: now - deadline };
+  if (ACTIVE_PRODUCTION.has(order.state))
+    return { kind: "running", lateMs: now - deadline };
   return { kind: "unknown" };
 }
 
 export function latenessText(lateness: Lateness, tier: string): string {
-  if (lateness.kind === "finished") return `Ready ${formatDuration(lateness.lateMs)} late`;
-  if (lateness.kind === "running") return `Not ready, ${formatDuration(lateness.lateMs)} past`;
+  if (lateness.kind === "finished")
+    return `Ready ${formatDuration(lateness.lateMs)} late`;
+  if (lateness.kind === "running")
+    return `Not ready, ${formatDuration(lateness.lateMs)} past`;
   return TIER_BANDS[tierOf(tier)];
 }
 
@@ -156,15 +177,28 @@ export function orderDeductionMinor(order: Pick<Order, "payoutMilestones">): num
 }
 
 /** Operations may record "no word from the shop" only on an open, unfinished, overdue job. */
-export function canRecordNoCommunication(lapse: ProductionLapse, order: Order | undefined, now: number): boolean {
+export function canRecordNoCommunication(
+  lapse: ProductionLapse,
+  order: Order | undefined,
+  now: number,
+): boolean {
   if (!order || order.readyAt || !ACTIVE_PRODUCTION.has(order.state)) return false;
-  if (lapse.status === "applied" || lapse.status === "closed" || tierOf(lapse.tier) === "severe") return false;
+  if (
+    lapse.status === "applied" ||
+    lapse.status === "closed" ||
+    tierOf(lapse.tier) === "severe"
+  )
+    return false;
   return Date.parse(lapse.deadlineAt) < now;
 }
 
 export function isRecentLapse(lapse: ProductionLapse, now: number): boolean {
   const deadline = Date.parse(lapse.deadlineAt);
-  return Number.isFinite(deadline) && deadline <= now && deadline >= now - RECENT_LAPSE_DAYS * 86_400_000;
+  return (
+    Number.isFinite(deadline) &&
+    deadline <= now &&
+    deadline >= now - RECENT_LAPSE_DAYS * 86_400_000
+  );
 }
 
 export function qualityPointsLost(recentCount: number): number {
@@ -191,7 +225,11 @@ export function summarizeShop(
   lapses: readonly ProductionLapse[],
   now: number,
 ): ShopLapseSummary {
-  const byTier: Record<ProductionPenaltyTier, number> = { minor: 0, moderate: 0, severe: 0 };
+  const byTier: Record<ProductionPenaltyTier, number> = {
+    minor: 0,
+    moderate: 0,
+    severe: 0,
+  };
   let formalWarnings = 0;
   let deductedMinor = 0;
   let pending = 0;
@@ -220,7 +258,10 @@ export function summarizeShop(
 }
 
 function worstRecent(summary: ShopLapseSummary): number {
-  return summary.recent.reduce((worst, lapse) => Math.max(worst, PENALTY_TIERS.indexOf(tierOf(lapse.tier))), -1);
+  return summary.recent.reduce(
+    (worst, lapse) => Math.max(worst, PENALTY_TIERS.indexOf(tierOf(lapse.tier))),
+    -1,
+  );
 }
 
 /**
@@ -264,7 +305,9 @@ export const PENALTY_RATE_ORDER =
 export function parsePenaltyRates(
   draft: PenaltyRateDraft,
   deductionsEnabled: boolean,
-): { policy: ProductionPenaltyPolicy } | { problem: string; tier?: ProductionPenaltyTier } {
+):
+  | { policy: ProductionPenaltyPolicy }
+  | { problem: string; tier?: ProductionPenaltyTier } {
   const bps = {} as Record<ProductionPenaltyTier, number>;
   for (const tier of PENALTY_TIERS) {
     const value = percentInputToBps(draft[tier]);
@@ -291,12 +334,22 @@ export function penaltyDeductionMinor(balanceMinor: number, rateBps: number): nu
   return Math.min(balanceMinor, applyRateBps(balanceMinor, rateBps));
 }
 
-export function tierRateBps(policy: ProductionPenaltyPolicy, tier: ProductionPenaltyTier): number {
-  return tier === "severe" ? policy.severeBps : tier === "moderate" ? policy.moderateBps : policy.minorBps;
+export function tierRateBps(
+  policy: ProductionPenaltyPolicy,
+  tier: ProductionPenaltyTier,
+): number {
+  return tier === "severe"
+    ? policy.severeBps
+    : tier === "moderate"
+      ? policy.moderateBps
+      : policy.minorBps;
 }
 
 /** The audit line saved with a penalty change. The API requires one. */
-export function penaltyChangeReason(from: ProductionPenaltyPolicy, to: ProductionPenaltyPolicy): string {
+export function penaltyChangeReason(
+  from: ProductionPenaltyPolicy,
+  to: ProductionPenaltyPolicy,
+): string {
   const changes: string[] = [];
   for (const tier of PENALTY_TIERS) {
     const before = tierRateBps(from, tier);
@@ -306,7 +359,9 @@ export function penaltyChangeReason(from: ProductionPenaltyPolicy, to: Productio
     }
   }
   if (from.deductionsEnabled !== to.deductionsEnabled) {
-    changes.push(to.deductionsEnabled ? "real deductions turned on" : "real deductions turned off");
+    changes.push(
+      to.deductionsEnabled ? "real deductions turned on" : "real deductions turned off",
+    );
   }
   return changes.length
     ? `Late-production penalties from the portal: ${changes.join("; ")}`

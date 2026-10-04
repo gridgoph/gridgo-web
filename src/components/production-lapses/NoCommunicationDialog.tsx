@@ -54,14 +54,17 @@ export function NoCommunicationDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Record no word from the shop?</AlertDialogTitle>
           <AlertDialogDescription>
-            {orderTitle} is past its ready-by time. Recording that the shop could not be reached
-            makes this a severe lapse straight away: the shop gets a severe warning, and the order
-            can be reviewed for handing to another shop. Only record it if you tried to reach them.
+            {orderTitle} is past its ready-by time. Recording that the shop could not be
+            reached makes this a severe lapse straight away: the shop gets a severe
+            warning, and the order can be reviewed for handing to another shop. Only
+            record it if you tried to reach them.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <FieldGroup>
           <Field data-invalid={error ? true : undefined}>
-            <FieldLabel htmlFor="no-communication-reason">How you tried to reach the shop</FieldLabel>
+            <FieldLabel htmlFor="no-communication-reason">
+              How you tried to reach the shop
+            </FieldLabel>
             <Textarea
               id="no-communication-reason"
               rows={3}
@@ -84,7 +87,11 @@ export function NoCommunicationDialog({
           <AlertDialogCancel variant="secondary" disabled={busy} onClick={onCancel}>
             Cancel
           </AlertDialogCancel>
-          <AlertDialogAction variant="danger" disabled={busy || !ready} onClick={() => onConfirm(reason.trim())}>
+          <AlertDialogAction
+            variant="danger"
+            disabled={busy || !ready}
+            onClick={() => onConfirm(reason.trim())}
+          >
             {busy ? "Recording…" : "Record no word"}
           </AlertDialogAction>
         </AlertDialogFooter>

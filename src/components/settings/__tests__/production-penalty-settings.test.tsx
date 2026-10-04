@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -31,7 +38,12 @@ afterEach(() => {
   updateSettings.mockReset();
 });
 
-const penalty = { deductionsEnabled: false, minorBps: 500, moderateBps: 1500, severeBps: 3000 };
+const penalty = {
+  deductionsEnabled: false,
+  minorBps: 500,
+  moderateBps: 1500,
+  severeBps: 3000,
+};
 const stored = {
   version: 7,
   issueWindowHours: 24,
@@ -42,48 +54,84 @@ const stored = {
 
 it("lets Super Admin save the three rates through the version handshake", async () => {
   getSettings.mockResolvedValue(stored);
-  updateSettings.mockResolvedValue({ ...stored, version: 8, productionPenalty: { ...penalty, minorBps: 800 } });
+  updateSettings.mockResolvedValue({
+    ...stored,
+    version: 8,
+    productionPenalty: { ...penalty, minorBps: 800 },
+  });
   render(<OperationalSettings role="super_admin" />);
 
-  const minor = await screen.findByLabelText("Share of what is still owed", { selector: "#penalty-rate-minor" });
+  const minor = await screen.findByLabelText("Share of what is still owed", {
+    selector: "#penalty-rate-minor",
+  });
   expect(minor).toHaveValue("5");
-  expect(within(screen.getByTestId("penalty-tier-minor")).getByText("₱500.00 off, ₱9,500.00 still paid")).toBeInTheDocument();
+  expect(
+    within(screen.getByTestId("penalty-tier-minor")).getByText(
+      "₱500.00 off, ₱9,500.00 still paid",
+    ),
+  ).toBeInTheDocument();
 
   fireEvent.change(minor, { target: { value: "8" } });
-  expect(within(screen.getByTestId("penalty-tier-minor")).getByText("₱800.00 off, ₱9,200.00 still paid")).toBeInTheDocument();
+  expect(
+    within(screen.getByTestId("penalty-tier-minor")).getByText(
+      "₱800.00 off, ₱9,200.00 still paid",
+    ),
+  ).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Save penalty rates" }));
 
   await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(1));
   expect(updateSettings).toHaveBeenCalledWith({
     expectedVersion: 7,
-    productionPenalty: { deductionsEnabled: false, minorBps: 800, moderateBps: 1500, severeBps: 3000 },
+    productionPenalty: {
+      deductionsEnabled: false,
+      minorBps: 800,
+      moderateBps: 1500,
+      severeBps: 3000,
+    },
     reason: "Late-production penalties from the portal: minor 5% to 8%",
   });
-  expect(await screen.findByText(/Saved. Late jobs from now on are warned at these rates/)).toBeInTheDocument();
+  expect(
+    await screen.findByText(/Saved. Late jobs from now on are warned at these rates/),
+  ).toBeInTheDocument();
 });
 
 it("refuses a later tier that takes less before anything is sent", async () => {
   getSettings.mockResolvedValue(stored);
   render(<OperationalSettings role="super_admin" />);
 
-  fireEvent.change(await screen.findByLabelText("Share of what is still owed", { selector: "#penalty-rate-severe" }), {
-    target: { value: "10" },
-  });
-  expect(screen.getByTestId("penalty-problem")).toHaveTextContent(/A later tier can never take less/);
+  fireEvent.change(
+    await screen.findByLabelText("Share of what is still owed", {
+      selector: "#penalty-rate-severe",
+    }),
+    {
+      target: { value: "10" },
+    },
+  );
+  expect(screen.getByTestId("penalty-problem")).toHaveTextContent(
+    /A later tier can never take less/,
+  );
   expect(screen.getByRole("button", { name: "Save penalty rates" })).toBeDisabled();
 });
 
 it("needs an explicit acknowledgement before turning real deductions on", async () => {
   getSettings.mockResolvedValue(stored);
-  updateSettings.mockResolvedValue({ ...stored, version: 8, productionPenalty: { ...penalty, deductionsEnabled: true } });
+  updateSettings.mockResolvedValue({
+    ...stored,
+    version: 8,
+    productionPenalty: { ...penalty, deductionsEnabled: true },
+  });
   render(<OperationalSettings role="super_admin" />);
 
   expect(await screen.findByTestId("penalty-gate")).toHaveTextContent("Warnings only");
   fireEvent.click(screen.getByRole("switch", { name: "Deduct from shop payouts" }));
 
   const dialog = await screen.findByRole("alertdialog");
-  expect(within(dialog).getByText("Deduct real money from shops' payouts?")).toBeInTheDocument();
-  expect(within(dialog).getByTestId("penalty-confirm-terms")).toHaveTextContent("5% / 15% / 30%");
+  expect(
+    within(dialog).getByText("Deduct real money from shops' payouts?"),
+  ).toBeInTheDocument();
+  expect(within(dialog).getByTestId("penalty-confirm-terms")).toHaveTextContent(
+    "5% / 15% / 30%",
+  );
   const turnOn = within(dialog).getByRole("button", { name: "Turn on deductions" });
   expect(turnOn).toBeDisabled();
   expect(updateSettings).not.toHaveBeenCalled();
@@ -104,25 +152,42 @@ it("keeps deductions off when the dialog is dismissed", async () => {
   getSettings.mockResolvedValue(stored);
   render(<OperationalSettings role="super_admin" />);
 
-  fireEvent.click(await screen.findByRole("switch", { name: "Deduct from shop payouts" }));
-  fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Keep warnings only" }));
+  fireEvent.click(
+    await screen.findByRole("switch", { name: "Deduct from shop payouts" }),
+  );
+  fireEvent.click(
+    within(await screen.findByRole("alertdialog")).getByRole("button", {
+      name: "Keep warnings only",
+    }),
+  );
 
   await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
   expect(updateSettings).not.toHaveBeenCalled();
-  expect(screen.getByRole("switch", { name: "Deduct from shop payouts" })).not.toBeChecked();
+  expect(
+    screen.getByRole("switch", { name: "Deduct from shop payouts" }),
+  ).not.toBeChecked();
 });
 
 it("reloads underneath a stale version", async () => {
   getSettings.mockResolvedValueOnce(stored).mockResolvedValue({ ...stored, version: 9 });
-  updateSettings.mockRejectedValue(new ApiError(409, { error: "settings_version_conflict" }));
+  updateSettings.mockRejectedValue(
+    new ApiError(409, { error: "settings_version_conflict" }),
+  );
   render(<OperationalSettings role="super_admin" />);
 
-  fireEvent.change(await screen.findByLabelText("Share of what is still owed", { selector: "#penalty-rate-minor" }), {
-    target: { value: "6" },
-  });
+  fireEvent.change(
+    await screen.findByLabelText("Share of what is still owed", {
+      selector: "#penalty-rate-minor",
+    }),
+    {
+      target: { value: "6" },
+    },
+  );
   fireEvent.click(screen.getByRole("button", { name: "Save penalty rates" }));
 
-  expect(await screen.findByText(/Someone else saved settings a moment ago/)).toBeInTheDocument();
+  expect(
+    await screen.findByText(/Someone else saved settings a moment ago/),
+  ).toBeInTheDocument();
   await waitFor(() => expect(getSettings).toHaveBeenCalledTimes(2));
 });
 
@@ -130,9 +195,15 @@ it("shows Operations the rates and the switch without controls", async () => {
   getSettings.mockResolvedValue(stored);
   render(<OperationalSettings />);
 
-  expect(await screen.findByTestId("penalty-rate-moderate-value")).toHaveTextContent("15%");
-  expect(screen.queryByRole("switch", { name: "Deduct from shop payouts" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Save penalty rates" })).not.toBeInTheDocument();
+  expect(await screen.findByTestId("penalty-rate-moderate-value")).toHaveTextContent(
+    "15%",
+  );
+  expect(
+    screen.queryByRole("switch", { name: "Deduct from shop payouts" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Save penalty rates" }),
+  ).not.toBeInTheDocument();
   expect(screen.getByText(/Only Super Admin changes these/)).toBeInTheDocument();
 });
 
@@ -141,7 +212,9 @@ it("leaves penalties out of the main save so Operations is never refused", async
   updateSettings.mockResolvedValue({ ...stored, version: 8, issueWindowHours: 48 });
   render(<OperationalSettings />);
 
-  fireEvent.change(await screen.findByLabelText("Hours after delivery"), { target: { value: "48" } });
+  fireEvent.change(await screen.findByLabelText("Hours after delivery"), {
+    target: { value: "48" },
+  });
   fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
 
   await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(1));

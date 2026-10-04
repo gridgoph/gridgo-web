@@ -31,10 +31,16 @@ export function LapseMeter({
       ? `No late jobs in the last ${RECENT_LAPSE_DAYS} days`
       : `${recent.length} late ${recent.length === 1 ? "job" : "jobs"} in the last ${RECENT_LAPSE_DAYS} days (${shown
           .map((lapse) => presentTier(lapse.tier).label.toLowerCase())
-          .join(", ")}${extra > 0 ? `, and ${extra} more` : ""}). Quality ranking lowered by ${points} of ${QUALITY_POINTS_CAP} points.`;
+          .join(
+            ", ",
+          )}${extra > 0 ? `, and ${extra} more` : ""}). Quality ranking lowered by ${points} of ${QUALITY_POINTS_CAP} points.`;
 
   return (
-    <span className={cn("inline-flex items-end gap-1", className)} role="img" aria-label={label}>
+    <span
+      className={cn("inline-flex items-end gap-1", className)}
+      role="img"
+      aria-label={label}
+    >
       {Array.from({ length: LAPSES_TO_CAP }, (_, index) => {
         const lapse = shown[index];
         const tier = lapse ? presentTier(lapse.tier) : null;
@@ -43,14 +49,20 @@ export function LapseMeter({
             key={index}
             className={cn(
               "relative block h-5 w-2.5 overflow-hidden rounded-[3px] border",
-              lapse ? "border-transparent bg-surface-variant" : "border-outline border-dashed",
+              lapse
+                ? "border-transparent bg-surface-variant"
+                : "border-outline border-dashed",
             )}
           >
             {tier ? (
               <span
                 className={cn(
                   "absolute inset-x-0 bottom-0 block",
-                  tier.tone === "error" ? "h-full bg-error" : tier.tone === "warning" ? "h-2/3 bg-warning" : "h-1/3 bg-text-secondary",
+                  tier.tone === "error"
+                    ? "h-full bg-error"
+                    : tier.tone === "warning"
+                      ? "h-2/3 bg-warning"
+                      : "h-1/3 bg-text-secondary",
                 )}
               />
             ) : null}

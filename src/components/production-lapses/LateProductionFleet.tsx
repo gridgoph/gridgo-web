@@ -20,10 +20,18 @@ import { DeductionGate } from "@/components/production-lapses/DeductionGate";
 import { LapseMeter } from "@/components/production-lapses/LapseMeter";
 import { lateProductionHref, type LapseTree } from "@/components/production-lapses/paths";
 import { Button } from "@/components/ui/button";
-import { DataTable, DataTableRowAction, type DataTableColumn } from "@/components/ui/data-table";
+import {
+  DataTable,
+  DataTableRowAction,
+  type DataTableColumn,
+} from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { getSettings, getShopRankings, listSupplierProductionLapses } from "@/lib/api/client";
+import {
+  getSettings,
+  getShopRankings,
+  listSupplierProductionLapses,
+} from "@/lib/api/client";
 import type { ProductionPenaltyPolicy } from "@/lib/api/types";
 import { formatDate, formatPhp } from "@/lib/format";
 import { useLiveReload } from "@/lib/live/useLiveReload";
@@ -47,13 +55,20 @@ type Loaded = {
   policy: ProductionPenaltyPolicy | null;
 };
 
-async function mapWithLimit<T, R>(items: readonly T[], limit: number, run: (item: T) => Promise<R>): Promise<R[]> {
+async function mapWithLimit<T, R>(
+  items: readonly T[],
+  limit: number,
+  run: (item: T) => Promise<R>,
+  onDone?: (done: number) => void,
+): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let next = 0;
+  let done = 0;
   async function worker() {
     while (next < items.length) {
       const index = next++;
       results[index] = await run(items[index]);
+      onDone?.(++done);
     }
   }
   await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
@@ -64,6 +79,8 @@ export function LateProductionFleet({ tree }: { tree: LapseTree }) {
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  /** Shops read so far on the first load, so a long fleet never looks stuck. */
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -75,28 +92,46 @@ export function LateProductionFleet({ tree }: { tree: LapseTree }) {
           getSettings().catch(() => null),
         ]);
         const now = Date.now();
-        const read = await mapWithLimit(board.rows, READ_CONCURRENCY, async (shop) => {
-          try {
-            const { lapses } = await listSupplierProductionLapses(shop.supplierId);
-            return { shop, summary: summarizeShop(shop.supplierId, shop.shopName, lapses, now) };
-          } catch {
-            return { shop, summary: null };
-          }
-        });
-        const rows = read.flatMap((entry) => (entry.summary && entry.summary.total > 0 ? [entry.summary] : []));
+        setProgress({ done: 0, total: board.rows.length });
+        const read = await mapWithLimit(
+          board.rows,
+          READ_CONCURRENCY,
+          async (shop) => {
+            try {
+              const { lapses } = await listSupplierProductionLapses(shop.supplierId);
+              return {
+                shop,
+                summary: summarizeShop(shop.supplierId, shop.shopName, lapses, now),
+              };
+            } catch {
+              return { shop, summary: null };
+            }
+          },
+          (done) => setProgress({ done, total: board.rows.length }),
+        );
+        const rows = read.flatMap((entry) =>
+          entry.summary && entry.summary.total > 0 ? [entry.summary] : [],
+        );
         setData({
           rows: sortFleet(rows),
-          cleanShops: read.filter((entry) => entry.summary && entry.summary.total === 0).length,
-          failedShops: read.filter((entry) => !entry.summary).map((entry) => entry.shop.shopName),
+          cleanShops: read.filter((entry) => entry.summary && entry.summary.total === 0)
+            .length,
+          failedShops: read
+            .filter((entry) => !entry.summary)
+            .map((entry) => entry.shop.shopName),
           policy: settings?.productionPenalty ?? null,
         });
       } catch (err) {
         setData(null);
         setError(
-          opsErrorMessage(err, "Could not load late production. Confirm the API is running, then retry."),
+          opsErrorMessage(
+            err,
+            "Could not load late production. Confirm the API is running, then retry.",
+          ),
         );
       } finally {
         setLoading(false);
+        setProgress(null);
       }
     }, []),
   );
@@ -105,7 +140,9 @@ export function LateProductionFleet({ tree }: { tree: LapseTree }) {
     void load();
   }, [load]);
 
-  useLiveReload(["orders", "settings"], load);
+  // Not "orders": every order move would re-read every shop. A warning or a
+  // deduction also pings "payouts", which is far quieter.
+  useLiveReload(["payouts", "settings"], load);
 
   const recentShops = data?.rows.filter((row) => row.recent.length > 0).length ?? 0;
   const recentJobs = data?.rows.reduce((sum, row) => sum + row.recent.length, 0) ?? 0;
@@ -160,7 +197,9 @@ export function LateProductionFleet({ tree }: { tree: LapseTree }) {
         cell: (row) => (
           <div className="flex flex-col">
             <span className="text-body text-text-primary tabular-nums">{row.total}</span>
-            <span className="text-caption text-text-muted tabular-nums">{tierBreakdown(row)}</span>
+            <span className="text-caption text-text-muted tabular-nums">
+              {tierBreakdown(row)}
+            </span>
           </div>
         ),
       },
@@ -169,7 +208,9 @@ export function LateProductionFleet({ tree }: { tree: LapseTree }) {
         header: "Formal warnings",
         sortValue: (row) => row.formalWarnings,
         cell: (row) => (
-          <span className="text-body tabular-nums">{row.formalWarnings === 0 ? "None" : row.formalWarnings}</span>
+          <span className="text-body tabular-nums">
+            {row.formalWarnings === 0 ? "None" : row.formalWarnings}
+          </span>
         ),
       },
       {
@@ -182,7 +223,9 @@ export function LateProductionFleet({ tree }: { tree: LapseTree }) {
               {row.deductedMinor > 0 ? formatPhp(row.deductedMinor) : "None"}
             </span>
             {row.pending > 0 ? (
-              <span className="text-caption text-text-muted tabular-nums">{row.pending} pending</span>
+              <span className="text-caption text-text-muted tabular-nums">
+                {row.pending} pending
+              </span>
             ) : null}
           </div>
         ),
@@ -207,19 +250,32 @@ export function LateProductionFleet({ tree }: { tree: LapseTree }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-3">
-        <p className="text-body text-text-secondary m-0 max-w-prose">
-          Shops that marked a job ready after its ready-by time. Each late job sends the shop a
-          warning, and every one in the last {RECENT_LAPSE_DAYS} days costs it 2 quality points in
-          matching, {QUALITY_POINTS_CAP} at most. Shops with the most recent late jobs come first.
-        </p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <p className="text-body text-text-secondary m-0 max-w-prose">
+            Shops that marked a job ready after its ready-by time. Each late job sends the
+            shop a warning, and every one in the last {RECENT_LAPSE_DAYS} days costs it 2
+            quality points in matching, {QUALITY_POINTS_CAP} at most. Shops with the most
+            recent late jobs come first.
+          </p>
+          <Button variant="secondary" disabled={loading} onClick={() => void load()}>
+            Refresh
+          </Button>
+        </div>
         <DeductionGate policy={data?.policy ?? null} tree={tree} />
       </div>
 
       {data && data.failedShops.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-card border border-warning px-4 py-3" role="alert">
+        <div
+          className="flex flex-wrap items-center gap-3 rounded-card border border-warning px-4 py-3"
+          role="alert"
+        >
           <p className="text-body text-text-primary m-0 max-w-prose">
-            Could not read late jobs for {data.failedShops.length === 1 ? "1 shop" : `${data.failedShops.length} shops`}:{" "}
-            {data.failedShops.join(", ")}. They are left out below, not counted as on time.
+            Could not read late jobs for{" "}
+            {data.failedShops.length === 1
+              ? "1 shop"
+              : `${data.failedShops.length} shops`}
+            : {data.failedShops.join(", ")}. They are left out below, not counted as on
+            time.
           </p>
           <Button variant="secondary" onClick={() => void load()}>
             Retry
@@ -238,6 +294,11 @@ export function LateProductionFleet({ tree }: { tree: LapseTree }) {
         />
       ) : (
         <>
+          {!data && progress ? (
+            <p className="text-caption text-text-muted m-0 tabular-nums" role="status">
+              Reading each shop&rsquo;s late jobs: {progress.done} of {progress.total}
+            </p>
+          ) : null}
           {data ? (
             <p className="text-caption text-text-muted m-0" data-testid="fleet-summary">
               {recentShops === 0
@@ -263,8 +324,10 @@ export function LateProductionFleet({ tree }: { tree: LapseTree }) {
           />
           {data && data.cleanShops > 0 ? (
             <p className="text-caption text-text-muted m-0">
-              {data.cleanShops === 1 ? "1 other shop has" : `${data.cleanShops} other shops have`} no late jobs on
-              record.
+              {data.cleanShops === 1
+                ? "1 other shop has"
+                : `${data.cleanShops} other shops have`}{" "}
+              no late jobs on record.
             </p>
           ) : null}
         </>

@@ -20,7 +20,10 @@ export function DeductionGate({
   if (!policy) return null;
   const rates = `${formatRatePercent(policy.minorBps)} / ${formatRatePercent(policy.moderateBps)} / ${formatRatePercent(policy.severeBps)}`;
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2" data-testid="deduction-gate">
+    <div
+      className="flex flex-wrap items-center gap-x-3 gap-y-2"
+      data-testid="deduction-gate"
+    >
       <StatusChip
         tone={policy.deductionsEnabled ? "warning" : "neutral"}
         icon={policy.deductionsEnabled ? "triangle-alert" : "circle-dashed"}
@@ -30,7 +33,10 @@ export function DeductionGate({
         {policy.deductionsEnabled
           ? `New late jobs lose ${rates} (minor / moderate / severe) of what the shop is still owed on them.`
           : `Real deductions are off, so no shop loses money for a late job. Rates on file: ${rates}.`}{" "}
-        <Link href={settingsHref(tree)} className="text-[var(--color-brand)] underline-offset-4 hover:underline">
+        <Link
+          href={settingsHref(tree)}
+          className="text-[var(--color-brand)] underline-offset-4 hover:underline"
+        >
           {tree === "admin" ? "Change in settings" : "See settings"}
         </Link>
       </p>

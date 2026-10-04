@@ -58,10 +58,11 @@ import { cn } from "@/lib/utils";
 
 export const PENALTY_COPY = (
   <>
-    What a shop loses when it marks a job ready after its ready-by time. Every late job gets a
-    warning first that explains the penalty. A deduction comes off what GRIDGO still owes the
-    shop on that one order, never more than that, and nothing carries over to another order.
-    Recent late jobs also lower the shop&rsquo;s quality ranking in matching.
+    What a shop loses when it marks a job ready after its ready-by time. Every late job
+    gets a warning first that explains the penalty. A deduction comes off what GRIDGO
+    still owes the shop on that one order, never more than that, and nothing carries over
+    to another order. Recent late jobs also lower the shop&rsquo;s quality ranking in
+    matching.
   </>
 );
 
@@ -78,9 +79,17 @@ type Props = {
   disabled?: boolean;
 };
 
-export function ProductionPenalties({ settings, canEdit, onSaved, onConflict, disabled }: Props) {
+export function ProductionPenalties({
+  settings,
+  canEdit,
+  onSaved,
+  onConflict,
+  disabled,
+}: Props) {
   const stored = settings.productionPenalty;
-  const [draft, setDraft] = useState<PenaltyRateDraft | null>(stored ? penaltyRateDraft(stored) : null);
+  const [draft, setDraft] = useState<PenaltyRateDraft | null>(
+    stored ? penaltyRateDraft(stored) : null,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
@@ -94,7 +103,9 @@ export function ProductionPenalties({ settings, canEdit, onSaved, onConflict, di
     previous.current = stored;
     if (!stored) return;
     setDraft((current) =>
-      !current || !before || JSON.stringify(current) === JSON.stringify(penaltyRateDraft(before))
+      !current ||
+      !before ||
+      JSON.stringify(current) === JSON.stringify(penaltyRateDraft(before))
         ? penaltyRateDraft(stored)
         : current,
     );
@@ -103,9 +114,12 @@ export function ProductionPenalties({ settings, canEdit, onSaved, onConflict, di
   if (!stored || !draft) {
     return (
       <PenaltySection>
-        <p className="text-body text-text-secondary m-0 mt-3 max-w-prose" data-testid="penalty-unavailable">
-          The API behind this portal does not record late production yet, so no shop is warned
-          or charged for a late job. These controls appear once the API is updated.
+        <p
+          className="text-body text-text-secondary m-0 mt-3 max-w-prose"
+          data-testid="penalty-unavailable"
+        >
+          The API behind this portal does not record late production yet, so no shop is
+          warned or charged for a late job. These controls appear once the API is updated.
         </p>
       </PenaltySection>
     );
@@ -137,7 +151,9 @@ export function ProductionPenalties({ settings, canEdit, onSaved, onConflict, di
         );
         await onConflict();
       } else if (err instanceof ApiError && err.code === "invalid_production_penalty") {
-        setError("The API refused these rates. Each is 0 to 100%, and no tier may take less than the one before it.");
+        setError(
+          "The API refused these rates. Each is 0 to 100%, and no tier may take less than the one before it.",
+        );
       } else if (err instanceof ApiError && err.status === 403) {
         setError("Only Super Admin can change late-production penalties.");
       } else {
@@ -209,7 +225,10 @@ export function ProductionPenalties({ settings, canEdit, onSaved, onConflict, di
         </div>
       </div>
 
-      <ol className="m-0 mt-3 grid list-none gap-2 p-0 md:grid-cols-3" aria-label="Penalty tiers">
+      <ol
+        className="m-0 mt-3 grid list-none gap-2 p-0 md:grid-cols-3"
+        aria-label="Penalty tiers"
+      >
         {PENALTY_TIERS.map((tier) => (
           <TierRate
             key={tier}
@@ -220,19 +239,27 @@ export function ProductionPenalties({ settings, canEdit, onSaved, onConflict, di
             invalid={"problem" in parsed && parsed.tier === tier}
             inForceBps={tierRateBps(stored, tier)}
             draftBps={tierRateBps(typedPolicy, tier)}
-            onChange={(value) => setDraft((current) => (current ? { ...current, [tier]: value } : current))}
+            onChange={(value) =>
+              setDraft((current) => (current ? { ...current, [tier]: value } : current))
+            }
           />
         ))}
       </ol>
       <p className="text-caption text-text-muted m-0 mt-2 max-w-prose">
         Lateness counts from the shop&rsquo;s ready-by time. Each example is a job with{" "}
-        {formatPhp(PENALTY_EXAMPLE_BALANCE_MINOR)} still owed to the shop, rounded half-up to the
-        centavo.
-        {canEdit ? " New rates apply to lapses that begin after saving." : " Only Super Admin changes these."}
+        {formatPhp(PENALTY_EXAMPLE_BALANCE_MINOR)} still owed to the shop, rounded half-up
+        to the centavo.
+        {canEdit
+          ? " New rates apply to lapses that begin after saving."
+          : " Only Super Admin changes these."}
       </p>
 
       {"problem" in parsed && dirty ? (
-        <p className="text-body text-error m-0 mt-2" role="alert" data-testid="penalty-problem">
+        <p
+          className="text-body text-error m-0 mt-2"
+          role="alert"
+          data-testid="penalty-problem"
+        >
           {parsed.problem}
         </p>
       ) : null}
@@ -294,20 +321,27 @@ export function ProductionPenalties({ settings, canEdit, onSaved, onConflict, di
           </AlertDialogHeader>
           {confirm === "on" ? (
             <div className="flex flex-col gap-3">
-              <ul className="text-body text-text-secondary m-0 flex flex-col gap-1.5 pl-5" data-testid="penalty-confirm-terms">
+              <ul
+                className="text-body text-text-secondary m-0 flex list-disc flex-col gap-1.5 pl-5"
+                data-testid="penalty-confirm-terms"
+              >
                 <li>
                   A shop that marks a job ready late loses{" "}
                   <span className="text-text-primary tabular-nums" style={medium}>
-                    {formatRatePercent(stored.minorBps)} / {formatRatePercent(stored.moderateBps)} /{" "}
+                    {formatRatePercent(stored.minorBps)} /{" "}
+                    {formatRatePercent(stored.moderateBps)} /{" "}
                     {formatRatePercent(stored.severeBps)}
                   </span>{" "}
                   (minor / moderate / severe) of what GRIDGO still owes it on that order.
                 </li>
                 <li>
-                  The money comes off the order&rsquo;s unpaid payout shares, last share first.
-                  Operations then pays the shop the reduced amount.
+                  The money comes off the order&rsquo;s unpaid payout shares, last share
+                  first. Operations then pays the shop the reduced amount.
                 </li>
-                <li>Shops see the deduction on their account. It is not undone by turning this off.</li>
+                <li>
+                  Shops see the deduction on their account. It is not undone by turning
+                  this off.
+                </li>
                 <li>Lapses recorded while deductions were off stay warnings only.</li>
               </ul>
               <Field orientation="horizontal">
@@ -322,7 +356,7 @@ export function ProductionPenalties({ settings, canEdit, onSaved, onConflict, di
               </Field>
             </div>
           ) : (
-            <ul className="text-body text-text-secondary m-0 flex flex-col gap-1.5 pl-5">
+            <ul className="text-body text-text-secondary m-0 flex list-disc flex-col gap-1.5 pl-5">
               <li>Deductions not yet taken stop, and those orders pay out in full.</li>
               <li>Deductions already taken stay on their orders.</li>
               <li>Warnings and the ranking effect continue.</li>
@@ -386,7 +420,10 @@ function TierRate({
   const deduction = penaltyDeductionMinor(PENALTY_EXAMPLE_BALANCE_MINOR, draftBps);
   const id = `penalty-rate-${tier}`;
   return (
-    <li className="rounded-card bg-surface-variant flex min-w-0 flex-col gap-3 p-3" data-testid={`penalty-tier-${tier}`}>
+    <li
+      className="rounded-card bg-surface-variant flex min-w-0 flex-col gap-3 p-3"
+      data-testid={`penalty-tier-${tier}`}
+    >
       <div className="flex flex-col items-start gap-1.5">
         <StatusChip tone={present.tone} icon={present.icon} label={present.label} />
         <span className="text-caption text-text-secondary">{TIER_BANDS[tier]}</span>
@@ -416,17 +453,38 @@ function TierRate({
           ) : null}
         </Field>
       ) : (
-        <p className="text-h3 text-text-primary m-0 tabular-nums" data-testid={`penalty-rate-${tier}-value`}>
+        <p
+          className="text-h3 text-text-primary m-0 tabular-nums"
+          data-testid={`penalty-rate-${tier}-value`}
+        >
           {formatRatePercent(inForceBps)}
         </p>
       )}
       <div className="flex flex-col gap-1.5">
-        <div className="border-outline flex h-2.5 w-full overflow-hidden rounded-pill border" aria-hidden>
-          <div className="bg-chart-3 h-full flex-1" />
-          <div className="bg-chart-1 h-full" style={{ width: `${draftBps / 100}%` }} />
+        <div
+          className="border-outline flex h-2.5 w-full overflow-hidden rounded-pill border"
+          aria-hidden
+        >
+          {/* Taken off the end, as the API takes it from the last unpaid share. */}
+          <div className="bg-surface h-full flex-1" />
+          <div
+            className={cn(
+              "h-full",
+              present.tone === "error"
+                ? "bg-error"
+                : present.tone === "warning"
+                  ? "bg-warning"
+                  : "bg-text-secondary",
+            )}
+            style={{ width: `${draftBps / 100}%` }}
+          />
         </div>
-        <p className="text-caption text-text-secondary m-0 tabular-nums" aria-live="polite">
-          {formatPhp(deduction)} off, {formatPhp(PENALTY_EXAMPLE_BALANCE_MINOR - deduction)} still paid
+        <p
+          className="text-caption text-text-secondary m-0 tabular-nums"
+          aria-live="polite"
+        >
+          {formatPhp(deduction)} off,{" "}
+          {formatPhp(PENALTY_EXAMPLE_BALANCE_MINOR - deduction)} still paid
         </p>
       </div>
     </li>

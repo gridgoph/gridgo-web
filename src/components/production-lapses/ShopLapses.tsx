@@ -69,9 +69,19 @@ type Loaded = {
   at: number;
 };
 
-const ACTIVE_PRODUCTION = new Set(["payment_authorized", "production", "supplier_self_qc"]);
+const ACTIVE_PRODUCTION = new Set([
+  "payment_authorized",
+  "production",
+  "supplier_self_qc",
+]);
 
-export function ShopLapses({ tree, supplierId }: { tree: LapseTree; supplierId: string }) {
+export function ShopLapses({
+  tree,
+  supplierId,
+}: {
+  tree: LapseTree;
+  supplierId: string;
+}) {
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -93,7 +103,8 @@ export function ShopLapses({ tree, supplierId }: { tree: LapseTree; supplierId: 
         ]);
         const byId = new Map((orders ?? []).map((order) => [order.id, order]));
         setData({
-          shopName: board?.rows.find((row) => row.supplierId === supplierId)?.shopName ?? null,
+          shopName:
+            board?.rows.find((row) => row.supplierId === supplierId)?.shopName ?? null,
           rows: ledger.lapses.map((lapse) => ({ lapse, order: byId.get(lapse.orderId) })),
           ordersRead: orders !== null,
           policy: settings?.productionPenalty ?? null,
@@ -102,7 +113,10 @@ export function ShopLapses({ tree, supplierId }: { tree: LapseTree; supplierId: 
       } catch (err) {
         setData(null);
         setError(
-          opsErrorMessage(err, "Could not load this shop's late jobs. Confirm the API is running, then retry."),
+          opsErrorMessage(
+            err,
+            "Could not load this shop's late jobs. Confirm the API is running, then retry.",
+          ),
         );
       } finally {
         setLoading(false);
@@ -137,7 +151,9 @@ export function ShopLapses({ tree, supplierId }: { tree: LapseTree; supplierId: 
             >
               {row.order?.title || `Order ${row.lapse.orderId.slice(-8)}`}
             </Link>
-            <span className="text-caption text-text-muted">Ready by {formatDateTime(row.lapse.deadlineAt)}</span>
+            <span className="text-caption text-text-muted">
+              Ready by {formatDateTime(row.lapse.deadlineAt)}
+            </span>
           </div>
         ),
       },
@@ -151,9 +167,33 @@ export function ShopLapses({ tree, supplierId }: { tree: LapseTree; supplierId: 
         cell: (row) => {
           const lateness = latenessOf(row.lapse, row.order, now);
           return (
-            <span className={lateness.kind === "unknown" ? "text-body text-text-secondary" : "text-body text-text-primary tabular-nums"}>
-              {latenessText(lateness, row.lapse.tier)}
-            </span>
+            <div className="flex flex-col items-start gap-2">
+              <span
+                className={
+                  lateness.kind === "unknown"
+                    ? "text-body text-text-secondary"
+                    : "text-body text-text-primary tabular-nums"
+                }
+              >
+                {latenessText(lateness, row.lapse.tier)}
+              </span>
+              {/* Beside the lateness it escalates, not in the row actions: a
+                  second labelled action does not fit a phone card. */}
+              {canRecordNoCommunication(row.lapse, row.order, now) ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setAttestError(null);
+                    setNotice(null);
+                    setAttest(row);
+                  }}
+                >
+                  <PhoneOff aria-hidden data-icon="inline-start" />
+                  No word from the shop
+                </Button>
+              ) : null}
+            </div>
           );
         },
       },
@@ -163,15 +203,20 @@ export function ShopLapses({ tree, supplierId }: { tree: LapseTree; supplierId: 
         sortValue: (row) => row.lapse.tier,
         cell: (row) => {
           const tier = presentTier(row.lapse.tier);
-          const stillOpen = row.order && !row.order.readyAt && ACTIVE_PRODUCTION.has(row.order.state);
+          const stillOpen =
+            row.order && !row.order.readyAt && ACTIVE_PRODUCTION.has(row.order.state);
           return (
             <div className="flex flex-col items-start gap-1">
               <StatusChip tone={tier.tone} icon={tier.icon} label={tier.label} />
               {row.lapse.reassignmentEligible && stillOpen ? (
-                <span className="text-caption text-text-secondary">Can be given to another shop</span>
+                <span className="text-caption text-text-secondary">
+                  Can be given to another shop
+                </span>
               ) : null}
               {row.order?.productionNoCommunication ? (
-                <span className="text-caption text-text-secondary">No word from the shop, recorded</span>
+                <span className="text-caption text-text-secondary">
+                  No word from the shop, recorded
+                </span>
               ) : null}
             </div>
           );
@@ -181,13 +226,15 @@ export function ShopLapses({ tree, supplierId }: { tree: LapseTree; supplierId: 
         id: "warning",
         header: "Warning",
         sortValue: (row) => row.lapse.warnings.at(-1)?.at ?? "",
-        filterValue: (row) => row.lapse.warnings.map((warning) => warning.message).join(" "),
+        filterValue: (row) =>
+          row.lapse.warnings.map((warning) => warning.message).join(" "),
         cell: (row) => <WarningCell lapse={row.lapse} />,
       },
       {
         id: "deduction",
         header: "Deduction",
-        sortValue: (row) => (row.lapse.status === "applied" ? row.lapse.deductionMinor : 0),
+        // The status, so the Status facet can filter on this column.
+        sortValue: (row) => row.lapse.status,
         cell: (row) => <DeductionCell lapse={row.lapse} deductionsOn={deductionsOn} />,
       },
       {
@@ -195,15 +242,6 @@ export function ShopLapses({ tree, supplierId }: { tree: LapseTree; supplierId: 
         header: "Still owed on the job",
         sortValue: (row) => unpaidPayoutMinor(row.order) ?? null,
         cell: (row) => <BalanceCell row={row} />,
-      },
-      {
-        id: "status",
-        header: "Status",
-        sortValue: (row) => row.lapse.status,
-        cell: (row) => {
-          const status = presentLapseStatus(row.lapse, deductionsOn);
-          return <StatusChip tone={status.tone} icon={status.icon} label={status.label} />;
-        },
       },
     ],
     [tree, now, deductionsOn],
@@ -220,11 +258,14 @@ export function ShopLapses({ tree, supplierId }: { tree: LapseTree; supplierId: 
         })),
       },
       {
-        columnId: "status",
+        columnId: "deduction",
         title: "Status",
         options: [
           { value: "warning_only", label: "Warning only" },
-          { value: "warned", label: deductionsOn === false ? "Deduction paused" : "Deduction pending" },
+          {
+            value: "warned",
+            label: deductionsOn === false ? "Deduction paused" : "Deduction pending",
+          },
           { value: "applied", label: "Deducted" },
           { value: "closed", label: "Closed, nothing deducted" },
         ],
@@ -279,7 +320,10 @@ export function ShopLapses({ tree, supplierId }: { tree: LapseTree; supplierId: 
       <header className="flex flex-col gap-3">
         <h2 className="text-h2 text-text-primary m-0">{shopLabel}</h2>
         {summary.total > 0 ? (
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3" data-testid="shop-lapse-summary">
+          <div
+            className="flex flex-wrap items-center gap-x-6 gap-y-3"
+            data-testid="shop-lapse-summary"
+          >
             <div className="flex items-center gap-3">
               <LapseMeter recent={summary.recent} />
               <span className="flex flex-col">
@@ -287,17 +331,23 @@ export function ShopLapses({ tree, supplierId }: { tree: LapseTree; supplierId: 
                   {summary.recent.length} late in the last {RECENT_LAPSE_DAYS} days
                 </span>
                 <span className="text-caption text-text-muted tabular-nums">
-                  Quality ranking −{qualityPointsLost(summary.recent.length)} of {QUALITY_POINTS_CAP} points
+                  Quality ranking −{qualityPointsLost(summary.recent.length)} of{" "}
+                  {QUALITY_POINTS_CAP} points
                 </span>
               </span>
             </div>
-            <SummaryFigure value={String(summary.total)} label={summary.total === 1 ? "late job in all" : "late jobs in all"} />
+            <SummaryFigure
+              value={String(summary.total)}
+              label={summary.total === 1 ? "late job in all" : "late jobs in all"}
+            />
             <SummaryFigure
               value={String(summary.formalWarnings)}
               label={summary.formalWarnings === 1 ? "formal warning" : "formal warnings"}
             />
             <SummaryFigure
-              value={summary.deductedMinor > 0 ? formatPhp(summary.deductedMinor) : "₱0.00"}
+              value={
+                summary.deductedMinor > 0 ? formatPhp(summary.deductedMinor) : "₱0.00"
+              }
               label="deducted"
             />
           </div>
@@ -305,7 +355,8 @@ export function ShopLapses({ tree, supplierId }: { tree: LapseTree; supplierId: 
         <DeductionGate policy={data.policy} tree={tree} />
         {!data.ordersRead ? (
           <p className="text-body text-text-secondary m-0" role="status">
-            The order list could not be read, so how late each job was shows as its tier&rsquo;s range.
+            The order list could not be read, so how late each job was shows as its
+            tier&rsquo;s range.
           </p>
         ) : null}
         {notice ? (
@@ -332,20 +383,11 @@ export function ShopLapses({ tree, supplierId }: { tree: LapseTree; supplierId: 
           pageSize={20}
           loading={loading && !data}
           rowActions={(row) => (
-            <>
-              <DataTableRowAction label="Open the order" icon={ArrowUpRight} href={orderHref(tree, row.lapse.orderId)} />
-              {canRecordNoCommunication(row.lapse, row.order, now) ? (
-                <DataTableRowAction
-                  label="Record no word from the shop"
-                  icon={PhoneOff}
-                  onClick={() => {
-                    setAttestError(null);
-                    setNotice(null);
-                    setAttest(row);
-                  }}
-                />
-              ) : null}
-            </>
+            <DataTableRowAction
+              label="Open the order"
+              icon={ArrowUpRight}
+              href={orderHref(tree, row.lapse.orderId)}
+            />
           )}
         />
       )}
@@ -365,7 +407,10 @@ export function ShopLapses({ tree, supplierId }: { tree: LapseTree; supplierId: 
 function SummaryFigure({ value, label }: { value: string; label: string }) {
   return (
     <span className="flex flex-col">
-      <span className="text-body text-text-primary tabular-nums" style={{ fontFamily: "var(--font-medium)" }}>
+      <span
+        className="text-body text-text-primary tabular-nums"
+        style={{ fontFamily: "var(--font-medium)" }}
+      >
         {value}
       </span>
       <span className="text-caption text-text-muted">{label}</span>
@@ -380,20 +425,31 @@ function WarningCell({ lapse }: { lapse: ProductionLapse }) {
   const formal = lapse.warnings.some((warning) => warning.formal);
   return (
     <div className="flex min-w-0 flex-col items-start gap-0.5">
-      <span className="text-body text-text-primary">{formal ? "Formal warning" : "Warning"}</span>
-      <span className="text-caption text-text-muted">Sent {formatDateTime(latest.at)}</span>
+      <span className="text-body text-text-primary">
+        {formal ? "Formal warning" : "Warning"}
+      </span>
+      <span className="text-caption text-text-muted">
+        Sent {formatDateTime(latest.at)}
+      </span>
       <details className="group max-w-md">
         <summary className="text-caption text-[var(--color-brand)] cursor-pointer underline-offset-4 hover:underline">
-          {lapse.warnings.length === 1 ? "What the shop was told" : `What the shop was told (${lapse.warnings.length})`}
+          {lapse.warnings.length === 1
+            ? "What the shop was told"
+            : `What the shop was told (${lapse.warnings.length})`}
         </summary>
         <ol className="m-0 mt-2 flex list-none flex-col gap-2 p-0">
           {lapse.warnings.map((warning) => (
-            <li key={`${warning.tier}-${warning.at}`} className="rounded-field bg-surface-variant p-2">
+            <li
+              key={`${warning.tier}-${warning.at}`}
+              className="rounded-field bg-surface-variant p-2"
+            >
               <p className="text-caption text-text-muted m-0">
                 {presentTier(warning.tier).label}
                 {warning.formal ? ", formal" : ""}, {formatDateTime(warning.at)}
               </p>
-              <p className="text-caption text-text-primary m-0 mt-1 whitespace-pre-line">{warning.message}</p>
+              <p className="text-caption text-text-primary m-0 mt-1 whitespace-pre-line">
+                {warning.message}
+              </p>
             </li>
           ))}
         </ol>
@@ -402,31 +458,43 @@ function WarningCell({ lapse }: { lapse: ProductionLapse }) {
   );
 }
 
-function DeductionCell({ lapse, deductionsOn }: { lapse: ProductionLapse; deductionsOn: boolean | null }) {
-  if (lapse.status === "applied") {
-    return (
-      <div className="flex flex-col">
-        <span className="text-body text-text-primary tabular-nums" style={{ fontFamily: "var(--font-medium)" }}>
-          −{formatPhp(lapse.deductionMinor)}
-        </span>
-        <span className="text-caption text-text-muted tabular-nums">
-          {formatRatePercent(lapse.rateBps)} of {formatPhp(lapse.remainingBalanceMinor)}
-        </span>
-      </div>
-    );
-  }
-  const [value, note] =
-    lapse.status === "warned"
-      ? deductionsOn === false
-        ? ["Paused", "Deductions are off now"]
-        : ["Pending", `${formatRatePercent(lapse.rateBps)} once assessed`]
-      : lapse.status === "closed"
-        ? ["None", "Refund or cancellation closed it"]
-        : ["None", "Deductions were off when it began"];
+/** Where the money stands: the lapse's status, then the amount or why there is none. */
+function DeductionCell({
+  lapse,
+  deductionsOn,
+}: {
+  lapse: ProductionLapse;
+  deductionsOn: boolean | null;
+}) {
+  const status = presentLapseStatus(lapse, deductionsOn);
+  const note =
+    lapse.status === "applied"
+      ? null
+      : lapse.status === "warned"
+        ? deductionsOn === false
+          ? "Deductions are off now"
+          : `${formatRatePercent(lapse.rateBps)} once assessed`
+        : lapse.status === "closed"
+          ? "A refund or cancellation closed it"
+          : "Deductions were off when it began";
   return (
-    <div className="flex flex-col">
-      <span className="text-body text-text-primary">{value}</span>
-      <span className="text-caption text-text-muted">{note}</span>
+    <div className="flex flex-col items-start gap-1">
+      <StatusChip tone={status.tone} icon={status.icon} label={status.label} />
+      {lapse.status === "applied" ? (
+        <span className="flex flex-col">
+          <span
+            className="text-body text-text-primary tabular-nums"
+            style={{ fontFamily: "var(--font-medium)" }}
+          >
+            −{formatPhp(lapse.deductionMinor)}
+          </span>
+          <span className="text-caption text-text-muted tabular-nums">
+            {formatRatePercent(lapse.rateBps)} of {formatPhp(lapse.remainingBalanceMinor)}
+          </span>
+        </span>
+      ) : (
+        <span className="text-caption text-text-muted">{note}</span>
+      )}
     </div>
   );
 }
@@ -448,9 +516,15 @@ function BalanceCell({ row }: { row: Row }) {
   }
   return (
     <div className="flex flex-col">
-      <span className="text-body text-text-primary tabular-nums">{formatPhp(unpaid)}</span>
+      <span className="text-body text-text-primary tabular-nums">
+        {formatPhp(unpaid)}
+      </span>
       <span className="text-caption text-text-muted">
-        {unpaid === 0 ? "Paid out in full" : applied ? "Unpaid, after the deduction" : "Unpaid shares"}
+        {unpaid === 0
+          ? "Paid out in full"
+          : applied
+            ? "Unpaid, after the deduction"
+            : "Unpaid shares"}
       </span>
     </div>
   );
