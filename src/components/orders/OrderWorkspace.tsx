@@ -25,6 +25,8 @@ import {
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { CorrectProductionDialog } from "@/components/orders/CorrectProductionDialog";
 import { CounterCheck } from "@/components/orders/CounterCheck";
+import { useFileDeletionAccess } from "@/components/files/FileDeletionAccess";
+import { OrderFileDeletions } from "@/components/files/OrderFileDeletions";
 import { EvidencePlate, EvidenceStrip } from "@/components/orders/EvidencePreview";
 import {
   DesignLinkLead,
@@ -228,6 +230,13 @@ export function OrderWorkspace({
   );
 
   useLiveReload(["orders", "jobs", "payouts"], load, { matchId: orderId });
+
+  // A file deleted early from any row: re-read the order, so a progress photo
+  // leaves the gallery and every row reflects what the API now holds.
+  const { version: fileDeletions } = useFileDeletionAccess();
+  useEffect(() => {
+    if (fileDeletions > 0) void load();
+  }, [fileDeletions, load]);
 
   useEffect(() => {
     void load();
@@ -1276,7 +1285,7 @@ function ProductionStep({
           <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2">
             {proofs.map((proof) => (
               <li key={proof.fileId} className="min-w-0">
-                <EvidencePlate fileId={proof.fileId} label={proof.label} />
+                <EvidencePlate fileId={proof.fileId} label={proof.label} deletable />
                 {proof.attachedAt ? (
                   <p className="text-caption text-text-muted m-0 mt-1">
                     Filed {formatDateTime(proof.attachedAt)}
@@ -1385,7 +1394,7 @@ function DeliveryStep({ order, hint }: { order: Order; hint?: string }) {
           ? `At the door, ${formatDateTime(order.deliveryEvidence.recordedAt)}`
           : "Delivery photos"}
       </p>
-      <EvidenceStrip items={delivery} />
+      <EvidenceStrip items={delivery} deletable />
     </div>
   );
 }
@@ -1440,6 +1449,8 @@ function SpecRail({ order, payoutsHref }: { order: Order; payoutsHref?: string }
           <OrderArtwork order={order} />
         </section>
       ) : null}
+
+      <OrderFileDeletions order={order} />
 
       <section className="gg-card p-3">
         <h2 className="text-overline text-text-muted m-0 mb-2">Money</h2>

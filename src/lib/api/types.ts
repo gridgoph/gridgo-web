@@ -1072,6 +1072,21 @@ export type StoredFile = {
   detected?: DetectedArtwork;
 };
 
+/**
+ * `GET /admin/files/retention` (Super Admin). Always a dry run: what the next
+ * scheduled pass would delete, by file purpose. `deletionEnabled` is the API's
+ * `GRIDGO_FILE_RETENTION_DELETE_ENABLED` flag, off unless configured.
+ */
+export type FileRetentionReport = {
+  at: string;
+  dryRun: boolean;
+  deletionEnabled: boolean;
+  total: number;
+  byPurpose: Record<string, number>;
+  deleted: number;
+  failed: number;
+};
+
 export type CreditLedgerEntry = {
   id: string;
   type: string;

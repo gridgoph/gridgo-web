@@ -55,6 +55,7 @@ export type NavIconKey =
   | "reports"
   | "tracker"
   | "refunds"
+  | "retention"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -615,6 +616,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "tracker-needs-decision",
+        },
+        {
+          id: "admin-file-retention",
+          href: "/admin/file-retention",
+          label: "File retention",
+          title: "File retention",
+          icon: "retention",
+          ready: true,
+          placeholderBody: "",
         },
         // Last on purpose. This is the one control here that reaches outside the
         // platform onto people's phones, and it cannot be undone — it should take
