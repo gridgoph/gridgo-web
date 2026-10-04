@@ -38,6 +38,7 @@ export type NavIconKey =
   | "dispatch"
   | "riders"
   | "rankings"
+  | "lapses"
   | "escalations"
   | "claims"
   | "settings"
@@ -48,6 +49,7 @@ export type NavIconKey =
   | "credits"
   | "finance"
   | "planning"
+  | "seasons"
   | "broadcast"
   | "chat"
   | "reports"
@@ -326,6 +328,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          id: "ops-late-production",
+          href: "/ops/late-production",
+          label: "Late production",
+          title: "Late production",
+          icon: "lapses",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "ops-escalations",
           href: "/ops/escalations",
           label: "Escalations",
@@ -543,6 +554,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
           count: "refunds-waiting",
         },
+        {
+          id: "admin-late-production",
+          href: "/admin/late-production",
+          label: "Late production",
+          title: "Late production",
+          icon: "lapses",
+          ready: true,
+          placeholderBody: "",
+        },
       ],
     },
     {
@@ -575,6 +595,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Planning calendar",
           title: "Planning calendar",
           icon: "planning",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-season-windows",
+          href: "/admin/season-windows",
+          label: "Season windows",
+          title: "Season windows",
+          icon: "seasons",
           ready: true,
           placeholderBody: "",
         },
@@ -691,6 +720,9 @@ export function contextTitleForPath(
     return "Refund case";
   }
   if (pathname.startsWith("/admin/orders/")) return "Order workspace";
+  if (pathname.startsWith("/ops/late-production/") || pathname.startsWith("/admin/late-production/")) {
+    return "Shop's late jobs";
+  }
   if (pathname === "/admin/escalations" || pathname.startsWith("/admin/escalations/")) {
     return "Pickup escalations";
   }

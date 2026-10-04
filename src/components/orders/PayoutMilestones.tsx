@@ -164,6 +164,14 @@ export function PayoutMilestones({
                         {superseded ? <span className="sr-only">, not paid</span> : null}
                       </span>
                     ) : null}
+                    {milestone.productionDeductionMinor ? (
+                      <span
+                        className="text-caption text-text-muted tabular-nums"
+                        data-testid={`stage-deduction-${milestone.code}`}
+                      >
+                        After {formatPhp(milestone.productionDeductionMinor)} late deduction
+                      </span>
+                    ) : null}
                     <StatusChip
                       tone={status.tone}
                       label={status.label}

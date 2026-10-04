@@ -18,6 +18,7 @@ import {
   Bike,
   BookOpen,
   CalendarDays,
+  CalendarClock,
   CalendarRange,
   ChevronRight,
   ChevronsUpDown,
@@ -53,6 +54,7 @@ import {
   UserSearch,
   Users,
   Wallet,
+  TimerOff,
   type LucideIcon,
 } from "lucide-react";
 
@@ -167,6 +169,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   dispatch: Truck,
   riders: Bike,
   rankings: Trophy,
+  lapses: TimerOff,
   escalations: Siren,
   claims: Scale,
   settings: Settings,
@@ -177,6 +180,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   credits: Coins,
   finance: Banknote,
   planning: CalendarRange,
+  seasons: CalendarClock,
   broadcast: Megaphone,
   chat: MessageSquare,
   reports: MessageSquareWarning,
