@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChevronLeft } from "lucide-react";
+import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   checkTrackerIssueUrl,
@@ -8,11 +9,20 @@ import {
   trackerIssueLabel,
   TRACKER_URL_EXAMPLE,
 } from "@/components/issue-reports/tracker-link";
+import {
+  appendPage,
+  hasMoreReports,
+  ISSUE_REPORTS_MAX_LIMIT,
+  ISSUE_REPORTS_PAGE_SIZE,
+  reloadLimit,
+  showingLabel,
+} from "@/components/issue-reports/paging";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip, StatusChipLink } from "@/components/ui/StatusChip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { isApiError, listIssueReports, updateIssueReport } from "@/lib/api/client";
@@ -116,11 +126,52 @@ function firstLine(text: string): string {
   return line.length > 120 ? `${line.slice(0, 117)}…` : line;
 }
 
+/** The desk is two panes side by side from this width; below it, one at a time. */
+const SIDE_BY_SIDE_QUERY = "(min-width: 1024px)";
+
+function sideBySide(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia(SIDE_BY_SIDE_QUERY).matches
+    : true;
+}
+
+function ListSkeleton() {
+  return (
+    <div aria-hidden="true" className="flex flex-col gap-1">
+      {Array.from({ length: 7 }, (_, index) => (
+        <div key={index} className="flex flex-col gap-2 px-3 py-2.5">
+          <Skeleton className="h-4 w-11/12" />
+          <Skeleton className="h-3 w-7/12" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DetailSkeleton() {
+  return (
+    <div aria-hidden="true" className="flex flex-col gap-4 p-4">
+      <Skeleton className="h-6 w-48" />
+      <Skeleton className="h-3 w-64" />
+      <div className="flex flex-col gap-2 pt-2">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-2/3" />
+      </div>
+    </div>
+  );
+}
+
 /**
  * Issues anyone filed from the landing site's /report page. Operations and
  * Super Admin read them here, then mark each one tracked (with the GitHub
  * tracker issue it became), published (with the reports page date) or
  * dismissed.
+ *
+ * The desk fills the window under the header: the list scrolls on its own
+ * and loads a page at a time, and the open report keeps its actions pinned
+ * at the bottom of its panel. Below 1024px it is one pane at a time (the
+ * list, then the report with a way back).
  */
 export function IssueReportsDesk() {
   const [status, setStatus] = useState<IssueReportStatus>("new");
@@ -129,22 +180,100 @@ export function IssueReportsDesk() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<string | null>(null);
+  // Below 1024px: whether the report pane is showing instead of the list.
+  const [detailOpen, setDetailOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [publishedIn, setPublishedIn] = useState("");
   const [trackerUrl, setTrackerUrl] = useState("");
   const [trackerError, setTrackerError] = useState<string | null>(null);
 
+  const listRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const detailHeadingRef = useRef<HTMLHeadingElement>(null);
+  const reportsRef = useRef<IssueReport[]>([]);
+  // Bumped by every refresh, so a page that lands after it is dropped.
+  const generationRef = useRef(0);
+  const loadingMoreRef = useRef(false);
+  // Where focus goes after the single pane switches (phone and tablet).
+  const focusAfterSwitch = useRef<"detail" | "row" | null>(null);
+
+  useEffect(() => {
+    reportsRef.current = reports ?? [];
+  }, [reports]);
+
+  /** Refetches the tab, keeping as many pages as are already loaded. */
   const load = useCallback(async (keepId?: string | null) => {
+    const generation = ++generationRef.current;
     setError(null);
-    const result = await listIssueReports(status);
+    setMoreError(null);
+    const requested = reloadLimit(reportsRef.current.length);
+    const result = await listIssueReports(status, { limit: requested });
+    if (generation !== generationRef.current) return;
+    reportsRef.current = result.reports;
     setReports(result.reports);
     setCounts(result.counts);
+    setHasMore(
+      hasMoreReports(result.reports.length, result.counts, status, {
+        received: result.reports.length,
+        requested,
+      }),
+    );
     setSelectedId((current) => {
       const preferred = keepId ?? current;
       if (preferred && result.reports.some((report) => report.id === preferred)) return preferred;
       return result.reports[0]?.id ?? null;
     });
+  }, [status]);
+
+  const loadMore = useCallback(async () => {
+    const current = reportsRef.current;
+    const last = current.at(-1);
+    if (!last || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    setMoreError(null);
+    const generation = generationRef.current;
+    try {
+      const result = await listIssueReports(status, { limit: ISSUE_REPORTS_PAGE_SIZE, before: last.id });
+      if (generation !== generationRef.current) return;
+      const page = appendPage(current, result.reports);
+      if (page.ignoredCursor) {
+        // An API without `before` paging: ask for a longer first page instead.
+        const requested = Math.min(current.length + ISSUE_REPORTS_PAGE_SIZE, ISSUE_REPORTS_MAX_LIMIT);
+        const grown = await listIssueReports(status, { limit: requested });
+        if (generation !== generationRef.current) return;
+        reportsRef.current = grown.reports;
+        setReports(grown.reports);
+        setCounts(grown.counts);
+        setHasMore(
+          grown.reports.length > current.length &&
+            hasMoreReports(grown.reports.length, grown.counts, status, {
+              received: grown.reports.length,
+              requested,
+            }),
+        );
+        return;
+      }
+      reportsRef.current = page.reports;
+      setReports(page.reports);
+      setCounts(result.counts);
+      setHasMore(
+        page.added > 0 &&
+          hasMoreReports(page.reports.length, result.counts, status, {
+            received: result.reports.length,
+            requested: ISSUE_REPORTS_PAGE_SIZE,
+          }),
+      );
+    } catch {
+      if (generation === generationRef.current) setMoreError("Could not load more reports.");
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
   }, [status]);
 
   useLiveReload("issue-reports", load);
@@ -167,6 +296,38 @@ export function IssueReportsDesk() {
     };
   }, [load]);
 
+  // Infinite scroll: the next page loads as the end of the list nears. The
+  // Load more button below the list does the same by hand.
+  useEffect(() => {
+    const root = listRef.current;
+    const target = sentinelRef.current;
+    if (!root || !target || !hasMore || moreError || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) void loadMore();
+      },
+      { root, rootMargin: "0px 0px 320px 0px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, moreError, loadMore, reports]);
+
+  // Keep the open report's row in view, in the list's own scroll area.
+  useEffect(() => {
+    if (!selectedId || detailOpen) return;
+    const row = listRef.current?.querySelector<HTMLElement>(`[data-report-id="${selectedId}"]`);
+    row?.scrollIntoView?.({ block: "nearest" });
+  }, [selectedId, detailOpen, reports]);
+
+  // The single pane moved focus out of view; put it where the reader now is.
+  useEffect(() => {
+    const target = focusAfterSwitch.current;
+    if (!target) return;
+    focusAfterSwitch.current = null;
+    if (target === "detail") detailHeadingRef.current?.focus();
+    else listRef.current?.querySelector<HTMLButtonElement>(`[data-report-id="${selectedId}"] button`)?.focus();
+  }, [detailOpen, selectedId]);
+
   const selected = useMemo(
     () => reports?.find((report) => report.id === selectedId) ?? null,
     [reports, selectedId],
@@ -185,6 +346,44 @@ export function IssueReportsDesk() {
     setTrackerError(null);
     setPublishedIn(selected?.publishedIn ?? "");
     setTrackerUrl(selected?.trackerIssueUrl ?? "");
+  }
+
+  function changeStatus(next: IssueReportStatus) {
+    if (next === status) return;
+    reportsRef.current = [];
+    setReports(null);
+    setHasMore(false);
+    setSelectedId(null);
+    setDetailOpen(false);
+    setStatus(next);
+  }
+
+  function openReport(id: string) {
+    setSelectedId(id);
+    if (!sideBySide()) {
+      focusAfterSwitch.current = "detail";
+      setDetailOpen(true);
+    }
+  }
+
+  function backToList() {
+    focusAfterSwitch.current = "row";
+    setDetailOpen(false);
+  }
+
+  function onListKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (!reports?.length) return;
+    const index = reports.findIndex((report) => report.id === selectedId);
+    let next: number;
+    if (event.key === "ArrowDown") next = Math.min(reports.length - 1, index + 1);
+    else if (event.key === "ArrowUp") next = Math.max(0, index - 1);
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = reports.length - 1;
+    else return;
+    event.preventDefault();
+    const id = reports[next].id;
+    setSelectedId(id);
+    listRef.current?.querySelector<HTMLButtonElement>(`[data-report-id="${id}"] button`)?.focus();
   }
 
   async function mark(next: IssueReportStatus) {
@@ -212,8 +411,14 @@ export function IssueReportsDesk() {
     setTrackerError(null);
     try {
       await updateIssueReport(selected.id, input);
-      // The report usually leaves this tab; the list picks the next one.
-      await load(next === status ? selected.id : null);
+      const stays = next === status;
+      // A report that leaves this tab hands over to the one below it, so the
+      // desk works down the list instead of jumping back to the top.
+      const list = reports ?? [];
+      const index = list.findIndex((report) => report.id === selected.id);
+      const neighbour = list[index + 1] ?? list[index - 1] ?? null;
+      await load(stays ? selected.id : (neighbour?.id ?? null));
+      if (!stays && !sideBySide()) backToList();
     } catch (err) {
       setActionError(
         isApiError(err) && err.kind === "validation"
@@ -236,139 +441,221 @@ export function IssueReportsDesk() {
     );
   }
 
+  const initialLoad = loading && !reports;
+  const total = counts?.[status];
+
   return (
-    <div className="grid min-h-[36rem] gap-4 lg:grid-cols-[22rem_minmax(0,1fr)]">
-      <aside className="gg-card flex min-w-0 flex-col gap-3">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <h2 className="text-h3 text-text-primary m-0">Reports</h2>
-            <p className="text-caption text-text-muted m-0 mt-1">
-              Filed by anyone from the website&apos;s Report an issue page.
-            </p>
+    <div className="grid h-[calc(100dvh-5rem)] min-h-[30rem] gap-3 lg:grid-cols-[22rem_minmax(0,1fr)] lg:gap-4">
+      <aside
+        aria-label="Report list"
+        className={cn("gg-card-flush min-h-0 min-w-0 flex-col", detailOpen ? "hidden lg:flex" : "flex")}
+      >
+        <div className="flex shrink-0 flex-col gap-3 border-b border-outline p-4 pb-3">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <h2 className="text-h3 text-text-primary m-0">Reports</h2>
+              <p className="text-caption text-text-muted m-0 mt-1">
+                Filed by anyone from the website&apos;s Report an issue page.
+              </p>
+            </div>
+            <Button size="sm" onClick={() => void load().catch(() => setError("Could not refresh."))}>
+              Refresh
+            </Button>
           </div>
-          <Button size="sm" onClick={() => void load().catch(() => setError("Could not refresh."))}>
-            Refresh
-          </Button>
+          <ToggleGroup
+            value={[status]}
+            onValueChange={(values) => {
+              const next = values[0] as IssueReportStatus | undefined;
+              if (next) changeStatus(next);
+            }}
+            variant="outline"
+            spacing={0}
+            aria-label="Filter reports by status"
+            className="flex flex-wrap gap-1"
+          >
+            {STATUS_TABS.map((tab) => (
+              <ToggleGroupItem key={tab.value} value={tab.value}>
+                {tab.label}
+                {counts ? ` · ${counts[tab.value] ?? 0}` : ""}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
         </div>
-        <ToggleGroup
-          value={[status]}
-          onValueChange={(values) => {
-            const next = values[0] as IssueReportStatus | undefined;
-            if (next) setStatus(next);
-          }}
-          variant="outline"
-          spacing={0}
-          aria-label="Filter reports by status"
-          className="flex flex-wrap gap-1"
-        >
-          {STATUS_TABS.map((tab) => (
-            <ToggleGroupItem key={tab.value} value={tab.value}>
-              {tab.label}
-              {counts ? ` · ${counts[tab.value] ?? 0}` : ""}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-        <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="Issue reports">
-          {loading && !reports ? (
-            <p className="text-body text-text-muted m-0 px-1 py-3">Loading reports…</p>
+
+        <div ref={listRef} onKeyDown={onListKeyDown} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+          {initialLoad ? (
+            <>
+              <p className="sr-only" role="status">Loading reports…</p>
+              <ListSkeleton />
+            </>
           ) : !reports?.length ? (
-            <EmptyState
-              title={`No ${status} reports`}
-              body={EMPTY_BODY[status]}
-            />
+            <EmptyState title={`No ${status} reports`} body={EMPTY_BODY[status]} className="border-0" />
           ) : (
-            reports.map((report) => {
-              const active = report.id === selectedId;
-              // New and Dismissed rows sit in their own tab; the chip would repeat it.
-              const chips = report.status === "tracked" || report.status === "published" ? statusChips(report) : [];
-              return (
-                <div
-                  key={report.id}
-                  role="listitem"
-                  className={cn(
-                    "mb-1 flex flex-col rounded-[var(--radius-field)]",
-                    active ? "bg-muted" : "hover:bg-overlay-hover",
-                  )}
-                >
-                  <button
-                    type="button"
-                    aria-current={active ? "true" : undefined}
-                    onClick={() => setSelectedId(report.id)}
-                    className="flex w-full flex-col items-start gap-0.5 rounded-[var(--radius-field)] px-3 py-2 text-left"
-                  >
-                    <span className="text-body text-text-primary line-clamp-2" style={{ fontFamily: "var(--font-medium)" }}>
-                      {firstLine(report.issue)}
-                    </span>
-                    <span className="text-caption text-text-muted">
-                      {formatDateTime(report.createdAt)}
-                      {report.category ? ` · ${categoryLabel(report.category)}` : ""}
-                      {report.screenshots.length
-                        ? ` · ${report.screenshots.length} screenshot${report.screenshots.length === 1 ? "" : "s"}`
-                        : ""}
-                    </span>
-                  </button>
-                  {chips.length ? (
-                    <div className="-mt-2 flex flex-wrap items-center gap-x-2 px-3">{chips}</div>
-                  ) : null}
-                </div>
-              );
-            })
+            <>
+              <div role="list" aria-label="Issue reports" className="flex flex-col gap-0.5">
+                {reports.map((report) => {
+                  const active = report.id === selectedId;
+                  // New and Dismissed rows sit in their own tab; the chip would repeat it.
+                  const chips =
+                    report.status === "tracked" || report.status === "published" ? statusChips(report) : [];
+                  return (
+                    <div
+                      key={report.id}
+                      role="listitem"
+                      data-report-id={report.id}
+                      className={cn(
+                        "relative flex flex-col rounded-[var(--radius-field)]",
+                        active ? "bg-muted" : "hover:bg-overlay-hover",
+                      )}
+                    >
+                      {/* The open report also carries a bar, so the choice reads without colour. */}
+                      {active ? (
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-y-2 left-0 w-[3px] rounded-full bg-[var(--color-text-primary)]"
+                        />
+                      ) : null}
+                      <button
+                        type="button"
+                        aria-current={active ? "true" : undefined}
+                        onClick={() => openReport(report.id)}
+                        className="flex w-full flex-col items-start gap-0.5 rounded-[var(--radius-field)] px-3 py-2 text-left"
+                      >
+                        <span
+                          className="text-body text-text-primary line-clamp-2"
+                          style={{ fontFamily: "var(--font-medium)" }}
+                        >
+                          {firstLine(report.issue)}
+                        </span>
+                        <span className="text-caption text-text-muted">
+                          {reportReference(report.id)} · {formatDateTime(report.createdAt)}
+                          {report.category ? ` · ${categoryLabel(report.category)}` : ""}
+                          {report.screenshots.length
+                            ? ` · ${report.screenshots.length} screenshot${report.screenshots.length === 1 ? "" : "s"}`
+                            : ""}
+                        </span>
+                      </button>
+                      {chips.length ? (
+                        <div className="-mt-1 flex flex-wrap items-center gap-x-2 px-3 pb-1">{chips}</div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+              <div ref={sentinelRef} className="flex flex-col items-center gap-2 px-2 pt-3 pb-2">
+                {moreError ? (
+                  <>
+                    <p role="alert" className="text-caption text-error m-0">
+                      {moreError}
+                    </p>
+                    <Button size="sm" onClick={() => void loadMore()}>
+                      Try again
+                    </Button>
+                  </>
+                ) : hasMore ? (
+                  <Button size="sm" disabled={loadingMore} onClick={() => void loadMore()}>
+                    {loadingMore ? "Loading more…" : "Load more"}
+                  </Button>
+                ) : null}
+              </div>
+            </>
           )}
         </div>
+
+        {reports?.length ? (
+          <p
+            className="text-caption text-text-muted m-0 shrink-0 border-t border-outline px-4 py-2"
+            aria-live="polite"
+          >
+            {showingLabel(reports.length, total)}
+          </p>
+        ) : null}
       </aside>
 
-      <section className="gg-card flex min-w-0 flex-col gap-4">
-        {!selected ? (
-          <EmptyState
-            title="Pick a report"
-            body="The full text, category and screenshots open here."
-          />
+      <section
+        aria-label="Open report"
+        className={cn("gg-card-flush min-h-0 min-w-0 flex-col", detailOpen ? "flex" : "hidden lg:flex")}
+      >
+        {initialLoad ? (
+          <DetailSkeleton />
+        ) : !selected ? (
+          <div className="p-4">
+            <EmptyState
+              title={reports?.length ? "Pick a report" : "Nothing to open"}
+              body={
+                reports?.length
+                  ? "The full text, category and screenshots open here."
+                  : "Reports in this tab open here."
+              }
+              className="border-0 p-0"
+            />
+          </div>
         ) : (
           <>
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="text-h3 text-text-primary m-0">Report {reportReference(selected.id)}</h2>
-                <p className="text-caption text-text-muted m-0 mt-1">
-                  Received {formatDateTime(selected.createdAt)} · {categoryLabel(selected.category)}
-                </p>
+            <div className="flex shrink-0 flex-col gap-2 border-b border-outline px-4 pt-3 pb-3">
+              <Button variant="ghost" size="sm" className="-ml-2 self-start lg:hidden" onClick={backToList}>
+                <ChevronLeft aria-hidden="true" />
+                All reports
+              </Button>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 ref={detailHeadingRef} tabIndex={-1} className="text-h3 text-text-primary m-0 outline-offset-4">
+                    Report {reportReference(selected.id)}
+                  </h2>
+                  <p className="text-caption text-text-muted m-0 mt-1">
+                    Received {formatDateTime(selected.createdAt)} · {categoryLabel(selected.category)}
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">{statusChips(selected)}</div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">{statusChips(selected)}</div>
             </div>
 
-            <p className="text-body text-text-primary m-0 whitespace-pre-wrap break-words">{selected.issue}</p>
+            {/* Keyed by report, so a newly opened report starts at its top. */}
+            <div
+              key={selected.id}
+              role="region"
+              aria-label={`Report ${reportReference(selected.id)} text`}
+              tabIndex={0}
+              className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain p-4"
+            >
+              <p className="text-body text-text-primary m-0 max-w-[72ch] whitespace-pre-wrap break-words">
+                {selected.issue}
+              </p>
 
-            {selected.screenshots.length > 0 ? (
-              <div className="flex flex-col gap-2">
-                <h3 className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
-                  Screenshots
-                </h3>
-                <ul className="m-0 grid list-none grid-cols-2 gap-3 p-0 sm:grid-cols-3">
-                  {selected.screenshots.map((shot) => (
-                    <li key={shot.position}>
-                      <a
-                        href={shot.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block overflow-hidden rounded-[var(--radius-field)] border border-border bg-muted"
-                      >
-                        {/* Presigned MinIO links, so next/image cannot optimise them. */}
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={shot.url}
-                          alt={`Screenshot ${shot.position + 1} for report ${reportReference(selected.id)}`}
-                          className="aspect-[4/3] w-full object-cover"
-                        />
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-                <p className="text-caption text-text-muted m-0">
-                  Open a screenshot to see it full size. Links expire after a few minutes; press Refresh for new ones.
-                </p>
-              </div>
-            ) : null}
+              {selected.screenshots.length > 0 ? (
+                <div className="flex flex-col gap-2">
+                  <h3 className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+                    Screenshots
+                  </h3>
+                  <ul className="m-0 grid list-none grid-cols-2 gap-3 p-0 sm:grid-cols-3">
+                    {selected.screenshots.map((shot) => (
+                      <li key={shot.position}>
+                        <a
+                          href={shot.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block overflow-hidden rounded-[var(--radius-field)] border border-border bg-muted"
+                        >
+                          {/* Presigned MinIO links, so next/image cannot optimise them. */}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={shot.url}
+                            alt={`Screenshot ${shot.position + 1} for report ${reportReference(selected.id)}`}
+                            className="aspect-[4/3] w-full object-cover"
+                          />
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-caption text-text-muted m-0">
+                    Open a screenshot to see it full size. Links expire after a few minutes; press Refresh for new ones.
+                  </p>
+                </div>
+              ) : null}
+            </div>
 
-            <div className="mt-auto flex flex-col gap-3 border-t border-border pt-4">
+            {/* Pinned to the bottom of the panel, however long the report. */}
+            <div className="flex shrink-0 flex-col gap-3 border-t border-outline bg-surface p-4">
               {selected.status === "new" || selected.status === "tracked" ? (
                 <>
                   <Field data-invalid={trackerError ? true : undefined} className="gap-1">
@@ -408,17 +695,17 @@ export function IssueReportsDesk() {
                       </FieldDescription>
                     )}
                   </Field>
-                  <label className="flex flex-col gap-1">
-                    <span className="text-caption text-text-secondary">Reports page date (optional)</span>
-                    <Input
-                      value={publishedIn}
-                      onChange={(event) => setPublishedIn(event.target.value)}
-                      placeholder="09-25-2026"
-                      maxLength={200}
-                      className="max-w-xs"
-                    />
-                  </label>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap items-end gap-2">
+                    <label className="flex min-w-0 flex-col gap-1">
+                      <span className="text-caption text-text-secondary">Reports page date (optional)</span>
+                      <Input
+                        value={publishedIn}
+                        onChange={(event) => setPublishedIn(event.target.value)}
+                        placeholder="09-25-2026"
+                        maxLength={200}
+                        className="w-40"
+                      />
+                    </label>
                     <Button variant="primary" disabled={saving} onClick={() => void mark("published")}>
                       Mark published
                     </Button>
