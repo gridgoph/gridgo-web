@@ -16,6 +16,15 @@ function note(partial: Partial<Notification>): Notification {
 }
 
 describe("notificationHref", () => {
+  it("opens the taken-down listing for the shop", () => {
+    expect(
+      notificationHref(
+        "supplier",
+        note({ type: "listing_suspended", catalogItemId: "sci_sticker" }),
+      ),
+    ).toBe("/supplier/catalogue/sci_sticker");
+  });
+
   it("deep-links supplier jobs and ops/admin orders", () => {
     const row = note({ orderId: "ord_9" });
     expect(notificationHref("supplier", row)).toBe("/supplier/jobs/ord_9");

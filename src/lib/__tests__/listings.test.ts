@@ -4,6 +4,7 @@ import {
   boardBlockers,
   boardChecklist,
   boardCountLine,
+  boardStanding,
   nextFreeSlot,
   normalizeListing,
   priceLine,
@@ -198,5 +199,29 @@ describe("listings", () => {
     expect(Object.keys(printerMaxWidthFeetWrite("tarpaulins_outdoor_banners", 5))).toEqual([
       "printerMaxWidthFeet",
     ]);
+  });
+
+  it("shows an operations suspension on the same listing the shop already has", () => {
+    const suspended = normalizeListing({
+      id: "sci_held",
+      supplierServiceId: "svc_1",
+      name: "Flyers",
+      active: false,
+      suspendReason: "Blurry sample",
+    });
+    expect(suspended?.onTheBoard).toBe(false);
+    expect(suspended?.suspendReason).toBe("Blurry sample");
+    expect(
+      boardStanding(
+        suspended!,
+        { inheritedTurnaroundHours: null, inheritedFormatCodes: [] },
+        true,
+      ),
+    ).toEqual({
+      label: "Suspended",
+      tone: "warning",
+      icon: "triangle-alert",
+      note: "Blurry sample",
+    });
   });
 });

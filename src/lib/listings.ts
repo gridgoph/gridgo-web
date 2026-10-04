@@ -117,6 +117,8 @@ export type Listing = {
   fileFormatMode: FileFormatMode;
   formatCodes: string[];
   onTheBoard: boolean;
+  /** Set when Operations suspended this listing. The shop reads it; there is no second hide flag. */
+  suspendReason: string | null;
   sortOrder: number;
   photos: SamplePhoto[];
   groups: SpecGroup[];
@@ -355,6 +357,7 @@ export function normalizeListing(body: unknown, index = 0): Listing | null {
       pick(raw, "formatCodes", "format_codes", "fileFormats", "acceptedFormats"),
     ),
     onTheBoard: pick(raw, "active") !== false,
+    suspendReason: str(pick(raw, "suspendReason", "suspend_reason")),
     sortOrder: num(pick(raw, "sortOrder", "sort_order")) ?? index,
     photos: readPhotos(pick(raw, "photos", "samplePhotos")),
     groups: asArray(pick(raw, "optionGroups", "option_groups", "groups"))
@@ -766,6 +769,14 @@ export function boardStanding(
   context: BoardContext,
   shopApproved: boolean,
 ): BoardStanding {
+  if (listing.suspendReason) {
+    return {
+      label: "Suspended",
+      tone: "warning",
+      icon: "triangle-alert",
+      note: listing.suspendReason,
+    };
+  }
   const blockers = boardBlockers(listing, context);
   if (blockers.length) {
     return { label: "Not ready yet", tone: "warning", icon: "triangle-alert", note: blockers[0] };

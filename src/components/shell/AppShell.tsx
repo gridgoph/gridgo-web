@@ -207,9 +207,8 @@ const ICON_CELL =
 const ACTIVE_PAGE =
   "text-[var(--color-action-yellow)] hover:text-[var(--color-action-yellow)] data-active:font-medium data-active:text-[var(--color-action-yellow)]";
 
-/** Operational settings only — suppliers have no settings route. */
-function settingsHrefForRole(role: Role): "/ops/settings" | "/admin/settings" | null {
-  if (role === "ops_admin") return "/ops/settings";
+/** Operational settings are Super Admin only. */
+function settingsHrefForRole(role: Role): "/admin/settings" | null {
   if (role === "super_admin") return "/admin/settings";
   return null;
 }

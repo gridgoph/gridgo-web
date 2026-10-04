@@ -1,7 +1,10 @@
-"use client";
-
-import { OperationalSettings } from "@/components/settings/OperationalSettings";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 export default function OpsSettingsPage() {
-  return <OperationalSettings />;
+  return (
+    <EmptyState
+      title="Super Admin only"
+      body="Operational settings are changed by Super Admin."
+    />
+  );
 }
