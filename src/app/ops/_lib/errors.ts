@@ -61,7 +61,7 @@ const CODE_COPY: Record<string, string> = {
   order_not_found: "That order was not found. Refresh the queue.",
   invalid_rider_commission_rate: RIDER_SHARE_INVALID,
   invalid_delivery_fee_bands:
-    "The API holds a different set of delivery zones from this screen. Reload the page, then set the prices again.",
+    "The API holds a different set of delivery zones from this screen. Reload the page, then set the limits and prices again.",
   invalid_downpayment_percent:
     "Checkout takes either the full amount or 75% now and 25% before delivery. Choose one of the two.",
   promise_outside_business_hours:

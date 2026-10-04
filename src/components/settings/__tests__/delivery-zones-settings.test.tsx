@@ -40,8 +40,9 @@ it("shows the four fixed zones as named rows with their prices", async () => {
   render(<OperationalSettings />);
 
   expect(await screen.findByLabelText("Nearby flat fee")).toHaveValue("25.00");
-  const rows = within(screen.getByRole("region", { name: "Delivery distance zones" }))
-    .getAllByRole("listitem");
+  const [zoneList] = within(screen.getByRole("region", { name: "Delivery distance zones" }))
+    .getAllByRole("list");
+  const rows = within(zoneList).getAllByRole("listitem");
   expect(rows.map((row) => within(row).getByRole("heading").textContent)).toEqual([
     "Nearby",
     "Away",
@@ -60,7 +61,12 @@ it("shows the four fixed zones as named rows with their prices", async () => {
   // Out of Zone has no flat fee, and nothing adds, removes or renames a zone.
   expect(screen.queryByLabelText("Out of Zone flat fee")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /add|remove/i })).not.toBeInTheDocument();
-  expect(screen.queryByLabelText(/km\)/)).not.toBeInTheDocument();
+
+  // The first three zones carry an editable upper limit; Out of Zone has none.
+  expect(screen.getByLabelText("Nearby up to (km)")).toHaveValue("5");
+  expect(screen.getByLabelText("Away up to (km)")).toHaveValue("10");
+  expect(screen.getByLabelText("Long Distance up to (km)")).toHaveValue("15");
+  expect(screen.queryByLabelText("Out of Zone up to (km)")).not.toBeInTheDocument();
 });
 
 it("marks the shipped prices as placeholders", async () => {
@@ -144,7 +150,7 @@ it("refuses an unreadable price before sending anything", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
 
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Away needs a fee in pesos, like 50.00.",
+    "Away needs a fee in pesos, like 149.00.",
   );
   expect(updateSettings).not.toHaveBeenCalled();
 });
@@ -221,4 +227,152 @@ it("shows an older API's bands without offering edits it would not understand", 
   fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
   await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(1));
   expect(updateSettings.mock.calls[0][0].deliveryFeeBands).toEqual(legacy);
+});
+
+function preview() {
+  return within(screen.getByTestId("zones-preview"));
+}
+
+it("moves the ranges, the Out of Zone start and the preview as limits are typed", async () => {
+  getSettings.mockResolvedValue(stored);
+  render(<OperationalSettings />);
+
+  expect(await screen.findByRole("heading", { name: "Zones in force now" })).toBeInTheDocument();
+  expect(screen.getByTestId("zones-preview-nearby")).toHaveTextContent("Nearby0–5 km₱25");
+
+  fireEvent.change(screen.getByLabelText("Nearby up to (km)"), { target: { value: "3" } });
+  fireEvent.change(screen.getByLabelText("Long Distance up to (km)"), { target: { value: "20" } });
+
+  expect(screen.getByTestId("zone-nearby-range")).toHaveTextContent("0–3 km");
+  expect(screen.getByTestId("zone-away-range")).toHaveTextContent("3–10 km");
+  expect(screen.getByTestId("zone-long_distance-range")).toHaveTextContent("10–20 km");
+  expect(screen.getByTestId("zone-out_of_zone-range")).toHaveTextContent("Over 20 km");
+  expect(screen.getByTestId("out-of-zone-example")).toHaveTextContent(
+    "21.2 km counts as 22 km: ₱75 + 22 × ₱10 = ₱295",
+  );
+  expect(zoneRow("nearby").getByText("In force now: 5 km")).toBeInTheDocument();
+
+  expect(preview().getByRole("heading", { name: "Zones after saving" })).toBeInTheDocument();
+  expect(screen.getByTestId("zones-preview-nearby")).toHaveTextContent("Nearby0–3 km₱25");
+  expect(screen.getByTestId("zones-preview-out_of_zone")).toHaveTextContent(
+    "Out of ZoneOver 20 km₱75 + ₱10 per km",
+  );
+  expect(preview().getByText("Orders already placed keep the delivery fee they were given.")).toBeInTheDocument();
+});
+
+it("explains a limit the API would refuse beside its field and before sending anything", async () => {
+  getSettings.mockResolvedValue(stored);
+  render(<OperationalSettings />);
+
+  const away = await screen.findByLabelText("Away up to (km)");
+  fireEvent.change(away, { target: { value: "4" } });
+
+  expect(away).toHaveAttribute("aria-invalid", "true");
+  expect(away).toHaveAccessibleDescription("Away has to end beyond Nearby's 5 km.");
+  // The preview never shows a table the API would refuse.
+  expect(preview().getByRole("heading", { name: "Zones in force now" })).toBeInTheDocument();
+  expect(preview().getByText(/until every limit can be saved/)).toBeInTheDocument();
+  expect(screen.getByTestId("zones-preview-away")).toHaveTextContent("5–10 km");
+
+  fireEvent.change(screen.getByLabelText("Long Distance up to (km)"), { target: { value: "120" } });
+  expect(screen.getByLabelText("Long Distance up to (km)")).toHaveAccessibleDescription(
+    "Long Distance can reach at most 100 km.",
+  );
+
+  fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Away has to end beyond Nearby's 5 km.");
+  expect(updateSettings).not.toHaveBeenCalled();
+});
+
+it("saves new limits in whole metres with a reason naming them", async () => {
+  getSettings.mockResolvedValue(stored);
+  const saved = deliveryZones({}, { nearby: 3000, away: 8250, long_distance: 20000 });
+  updateSettings.mockResolvedValue({ ...stored, version: 7, deliveryFeeBands: saved });
+  render(<OperationalSettings />);
+
+  fireEvent.change(await screen.findByLabelText("Nearby up to (km)"), { target: { value: "3" } });
+  fireEvent.change(screen.getByLabelText("Away up to (km)"), { target: { value: "8.25" } });
+  fireEvent.change(screen.getByLabelText("Long Distance up to (km)"), { target: { value: "20" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+  await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(1));
+  const input = updateSettings.mock.calls[0][0];
+  expect(input.expectedVersion).toBe(6);
+  expect(input.deliveryFeeBands).toEqual(saved);
+  expect(input.reason).toBe(
+    "Updated from the portal: delivery zones Nearby limit 5 km to 3 km, Away limit 10 km to 8.25 km, Long Distance limit 15 km to 20 km",
+  );
+
+  expect(await screen.findByText(/price delivery from these zones/)).toBeInTheDocument();
+  expect(screen.getByLabelText("Away up to (km)")).toHaveValue("8.25");
+  expect(screen.getByTestId("zone-out_of_zone-range")).toHaveTextContent("Over 20 km");
+  expect(preview().getByRole("heading", { name: "Zones in force now" })).toBeInTheDocument();
+});
+
+it("shows the API's own refusal of a limit, naming the zone", async () => {
+  getSettings.mockResolvedValue(stored);
+  updateSettings.mockRejectedValueOnce(
+    new ApiError(400, {
+      error: "delivery_zone_limits_not_increasing",
+      field: "deliveryFeeBands[1].maxDistanceMeters",
+    }),
+  );
+  render(<OperationalSettings />);
+
+  fireEvent.change(await screen.findByLabelText("Away up to (km)"), { target: { value: "12" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "The API refused the limits: Away has to end beyond Nearby.",
+  );
+  expect(screen.getByLabelText("Away up to (km)")).toHaveValue("12");
+});
+
+it("says so when the API behind the portal does not take new limits yet", async () => {
+  getSettings.mockResolvedValue(stored);
+  updateSettings.mockRejectedValueOnce(new ApiError(400, { error: "invalid_delivery_fee_bands" }));
+  render(<OperationalSettings />);
+
+  fireEvent.change(await screen.findByLabelText("Nearby up to (km)"), { target: { value: "4" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "The API behind this portal does not take new zone limits yet.",
+  );
+});
+
+it("keeps a typed limit when someone else saved first, and takes their other limits", async () => {
+  getSettings
+    .mockResolvedValueOnce(stored)
+    .mockResolvedValueOnce({
+      ...stored,
+      version: 7,
+      deliveryFeeBands: deliveryZones({}, { away: 12000, long_distance: 18000 }),
+    });
+  updateSettings.mockRejectedValueOnce(new ApiError(409, { error: "settings_version_conflict" }));
+  render(<OperationalSettings />);
+
+  fireEvent.change(await screen.findByLabelText("Nearby up to (km)"), { target: { value: "4" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Someone else saved these settings a moment ago.",
+  );
+  await waitFor(() => expect(screen.getByLabelText("Away up to (km)")).toHaveValue("12"));
+  expect(screen.getByLabelText("Nearby up to (km)")).toHaveValue("4");
+  expect(screen.getByLabelText("Long Distance up to (km)")).toHaveValue("18");
+  expect(screen.getByTestId("zone-out_of_zone-range")).toHaveTextContent("Over 18 km");
+
+  updateSettings.mockResolvedValueOnce({
+    ...stored,
+    version: 8,
+    deliveryFeeBands: deliveryZones({}, { nearby: 4000, away: 12000, long_distance: 18000 }),
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+  await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(2));
+  expect(updateSettings.mock.calls[1][0]).toMatchObject({
+    expectedVersion: 7,
+    deliveryFeeBands: deliveryZones({}, { nearby: 4000, away: 12000, long_distance: 18000 }),
+    reason: "Updated from the portal: delivery zones Nearby limit 5 km to 4 km",
+  });
 });
