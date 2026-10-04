@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import { CircleCheck, CircleMinus, CircleX, TriangleAlert } from "lucide-react";
 
+import { DeletedFilePlate } from "@/components/files/DeletedFile";
+import { EarlyDeleteFileButton } from "@/components/files/EarlyDeleteFileDialog";
 import { EvidencePlate, EvidenceStrip } from "@/components/orders/EvidencePreview";
+import { fileIsGone } from "@/lib/file-retention";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { getFileDownloadUrl } from "@/lib/api/client";
@@ -191,7 +194,7 @@ export function CounterCheck({
         </div>
       ) : null}
 
-      {photos.length ? <EvidenceStrip items={photos} /> : null}
+      {photos.length ? <EvidenceStrip items={photos} deletable /> : null}
 
       {checklist?.status === "passed" ? (
         <Signature signature={checklist.handoffSignature} />
@@ -424,18 +427,22 @@ export function CheckGrid({ checks }: { checks: CheckResult[] }) {
 function Signature({ signature }: { signature: HandoffSignature | null | undefined }) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const [gone, setGone] = useState<null | "deleted" | "pending">(null);
   const fileId = signature?.fileId ?? null;
 
   useEffect(() => {
     if (!fileId) return;
     let cancelled = false;
     setFailed(false);
+    setGone(null);
     getFileDownloadUrl(fileId)
       .then((next) => {
         if (!cancelled) setUrl(next);
       })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
+      .catch((err) => {
+        if (cancelled) return;
+        if (fileIsGone(err)) setGone("deleted");
+        else setFailed(true);
       });
     return () => {
       cancelled = true;
@@ -451,6 +458,16 @@ function Signature({ signature }: { signature: HandoffSignature | null | undefin
           rider&rsquo;s phone.
         </p>
       </div>
+    );
+  }
+
+  if (gone && fileId) {
+    return (
+      <DeletedFilePlate
+        fileId={fileId}
+        label={`Shop signature by ${signature.signerName}, ${formatDateTime(signature.signedAt)}`}
+        pendingHold={gone === "pending"}
+      />
     );
   }
 
@@ -480,6 +497,16 @@ function Signature({ signature }: { signature: HandoffSignature | null | undefin
           />
         )}
       </div>
+      {url && fileId ? (
+        <div>
+          <EarlyDeleteFileButton
+            fileId={fileId}
+            label="Shop signature"
+            previewUrl={url}
+            onDeleted={(result) => setGone(result.state === "delete_pending" ? "pending" : "deleted")}
+          />
+        </div>
+      ) : null}
     </figure>
   );
 }
@@ -588,6 +615,7 @@ export function AttemptRecord({
               key={fileId}
               fileId={fileId}
               label={all.length > 1 ? `Pickup photo ${index + 1}` : "Pickup photo"}
+              deletable
             />
           ))}
         </div>

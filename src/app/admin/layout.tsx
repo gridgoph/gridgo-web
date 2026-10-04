@@ -1,3 +1,4 @@
+import { FileDeletionAccessProvider } from "@/components/files/FileDeletionAccess";
 import { RoleGate } from "@/components/shell/RoleGate";
 
 export default function AdminLayout({
@@ -5,5 +6,10 @@ export default function AdminLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <RoleGate allow="super_admin">{children}</RoleGate>;
+  // Early file deletion is Super Admin's alone (gridgo-api#131).
+  return (
+    <RoleGate allow="super_admin">
+      <FileDeletionAccessProvider deleteEarly>{children}</FileDeletionAccessProvider>
+    </RoleGate>
+  );
 }

@@ -39,6 +39,7 @@ import type {
   PortalRoleProjection,
   PostAnnouncementInput,
   StoredFile,
+  FileRetentionReport,
   SupplierService,
   PublicCatalogShop,
   PublicCatalogShopSummary,
@@ -837,6 +838,24 @@ export async function getFile(fileId: string): Promise<StoredFile> {
 export async function getFileDownloadUrl(fileId: string): Promise<string> {
   const result = await request<{ url: string }>(`/files/${fileId}/download-url`);
   return result.url;
+}
+
+/**
+ * Early deletion (contract "DELETE /files/:fileId" in STORAGE_API.md). Super
+ * Admin only from this portal, always with a written reason the API keeps in
+ * the audit log. Cannot be undone; an open case answers `409 file_retention_hold`.
+ */
+export async function deleteFileEarly(fileId: string, reason: string): Promise<StoredFile> {
+  const result = await request<{ file: StoredFile }>(`/files/${encodeURIComponent(fileId)}`, {
+    method: "DELETE",
+    body: JSON.stringify({ reason }),
+  });
+  return result.file;
+}
+
+/** Super Admin. Read-only counts of what the next retention pass would delete. */
+export async function getFileRetention(): Promise<FileRetentionReport> {
+  return request<FileRetentionReport>("/admin/files/retention");
 }
 
 // ---------------------------------------------------------------------------

@@ -63,8 +63,15 @@ describe("ROLE_NAV", () => {
       "/admin/audit",
       "/admin/planning",
       "/admin/tracker",
+      "/admin/file-retention",
       "/admin/broadcast",
     ]);
+  });
+
+  it("keeps File retention off the Operations and supplier rails", () => {
+    for (const role of ["ops_admin", "supplier"] as const) {
+      expect(ROLE_NAV[role].some((n) => n.href.includes("file-retention"))).toBe(false);
+    }
   });
 
   it("marks only existing screens as ready", () => {
@@ -78,6 +85,7 @@ describe("ROLE_NAV", () => {
       "/admin/broadcast",
       "/admin/catalogue",
       "/admin/chat",
+      "/admin/file-retention",
       "/admin/finance",
       "/admin/issue-reports",
       "/admin/overview",
@@ -219,6 +227,7 @@ describe("ROLE_NAV", () => {
       "/admin/audit",
       "/admin/planning",
       "/admin/tracker",
+      "/admin/file-retention",
       "/admin/broadcast",
     ]);
 

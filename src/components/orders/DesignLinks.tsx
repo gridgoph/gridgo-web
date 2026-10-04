@@ -198,7 +198,7 @@ export function OrderArtwork({
   if (files.length === 0 && links.length === 0) return null;
   return (
     <div className="flex flex-col gap-3">
-      {files.length ? <EvidenceStrip items={files} /> : null}
+      {files.length ? <EvidenceStrip items={files} deletable /> : null}
       {links.length ? (
         <div className="flex flex-col gap-2">
           <DesignLinkLead fileToo={files.length > 0} />
