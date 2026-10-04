@@ -63,7 +63,7 @@ describe("IssueReportsDesk", () => {
     expect(screen.getByText(/Bug, issue or concern/, { selector: "p" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Screenshot 1/ })).toHaveAttribute("src", report.screenshots[0].url);
     expect(screen.getByRole("button", { name: "New · 1" })).toBeInTheDocument();
-    expect(listIssueReports).toHaveBeenCalledWith("new");
+    expect(listIssueReports).toHaveBeenCalledWith("new", { limit: 25 });
   });
 
   it("marks a report published with the reports page date, then reloads", async () => {
@@ -102,7 +102,7 @@ describe("IssueReportsDesk", () => {
 
     listIssueReports.mockResolvedValue({ reports: [], counts: { new: 1, tracked: 0, published: 2, dismissed: 0 } });
     fireEvent.click(screen.getByRole("button", { name: "Tracked · 4" }));
-    await waitFor(() => expect(listIssueReports).toHaveBeenLastCalledWith("tracked"));
+    await waitFor(() => expect(listIssueReports).toHaveBeenLastCalledWith("tracked", { limit: 25 }));
     expect(await screen.findByText("No tracked reports")).toBeInTheDocument();
   });
 
@@ -245,5 +245,150 @@ describe("IssueReportsDesk", () => {
     expect(await screen.findByRole("button", { name: /A third report arrived/ })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /Report AAAAAAAA/ })).toBeInTheDocument();
     expect(listIssueReports.mock.calls.length).toBeGreaterThan(calls);
+  });
+
+  describe("paging", () => {
+    const many = (count: number, from = 0) =>
+      Array.from({ length: count }, (_, index) => ({
+        ...report,
+        id: `00000000-0000-4000-8000-${String(from + index).padStart(12, "0")}`,
+        issue: `Report number ${from + index}`,
+        screenshots: [],
+      }));
+    const COUNTS = { new: 30, tracked: 0, published: 0, dismissed: 0 };
+
+    it("loads the first page, then the next one after the last report shown", async () => {
+      const first = many(25);
+      listIssueReports.mockResolvedValueOnce({ reports: first, counts: COUNTS });
+      render(<IssueReportsDesk />);
+      expect(await screen.findByText("Showing 25 of 30")).toBeInTheDocument();
+      expect(listIssueReports).toHaveBeenCalledWith("new", { limit: 25 });
+
+      listIssueReports.mockResolvedValueOnce({ reports: many(5, 25), counts: COUNTS });
+      fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+      expect(await screen.findByText("30 reports")).toBeInTheDocument();
+      expect(listIssueReports).toHaveBeenLastCalledWith("new", { limit: 25, before: first[24].id });
+      expect(within(screen.getByRole("list", { name: "Issue reports" })).getAllByRole("listitem")).toHaveLength(30);
+      expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
+      // The tab counts stay the API's totals.
+      expect(screen.getByRole("button", { name: "New · 30" })).toBeInTheDocument();
+    });
+
+    it("keeps every loaded page on a refresh", async () => {
+      listIssueReports.mockResolvedValueOnce({ reports: many(25), counts: COUNTS });
+      render(<IssueReportsDesk />);
+      await screen.findByText("Showing 25 of 30");
+      listIssueReports.mockResolvedValueOnce({ reports: many(5, 25), counts: COUNTS });
+      fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+      await screen.findByText("30 reports");
+
+      listIssueReports.mockResolvedValueOnce({ reports: many(30), counts: COUNTS });
+      fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+      await waitFor(() => expect(listIssueReports).toHaveBeenLastCalledWith("new", { limit: 50 }));
+      expect(await screen.findByText("30 reports")).toBeInTheDocument();
+    });
+
+    it("grows the first page against an API that ignores before", async () => {
+      const first = many(25);
+      listIssueReports.mockResolvedValueOnce({ reports: first, counts: COUNTS });
+      render(<IssueReportsDesk />);
+      await screen.findByText("Showing 25 of 30");
+      listIssueReports
+        .mockResolvedValueOnce({ reports: first, counts: COUNTS })
+        .mockResolvedValueOnce({ reports: many(30), counts: COUNTS });
+      fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+      expect(await screen.findByText("30 reports")).toBeInTheDocument();
+      expect(listIssueReports).toHaveBeenLastCalledWith("new", { limit: 50 });
+    });
+
+    it("says when the next page fails and offers to try again", async () => {
+      listIssueReports.mockResolvedValueOnce({ reports: many(25), counts: COUNTS });
+      render(<IssueReportsDesk />);
+      await screen.findByText("Showing 25 of 30");
+      listIssueReports.mockRejectedValueOnce(new Error("offline"));
+      fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+      expect(await screen.findByText("Could not load more reports.")).toBeInTheDocument();
+      listIssueReports.mockResolvedValueOnce({ reports: many(5, 25), counts: COUNTS });
+      fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+      expect(await screen.findByText("30 reports")).toBeInTheDocument();
+    });
+
+    it("starts the new tab from its first page", async () => {
+      listIssueReports.mockResolvedValueOnce({ reports: many(25), counts: { ...COUNTS, tracked: 40 } });
+      render(<IssueReportsDesk />);
+      await screen.findByText("Showing 25 of 30");
+      listIssueReports.mockResolvedValueOnce({ reports: many(5, 25), counts: { ...COUNTS, tracked: 40 } });
+      fireEvent.click(screen.getByRole("button", { name: "Load more" }));
+      await screen.findByText("30 reports");
+      listIssueReports.mockResolvedValueOnce({
+        reports: many(25, 100).map((entry) => ({ ...entry, status: "tracked" as const, trackerIssueUrl: TRACKER_URL })),
+        counts: { ...COUNTS, tracked: 40 },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Tracked · 40" }));
+      await waitFor(() => expect(listIssueReports).toHaveBeenLastCalledWith("tracked", { limit: 25 }));
+      expect(await screen.findByText("Showing 25 of 40")).toBeInTheDocument();
+    });
+  });
+
+  it("moves through reports with the arrow keys", async () => {
+    const second = { ...report, id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", issue: "Second report" };
+    listIssueReports.mockResolvedValue({ reports: [report, second], counts: { new: 2, tracked: 0, published: 0, dismissed: 0 } });
+    render(<IssueReportsDesk />);
+    await screen.findByRole("heading", { name: /Report 50D4F603/ });
+    const firstRow = screen.getByRole("button", { name: /Orders in Operations/ });
+    firstRow.focus();
+    fireEvent.keyDown(firstRow, { key: "ArrowDown" });
+    expect(await screen.findByRole("heading", { name: /Report AAAAAAAA/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Second report/ })).toHaveFocus();
+    expect(screen.getByRole("button", { name: /Second report/ })).toHaveAttribute("aria-current", "true");
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+    expect(await screen.findByRole("heading", { name: /Report 50D4F603/ })).toBeInTheDocument();
+  });
+
+  it("opens the report below once the open one leaves the tab", async () => {
+    const second = { ...report, id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", issue: "Second report" };
+    const third = { ...report, id: "bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee", issue: "Third report" };
+    listIssueReports.mockResolvedValue({ reports: [report, second, third], counts: { new: 3, tracked: 0, published: 0, dismissed: 0 } });
+    render(<IssueReportsDesk />);
+    await screen.findByRole("heading", { name: /Report 50D4F603/ });
+    fireEvent.click(screen.getByRole("button", { name: /Second report/ }));
+    await screen.findByRole("heading", { name: /Report AAAAAAAA/ });
+    listIssueReports.mockResolvedValue({ reports: [report, third], counts: { new: 2, tracked: 0, published: 0, dismissed: 1 } });
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(await screen.findByRole("heading", { name: /Report BBBBBBBB/ })).toBeInTheDocument();
+  });
+
+  describe("on a phone-sized screen", () => {
+    beforeEach(() => {
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        matches: false,
+        media: query,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined,
+      }));
+    });
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      vi.stubGlobal("React", React);
+    });
+
+    it("shows the list, opens a report full width, and goes back", async () => {
+      render(<IssueReportsDesk />);
+      const listPane = await screen.findByRole("complementary", { name: "Report list" });
+      const reportPane = screen.getByRole("region", { name: "Open report" });
+      await screen.findByRole("heading", { name: /Report 50D4F603/ });
+      expect(listPane).not.toHaveClass("hidden");
+      expect(reportPane).toHaveClass("hidden");
+
+      fireEvent.click(screen.getByRole("button", { name: /Orders in Operations/ }));
+      await waitFor(() => expect(listPane).toHaveClass("hidden"));
+      expect(reportPane).not.toHaveClass("hidden");
+      expect(screen.getByRole("heading", { name: /Report 50D4F603/ })).toHaveFocus();
+
+      fireEvent.click(screen.getByRole("button", { name: "All reports" }));
+      await waitFor(() => expect(reportPane).toHaveClass("hidden"));
+      expect(listPane).not.toHaveClass("hidden");
+      expect(screen.getByRole("button", { name: /Orders in Operations/ })).toHaveFocus();
+    });
   });
 });

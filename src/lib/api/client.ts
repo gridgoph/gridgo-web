@@ -1778,10 +1778,15 @@ export async function reorderCatalogPhotos(
 // Public issue reports — Operations and Super Admin
 // ---------------------------------------------------------------------------
 
+/**
+ * Newest first. `limit` (API cap 500) and `before` (the id of the last report
+ * already shown) page the list; `counts` are always the totals per status.
+ */
 export async function listIssueReports(
   status: IssueReportStatus,
+  page: { limit?: number; before?: string | null } = {},
 ): Promise<{ reports: IssueReport[]; counts: IssueReportCounts }> {
-  return request(`/ops/issue-reports${buildQuery({ status })}`);
+  return request(`/ops/issue-reports${buildQuery({ status, limit: page.limit, before: page.before })}`);
 }
 
 export async function updateIssueReport(
