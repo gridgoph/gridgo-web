@@ -79,6 +79,8 @@ import type {
   SeasonWindow,
   SeasonWindowInput,
   SeasonWindowsEnvelope,
+  ProductionLapse,
+  SupplierProductionLapses,
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
 
@@ -703,6 +705,36 @@ export async function updateSettings(
       body: JSON.stringify(input),
     }),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Late-production penalties (gridgo-api docs/PRODUCTION_PENALTIES_API.md)
+// ---------------------------------------------------------------------------
+
+/** Ops / Super Admin. One shop's late finishes, newest first. */
+export async function listSupplierProductionLapses(
+  supplierId: string,
+): Promise<SupplierProductionLapses> {
+  return request<SupplierProductionLapses>(
+    `/users/${encodeURIComponent(supplierId)}/production-lapses`,
+  );
+}
+
+/**
+ * Ops / Super Admin. Records that the shop on an overdue, unfinished order
+ * could not be reached, which makes the lapse severe. Audited; the reason is
+ * required (`400 reason_required`). `409 production_deadline_not_missed` when
+ * the order is finished, not active or not yet late.
+ */
+export async function recordProductionNoCommunication(
+  orderId: string,
+  reason: string,
+): Promise<ProductionLapse[]> {
+  const result = await request<{ lapses: ProductionLapse[] }>(
+    `/orders/${encodeURIComponent(orderId)}/production-no-communication`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
+  return result.lapses;
 }
 
 /** Hosted payment-QR path checkout and this portal fetch without a signed URL. */

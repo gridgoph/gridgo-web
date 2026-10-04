@@ -37,6 +37,7 @@ import {
 } from "@/components/settings/RiderDeliveryShare";
 import { CheckoutPayment, checkoutPaymentLabel } from "@/components/settings/CheckoutPayment";
 import { DeliveryZones, DeliveryZonesSkeleton } from "@/components/settings/DeliveryZones";
+import { ProductionPenalties } from "@/components/settings/ProductionPenalties";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -225,7 +226,15 @@ function zonesFrom(bands: DeliveryFeeBand[]): ZoneDraft | null {
   return isZonedTable(bands) ? zoneDraft(bands) : null;
 }
 
-export function OperationalSettings() {
+export function OperationalSettings({
+  role = "ops_admin",
+}: {
+  /**
+   * The tree this is mounted in. Only Super Admin may change late-production
+   * penalties; Operations reads them.
+   */
+  role?: "ops_admin" | "super_admin";
+} = {}) {
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -673,6 +682,17 @@ export function OperationalSettings() {
           In force right now: {productionNudgeInForce(nudgeFrom(settings))}
         </p>
       </section>
+
+      <ProductionPenalties
+        settings={settings}
+        canEdit={role === "super_admin"}
+        disabled={busy}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={() => load(true)}
+      />
 
       <section className="gg-card p-3" aria-labelledby="payment-qr-heading">
         <h2 id="payment-qr-heading" className="text-h3 text-text-primary m-0">
