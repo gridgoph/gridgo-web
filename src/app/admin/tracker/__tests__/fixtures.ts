@@ -1,4 +1,11 @@
-import type { TrackerBoard, TrackerItem } from "@/lib/api/types";
+import type { TrackerBoard, TrackerDecisionQuestion, TrackerItem } from "@/lib/api/types";
+
+import sections from "./decision-sections.json";
+
+const decisionSections = sections as Record<
+  string,
+  { decisionQuestions: TrackerDecisionQuestion[]; decisionMarkdown: string }
+>;
 
 /** A small sheet shaped like GET /admin/tracker: four sections, four statuses. */
 export function trackerItem(overrides: Partial<TrackerItem> & Pick<TrackerItem, "key">): TrackerItem {
@@ -81,3 +88,46 @@ export const blockedItem = trackerItem({
 export function trackerBoard(items: TrackerItem[] = [liveItem, decisionItem, openItem, blockedItem]): TrackerBoard {
   return { fetchedAt: "2026-09-25T05:00:00.000Z", items };
 }
+
+/**
+ * `parseDecisionSection` output from gridgoph/gridgo-api#134 for the real
+ * issue bodies in its tests/fixtures/tracker-decisions (#116 has no context;
+ * gridgo-client#170's second question has context with a list).
+ */
+export const questionsItem = trackerItem({
+  key: "gridgo-web#116",
+  section: "general",
+  order: 29,
+  ref: "29.0",
+  module: "Dashboard, API",
+  developer: "Ven",
+  requirement: "Per-listing suspension, real account removal, and clearer Accreditation and Roles pages",
+  category: "Bug/Issue/Concern",
+  status: "needs-decision",
+  statusSource: "explicit",
+  ...decisionSections["gridgo-web-116"],
+});
+
+export const contextItem = trackerItem({
+  key: "gridgo-client#170",
+  section: "general",
+  order: 25,
+  ref: "25.0",
+  module: "Client app",
+  requirement: "Maps, routes and delivery distance: when to move to paid map services",
+  status: "needs-decision",
+  ...decisionSections["gridgo-client-170"],
+});
+
+/** Questions that did not parse: only the raw section is there to read. */
+export const markdownOnlyItem = trackerItem({
+  key: "gridgo-api#140",
+  section: "general",
+  order: 30,
+  ref: "30.0",
+  requirement: "A decision written as prose",
+  status: "needs-decision",
+  decisionQuestions: [],
+  decisionMarkdown:
+    "Should refunds wait for the shop's agreement?\n\n- **Yes:** Operations asks the shop first.\n- **No:** Operations decides alone.\n\n*Recommended: yes.* The shop pays for most refunds.",
+});

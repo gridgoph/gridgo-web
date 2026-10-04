@@ -16,6 +16,14 @@ import {
   trackerErrorMessage,
   trackerStatusMeta,
 } from "@/app/admin/_lib/tracker";
+import {
+  composeDecisionText,
+  type DecisionAnswer,
+  type DecisionAnswers,
+  decisionMarkdownFallback,
+  decisionQuestionsOf,
+  mergeComposedText,
+} from "@/app/admin/_lib/tracker-decision";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
@@ -49,6 +57,9 @@ import type {
 } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
+
+import { DecisionQuestions } from "./DecisionQuestions";
+import { TrackerMarkdown } from "./TrackerMarkdown";
 
 type PendingFile = {
   localId: string;
@@ -200,6 +211,13 @@ function DecisionForm({
   item: TrackerItem;
   onSaved: (item: TrackerItem) => void;
 }) {
+  const questions = decisionQuestionsOf(item);
+  const markdown = decisionMarkdownFallback(item);
+  const [answers, setAnswers] = useState<DecisionAnswers>({});
+  // What the choices last wrote into the text, so a new choice replaces only that.
+  const [composed, setComposed] = useState("");
+  // The captain rewrote the answer lines by hand; choices stop writing until asked.
+  const [detached, setDetached] = useState(false);
   const [text, setText] = useState("");
   const [textError, setTextError] = useState<string | null>(null);
   const [files, setFiles] = useState<PendingFile[]>([]);
@@ -221,6 +239,35 @@ function DecisionForm({
 
   const trimmedLength = text.trim().length;
   const full = files.length >= ATTACHMENT_MAX_COUNT;
+
+  function changeText(next: string) {
+    setText(next);
+    if (textError) setTextError(decisionTextError(next));
+  }
+
+  function answer(number: number, value: DecisionAnswer | undefined) {
+    const nextAnswers = { ...answers, [number]: value };
+    const nextComposed = composeDecisionText(questions, nextAnswers);
+    setAnswers(nextAnswers);
+    // Clearing the box hands it back to the choices.
+    if (detached && text.trim() !== "") return;
+    const merged = mergeComposedText(text, composed, nextComposed);
+    if (merged === null) {
+      setDetached(true);
+      return;
+    }
+    setComposed(nextComposed);
+    setDetached(false);
+    if (merged !== text) changeText(merged);
+  }
+
+  function rewriteFromChoices() {
+    const nextComposed = composeDecisionText(questions, answers);
+    setComposed(nextComposed);
+    setDetached(false);
+    changeText(nextComposed);
+    textRef.current?.focus();
+  }
 
   function addFiles(list: FileList | null) {
     if (!list?.length) return;
@@ -274,6 +321,9 @@ function DecisionForm({
       files.forEach(revoke);
       setFiles([]);
       setText("");
+      setAnswers({});
+      setComposed("");
+      setDetached(false);
       toast.add({
         type: "success",
         title: `Decision saved for ${item.ref}.`,
@@ -300,6 +350,43 @@ function DecisionForm({
       }}
     >
       <FieldGroup className="gap-5">
+        {questions.length ? (
+          <section aria-labelledby={`${textId}-questions`} className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <h3
+                id={`${textId}-questions`}
+                className="text-body text-text-primary m-0"
+                style={{ fontFamily: "var(--font-bold)" }}
+              >
+                {questions.length === 1 ? "Question" : "Questions"}
+              </h3>
+              <p className="text-caption text-text-secondary m-0">
+                Each answer you pick is written into your decision below, where you can add to it.
+              </p>
+            </div>
+            <DecisionQuestions
+              questions={questions}
+              answers={answers}
+              disabled={saving}
+              onAnswer={answer}
+            />
+          </section>
+        ) : markdown ? (
+          <section
+            aria-labelledby={`${textId}-waiting`}
+            className="flex flex-col gap-2 rounded-card border border-outline bg-surface p-3 sm:p-4"
+          >
+            <h3
+              id={`${textId}-waiting`}
+              className="text-body text-text-primary m-0"
+              style={{ fontFamily: "var(--font-bold)" }}
+            >
+              Waiting on a decision
+            </h3>
+            <TrackerMarkdown markdown={markdown} className="text-body text-text-secondary" />
+          </section>
+        ) : null}
+
         <Field data-invalid={textError ? true : undefined}>
           <FieldLabel htmlFor={textId}>Your decision</FieldLabel>
           <Textarea
@@ -309,13 +396,27 @@ function DecisionForm({
             rows={6}
             aria-invalid={textError ? true : undefined}
             aria-describedby={`${textId}-hint`}
-            onChange={(event) => {
-              setText(event.target.value);
-              if (textError) setTextError(decisionTextError(event.target.value));
-            }}
-            placeholder="What should the team build, and anything they must not do"
+            onChange={(event) => changeText(event.target.value)}
+            placeholder={
+              questions.length
+                ? "Pick the answers above, then add anything the team must know"
+                : "What should the team build, and anything they must not do"
+            }
             className="min-h-32 text-body"
           />
+          {detached ? (
+            <div
+              role="status"
+              className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-[var(--radius-field)] border border-outline bg-surface px-3 py-1"
+            >
+              <span className="text-caption text-text-secondary">
+                You edited the answer lines, so new choices are not written in.
+              </span>
+              <Button type="button" variant="ghost" size="sm" onClick={rewriteFromChoices}>
+                Replace the text with my choices
+              </Button>
+            </div>
+          ) : null}
           <div id={`${textId}-hint`} className="flex flex-wrap justify-between gap-2">
             {textError ? (
               <p role="alert" className="text-caption text-error m-0">

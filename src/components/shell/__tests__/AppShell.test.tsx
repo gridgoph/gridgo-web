@@ -255,6 +255,22 @@ describe("AppShell chrome", () => {
     expect(header?.className).toMatch(/\bh-14\b/);
   });
 
+  it("rules the account footer off wall to wall, expanded and folded", async () => {
+    const user = userEvent.setup();
+    const { container } = renderShell("/admin/overview");
+    const footer = container.querySelector('[data-slot="sidebar-footer"]') as HTMLElement;
+    // The line is the footer's own top border, matching the header's bottom
+    // border, not an inset separator that stops short of the rail's edges.
+    expect(footer.className).toMatch(/\bborder-t\b/);
+    expect(footer.className).toMatch(/\bborder-sidebar-border\b/);
+    expect(container.querySelector('[data-slot="sidebar-separator"]')).toBeNull();
+    const rail = container.querySelector('[data-slot="sidebar"]');
+    await user.click(screen.getByRole("button", { name: "Toggle primary navigation" }));
+    expect(rail).toHaveAttribute("data-state", "collapsed");
+    expect(footer.className).toMatch(/\bborder-t\b/);
+    expect(footer.className).not.toMatch(/\bmx-/);
+  });
+
   it("keeps one whole-rail toggle in the header and collapses the icon rail", async () => {
     const user = userEvent.setup();
     const { container } = renderShell("/admin/overview");
