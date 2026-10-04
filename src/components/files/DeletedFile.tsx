@@ -98,7 +98,8 @@ export function DeletedFilePlate({
   }, [fileId, readRecord, version]);
 
   return (
-    <div className="min-w-0">
+    // In a two-up strip the record takes the whole row: a reason needs width.
+    <div className="min-w-0 sm:col-span-2">
       <p className="text-caption text-text-muted m-0">{label}</p>
       <div className="border-outline mt-1.5 flex w-full max-w-sm flex-col gap-1 rounded-card border border-dashed p-3">
         <p className="text-body text-text-primary m-0 flex items-center gap-2">

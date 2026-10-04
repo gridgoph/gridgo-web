@@ -151,6 +151,15 @@ function AutomaticDeletion({
           </p>
         </div>
         <div className="flex min-h-11 shrink-0 items-center gap-2">
+          {known ? (
+            <span
+              className="text-body text-text-primary"
+              style={{ fontFamily: "var(--font-medium)" }}
+              aria-hidden
+            >
+              {on ? "On" : "Off"}
+            </span>
+          ) : null}
           <Switch
             checked={on}
             disabled
