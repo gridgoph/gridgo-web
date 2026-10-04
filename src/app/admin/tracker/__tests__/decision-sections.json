@@ -1,0 +1,152 @@
+{
+  "gridgo-web-116": {
+    "decisionQuestions": [
+      {
+        "number": 1,
+        "question": "What should \"remove an account\" do?",
+        "context": "",
+        "options": [
+          {
+            "key": "A",
+            "label": "Hard delete only when the account has no orders; otherwise anonymise it.",
+            "detail": "Accounts with no history disappear completely. Accounts with orders keep their order and money history but lose their name, email, phone and login, and vanish from the people lists."
+          },
+          {
+            "key": "B",
+            "label": "Always anonymise and hide.",
+            "detail": "The account leaves every list and can no longer sign in, but its row stays so orders, payouts and audits still add up."
+          },
+          {
+            "key": "C",
+            "label": "Always hard delete.",
+            "detail": "Gone completely, but past orders, payouts and audit entries for that shop or client lose their owner, and finance totals can break."
+          }
+        ],
+        "allowOther": true,
+        "recommended": {
+          "key": "A",
+          "reason": "It matches \"gone from the list\" without breaking order and money records."
+        }
+      },
+      {
+        "number": 2,
+        "question": "Who may suspend or remove?",
+        "context": "",
+        "options": [
+          {
+            "key": "A",
+            "label": "Super Admin only,",
+            "detail": "in line with moving settings and audit to Super Admin (gridgoph/gridgo-web#112)."
+          },
+          {
+            "key": "B",
+            "label": "Operations can suspend; only Super Admin can remove.",
+            "detail": ""
+          },
+          {
+            "key": "C",
+            "label": "Both roles can do both,",
+            "detail": "as today."
+          }
+        ],
+        "allowOther": true,
+        "recommended": {
+          "key": "B",
+          "reason": "Operations handles day-to-day problems; removal is permanent and stays with Super Admin."
+        }
+      }
+    ],
+    "decisionMarkdown": "**Question 1. What should \"remove an account\" do?**\n- **A. Hard delete only when the account has no orders; otherwise anonymise it.** Accounts with no history disappear completely. Accounts with orders keep their order and money history but lose their name, email, phone and login, and vanish from the people lists.\n- **B. Always anonymise and hide.** The account leaves every list and can no longer sign in, but its row stays so orders, payouts and audits still add up.\n- **C. Always hard delete.** Gone completely, but past orders, payouts and audit entries for that shop or client lose their owner, and finance totals can break.\n- **Something else:** write what you want in the decision box.\n\n*Recommended: A.* It matches \"gone from the list\" without breaking order and money records.\n\n**Question 2. Who may suspend or remove?**\n- **A. Super Admin only,** in line with moving settings and audit to Super Admin (gridgoph/gridgo-web#112).\n- **B. Operations can suspend; only Super Admin can remove.**\n- **C. Both roles can do both,** as today.\n- **Something else:** write what you want in the decision box.\n\n*Recommended: B.* Operations handles day-to-day problems; removal is permanent and stays with Super Admin."
+  },
+  "gridgo-client-170": {
+    "decisionQuestions": [
+      {
+        "number": 1,
+        "question": "When should the client and rider apps switch to Google Maps?",
+        "context": "",
+        "options": [
+          {
+            "key": "A",
+            "label": "Before the pilot opens to real clients.",
+            "detail": "The most reliable address search and routes from day one. It needs a billing account and a monthly bill once usage passes Google's free allowance, and the switch delays the pilot."
+          },
+          {
+            "key": "B",
+            "label": "At public launch; the pilot stays on the free maps.",
+            "detail": "No map cost while pilot traffic is light. A rare outage only turns the route line straight; addresses can still be pinned on the map."
+          },
+          {
+            "key": "C",
+            "label": "Only if the free services start failing or refuse our traffic.",
+            "detail": "The cheapest option, but the switch would then happen under pressure."
+          },
+          {
+            "key": "D",
+            "label": "Stay on open maps, and move to a paid OpenStreetMap-based provider when needed.",
+            "detail": "Usually cheaper than Google, with weaker address search in the Philippines."
+          }
+        ],
+        "allowOther": true,
+        "recommended": {
+          "key": "B",
+          "reason": "The pilot's volume fits the free services, and the paid switch belongs to the launch release where its cost is justified."
+        }
+      },
+      {
+        "number": 2,
+        "question": "Should the delivery fee use road distance instead of straight-line distance?",
+        "context": "With the current fees (Nearby up to 5 km ₱89, Away 5–10 km ₱149, Long Distance 10–15 km ₱229, Out of Zone ₱40 + ₱15 per km):\n- a drop-off 9 km away in a straight line but 12 km by road pays ₱149 today and ₱229 by road;\n- a drop-off 16 km away in a straight line but 20 km by road pays ₱280 today and ₱340 by road.\n\nThe options:",
+        "options": [
+          {
+            "key": "A",
+            "label": "Keep straight-line distance (today).",
+            "detail": "Simple, the same every time, and never depends on a map service. It under-charges winding routes, and the rider absorbs the difference."
+          },
+          {
+            "key": "B",
+            "label": "Use road distance once the apps use Google (Question 1).",
+            "detail": "Fairer to riders. Fees rise on winding routes, and each quote needs a paid route lookup."
+          },
+          {
+            "key": "C",
+            "label": "Straight-line distance plus a fixed allowance, such as 30%, as a road estimate.",
+            "detail": "Closer to real trips with no map cost, but still an estimate."
+          }
+        ],
+        "allowOther": true,
+        "recommended": {
+          "key": "A",
+          "reason": "for the pilot. The zones are wide enough that the difference is modest; revisit together with the switch in Question 1."
+        }
+      },
+      {
+        "number": 3,
+        "question": "Should the client see an arrival time while the rider is on the way?",
+        "context": "",
+        "options": [
+          {
+            "key": "A",
+            "label": "No arrival time (today).",
+            "detail": "The client sees the map and when it was last updated; the promised date stays the only commitment."
+          },
+          {
+            "key": "B",
+            "label": "Show an arrival estimate after the switch to Google's traffic-aware routing,",
+            "detail": "as a range such as \"about 15–25 min\"."
+          },
+          {
+            "key": "C",
+            "label": "Show an estimate now from the free route, without traffic.",
+            "detail": "Available at once, but often wrong in city traffic, and clients read it as a promise."
+          }
+        ],
+        "allowOther": true,
+        "recommended": {
+          "key": "B",
+          "reason": "An arrival time is only worth showing when it accounts for traffic."
+        }
+      }
+    ],
+    "decisionMarkdown": "**Question 1. When should the client and rider apps switch to Google Maps?**\n- **A. Before the pilot opens to real clients.** The most reliable address search and routes from day one. It needs a billing account and a monthly bill once usage passes Google's free allowance, and the switch delays the pilot.\n- **B. At public launch; the pilot stays on the free maps.** No map cost while pilot traffic is light. A rare outage only turns the route line straight; addresses can still be pinned on the map.\n- **C. Only if the free services start failing or refuse our traffic.** The cheapest option, but the switch would then happen under pressure.\n- **D. Stay on open maps, and move to a paid OpenStreetMap-based provider when needed.** Usually cheaper than Google, with weaker address search in the Philippines.\n- **Something else:** write what you want in the decision box.\n\n*Recommended: B.* The pilot's volume fits the free services, and the paid switch belongs to the launch release where its cost is justified.\n\n**Question 2. Should the delivery fee use road distance instead of straight-line distance?**\nWith the current fees (Nearby up to 5 km ₱89, Away 5–10 km ₱149, Long Distance 10–15 km ₱229, Out of Zone ₱40 + ₱15 per km):\n- a drop-off 9 km away in a straight line but 12 km by road pays ₱149 today and ₱229 by road;\n- a drop-off 16 km away in a straight line but 20 km by road pays ₱280 today and ₱340 by road.\n\nThe options:\n- **A. Keep straight-line distance (today).** Simple, the same every time, and never depends on a map service. It under-charges winding routes, and the rider absorbs the difference.\n- **B. Use road distance once the apps use Google (Question 1).** Fairer to riders. Fees rise on winding routes, and each quote needs a paid route lookup.\n- **C. Straight-line distance plus a fixed allowance, such as 30%, as a road estimate.** Closer to real trips with no map cost, but still an estimate.\n- **Something else:** write what you want in the decision box.\n\n*Recommended: A for the pilot.* The zones are wide enough that the difference is modest; revisit together with the switch in Question 1.\n\n**Question 3. Should the client see an arrival time while the rider is on the way?**\n- **A. No arrival time (today).** The client sees the map and when it was last updated; the promised date stays the only commitment.\n- **B. Show an arrival estimate after the switch to Google's traffic-aware routing,** as a range such as \"about 15–25 min\".\n- **C. Show an estimate now from the free route, without traffic.** Available at once, but often wrong in city traffic, and clients read it as a promise.\n- **Something else:** write what you want in the decision box.\n\n*Recommended: B.* An arrival time is only worth showing when it accounts for traffic."
+  }
+}

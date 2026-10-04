@@ -87,6 +87,7 @@ describe("EvidencePlate artwork metadata", () => {
     getFileDownloadUrl.mockResolvedValue("https://files.test/receipt.jpg");
     render(<EvidencePlate fileId="file_proof" label="QR proof" />);
     expect(await screen.findByRole("img", { name: "receipt.jpg" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Download/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/DPI/)).toBeNull();
     expect(screen.queryByText(/3 MB/)).toBeNull();
   });

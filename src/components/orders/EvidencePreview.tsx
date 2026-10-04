@@ -5,8 +5,10 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Download } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -33,6 +35,11 @@ type PlateProps = {
   /** Catalog size on the order, compared to the file's measured print size. */
   productSize?: string | null;
   productMeasurement?: OrderLineMeasurement | null;
+  /**
+   * Save control for the supplier spec. Other plates — payment proof,
+   * delivery photos, pickup evidence — leave this off.
+   */
+  downloadable?: boolean;
 };
 
 type Loaded = {
@@ -48,6 +55,7 @@ export function EvidencePlate({
   showMetadata = false,
   productSize,
   productMeasurement,
+  downloadable = false,
 }: PlateProps) {
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
@@ -177,6 +185,82 @@ export function EvidencePlate({
             />
           ) : null}
         </>
+      ) : null}
+      {downloadable && loaded && fileId ? (
+        <FileDownload fileId={fileId} filename={loaded.file.originalFilename} />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Saves the stored object under its original name.
+ *
+ * The preview URL is a different request and is not reused. This one is
+ * asked for on the click and not kept: it only lasts five minutes, and the
+ * signed host is not this site, so a link with `download` opens the file
+ * instead of saving it.
+ */
+/** Long enough for any browser to have started the save from the blob. */
+const REVOKE_AFTER_MS = 10_000;
+
+function FileDownload({ fileId, filename }: { fileId: string; filename: string }) {
+  const [failed, setFailed] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const live = useRef(true);
+
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+    };
+  }, []);
+
+  async function onDownload() {
+    setFailed(false);
+    setSaving(true);
+    try {
+      const url = await getFileDownloadUrl(fileId);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("download failed");
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      try {
+        anchor.click();
+      } finally {
+        anchor.remove();
+        // Safari and some Firefox builds drop a save whose URL is revoked in
+        // the same task as the click, so let the save start first.
+        setTimeout(() => URL.revokeObjectURL(objectUrl), REVOKE_AFTER_MS);
+      }
+    } catch {
+      if (live.current) setFailed(true);
+    } finally {
+      if (live.current) setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-2 max-w-sm">
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        onClick={() => void onDownload()}
+        disabled={saving}
+        aria-label={saving ? `Downloading ${filename}` : `Download ${filename}`}
+      >
+        <Download size={16} strokeWidth={1.75} aria-hidden />
+        {saving ? "Downloading…" : "Download"}
+      </Button>
+      {failed ? (
+        <p className="text-caption text-error m-0 mt-1" role="alert">
+          Could not download this file. Try again.
+        </p>
       ) : null}
     </div>
   );
