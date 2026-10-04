@@ -1425,6 +1425,31 @@ export type TrackerItem = {
   /** `explicit` when a Super Admin set it; `derived` from the issue's state. */
   statusSource: "explicit" | "derived";
   decisions: TrackerDecision[];
+  /**
+   * The issue's "Waiting on a decision" questions, parsed by the API. Empty
+   * when the section is missing or not in question form; absent from an
+   * older API.
+   */
+  decisionQuestions?: TrackerDecisionQuestion[];
+  /** The raw "Waiting on a decision" markdown, the fallback when it did not parse. */
+  decisionMarkdown?: string | null;
+};
+
+export type TrackerDecisionOption = {
+  /** The option's letter, e.g. `A`. */
+  key: string;
+  label: string;
+  detail?: string | null;
+};
+
+export type TrackerDecisionQuestion = {
+  number: number;
+  question: string;
+  context?: string | null;
+  options: TrackerDecisionOption[];
+  /** Whether the issue offers "Something else" as an answer. */
+  allowOther: boolean;
+  recommended: { key: string; reason?: string | null } | null;
 };
 
 export type TrackerBoard = {

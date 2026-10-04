@@ -98,7 +98,6 @@ import {
   SidebarMenuSubItem,
   SidebarProvider,
   SidebarRail,
-  SidebarSeparator,
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
@@ -793,8 +792,9 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
         </nav>
       </SidebarContent>
 
-      <SidebarSeparator />
-      <SidebarFooter>
+      {/* The rule is the footer's own top edge, like the header's bottom edge,
+          so it spans the rail wall to wall at every width and when folded. */}
+      <SidebarFooter className="border-t border-sidebar-border">
         <NavUser role={role} />
       </SidebarFooter>
 
