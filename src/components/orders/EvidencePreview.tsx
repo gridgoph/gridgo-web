@@ -8,6 +8,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Download } from "lucide-react";
 
+import { DeletedFilePlate } from "@/components/files/DeletedFile";
+import { EarlyDeleteFileButton } from "@/components/files/EarlyDeleteFileDialog";
+import { useFileDeletionAccess } from "@/components/files/FileDeletionAccess";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,6 +28,7 @@ import {
   artworkSizeMismatchWarning,
   fileLooksLikeImage,
 } from "@/lib/evidence";
+import { fileIsGone } from "@/lib/file-retention";
 
 type PlateProps = {
   fileId: string | null | undefined;
@@ -40,6 +45,13 @@ type PlateProps = {
    * delivery photos, pickup evidence — leave this off.
    */
   downloadable?: boolean;
+  /**
+   * An order file Super Admin may delete before its retention period ends.
+   * Only shows the action inside a tree that grants `deleteEarly`
+   * (`FileDeletionAccessProvider`); account plates such as a receiving QR
+   * leave this off.
+   */
+  deletable?: boolean;
 };
 
 type Loaded = {
@@ -56,13 +68,19 @@ export function EvidencePlate({
   productSize,
   productMeasurement,
   downloadable = false,
+  deletable = false,
 }: PlateProps) {
+  const access = useFileDeletionAccess();
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [failed, setFailed] = useState(false);
+  const [gone, setGone] = useState(false);
+  const [pendingHold, setPendingHold] = useState(false);
   const [pending, setPending] = useState(Boolean(fileId));
 
   useEffect(() => {
+    setGone(false);
+    setPendingHold(false);
     if (!fileId) {
       setLoaded(null);
       setFailed(false);
@@ -78,10 +96,12 @@ export function EvidencePlate({
         setLoaded({ file, url });
         setPending(false);
       })
-      .catch(() => {
+      .catch((err) => {
         if (cancelled) return;
         setLoaded(null);
-        setFailed(true);
+        // A deleted file answers 404: say it is gone, never "retry".
+        if (fileIsGone(err)) setGone(true);
+        else setFailed(true);
         setPending(false);
       });
     return () => {
@@ -100,8 +120,13 @@ export function EvidencePlate({
     );
   }
 
+  if (gone) {
+    return <DeletedFilePlate fileId={fileId} label={label} pendingHold={pendingHold} />;
+  }
+
   const filename = loaded?.file.originalFilename || caption || label;
   const isImage = loaded ? fileLooksLikeImage(loaded.file) : true;
+  const canDelete = deletable && access.deleteEarly && loaded?.file.state === "ready";
 
   return (
     <div className="min-w-0">
@@ -188,6 +213,21 @@ export function EvidencePlate({
       ) : null}
       {downloadable && loaded && fileId ? (
         <FileDownload fileId={fileId} filename={loaded.file.originalFilename} />
+      ) : null}
+      {canDelete && loaded && fileId ? (
+        <div className="mt-1 max-w-sm">
+          <EarlyDeleteFileButton
+            fileId={fileId}
+            file={loaded.file}
+            label={label}
+            previewUrl={loaded.url}
+            onDeleted={(result) => {
+              setLoaded(null);
+              setPendingHold(result.state === "delete_pending");
+              setGone(true);
+            }}
+          />
+        </div>
       ) : null}
     </div>
   );
@@ -299,7 +339,14 @@ function ArtworkFacts({
   );
 }
 
-export function EvidenceStrip({ items }: { items: EvidenceItem[] }) {
+export function EvidenceStrip({
+  items,
+  deletable = false,
+}: {
+  items: EvidenceItem[];
+  /** Order files: Super Admin may delete each early (see `EvidencePlate`). */
+  deletable?: boolean;
+}) {
   if (items.length === 0) return null;
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -312,6 +359,7 @@ export function EvidenceStrip({ items }: { items: EvidenceItem[] }) {
           showMetadata={item.kind === "artwork"}
           productSize={item.kind === "artwork" ? item.productSize : null}
           productMeasurement={item.kind === "artwork" ? item.productMeasurement : null}
+          deletable={deletable}
         />
       ))}
     </div>

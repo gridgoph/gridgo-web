@@ -817,3 +817,30 @@ textarea:focus-visible,
     @apply font-sans;
   }
 }
+
+/* -------------------------------------------------------------------------- */
+/* Season windows: the shade a demand level is painted in. One hue (info) at   */
+/* three strengths, the same track the client app's deadline calendar uses     */
+/* (gridgo-client SeasonLevelTag), so Super Admin sees what clients see. The   */
+/* level word always rides beside it; strength alone survives greyscale.       */
+/* -------------------------------------------------------------------------- */
+
+:root {
+  --season-track-normal: color-mix(in srgb, var(--color-info) 14%, transparent);
+  --season-track-busy: color-mix(in srgb, var(--color-info) 30%, transparent);
+  --season-track-peak: color-mix(in srgb, var(--color-info) 50%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --season-track-normal: color-mix(in srgb, var(--color-info) 24%, transparent);
+    --season-track-busy: color-mix(in srgb, var(--color-info) 42%, transparent);
+    --season-track-peak: color-mix(in srgb, var(--color-info) 64%, transparent);
+  }
+}
+
+.dark {
+  --season-track-normal: color-mix(in srgb, var(--color-info) 24%, transparent);
+  --season-track-busy: color-mix(in srgb, var(--color-info) 42%, transparent);
+  --season-track-peak: color-mix(in srgb, var(--color-info) 64%, transparent);
+}

@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Camera, ChevronLeft, ChevronRight, ImagePlus } from "lucide-react";
 
+import { EarlyDeleteFileButton } from "@/components/files/EarlyDeleteFileDialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -269,6 +270,17 @@ function PhotoTile({
         </figcaption>
       </div>
       {note ? <p className="text-caption text-text-muted m-0 mt-1">{note}</p> : null}
+      {state.kind === "ready" ? (
+        <div className="mt-1">
+          {/* Super Admin only (context-gated). The order reloads and drops the tile. */}
+          <EarlyDeleteFileButton
+            fileId={photo.fileId}
+            label={`Progress photo ${number}`}
+            previewUrl={state.url}
+            onDeleted={() => {}}
+          />
+        </div>
+      ) : null}
     </figure>
   );
 }
