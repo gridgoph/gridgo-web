@@ -697,6 +697,7 @@ export type Notification = {
   type?: string;
   orderId?: string | null;
   approvalCaseId?: string | null;
+  catalogItemId?: string | null;
   announcementId?: string | null;
   title: string;
   body: string;

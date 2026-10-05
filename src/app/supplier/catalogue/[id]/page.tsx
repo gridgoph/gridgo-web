@@ -341,7 +341,13 @@ export default function ListingEditorPage() {
   const checklist = merged && context ? boardChecklist(merged, context) : [];
   const firstMissing = checklist.find((requirement) => !requirement.done) ?? null;
   const standing =
-    merged && context ? boardStanding(merged, context, shopApproved) : null;
+    merged && context
+      ? boardStanding(
+          { ...merged, suspendReason: listing?.suspendReason ?? null },
+          context,
+          shopApproved,
+        )
+      : null;
   const inheritedHours = context?.inheritedTurnaroundHours ?? null;
   const resolvedHours = merged ? effectiveTurnaroundHours(merged, inheritedHours) : null;
   const covers = listing
@@ -1187,16 +1193,28 @@ export default function ListingEditorPage() {
                   targets={FIELD_IDS}
                   onJump={jumpTo}
                 />
-                <Button
-                  variant="primary"
-                  disabled={busy || firstMissing != null}
-                  aria-describedby={
-                    firstMissing ? requirementRowId(firstMissing.key) : undefined
-                  }
-                  onClick={() => void persist(!listing.onTheBoard)}
-                >
-                  {listing.onTheBoard ? "Take it off the board" : "Put it on the board"}
-                </Button>
+                {listing.suspendReason ? (
+                  <div className="flex flex-col gap-1" role="note">
+                    <p className="text-body text-text-primary m-0">
+                      GRIDGO took this listing down, so clients cannot see it. Reason:{" "}
+                      {listing.suspendReason}
+                    </p>
+                    <p className="text-caption text-text-secondary m-0">
+                      You can still edit it. Only GRIDGO can put it back on the board.
+                    </p>
+                  </div>
+                ) : (
+                  <Button
+                    variant="primary"
+                    disabled={busy || firstMissing != null}
+                    aria-describedby={
+                      firstMissing ? requirementRowId(firstMissing.key) : undefined
+                    }
+                    onClick={() => void persist(!listing.onTheBoard)}
+                  >
+                    {listing.onTheBoard ? "Take it off the board" : "Put it on the board"}
+                  </Button>
+                )}
                 <div className="border-outline flex flex-col gap-2 border-t pt-6">
                   <p className="text-caption text-text-secondary m-0">
                     Taking it down for good? A listing a client has already ordered from is kept

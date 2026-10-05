@@ -56,6 +56,7 @@ export type NavIconKey =
   | "tracker"
   | "refunds"
   | "retention"
+  | "products"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -403,32 +404,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
         },
       ],
     },
-    {
-      id: "ops-system",
-      section: "Platform",
-      label: "System",
-      icon: "group-system",
-      items: [
-        {
-          id: "ops-settings",
-          href: "/ops/settings",
-          label: "Operational settings",
-          title: "Operational settings",
-          icon: "settings",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "ops-audit",
-          href: "/ops/audit",
-          label: "Audit",
-          title: "Audit log",
-          icon: "audit",
-          ready: true,
-          placeholderBody: "",
-        },
-      ],
-    },
   ],
 
   super_admin: [
@@ -498,6 +473,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Roles",
           title: "Roles",
           icon: "roles",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-supplier-products",
+          href: "/admin/supplier-products",
+          label: "Supplier products",
+          title: "Supplier products",
+          icon: "products",
           ready: true,
           placeholderBody: "",
         },
@@ -714,11 +698,13 @@ export function contextTitleForPath(
   if (pathname.startsWith("/admin/catalogue/jobs/")) return "Print job";
   if (pathname === "/admin/catalogue/categories/new") return "Add category";
   if (pathname.startsWith("/admin/catalogue/categories/")) return "Category";
+  if (pathname === "/ops/settings" || pathname === "/ops/audit") return "Super Admin only";
   if (pathname.startsWith("/ops/orders/")) return "Order workspace";
   if (pathname.startsWith("/ops/payouts/")) return "Payout review";
   if (pathname.startsWith("/ops/refunds/") || pathname.startsWith("/admin/refunds/")) {
     return "Refund case";
   }
+  if (pathname.startsWith("/admin/supplier-products/")) return "Supplier product";
   if (pathname.startsWith("/admin/orders/")) return "Order workspace";
   if (pathname.startsWith("/ops/late-production/") || pathname.startsWith("/admin/late-production/")) {
     return "Shop's late jobs";

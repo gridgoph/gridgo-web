@@ -3,5 +3,5 @@
 import { OperationalSettings } from "@/components/settings/OperationalSettings";
 
 export default function AdminSettingsPage() {
-  return <OperationalSettings role="super_admin" />;
+  return <OperationalSettings />;
 }

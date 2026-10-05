@@ -117,6 +117,13 @@ export type Listing = {
   fileFormatMode: FileFormatMode;
   formatCodes: string[];
   onTheBoard: boolean;
+  /**
+   * Set while a Super Admin has taken this listing down. The shop reads the
+   * reason; there is no second hide flag. Shown as "Taken down" on both sides.
+   */
+  suspendReason: string | null;
+  /** When it was taken down. Absent on an API that predates the field. */
+  suspendedAt: string | null;
   sortOrder: number;
   photos: SamplePhoto[];
   groups: SpecGroup[];
@@ -355,6 +362,8 @@ export function normalizeListing(body: unknown, index = 0): Listing | null {
       pick(raw, "formatCodes", "format_codes", "fileFormats", "acceptedFormats"),
     ),
     onTheBoard: pick(raw, "active") !== false,
+    suspendReason: str(pick(raw, "suspendReason", "suspend_reason")),
+    suspendedAt: str(pick(raw, "suspendedAt", "suspended_at")),
     sortOrder: num(pick(raw, "sortOrder", "sort_order")) ?? index,
     photos: readPhotos(pick(raw, "photos", "samplePhotos")),
     groups: asArray(pick(raw, "optionGroups", "option_groups", "groups"))
@@ -761,11 +770,22 @@ export type BoardStanding = {
   note: string | null;
 };
 
+/** The shop's word for a Super Admin take-down; Super Admin reads "Taken down". */
+export const TAKEN_DOWN_BY_GRIDGO = "Taken down by GRIDGO";
+
 export function boardStanding(
   listing: Listing,
   context: BoardContext,
   shopApproved: boolean,
 ): BoardStanding {
+  if (listing.suspendReason) {
+    return {
+      label: TAKEN_DOWN_BY_GRIDGO,
+      tone: "warning",
+      icon: "triangle-alert",
+      note: listing.suspendReason,
+    };
+  }
   const blockers = boardBlockers(listing, context);
   if (blockers.length) {
     return { label: "Not ready yet", tone: "warning", icon: "triangle-alert", note: blockers[0] };

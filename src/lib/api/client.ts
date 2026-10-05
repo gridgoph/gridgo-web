@@ -693,7 +693,7 @@ export async function getSettings(): Promise<PlatformSettings> {
 }
 
 /**
- * Ops / Super Admin. Any field may be sent on its own; `expectedVersion` is
+ * Super Admin only. Any field may be sent on its own; `expectedVersion` is
  * the version the caller last read, so two people cannot overwrite each other.
  * A 409 `settings_version_conflict` means reload and look again.
  */
@@ -746,7 +746,7 @@ export function paymentQrPublicPath(fileId?: string): string {
 }
 
 /**
- * Ops / Super Admin. JPEG, PNG or WebP, 5 MiB. Uploads `purpose=payment_qr`
+ * Super Admin only. JPEG, PNG or WebP, 5 MiB. Uploads `purpose=payment_qr`
  * then activates that file as the platform receiving plate.
  */
 export async function uploadPaymentQr(file: File): Promise<PlatformSettings> {
@@ -1550,6 +1550,13 @@ export async function resolveIssue(
 // Audit
 // ---------------------------------------------------------------------------
 
+/**
+ * The full log is Super Admin only. Operations may read only its workspace
+ * records: `action` of `order.production_override`, `file.early_delete` or
+ * `file.retention_delete`, or `entityType: "file"` with an `entityId`; any
+ * other scope is `403`. `__tests__/ops-audit-scope.test.ts` holds the call
+ * sites outside the admin tree to that.
+ */
 export async function listAudit(filters?: {
   entityType?: string;
   entityId?: string;
@@ -1670,6 +1677,49 @@ export async function listCatalogItems(query: CatalogListQuery = {}): Promise<un
 
 export async function getCatalogItem(itemId: string): Promise<unknown> {
   return request<unknown>(`/me/catalog-items/${encodeURIComponent(itemId)}`);
+}
+
+/** Staff index of every shop's listings. Shop is on each row. */
+export type StaffCatalogQuery = {
+  q?: string | null;
+  subcategoryCode?: string | null;
+  supplierId?: string | null;
+  minPriceMinor?: number | null;
+  maxPriceMinor?: number | null;
+  limit?: number | null;
+  cursor?: string | null;
+};
+
+export async function listStaffCatalogItems(query: StaffCatalogQuery = {}): Promise<unknown> {
+  const params = new URLSearchParams();
+  const q = (query.q ?? "").trim();
+  if (q) params.set("q", q);
+  if (query.subcategoryCode) params.set("subcategoryCode", query.subcategoryCode);
+  if (query.supplierId) params.set("supplierId", query.supplierId);
+  if (query.minPriceMinor != null) params.set("minPriceMinor", String(query.minPriceMinor));
+  if (query.maxPriceMinor != null) params.set("maxPriceMinor", String(query.maxPriceMinor));
+  if (query.limit != null) params.set("limit", String(query.limit));
+  if (query.cursor) params.set("cursor", query.cursor);
+  const search = params.toString();
+  return request<unknown>(`/ops/catalog-items${search ? `?${search}` : ""}`);
+}
+
+export async function getStaffCatalogItem(itemId: string): Promise<unknown> {
+  return request<unknown>(`/ops/catalog-items/${encodeURIComponent(itemId)}`);
+}
+
+export async function suspendStaffCatalogItem(itemId: string, reason: string): Promise<unknown> {
+  return request<unknown>(`/catalog-items/${encodeURIComponent(itemId)}/suspend`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function restoreStaffCatalogItem(itemId: string): Promise<unknown> {
+  return request<unknown>(`/catalog-items/${encodeURIComponent(itemId)}/restore`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
 }
 
 export async function listMySupplierServices(): Promise<unknown> {
