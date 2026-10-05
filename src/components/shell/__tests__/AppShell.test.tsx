@@ -227,6 +227,14 @@ describe("AppShell chrome", () => {
     expect(mark?.querySelectorAll("circle")).toHaveLength(9);
   });
 
+  it("lets the page column shrink, so a wide table scrolls inside itself", () => {
+    const { container } = renderShell("/admin/overview");
+    // A flex child without min-w-0 grows to its widest table and widens the page.
+    expect(container.querySelector('[data-slot="sidebar-inset"]')?.className).toMatch(
+      /\bmin-w-0\b/,
+    );
+  });
+
   it("centers the collapsed-rail header mark on the nav icon column", () => {
     const { container } = renderShell("/admin/overview");
     const header = container.querySelector('[data-slot="sidebar-header"]');

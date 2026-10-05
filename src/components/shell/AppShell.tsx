@@ -843,7 +843,7 @@ export function AppShell({ role, children }: Props) {
       >
         <PortalSidebar role={role} />
 
-        <SidebarInset className="bg-canvas">
+        <SidebarInset className="bg-canvas min-w-0">
           <header className="sticky top-0 z-30 flex h-14 shrink-0 items-stretch gap-2 border-b border-outline bg-surface pl-1.5 pr-3">
             {/* The only navigation toggle in the shell. Tight left padding keeps
                 it next to the rail; the header has no second account control. */}
