@@ -32,7 +32,9 @@ export function SupplierProductFacts({
         <p className="text-body text-text-secondary m-0" data-testid="listing-shop">
           {shopLabel(shop)}
         </p>
-        <h1 className="text-h2 text-text-primary m-0">{listing.name || "Untitled listing"}</h1>
+        <h1 className="text-h2 text-text-primary m-0">
+          {listing.name || "Untitled listing"}
+        </h1>
         <div className="flex flex-wrap items-center gap-3">
           <StatusChip tone={board.tone} icon={board.icon} label={board.label} />
           <span className="text-caption text-text-muted">

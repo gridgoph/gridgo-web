@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { CircleCheck } from "lucide-react";
 
 import { SupplierProductFacts } from "@/components/supplier-products/SupplierProductFacts";
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
@@ -59,7 +60,10 @@ export function SupplierProductDetail({ itemId }: { itemId: string }) {
       setLoading(true);
       setError(null);
       try {
-        const [tax, body] = await Promise.all([getTaxonomy(), getStaffCatalogItem(itemId)]);
+        const [tax, body] = await Promise.all([
+          getTaxonomy(),
+          getStaffCatalogItem(itemId),
+        ]);
         setTaxonomy(tax);
         const detail = normalizeStaffCatalogDetail(body);
         if (!detail) {
@@ -88,7 +92,9 @@ export function SupplierProductDetail({ itemId }: { itemId: string }) {
     const trimmed = reason.trim();
     if (!trimmed) {
       setReasonError(true);
-      setActionError("Enter a reason. The shop sees it on the listing and in a notification.");
+      setActionError(
+        "Enter a reason. The shop sees it on the listing and in a notification.",
+      );
       return;
     }
     setActing(true);
@@ -175,9 +181,9 @@ export function SupplierProductDetail({ itemId }: { itemId: string }) {
               </p>
             </div>
             <p className="text-body text-text-secondary m-0 max-w-prose">
-              Clients cannot see this listing. The shop sees it as Taken down by GRIDGO and
-              cannot put it back on the board. Restoring lifts the take-down and tells the
-              shop; the listing stays hidden until the shop puts it back.
+              Clients cannot see this listing. The shop sees it as Taken down by GRIDGO
+              and cannot put it back on the board. Restoring lifts the take-down and tells
+              the shop; the listing stays hidden until the shop puts it back.
             </p>
             <div>
               <Button
@@ -196,13 +202,25 @@ export function SupplierProductDetail({ itemId }: { itemId: string }) {
             aria-labelledby="take-down-heading"
             onSubmit={(event) => void takeDown(event)}
           >
+            {notice ? (
+              <p
+                className="text-body text-text-primary border-outline m-0 flex items-start gap-2 border-b pb-3"
+                role="status"
+              >
+                <CircleCheck
+                  aria-hidden
+                  className="text-success mt-0.5 size-4 shrink-0"
+                />
+                {notice}
+              </p>
+            ) : null}
             <h2 id="take-down-heading" className="text-h3 text-text-primary m-0">
               Take this listing down
             </h2>
             <p className="text-body text-text-secondary m-0 max-w-prose">
               Clients stop seeing it straight away. The shop gets a notification with your
-              reason, sees it on the listing, and cannot put it back on the board until you
-              restore it.
+              reason, sees it on the listing, and cannot put it back on the board until
+              you restore it.
             </p>
             <Field data-invalid={reasonError ? true : undefined}>
               <FieldLabel htmlFor="take-down-reason">Reason the shop will see</FieldLabel>
@@ -233,11 +251,6 @@ export function SupplierProductDetail({ itemId }: { itemId: string }) {
           </form>
         )}
       </div>
-      {notice ? (
-        <p className="text-body text-text-secondary m-0" role="status">
-          {notice}
-        </p>
-      ) : null}
       {actionError ? (
         <p className="text-body text-destructive m-0" role="alert">
           {actionError}

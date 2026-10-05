@@ -6,12 +6,7 @@
  */
 
 import { formatDateTime, pesosToMinor } from "@/lib/format";
-import {
-  normalizeListing,
-  priceLine,
-  specs,
-  type Listing,
-} from "@/lib/listings";
+import { normalizeListing, priceLine, specs, type Listing } from "@/lib/listings";
 import type { StatusIconName, StatusTone } from "@/lib/order-state";
 
 export type StaffShop = {
@@ -86,8 +81,12 @@ export function normalizeStaffCatalogPage(body: unknown): StaffCatalogPage {
   return {
     rows,
     shops,
-    total: typeof raw.total === "number" && Number.isFinite(raw.total) ? raw.total : rows.length,
-    nextCursor: typeof raw.nextCursor === "string" && raw.nextCursor ? raw.nextCursor : null,
+    total:
+      typeof raw.total === "number" && Number.isFinite(raw.total)
+        ? raw.total
+        : rows.length,
+    nextCursor:
+      typeof raw.nextCursor === "string" && raw.nextCursor ? raw.nextCursor : null,
   };
 }
 
@@ -137,7 +136,11 @@ export function takenDownLine(listing: Pick<Listing, "suspendedAt">): string {
  * The total the API counted for these filters, and how many are loaded:
  * "40 listings", "3 listings match", "Showing 50 of 120 listings".
  */
-export function listingCountLine(shown: number, total: number, filtered: boolean): string {
+export function listingCountLine(
+  shown: number,
+  total: number,
+  filtered: boolean,
+): string {
   const noun = total === 1 ? "listing" : "listings";
   if (shown < total) {
     return `Showing ${shown} of ${total} ${noun}${filtered ? " that match" : ""}`;
@@ -192,7 +195,9 @@ export function staffCatalogRequest(
   return { query };
 }
 
-export function filtersFromSearchParams(params: { get(name: string): string | null }): StaffCatalogFilters {
+export function filtersFromSearchParams(params: {
+  get(name: string): string | null;
+}): StaffCatalogFilters {
   return {
     q: params.get("q") ?? "",
     subcategoryCode: params.get("type") ?? "",
@@ -216,9 +221,9 @@ export function searchFromFilters(filters: StaffCatalogFilters): string {
 export function filtersAreSet(filters: StaffCatalogFilters): boolean {
   return Boolean(
     filters.q.trim() ||
-      filters.subcategoryCode ||
-      filters.supplierId ||
-      filters.minPesos.trim() ||
-      filters.maxPesos.trim(),
+    filters.subcategoryCode ||
+    filters.supplierId ||
+    filters.minPesos.trim() ||
+    filters.maxPesos.trim(),
   );
 }

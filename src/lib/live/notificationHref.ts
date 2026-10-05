@@ -13,7 +13,10 @@ import type { Notification, Role } from "@/lib/api/types";
 export function notificationHref(role: Role, notification: Notification): string | null {
   const type = notification.type ?? "";
 
-  if ((type === "listing_suspended" || type === "listing_restored") && role === "supplier") {
+  if (
+    (type === "listing_suspended" || type === "listing_restored") &&
+    role === "supplier"
+  ) {
     return notification.catalogItemId
       ? `/supplier/catalogue/${encodeURIComponent(notification.catalogItemId)}`
       : "/supplier/catalogue";

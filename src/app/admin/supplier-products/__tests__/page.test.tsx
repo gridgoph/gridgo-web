@@ -48,9 +48,8 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/api/client", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api/client")>(
-    "@/lib/api/client",
-  );
+  const actual =
+    await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
   return {
     ...actual,
     getTaxonomy: getTaxonomyMock,
@@ -92,7 +91,14 @@ const sticker = {
     measureUnit: "m",
     active: true,
     updatedAt: "2026-10-02T00:00:00.000Z",
-    photos: [{ fileId: "photo_sticker", sortOrder: 0, altText: "Sticker roll", downloadUrl: "https://files.example/sticker.jpg" }],
+    photos: [
+      {
+        fileId: "photo_sticker",
+        sortOrder: 0,
+        altText: "Sticker roll",
+        downloadUrl: "https://files.example/sticker.jpg",
+      },
+    ],
     optionGroups: [
       {
         id: "finish",
@@ -100,7 +106,15 @@ const sticker = {
         kind: "spec",
         required: false,
         sortOrder: 0,
-        options: [{ id: "gloss", label: "Gloss", priceModifierMinor: 0, active: true, sortOrder: 0 }],
+        options: [
+          {
+            id: "gloss",
+            label: "Gloss",
+            priceModifierMinor: 0,
+            active: true,
+            sortOrder: 0,
+          },
+        ],
       },
     ],
   },
@@ -161,12 +175,16 @@ describe("Supplier products", () => {
     await user.click(screen.getByRole("button", { name: "Show more listings" }));
 
     const table = screen.getByRole("table", { name: "Supplier products" });
-    expect(await within(table).findByRole("link", { name: "Vinyl banner" })).toBeInTheDocument();
+    expect(
+      await within(table).findByRole("link", { name: "Vinyl banner" }),
+    ).toBeInTheDocument();
     expect(listStaffCatalogItemsMock).toHaveBeenLastCalledWith(
       expect.objectContaining({ cursor: "c2" }),
     );
     expect(screen.getByTestId("listing-count")).toHaveTextContent("2 listings");
-    expect(screen.queryByRole("button", { name: "Show more listings" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Show more listings" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows the same shop name on the listing detail", async () => {
@@ -203,7 +221,10 @@ describe("Supplier products", () => {
     await user.click(screen.getByRole("button", { name: "Take down" }));
 
     await waitFor(() => {
-      expect(suspendStaffCatalogItemMock).toHaveBeenCalledWith("sticker", "Blurry sample");
+      expect(suspendStaffCatalogItemMock).toHaveBeenCalledWith(
+        "sticker",
+        "Blurry sample",
+      );
     });
     expect(
       await screen.findByRole("heading", { name: /^Taken down/ }),
@@ -254,7 +275,9 @@ describe("Supplier products", () => {
     await waitFor(() => {
       expect(restoreStaffCatalogItemMock).toHaveBeenCalledWith("sticker");
     });
-    expect(await screen.findByText(/stays hidden until the shop puts it back/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/stays hidden until the shop puts it back/),
+    ).toBeInTheDocument();
     expect(screen.getByText("Off the board")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Take down" })).toBeInTheDocument();
   });

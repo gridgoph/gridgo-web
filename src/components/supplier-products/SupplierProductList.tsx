@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronRight, SlidersHorizontal } from "lucide-react";
+import { ChevronRight, ImageOff, SlidersHorizontal } from "lucide-react";
 
 import { productTypeName } from "@/components/supplier-products/SupplierProductFacts";
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
@@ -98,7 +98,9 @@ export function SupplierProductList() {
 
   const load = useSerializedLoad(
     useCallback(async () => {
-      const requested = staffCatalogRequest(filtersFromSearchParams(new URLSearchParams(search)));
+      const requested = staffCatalogRequest(
+        filtersFromSearchParams(new URLSearchParams(search)),
+      );
       if ("error" in requested) {
         setData(null);
         setError(requested.error);
@@ -140,7 +142,9 @@ export function SupplierProductList() {
     setLoadingMore(true);
     setMoreError(null);
     try {
-      const next = normalizeStaffCatalogPage(await listStaffCatalogItems(requested.query));
+      const next = normalizeStaffCatalogPage(
+        await listStaffCatalogItems(requested.query),
+      );
       setData((current) =>
         current
           ? {
@@ -191,7 +195,7 @@ export function SupplierProductList() {
         cell: (row) => (
           <div className="flex min-w-0 items-center gap-3">
             <ListingThumb row={row} />
-            <div className="flex min-w-0 flex-col">
+            <div className="flex min-w-0 max-w-[18rem] flex-col">
               <Link
                 href={detailHref(row)}
                 className="text-body text-text-primary truncate underline-offset-4 hover:underline"
@@ -199,7 +203,7 @@ export function SupplierProductList() {
               >
                 {row.listing.name || "Untitled listing"}
               </Link>
-              <span className="text-caption text-text-muted max-w-[22rem] truncate">
+              <span className="text-caption text-text-muted truncate">
                 {specSummary(row.listing)}
               </span>
             </div>
@@ -211,7 +215,10 @@ export function SupplierProductList() {
         header: "Shop",
         sortValue: (row) => shopLabel(row.shop),
         cell: (row) => (
-          <span className="text-body text-text-primary" data-testid="listing-shop">
+          <span
+            className="text-body text-text-primary block min-w-[8rem] whitespace-normal"
+            data-testid="listing-shop"
+          >
             {shopLabel(row.shop)}
           </span>
         ),
@@ -221,7 +228,7 @@ export function SupplierProductList() {
         header: "Product type",
         sortValue: (row) => productTypeName(taxonomy, row.listing.subcategoryCode),
         cell: (row) => (
-          <span className="text-body text-text-secondary">
+          <span className="text-body text-text-secondary block min-w-[8rem] whitespace-normal">
             {productTypeName(taxonomy, row.listing.subcategoryCode)}
           </span>
         ),
@@ -231,7 +238,7 @@ export function SupplierProductList() {
         header: "Price",
         sortValue: (row) => row.listing.basePriceMinor,
         cell: (row) => (
-          <span className="text-body text-text-primary tabular-nums whitespace-nowrap">
+          <span className="text-body text-text-primary block min-w-[9rem] whitespace-normal tabular-nums">
             {listingPriceLine(row.listing)}
           </span>
         ),
@@ -264,134 +271,132 @@ export function SupplierProductList() {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-body text-text-secondary m-0 max-w-prose">
-        Every shop&rsquo;s listings, with the shop beside each one. Open a listing to see its
-        photos and specs, or to take it off the board for clients.
+        Every shop&rsquo;s listings, with the shop beside each one. Open a listing to see
+        its photos and specs, or to take it off the board for clients.
       </p>
 
       <form
-        className="gg-card flex flex-col gap-3"
+        className="gg-card grid gap-3 lg:grid-cols-2"
         onSubmit={apply}
         aria-label="Filter supplier products"
       >
-        <div className="grid gap-3 lg:grid-cols-12">
-          <Field className="lg:col-span-6">
-            <FieldLabel htmlFor="supplier-products-q">Search</FieldLabel>
-            <div className="flex gap-2">
-              <Input
-                id="supplier-products-q"
-                type="search"
-                value={draft.q}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, q: event.target.value }))
-                }
-                placeholder="Shop, product, or spec"
-              />
-              <Button
-                type="button"
-                className="md:hidden"
-                aria-expanded={moreFiltersOpen}
-                aria-controls={moreFiltersId}
-                onClick={() => setMoreFiltersOpen((open) => !open)}
-              >
-                <SlidersHorizontal aria-hidden />
-                {narrowed > 0 ? `Filters (${narrowed})` : "Filters"}
-              </Button>
-            </div>
-          </Field>
-          <div
-            id={moreFiltersId}
-            className={cn(
-              "gap-3 md:grid md:grid-cols-2 lg:col-span-6",
-              moreFiltersOpen ? "grid" : "hidden",
-            )}
-          >
-            <Field>
-              <FieldLabel htmlFor="supplier-products-type">Product type</FieldLabel>
-              <Select
-                value={draft.subcategoryCode || ANY}
-                onValueChange={(value) =>
-                  setDraft((current) => ({
-                    ...current,
-                    subcategoryCode: !value || value === ANY ? "" : String(value),
-                  }))
-                }
-              >
-                <SelectTrigger id="supplier-products-type" className="min-h-11 w-full">
-                  <SelectValue>
-                    {(value) =>
-                      !value || value === ANY
-                        ? "Every product type"
-                        : productTypeName(taxonomy, String(value))
-                    }
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ANY}>Every product type</SelectItem>
-                  {productTypes.map((job) => (
-                    <SelectItem key={job.code} value={job.code}>
-                      {job.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="supplier-products-shop">Shop</FieldLabel>
-              <Select
-                value={draft.supplierId || ANY}
-                onValueChange={(value) =>
-                  setDraft((current) => ({
-                    ...current,
-                    supplierId: !value || value === ANY ? "" : String(value),
-                  }))
-                }
-              >
-                <SelectTrigger id="supplier-products-shop" className="min-h-11 w-full">
-                  <SelectValue>
-                    {(value) => {
-                      if (!value || value === ANY) return "Every shop";
-                      const shop = shops.find((entry) => entry.supplierId === value);
-                      return shop ? shopLabel(shop) : String(value);
-                    }}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ANY}>Every shop</SelectItem>
-                  {shops.map((shop) => (
-                    <SelectItem key={shop.supplierId} value={shop.supplierId}>
-                      {shopLabel(shop)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="supplier-products-min">Lowest price (₱)</FieldLabel>
-              <Input
-                id="supplier-products-min"
-                inputMode="decimal"
-                value={draft.minPesos}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, minPesos: event.target.value }))
-                }
-                placeholder="0.00"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="supplier-products-max">Highest price (₱)</FieldLabel>
-              <Input
-                id="supplier-products-max"
-                inputMode="decimal"
-                value={draft.maxPesos}
-                onChange={(event) =>
-                  setDraft((current) => ({ ...current, maxPesos: event.target.value }))
-                }
-                placeholder="0.00"
-              />
-            </Field>
+        <Field className="lg:col-start-1 lg:row-start-1">
+          <FieldLabel htmlFor="supplier-products-q">Search</FieldLabel>
+          <div className="flex gap-2">
+            <Input
+              id="supplier-products-q"
+              type="search"
+              value={draft.q}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, q: event.target.value }))
+              }
+              placeholder="Shop, product, or spec"
+            />
+            <Button
+              type="button"
+              className="md:hidden"
+              aria-expanded={moreFiltersOpen}
+              aria-controls={moreFiltersId}
+              onClick={() => setMoreFiltersOpen((open) => !open)}
+            >
+              <SlidersHorizontal aria-hidden />
+              {narrowed > 0 ? `Filters (${narrowed})` : "Filters"}
+            </Button>
           </div>
+        </Field>
+        <div
+          id={moreFiltersId}
+          className={cn(
+            "gap-3 md:grid md:grid-cols-2 lg:col-start-2 lg:row-span-2 lg:row-start-1",
+            moreFiltersOpen ? "grid" : "hidden",
+          )}
+        >
+          <Field>
+            <FieldLabel htmlFor="supplier-products-type">Product type</FieldLabel>
+            <Select
+              value={draft.subcategoryCode || ANY}
+              onValueChange={(value) =>
+                setDraft((current) => ({
+                  ...current,
+                  subcategoryCode: !value || value === ANY ? "" : String(value),
+                }))
+              }
+            >
+              <SelectTrigger id="supplier-products-type" className="min-h-11 w-full">
+                <SelectValue>
+                  {(value) =>
+                    !value || value === ANY
+                      ? "Every product type"
+                      : productTypeName(taxonomy, String(value))
+                  }
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ANY}>Every product type</SelectItem>
+                {productTypes.map((job) => (
+                  <SelectItem key={job.code} value={job.code}>
+                    {job.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="supplier-products-shop">Shop</FieldLabel>
+            <Select
+              value={draft.supplierId || ANY}
+              onValueChange={(value) =>
+                setDraft((current) => ({
+                  ...current,
+                  supplierId: !value || value === ANY ? "" : String(value),
+                }))
+              }
+            >
+              <SelectTrigger id="supplier-products-shop" className="min-h-11 w-full">
+                <SelectValue>
+                  {(value) => {
+                    if (!value || value === ANY) return "Every shop";
+                    const shop = shops.find((entry) => entry.supplierId === value);
+                    return shop ? shopLabel(shop) : String(value);
+                  }}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ANY}>Every shop</SelectItem>
+                {shops.map((shop) => (
+                  <SelectItem key={shop.supplierId} value={shop.supplierId}>
+                    {shopLabel(shop)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="supplier-products-min">Lowest price (₱)</FieldLabel>
+            <Input
+              id="supplier-products-min"
+              inputMode="decimal"
+              value={draft.minPesos}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, minPesos: event.target.value }))
+              }
+              placeholder="0.00"
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="supplier-products-max">Highest price (₱)</FieldLabel>
+            <Input
+              id="supplier-products-max"
+              inputMode="decimal"
+              value={draft.maxPesos}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, maxPesos: event.target.value }))
+              }
+              placeholder="0.00"
+            />
+          </Field>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 lg:col-start-1 lg:row-start-2 lg:self-end">
           <Button type="submit" variant="primary">
             Apply filters
           </Button>
@@ -419,16 +424,18 @@ export function SupplierProductList() {
         />
       ) : (
         <>
-          {data ? (
-            <p
-              className="text-caption text-text-muted m-0 tabular-nums"
-              role="status"
-              data-testid="listing-count"
-            >
-              {listingCountLine(rows.length, data.total, filtered)}
-            </p>
-          ) : null}
           <DataTable
+            toolbar={
+              data ? (
+                <p
+                  className="text-body text-text-secondary m-0 tabular-nums"
+                  role="status"
+                  data-testid="listing-count"
+                >
+                  {listingCountLine(rows.length, data.total, filtered)}
+                </p>
+              ) : null
+            }
             caption="Supplier products"
             columns={columns}
             data={rows}
@@ -438,7 +445,7 @@ export function SupplierProductList() {
             pageSize={Math.max(50, rows.length)}
             rowActions={(row) => (
               <DataTableRowAction
-                label={`Open ${row.listing.name || "listing"}`}
+                label="Open listing"
                 icon={ChevronRight}
                 href={detailHref(row)}
               />
@@ -471,7 +478,11 @@ export function SupplierProductList() {
           ) : null}
           {data?.nextCursor ? (
             <div>
-              <Button type="button" onClick={() => void showMore()} disabled={loadingMore}>
+              <Button
+                type="button"
+                onClick={() => void showMore()}
+                disabled={loadingMore}
+              >
                 {loadingMore ? "Loading more listings" : "Show more listings"}
               </Button>
             </div>
@@ -490,7 +501,7 @@ function ListingThumb({ row }: { row: StaffCatalogRow }) {
         aria-hidden
         className="border-outline text-text-muted bg-surface-variant inline-flex size-10 shrink-0 items-center justify-center rounded-md border text-caption"
       >
-        {row.listing.photos.length ? "Photo" : "None"}
+        <ImageOff className="size-4" />
       </span>
     );
   }

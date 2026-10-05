@@ -15,7 +15,14 @@ vi.mock("@/lib/auth/AuthProvider", () => ({
   useAuth: () => ({ memberships: auth.memberships }),
 }));
 vi.mock("next/link", () => ({
-  default: ({ href, children, ...props }: { href: string; children: React.ReactNode }) => (
+  default: ({
+    href,
+    children,
+    ...props
+  }: {
+    href: string;
+    children: React.ReactNode;
+  }) => (
     <a href={href} {...props}>
       {children}
     </a>
