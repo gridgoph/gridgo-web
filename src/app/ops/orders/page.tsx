@@ -14,6 +14,7 @@ import {
   stageNeedsOperations,
   type Stage,
 } from "@/app/ops/_lib/pipeline";
+import { FileCheckQueue } from "@/components/orders/FileCheckQueue";
 import { Button } from "@/components/ui/button";
 import {
   DataTable,
@@ -213,12 +214,15 @@ export default function OpsOrdersPage() {
                 router.replace(`/ops/orders?stage=${entry.id}`, { scroll: false });
               }}
               className="gg-chip min-h-11 flex items-center gap-2 px-3"
+              // The monochrome structural fill (`--primary`). `--color-accent`
+              // is remapped to shadcn's light hover wash, which left the
+              // selected stage's white label unreadable.
               style={{
-                background: selected ? "var(--color-accent)" : "var(--color-surface)",
+                background: selected ? "var(--primary)" : "var(--color-surface)",
                 color: selected
-                  ? "var(--color-accent-on)"
+                  ? "var(--primary-foreground)"
                   : "var(--color-text-secondary)",
-                borderColor: selected ? "var(--color-accent)" : "var(--color-outline)",
+                borderColor: selected ? "var(--primary)" : "var(--color-outline)",
               }}
             >
               <span className="text-body">{entry.label}</span>
@@ -245,38 +249,47 @@ export default function OpsOrdersPage() {
         })}
       </nav>
 
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-body text-text-secondary m-0">{active?.hint}</p>
-        <Button variant="secondary" onClick={() => void load()}>
-          Refresh
-        </Button>
-      </div>
-
-      {rows.length === 0 ? (
-        <EmptyState
-          title={`Nothing at ${active?.label.toLowerCase()}`}
-          body="Orders arrive here as they reach this step. Try another step, or refresh."
-          action={
+      {stage === "qa" ? (
+        // The file check is its own queue: oldest first, a live wait, and Pass
+        // or Send back from the row. Orders still in payment review show their
+        // wait beneath it.
+        <FileCheckQueue orders={orders ?? []} onChanged={load} />
+      ) : (
+        <>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-body text-text-secondary m-0">{active?.hint}</p>
             <Button variant="secondary" onClick={() => void load()}>
               Refresh
             </Button>
-          }
-        />
-      ) : (
-        <DataTable
-          columns={columns}
-          data={rows}
-          getRowId={(order) => order.id}
-          caption={`Orders at ${active?.label}`}
-          filterPlaceholder="Filter orders…"
-          rowActions={(order) => (
-            <DataTableRowAction
-              label="Open"
-              icon={Eye}
-              href={`/ops/orders/${order.id}`}
+          </div>
+
+          {rows.length === 0 ? (
+            <EmptyState
+              title={`Nothing at ${active?.label.toLowerCase()}`}
+              body="Orders arrive here as they reach this step. Try another step, or refresh."
+              action={
+                <Button variant="secondary" onClick={() => void load()}>
+                  Refresh
+                </Button>
+              }
+            />
+          ) : (
+            <DataTable
+              columns={columns}
+              data={rows}
+              getRowId={(order) => order.id}
+              caption={`Orders at ${active?.label}`}
+              filterPlaceholder="Filter orders…"
+              rowActions={(order) => (
+                <DataTableRowAction
+                  label="Open"
+                  icon={Eye}
+                  href={`/ops/orders/${order.id}`}
+                />
+              )}
             />
           )}
-        />
+        </>
       )}
     </div>
   );

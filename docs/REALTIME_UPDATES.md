@@ -110,6 +110,14 @@ request (or its latest). The shop's copy opens its job. Refund events invalidate
 `orders`, `payouts` and `claims`; the refund inbox, the case and the rail count reload on
 any of them.
 
+A new file check (`ops_job_needs_qa`, written at checkout and again when a client resends
+artwork), a shop dropout (`shop_recovery`) and a deadline request (`order_reschedule_*`)
+all name their order and open it, where the Quality check, Shop acceptance and Deadline
+request rows carry the wait, the history and the action. The arrival itself is the live
+alert: the chime, the toast and (when on) the desktop alert. A file-check queue that is
+already open re-reads on the `orders` invalidation and marks the newly arrived row **New**
+with a polite screen-reader announcement.
+
 A listing take-down or restore (`listing_suspended`, `listing_restored`) reaches only the
 owning shop and opens that listing's editor (`/supplier/catalogue/:catalogItemId`), or the
 catalogue when the notice has no id. The API addresses catalogue invalidation to the shop,

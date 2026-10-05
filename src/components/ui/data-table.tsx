@@ -726,8 +726,11 @@ export function DataTable<T>({
                   className="border-outline-subtle border-b p-4 last:border-b-0"
                 >
                   {primaryCell ? (
-                    <div className="mb-3 flex items-start justify-between gap-3">
-                      <div className="min-w-0">
+                    // Actions sit beside the title while the title keeps 10rem;
+                    // a row with several labelled actions puts them beneath it
+                    // rather than squeezing the title to a few letters.
+                    <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1 basis-40">
                         <p className="text-caption text-text-muted m-0">
                           {
                             (primaryCell.column.columnDef.meta as ColumnMeta<T>)

@@ -42,6 +42,8 @@ export const NAV_COUNT_MEANING: Record<NavCountKey, CountMeaning> = {
     attention: false,
   },
   "jobs-need-action": { phrase: needAction, attention: false },
+  // An order is stopped until Operations decides, like the orders queue.
+  "shop-changes-needs-ops": { phrase: needAction, attention: true },
   // The captain's own calls: quiet, because no order waits on them.
   // Monochrome: yellow is reserved for the orders queue.
   "refunds-waiting": { phrase: needAction, attention: false },

@@ -40,6 +40,7 @@ import {
 } from "@/components/settings/RiderDeliveryShare";
 import { CheckoutPayment, checkoutPaymentLabel } from "@/components/settings/CheckoutPayment";
 import { DeliveryZones, DeliveryZonesSkeleton } from "@/components/settings/DeliveryZones";
+import { HubPickupSettings } from "@/components/settings/HubPickupSettings";
 import { ProductionPenalties } from "@/components/settings/ProductionPenalties";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -622,6 +623,18 @@ export function OperationalSettings() {
           setZones((current) => (current ? { ...current, [field]: value } : current))
         }
         disabled={busy}
+      />
+
+      {/* Next to the delivery zones: the other way a client gets their order. */}
+      <HubPickupSettings
+        settings={settings}
+        canEdit
+        disabled={busy}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={() => load(true)}
       />
 
       <section className="gg-card p-3" aria-labelledby="production-nudge-heading">

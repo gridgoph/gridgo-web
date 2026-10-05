@@ -50,6 +50,20 @@ describe("notificationHref", () => {
     expect(notificationHref("super_admin", row)).toBe("/admin/orders/ord_9");
   });
 
+  it("opens a new file check, a shop dropout and a deadline request on the order, in each tree", () => {
+    for (const type of [
+      "ops_job_needs_qa",
+      "shop_recovery",
+      "order_reschedule_requested",
+      "order_reschedule_operations_required",
+      "order_reschedule_refund_requested",
+    ]) {
+      const row = note({ type, orderId: "ord_9" });
+      expect(notificationHref("ops_admin", row)).toBe("/ops/orders/ord_9");
+      expect(notificationHref("super_admin", row)).toBe("/admin/orders/ord_9");
+    }
+  });
+
   it("lands payout releases on the Operations payout desk", () => {
     const row = note({ type: "ops_payout_released", orderId: "ord_9" });
     expect(notificationHref("ops_admin", row)).toBe("/ops/payouts/ord_9");

@@ -22,7 +22,10 @@ import {
   listJobs,
   listOrders,
   listRefunds,
+  listRescheduleRequests,
+  listShopFailures,
   listUsers,
+  isApiError,
 } from "@/lib/api/client";
 import { claimBlocksPayout } from "@/lib/api/constraints";
 import { listSupportChatThreads } from "@/lib/api/support-chat";
@@ -32,6 +35,7 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import type { NavCountKey } from "@/lib/nav";
 import type { NavCounts } from "@/lib/nav-counts";
 import { refundNeedsStaff } from "@/lib/refunds";
+import { buildNeedsOperations } from "@/lib/shop-changes";
 import { needsSupplierAction } from "@/lib/supplier-actions";
 
 type CountSource = {
@@ -96,6 +100,24 @@ const NAV_COUNT_SOURCES: Record<NavCountKey, CountSource> = {
     resources: ["issue-reports"],
     refreshOnNavigate: true,
     load: async () => (await listIssueReports("new")).counts.new ?? 0,
+  },
+  // The Dropouts & delays page's "Needs Operations" list, from the same two
+  // reads. An API without deadline requests answers 404: count recoveries only.
+  "shop-changes-needs-ops": {
+    resources: ["orders", "jobs"],
+    load: async () => {
+      const [events, requests] = await Promise.all([
+        listShopFailures(),
+        listRescheduleRequests().then(
+          (queue) => queue.requests,
+          (err) => {
+            if (isApiError(err) && err.status === 404) return [];
+            throw err;
+          },
+        ),
+      ]);
+      return buildNeedsOperations(events, requests).length;
+    },
   },
   "jobs-need-action": {
     resources: ["jobs"],

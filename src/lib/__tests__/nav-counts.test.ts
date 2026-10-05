@@ -85,6 +85,7 @@ describe("rail counts", () => {
         "ops-issue-reports:issue-reports-new",
         "ops-orders:orders-waiting",
         "ops-approvals:signups-waiting",
+        "ops-shop-changes:shop-changes-needs-ops",
         "ops-escalations:escalations-open",
         "ops-refunds:refunds-waiting",
         "ops-claims:claims-open",
@@ -94,6 +95,7 @@ describe("rail counts", () => {
         "admin-issue-reports:issue-reports-new",
         "admin-verification:signups-waiting",
         "admin-refunds:refunds-waiting",
+        "admin-shop-changes:shop-changes-needs-ops",
         "admin-tracker:tracker-needs-decision",
       ],
     });
