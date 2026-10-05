@@ -46,9 +46,14 @@ const medium = { fontFamily: "var(--font-medium)" } as const;
 
 type Tree = "ops" | "admin";
 
-function shopName(names: Record<string, string>, id: string | null | undefined): string {
-  if (!id) return "the shop";
-  return names[id] || "the shop";
+/** The shop by name, or "the shop" ("The shop" to start a sentence) until it loads. */
+function shopName(
+  names: Record<string, string>,
+  id: string | null | undefined,
+  sentenceStart = false,
+): string {
+  const name = id ? names[id] : "";
+  return name || (sentenceStart ? "The shop" : "the shop");
 }
 
 // ---------------------------------------------------------------------------
@@ -98,6 +103,19 @@ export function shopRowTone(order: Order, nowMs: number = Date.now()): ShopRowTo
   }
   if (acceptance?.status === "accepted") return "done";
   return "quiet";
+}
+
+/** Who the paused work is waiting on. */
+function recoveryPauseLine(status: string): string {
+  switch (status) {
+    case "ops_review":
+      return "Work and every shop payout on this order stay paused until Operations settles it.";
+    case "refund_requested":
+    case "refunded":
+      return "Work and every shop payout on this order stay paused while the refund is handled.";
+    default:
+      return "Work and every shop payout on this order are paused until the client accepts a replacement.";
+  }
 }
 
 export function ShopAcceptancePanel({
@@ -155,8 +173,8 @@ export function ShopAcceptancePanel({
           <dl className="m-0 grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-[max-content_minmax(0,1fr)]">
             {recovery.originalSupplierId ? (
               <Fact term="Original shop">
-                {shopName(names, recovery.originalSupplierId)}
-                {recovery.stage ? `, dropped out at ${presentFailureStage(recovery.stage)}` : ""}
+                {shopName(names, recovery.originalSupplierId, true)}
+                {recovery.stage ? ` (${presentFailureStage(recovery.stage).toLowerCase()})` : ""}
               </Fact>
             ) : null}
             {recovery.originalSnapshot?.promiseBy ? (
@@ -167,7 +185,7 @@ export function ShopAcceptancePanel({
             {recovery.proposal ? (
               <>
                 <Fact term="Replacement">
-                  {shopName(names, recovery.proposal.supplierId)}, ready by{" "}
+                  {shopName(names, recovery.proposal.supplierId, true)}, ready by{" "}
                   {formatDateTime(recovery.proposal.readyBy)}
                 </Fact>
                 <Fact term="Revised promise">{formatDateTime(recovery.proposal.promiseBy)}</Fact>
@@ -193,10 +211,7 @@ export function ShopAcceptancePanel({
             </p>
           ) : null}
           {recoveryHoldsWork(recovery) ? (
-            <p className="text-caption text-text-muted m-0">
-              Work and every shop payout on this order are paused until the client accepts a
-              replacement.
-            </p>
+            <p className="text-caption text-text-muted m-0">{recoveryPauseLine(recovery.status)}</p>
           ) : null}
         </div>
       ) : null}
@@ -213,10 +228,10 @@ export function ShopAcceptancePanel({
                 className="flex flex-col gap-0.5 border-b border-outline-subtle py-2 last:border-b-0"
               >
                 <span className="text-body text-text-primary">
-                  {presentFailureKind(event.kind)}, at {presentFailureStage(event.stage)}
+                  {presentFailureKind(event.kind)} ({presentFailureStage(event.stage).toLowerCase()})
                 </span>
                 <span className="text-caption text-text-muted">
-                  {shopName(names, event.supplierId)} · {formatDateTime(event.at)}
+                  {shopName(names, event.supplierId, true)} · {formatDateTime(event.at)}
                 </span>
                 {event.reason ? (
                   <span className="text-body text-text-secondary">&ldquo;{event.reason}&rdquo;</span>
@@ -276,7 +291,7 @@ export function DeadlinePanel({
     <div className="flex flex-col gap-3" data-testid="deadline-request">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-body text-text-primary" style={medium}>
-          {shopName(names, request.supplierId)} asked {formatDateTime(request.requestedAt)}
+          {shopName(names, request.supplierId, true)} asked {formatDateTime(request.requestedAt)}
         </span>
         <StatusChip tone={status.tone} icon={status.icon} label={status.label} />
       </div>

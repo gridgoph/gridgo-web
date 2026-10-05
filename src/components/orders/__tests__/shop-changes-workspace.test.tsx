@@ -126,7 +126,7 @@ it("opens the dropout and the held deadline request when they need Operations", 
   ).toBeInTheDocument();
   const recovery = await screen.findByTestId("shop-recovery");
   expect(within(recovery).getByText(/already paid a share of this order/)).toBeInTheDocument();
-  expect(await screen.findByText("Cancelled after accepting, at In production")).toBeInTheDocument();
+  expect(await screen.findByText("Cancelled after accepting (in production)")).toBeInTheDocument();
   expect(screen.getByText("“Press broke down.”")).toBeInTheDocument();
   expect(screen.queryByText("“Busy.”")).not.toBeInTheDocument();
 
