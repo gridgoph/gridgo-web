@@ -359,3 +359,57 @@ describe("reconciliationRows", () => {
     expect(rows.map((o) => o.id)).toEqual(["new", "old"]);
   });
 });
+
+describe("organization discounts", () => {
+  it("counts GRIDGO's fee net of the discount and totals the discounts beside it", () => {
+    const orders = [
+      order({
+        id: "org",
+        state: "production",
+        serviceFeeRateBps: 1000,
+        grossServiceFeeMinor: 10000,
+        organizationDiscountRateBps: 500,
+        organizationDiscountMinor: 5000,
+        serviceFeeMinor: 5000,
+      }),
+      order({ id: "plain", state: "production", serviceFeeMinor: 3000 }),
+    ];
+    const r = rollupFinance(orders, []);
+    expect(r.commissionEarned).toEqual({ kind: "amount", minor: 8000 });
+    expect(r.organizationDiscounts).toEqual({ kind: "amount", minor: 5000 });
+    expect(r.organizationOrderCount).toBe(1);
+  });
+
+  it("reports no discount when no organization has ordered", () => {
+    const r = rollupFinance([order({ id: "plain", serviceFeeMinor: 3000 })], []);
+    expect(r.organizationDiscounts).toEqual({ kind: "amount", minor: 0 });
+    expect(r.organizationOrderCount).toBe(0);
+  });
+
+  it("splits each shop group of a basket as its own order, never adding the basket on top", () => {
+    const groups = [
+      order({
+        id: "a",
+        basketId: "bsk",
+        supplierPriceMinor: 40000,
+        serviceFeeMinor: 4000,
+        totalMinor: 46500,
+        deliveryFeeMinor: 2500,
+      }),
+      order({
+        id: "b",
+        basketId: "bsk",
+        supplierPriceMinor: 18000,
+        serviceFeeMinor: 1800,
+        totalMinor: 22300,
+        deliveryFeeMinor: 2500,
+      }),
+    ];
+    const splits = orderMoneySplits(groups);
+    expect(splits.map((split) => split.totalMinor)).toEqual([46500, 22300]);
+    expect(rollupFinance(groups, []).commissionEarned).toEqual({
+      kind: "amount",
+      minor: 5800,
+    });
+  });
+});

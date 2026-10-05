@@ -15,6 +15,7 @@ import {
   type Stage,
 } from "@/app/ops/_lib/pipeline";
 import { FileCheckQueue } from "@/components/orders/FileCheckQueue";
+import { ShopModeChip } from "@/components/orders/ShopModeChip";
 import { Button } from "@/components/ui/button";
 import {
   DataTable,
@@ -29,6 +30,12 @@ import { ApiError, listOrders } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
+import {
+  basketShopCounts,
+  groupPositionLabel,
+  shopModeLabel,
+  shopModeOf,
+} from "@/lib/baskets";
 import { presentOrderState } from "@/lib/order-state";
 import { describeQuantity } from "@/lib/quantity";
 
@@ -96,6 +103,10 @@ export default function OpsOrdersPage() {
     );
   }, [orders, stage]);
 
+  // Counted across every order, not the stage on screen: a basket's groups
+  // move through the stages independently.
+  const shopCounts = useMemo(() => basketShopCounts(orders ?? []), [orders]);
+
   const columns = useMemo<DataTableColumn<Order>[]>(
     () => [
       {
@@ -104,24 +115,30 @@ export default function OpsOrdersPage() {
         primary: true,
         sortValue: (order) => order.title ?? "",
         filterValue: (order) =>
-          `${order.title ?? ""} ${order.id} ${order.material ?? ""}`,
-        cell: (order) => (
-          <div className="min-w-0">
-            <p
-              className="text-body text-text-primary m-0 truncate"
-              style={{ fontFamily: "var(--font-medium)" }}
-            >
-              {order.title || "Untitled order"}
-            </p>
-            <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
-              Order {order.id}
-            </p>
-            <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
-              {describeQuantity(order.quantity, order.unit)}
-              {order.material ? ` · ${order.material}` : ""}
-            </p>
-          </div>
-        ),
+          `${order.title ?? ""} ${order.id} ${order.material ?? ""} ${shopModeLabel(shopModeOf(order, shopCounts))} ${order.groupLabel ?? ""}`,
+        cell: (order) => {
+          const position = groupPositionLabel(order, shopCounts);
+          return (
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <p
+                  className="text-body text-text-primary m-0 min-w-0 truncate"
+                  style={{ fontFamily: "var(--font-medium)" }}
+                >
+                  {order.title || "Untitled order"}
+                </p>
+                <ShopModeChip mode={shopModeOf(order, shopCounts)} />
+              </div>
+              <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
+                {position ? `${position} · ` : ""}Order {order.id}
+              </p>
+              <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
+                {describeQuantity(order.quantity, order.unit)}
+                {order.material ? ` · ${order.material}` : ""}
+              </p>
+            </div>
+          );
+        },
       },
       {
         id: "status",
@@ -174,7 +191,7 @@ export default function OpsOrdersPage() {
         ),
       },
     ],
-    [],
+    [shopCounts],
   );
 
   if (loading && !orders) return <SkeletonLines lines={6} />;

@@ -560,7 +560,36 @@ export type Order = {
    * and the client is never shown the fee as a line.
    */
   serviceFeeRateBps?: number | null;
+  /**
+   * The fee GRIDGO keeps: **net** of any organization discount since
+   * gridgo-api#155. On an organization order the gross fee and the discount
+   * ride beside it (`grossServiceFeeMinor - organizationDiscountMinor`).
+   * Read the three through `src/lib/organization-discount.ts`.
+   */
   serviceFeeMinor?: number;
+  /** Ops / Super Admin. The fee before the organization discount. */
+  grossServiceFeeMinor?: number;
+  /** Ops / Super Admin. The discount rate snapshotted at checkout; 0 for everyone else. */
+  organizationDiscountRateBps?: number;
+  /**
+   * The organization discount in pesos, funded from GRIDGO's fee. The client
+   * sees this one too ("Organization discount -₱X"); it is already taken off
+   * `totalMinor`. 0 or absent when the client is not an approved organization.
+   */
+  organizationDiscountMinor?: number;
+  /** Ops / Super Admin. GRIDGO's revenue on this order, gross and net of the discount. */
+  platformRevenue?: PlatformRevenue;
+  /**
+   * Multi-shop checkout (gridgo-api#150, MULTI_SHOP_CHECKOUT_API.md). A basket
+   * is one payment over several shop groups; each group is an ordinary order
+   * with its own job. Absent on a single-shop order. Read through
+   * `src/lib/baskets.ts`.
+   */
+  basketId?: string | null;
+  /** "Shop A", "Shop B", … — never the shop's trading name. */
+  groupLabel?: string | null;
+  basketDeadline?: string | null;
+  invoiceNumber?: string | null;
   /**
    * The quote-era names for the same two figures. The API never sent them;
    * kept only so older fixtures type-check. Read `serviceFee*` instead.
@@ -1013,6 +1042,14 @@ export type PlatformSettings = {
    */
   serviceFeeVisibleToClient?: boolean;
   /**
+   * The organization discount, in basis points of the same shop price the
+   * service fee is charged on (500 = 5%), 0–10,000. Paid out of GRIDGO's fee,
+   * so it may never exceed `serviceFeeRateBps` (`400
+   * organization_discount_exceeds_service_fee`). Super Admin writes it.
+   * Absent on an API that predates organization discounts.
+   */
+  organizationDiscountRateBps?: number;
+  /**
    * The share of each delivery fee the rider keeps, in basis points (8,500 =
    * 85% rider, 15% GRIDGO), 0–10,000. Snapshotted on every order when its
    * delivery fee is set. Absent on an API that predates the split — the
@@ -1047,6 +1084,7 @@ export type UpdateSettingsInput = {
   issueWindowHours?: number;
   serviceFeeRateBps?: number;
   serviceFeeVisibleToClient?: boolean;
+  organizationDiscountRateBps?: number;
   riderCommissionBps?: number;
   downpaymentPercent?: number;
   deliveryFeeBands?: DeliveryFeeBand[];
@@ -2131,3 +2169,155 @@ export type SettlementInput = {
   /** Historical direct-store plans only. */
   directStoreCollectedMinor?: 0;
 };
+
+// ---- Organization money and statements (gridgo-api ORGANIZATION_MONEY_API.md) ----
+
+/** Ops / Super Admin. One order's platform revenue, as the API reports it. */
+export type PlatformRevenue = {
+  grossServiceFeeMinor: number;
+  organizationDiscountMinor: number;
+  netServiceFeeMinor: number;
+  billedMinor?: number;
+  collectedMinor?: number;
+  recognizedMinor?: number;
+  adjustedMinor?: number;
+  refundedMinor?: number;
+};
+
+// ---- Multi-shop baskets (gridgo-api MULTI_SHOP_CHECKOUT_API.md) ----
+
+export type BasketPayment = {
+  label?: string;
+  method: string;
+  /** The one transfer for every group: `not_submitted`, `pending_confirmation`, `confirmed`. */
+  status: string;
+  amountMinor: number;
+  reference: string | null;
+  proofFileId: string | null;
+  submittedAt?: string | null;
+  confirmedAt?: string | null;
+  confirmedBy?: string | null;
+  confirmationSource?: string | null;
+  rejectedAt?: string | null;
+  rejectionReason?: string | null;
+};
+
+/** One shop group of a basket. `order` is that group's ordinary order. */
+export type BasketGroup = {
+  orderId: string;
+  label: string;
+  state: string;
+  /** Printing as the client sees it: shop price plus the gross service fee. */
+  clientItemSubtotalMinor: number;
+  /** Ops / Super Admin. The shop's price for this group. */
+  itemSubtotalMinor?: number;
+  /** Ops / Super Admin. The fee GRIDGO keeps on this group, net of any discount. */
+  serviceFeeMinor?: number;
+  organizationDiscountMinor?: number;
+  deliveryFeeMinor: number;
+  /** Already inside `deliveryFeeMinor` on a hub pick-up basket. */
+  pickupFeeMinor?: number;
+  totalMinor: number;
+  order: Order;
+};
+
+export type Basket = {
+  id: string;
+  /** The group whose order carries the combined receipt. */
+  receiptOrderId: string;
+  /** What the client paid, once, for every group. */
+  totalMinor: number;
+  deadline: string | null;
+  fulfillmentMode: "delivery" | "pickup" | string;
+  createdAt?: string;
+  payment: BasketPayment;
+  pickupFeeMinor?: number;
+  groups: BasketGroup[];
+};
+
+export type InvoiceLine = {
+  id: string;
+  itemName: string;
+  quantity: number;
+  /** Ops / Super Admin: the shop's amount. */
+  amountMinor?: number;
+  unitPriceMinor?: number;
+  /** What the client's receipt prints: shop price plus fee. */
+  clientAmountMinor?: number;
+  clientUnitPriceMinor?: number;
+};
+
+export type BasketInvoiceGroup = {
+  orderId: string;
+  label: string;
+  lines: InvoiceLine[];
+  clientItemSubtotalMinor: number;
+  itemSubtotalMinor?: number;
+  serviceFeeMinor?: number;
+  organizationDiscountMinor?: number;
+  deliveryFeeMinor: number;
+  pickupFeeMinor?: number;
+  totalMinor: number;
+};
+
+/** The one immutable receipt of a basket. */
+export type BasketInvoice = {
+  orderId: string;
+  basketId?: string;
+  invoiceNumber: string;
+  issuedAt: string;
+  currency?: string;
+  totalMinor: number;
+  clientItemSubtotalMinor?: number;
+  itemSubtotalMinor?: number;
+  serviceFeeMinor?: number;
+  organizationDiscountMinor?: number;
+  deliveryFeeMinor?: number;
+  pickupFeeMinor?: number;
+  groups?: BasketInvoiceGroup[];
+};
+
+// ---- Organizations (list) and statements ----
+
+/**
+ * The fields of an organization account the Organizations list reads
+ * (`GET /ops/organizations`). The full projection, with officer history, is
+ * the organization page's own type.
+ */
+export type OrganizationSummary = {
+  userId: string;
+  name: string;
+  school?: string | null;
+  email?: string | null;
+  currentOfficer: { id?: string; fullName: string } | null;
+  approvalCase: { id: string; status: string } | null;
+};
+
+export type OrganizationStatementRow = {
+  /** Manila calendar date the order closed. */
+  date: string;
+  closedAt: string;
+  orderId: string;
+  product: string;
+  /** What the organization paid for the order, after its discount. */
+  amountMinor: number;
+  organizationDiscountMinor: number;
+  invoiceNumber: string;
+  /** The officer recorded on the order when it was placed; "" when none was. */
+  officerOfRecord: string;
+};
+
+export type OrganizationStatement = {
+  /** "Not a tax document. Official receipts are issued separately." */
+  notice: string;
+  currency: string;
+  period: { from: string; to: string; timezone: string };
+  orderCount: number;
+  totalSpendMinor: number;
+  discountEarnedMinor: number;
+  orders: OrganizationStatementRow[];
+};
+
+export type StatementPeriod =
+  | { period: "this_month" | "this_quarter" }
+  | { period: "custom"; from: string; to: string };

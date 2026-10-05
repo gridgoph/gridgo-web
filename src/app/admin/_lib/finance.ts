@@ -10,6 +10,7 @@
 import type { Claim, Order, PaymentRecord } from "@/lib/api/types";
 import { claimBlocksPayout, paymentIsSettled } from "@/lib/api/constraints";
 import { orderDeliverySplit } from "@/lib/delivery-split";
+import { orderFeeSplit } from "@/lib/organization-discount";
 import { listedInstallments, paymentOf } from "@/lib/payments";
 
 export type MoneyFigure =
@@ -22,8 +23,18 @@ export type FinanceRollup = {
   awaitingConfirmation: MoneyFigure;
   /** Billed on live orders but not yet paid. */
   outstanding: MoneyFigure;
-  /** GRIDGO's service fee across orders that have been priced. */
+  /**
+   * GRIDGO's service fee across orders that have been priced — what GRIDGO
+   * keeps, net of organization discounts (the API's `serviceFeeMinor`).
+   */
   commissionEarned: MoneyFigure;
+  /**
+   * Organization discounts given out of the service fee: GRIDGO's revenue
+   * the discount cost. Shops and riders are paid in full regardless.
+   */
+  organizationDiscounts: MoneyFigure;
+  /** Orders carrying an organization discount. */
+  organizationOrderCount: number;
   /**
    * GRIDGO's part of the delivery fees on live orders, at each order's own
    * snapshot rate. Unavailable when the API sends no split for any order.
@@ -90,6 +101,10 @@ export function rollupFinance(orders: Order[], claims: Claim[]): FinanceRollup {
 
   const priced = live.filter((o) => o.serviceFeeMinor !== undefined);
   const commission = sum(priced.map((o) => o.serviceFeeMinor ?? 0));
+  const discounted = live.flatMap((o) => {
+    const fee = orderFeeSplit(o);
+    return fee ? [fee] : [];
+  });
 
   const deliverySplits = live.flatMap((o) => {
     const split = orderDeliverySplit(o);
@@ -131,6 +146,11 @@ export function rollupFinance(orders: Order[], claims: Claim[]): FinanceRollup {
           reason:
             "No order has a supplier price yet, so there is no commission to count.",
         },
+    organizationDiscounts: {
+      kind: "amount",
+      minor: sum(discounted.map((fee) => fee.discountMinor)),
+    },
+    organizationOrderCount: discounted.length,
     deliveryShareEarned: deliverySplits.length
       ? {
           kind: "amount",
@@ -161,6 +181,7 @@ export type OrderMoneySplit = {
   orderId: string;
   label: string;
   supplierPriceMinor: number;
+  /** What GRIDGO keeps of the fee, after any organization discount. */
   commissionMinor: number;
   /** Gross delivery fee. Always equals the three parts below added together. */
   deliveryFeeMinor: number;

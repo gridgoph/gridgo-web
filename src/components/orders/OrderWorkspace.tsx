@@ -42,10 +42,13 @@ import {
   DesignLinkList,
   OrderArtwork,
 } from "@/components/orders/DesignLinks";
+import { BasketPanel } from "@/components/orders/BasketPanel";
+import { BasketPayment } from "@/components/orders/BasketPayment";
+import { OrderMoneyLines } from "@/components/orders/OrderMoneyLines";
 import { PaymentSummary } from "@/components/orders/PaymentSummary";
+import { ShopModeChip } from "@/components/orders/ShopModeChip";
 import { ProgressGallery, WaitingForPhoto } from "@/components/orders/ProductionProgress";
 import { ResolveEscalationDialog } from "@/components/orders/ResolveEscalationDialog";
-import { formatRatePercent } from "@/components/settings/service-fee";
 import { PayoutMilestones } from "@/components/orders/PayoutMilestones";
 import {
   ReleaseMilestoneDialog,
@@ -72,8 +75,10 @@ import { deliveryEvidenceItems } from "@/lib/evidence";
 import { artworkSource, orderDesignLinks } from "@/lib/design-links";
 import { fileCheckOf, fileCheckWaitLine, qaChecksFor } from "@/lib/file-check";
 import {
+  confirmBasketPayment,
   confirmPayment,
   fileRefundRequest,
+  getBasket,
   getOrder,
   getUser,
   listAudit,
@@ -82,6 +87,7 @@ import {
   listShopFailures,
   newIdempotencyKey,
   promisePhysicalInvoice,
+  rejectBasketPayment,
   rejectPayment,
   releaseMilestoneWithReceipt,
   resolveEscalation,
@@ -89,6 +95,7 @@ import {
   uploadRefundEvidence,
 } from "@/lib/api/client";
 import type {
+  Basket,
   Escalation,
   Order,
   PaymentInstallment,
@@ -135,7 +142,6 @@ import {
   rescheduleNeedsOperations,
 } from "@/lib/shop-changes";
 import { cn } from "@/lib/utils";
-import { orderDeliverySplit, platformShareBps } from "@/lib/delivery-split";
 
 type Props = {
   /** Parent queue the back link returns to. Super Admin has no orders rail. */
@@ -203,6 +209,9 @@ export function OrderWorkspace({
   const [resolveId, setResolveId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [refunds, setRefunds] = useState<RefundRequest[] | null>(null);
+  /** The multi-shop basket this order is one group of; null for a single-shop order. */
+  const [basket, setBasket] = useState<Basket | null>(null);
+  const [basketError, setBasketError] = useState<string | null>(null);
   const [failures, setFailures] = useState<ShopFailureEvent[] | null>(null);
   const [failuresError, setFailuresError] = useState<string | null>(null);
   const [corrections, setCorrections] = useState<ProductionCorrection[]>([]);
@@ -252,6 +261,22 @@ export function OrderWorkspace({
         } else {
           setFailures(null);
           setFailuresError(null);
+        }
+        // One group of a multi-shop basket: its payment, siblings and combined
+        // receipt live on the basket. Best effort; the payment step says so
+        // and offers no action when it could not be read.
+        if (next.basketId) {
+          try {
+            setBasket(await getBasket(next.basketId));
+            setBasketError(null);
+          } catch {
+            setBasketError(
+              "That payment could not be loaded, so it cannot be confirmed from here. Refresh the order to try again.",
+            );
+          }
+        } else {
+          setBasket(null);
+          setBasketError(null);
         }
         setRefunds(orderRefunds);
         setCorrections(productionCorrections(overrides, orderId));
@@ -314,8 +339,12 @@ export function OrderWorkspace({
     if (order?.shopRecovery?.proposal?.supplierId) ids.add(order.shopRecovery.proposal.supplierId);
     if (order?.rescheduleRequest?.supplierId) ids.add(order.rescheduleRequest.supplierId);
     for (const event of failures ?? []) if (event.supplierId) ids.add(event.supplierId);
+    // Each shop group's rider, for the basket panel.
+    for (const group of basket?.groups ?? []) {
+      if (group.order.riderId) ids.add(group.order.riderId);
+    }
     return [...ids].sort().join(",");
-  }, [order, escalations, corrections, failures]);
+  }, [order, escalations, corrections, failures, basket]);
 
   useEffect(() => {
     const missing = people.split(",").filter((id) => id && !(id in names));
@@ -347,6 +376,28 @@ export function OrderWorkspace({
       setOrder(await action());
       setNote("");
       setChecked({});
+    } catch (err) {
+      setActionError(
+        opsErrorMessage(err, "That did not go through. Refresh the order and try again."),
+      );
+    } finally {
+      setActing(null);
+    }
+  }
+
+  /** Confirm or reject the one transfer of a multi-shop basket, for every group. */
+  async function decideBasketPayment(
+    label: string,
+    action: (basketId: string) => Promise<Basket>,
+  ) {
+    if (!order?.basketId) return;
+    const basketId = order.basketId;
+    setActing(label);
+    setActionError(null);
+    try {
+      setBasket(await action(basketId));
+      setNote("");
+      await load();
     } catch (err) {
       setActionError(
         opsErrorMessage(err, "That did not go through. Refresh the order and try again."),
@@ -469,6 +520,18 @@ export function OrderWorkspace({
           <h1 className="text-h2 text-text-primary m-0 mt-1 truncate">
             {order.title || "Untitled order"}
           </h1>
+          {order.basketId ? (
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <ShopModeChip
+                mode={{ kind: "multi", shops: Math.max(2, basket?.groups.length ?? 2) }}
+              />
+              {order.groupLabel ? (
+                <span className="text-caption text-text-secondary">
+                  This is {order.groupLabel}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
       </div>
@@ -495,6 +558,10 @@ export function OrderWorkspace({
       ) : null}
 
       {order.refundHold ? <RefundHoldBanner refunds={refunds} tree={tree} /> : null}
+
+      {basket ? (
+        <BasketPanel basket={basket} orderId={order.id} tree={tree} names={names} />
+      ) : null}
 
       {/*
         Steps take the width they need and the rail is fixed, because the rail's
@@ -528,6 +595,16 @@ export function OrderWorkspace({
                   onRejectPayment={(installment, reason) =>
                     run(`reject-${installment}`, () =>
                       rejectPayment(order.id, installment, { reason }),
+                    )
+                  }
+                  basket={basket}
+                  basketError={basketError}
+                  onConfirmBasket={() =>
+                    void decideBasketPayment("confirm-basket", confirmBasketPayment)
+                  }
+                  onRejectBasket={(reason) =>
+                    void decideBasketPayment("reject-basket", (id) =>
+                      rejectBasketPayment(id, { reason }),
                     )
                   }
                   onApprove={() =>
@@ -715,7 +792,7 @@ export function OrderWorkspace({
           ) : null}
         </div>
 
-        <SpecRail order={order} payoutsHref={payoutsHref} />
+        <SpecRail order={order} basket={basket} payoutsHref={payoutsHref} />
       </div>
 
       <ResolveEscalationDialog
@@ -972,6 +1049,10 @@ type StepRowProps = {
   acting: string | null;
   onConfirmPayment: (installment: PaymentInstallment) => void;
   onRejectPayment: (installment: PaymentInstallment, reason: string) => void;
+  basket: Basket | null;
+  basketError: string | null;
+  onConfirmBasket: () => void;
+  onRejectBasket: (reason: string) => void;
   onApprove: () => void;
   onCorrection: () => void;
   onCancel: () => void;
@@ -991,6 +1072,10 @@ function StepRow({
   acting,
   onConfirmPayment,
   onRejectPayment,
+  basket,
+  basketError,
+  onConfirmBasket,
+  onRejectBasket,
   onApprove,
   onCorrection,
   onCancel,
@@ -1017,18 +1102,31 @@ function StepRow({
     <SectionRow
       id={step.id as SectionId}
       heading={definition?.label ?? step.label}
-      summary={stepSummary(order, step)}
+      summary={
+        step.id === "payment" && basket ? basketPaymentSummary(basket) : stepSummary(order, step)
+      }
       marker={STEP_MARKER[step.status]}
       trailing={trailing}
       current={current}
     >
       {step.id === "payment" ? (
-        <PaymentStep
-          order={order}
-          busy={busy}
-          onConfirm={onConfirmPayment}
-          onReject={onRejectPayment}
-        />
+        order.basketId ? (
+          <BasketPayment
+            order={order}
+            basket={basket}
+            basketError={basketError}
+            busy={busy}
+            onConfirm={onConfirmBasket}
+            onReject={onRejectBasket}
+          />
+        ) : (
+          <PaymentStep
+            order={order}
+            busy={busy}
+            onConfirm={onConfirmPayment}
+            onReject={onRejectPayment}
+          />
+        )
       ) : null}
 
       {step.id === "qa" ? (
@@ -1123,6 +1221,20 @@ function StepRow({
  * A step's closed line. The quality check reads the file's live wait while it
  * is waiting on Operations, and when it was passed once it has been.
  */
+/** The Payment row of a basket group speaks for the one payment, not the group's part. */
+function basketPaymentSummary(basket: Basket): string {
+  const amount = formatPhp(basket.payment?.amountMinor ?? basket.totalMinor);
+  const shops = `${basket.groups.length} shops`;
+  switch (basket.payment?.status) {
+    case "pending_confirmation":
+      return `One payment of ${amount} for ${shops} is waiting on you.`;
+    case "confirmed":
+      return `One payment of ${amount} for ${shops}, confirmed.`;
+    default:
+      return `One payment of ${amount} for ${shops}, not sent yet.`;
+  }
+}
+
 function stepSummary(order: Order, step: WorkspaceStep): string {
   const stage = step.id as Exclude<typeof step.id, "done">;
   if (stage === "qa") {
@@ -1516,11 +1628,18 @@ function DeliveryStep({ order, hint }: { order: Order; hint?: string }) {
 // The rail
 // ---------------------------------------------------------------------------
 
-function SpecRail({ order, payoutsHref }: { order: Order; payoutsHref?: string }) {
+function SpecRail({
+  order,
+  basket,
+  payoutsHref,
+}: {
+  order: Order;
+  basket: Basket | null;
+  payoutsHref?: string;
+}) {
   const { paidMinor, remainingMinor } = paymentProgress(order);
   const plan = paymentPlanLabel(order);
   const payout = payoutProgress(order);
-  const deliverySplit = orderDeliverySplit(order);
   const hasArtwork = artworkSource(order) !== "none";
   return (
     <aside
@@ -1569,71 +1688,28 @@ function SpecRail({ order, payoutsHref }: { order: Order; payoutsHref?: string }
         <h2 className="text-overline text-text-muted m-0 mb-2">Money</h2>
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 m-0">
           {/*
-            The shop's price and GRIDGO's fee on top of it. Operations and
-            Super Admin only: the API strips both from every other role, and
-            the client's own receipt folds the fee into the total without a
-            line for it.
+            The shop's price and GRIDGO's fee on top of it, then delivery and
+            who it belongs to. Operations and Super Admin only: the API strips
+            these from every other role, and the client's own receipt folds the
+            fee into the price of the work.
           */}
-          {order.supplierSubtotalMinor != null ? (
+          <OrderMoneyLines
+            order={order}
+            totalLabel={
+              order.basketId && order.groupLabel
+                ? `${order.groupLabel} total`
+                : "Client total"
+            }
+          />
+          {basket ? (
             <>
-              <dt className="text-caption text-text-muted">Shop price</dt>
+              <dt className="text-caption text-text-muted">Whole order, one payment</dt>
               <dd className="text-body text-text-secondary m-0 tabular-nums">
-                {formatPhp(order.supplierSubtotalMinor)}
+                {formatPhp(basket.payment?.amountMinor ?? basket.totalMinor)} for{" "}
+                {basket.groups.length} shops
               </dd>
             </>
           ) : null}
-          {order.serviceFeeMinor != null ? (
-            <>
-              <dt className="text-caption text-text-muted">
-                Service fee
-                {order.serviceFeeRateBps != null
-                  ? ` (${formatRatePercent(order.serviceFeeRateBps)})`
-                  : ""}
-              </dt>
-              <dd className="text-body text-text-secondary m-0 tabular-nums">
-                {formatPhp(order.serviceFeeMinor)}
-              </dd>
-            </>
-          ) : null}
-          {order.deliveryFeeMinor != null ? (
-            <>
-              <dt className="text-caption text-text-muted">Delivery</dt>
-              <dd className="text-body text-text-secondary m-0 tabular-nums">
-                {formatPhp(order.deliveryFeeMinor)}
-              </dd>
-            </>
-          ) : null}
-          {/*
-            Who the delivery fee belongs to, at the rate snapshotted on this
-            order. An API without the split sends none of it; the gross fee
-            above then stands alone.
-          */}
-          {deliverySplit ? (
-            <>
-              <dt className="text-caption text-text-muted pl-3">
-                Rider payout
-                {deliverySplit.riderCommissionBps != null
-                  ? ` (${formatRatePercent(deliverySplit.riderCommissionBps)})`
-                  : ""}
-              </dt>
-              <dd className="text-body text-text-secondary m-0 tabular-nums">
-                {formatPhp(deliverySplit.riderPayoutMinor)}
-              </dd>
-              <dt className="text-caption text-text-muted pl-3">
-                GRIDGO delivery share
-                {deliverySplit.riderCommissionBps != null
-                  ? ` (${formatRatePercent(platformShareBps(deliverySplit.riderCommissionBps))})`
-                  : ""}
-              </dt>
-              <dd className="text-body text-text-secondary m-0 tabular-nums">
-                {formatPhp(deliverySplit.platformDeliveryShareMinor)}
-              </dd>
-            </>
-          ) : null}
-          <dt className="text-caption text-text-muted">Client total</dt>
-          <dd className="text-body text-text-primary m-0 tabular-nums">
-            {order.totalMinor != null ? formatPhp(order.totalMinor) : "—"}
-          </dd>
           {plan ? (
             <>
               <dt className="text-caption text-text-muted">Payment plan</dt>

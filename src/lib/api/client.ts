@@ -14,6 +14,11 @@ import { withRequestDeadline } from "@/lib/api/requestDeadline";
 
 import type {
   Announcement,
+  Basket,
+  BasketInvoice,
+  OrganizationStatement,
+  OrganizationSummary,
+  StatementPeriod,
   AuthMe,
   AuditEntry,
   CatalogItem,
@@ -537,6 +542,143 @@ export async function rejectPayment(
     { method: "POST", body: JSON.stringify(input) },
   );
   return normalizeOrder(result.order);
+}
+
+// ---------------------------------------------------------------------------
+// Multi-shop baskets (gridgo-api docs/MULTI_SHOP_CHECKOUT_API.md)
+// ---------------------------------------------------------------------------
+
+function normalizeBasket(basket: Basket): Basket {
+  return {
+    ...basket,
+    groups: (basket.groups ?? []).map((group) => ({
+      ...group,
+      order: normalizeOrder(group.order),
+    })),
+  };
+}
+
+/** Ops / Super Admin: every basket, each with its live groups. */
+export async function listBaskets(): Promise<Basket[]> {
+  const result = await request<{ baskets: Basket[] }>("/baskets");
+  return (result.baskets ?? []).map(normalizeBasket);
+}
+
+/** One basket: the single payment and every shop group's own order. */
+export async function getBasket(basketId: string): Promise<Basket> {
+  const result = await request<{ basket: Basket }>(
+    `/baskets/${encodeURIComponent(basketId)}`,
+  );
+  return normalizeBasket(result.basket);
+}
+
+/** The basket's one immutable receipt (the same one every group's invoice route returns). */
+export async function getBasketInvoice(basketId: string): Promise<BasketInvoice> {
+  const result = await request<{ invoice: BasketInvoice }>(
+    `/baskets/${encodeURIComponent(basketId)}/invoice`,
+  );
+  return result.invoice;
+}
+
+/**
+ * Ops / Super Admin. Confirms the one transfer for every group at once. A
+ * group's own `/orders/:id/payments/...` routes answer `409
+ * basket_payment_required`; this is the only way.
+ */
+export async function confirmBasketPayment(basketId: string): Promise<Basket> {
+  const result = await request<{ basket: Basket }>(
+    `/baskets/${encodeURIComponent(basketId)}/payment/confirm`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+  return normalizeBasket(result.basket);
+}
+
+/** Ops / Super Admin. Sends the one transfer back for every group; the reason is the client's to read. */
+export async function rejectBasketPayment(
+  basketId: string,
+  input: { reason: string },
+): Promise<Basket> {
+  const result = await request<{ basket: Basket }>(
+    `/baskets/${encodeURIComponent(basketId)}/payment/reject`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return normalizeBasket(result.basket);
+}
+
+// ---------------------------------------------------------------------------
+// Organizations and statements (gridgo-api docs/ORGANIZATION_MONEY_API.md)
+// ---------------------------------------------------------------------------
+
+/** Ops / Super Admin. Up to 50 organizations per page, keyset by user id. */
+export async function listOrganizations(
+  after?: string,
+): Promise<{ organizations: OrganizationSummary[]; nextCursor: string | null }> {
+  const result = await request<{
+    organizations: (OrganizationSummary | null)[];
+    nextCursor: string | null;
+  }>(`/ops/organizations${buildQuery({ after })}`);
+  return {
+    organizations: (result.organizations ?? []).filter(
+      (row): row is OrganizationSummary => row !== null,
+    ),
+    nextCursor: result.nextCursor ?? null,
+  };
+}
+
+function statementQuery(period: StatementPeriod, format: "json" | "pdf" | "csv"): string {
+  return buildQuery(
+    period.period === "custom"
+      ? { period: "custom", from: period.from, to: period.to, format }
+      : { period: period.period, format },
+  );
+}
+
+/** Ops / Super Admin. The same statement the organization exports, for one period. */
+export async function getOrganizationStatement(
+  clientId: string,
+  period: StatementPeriod,
+): Promise<OrganizationStatement> {
+  const result = await request<{ statement: OrganizationStatement }>(
+    `/ops/organizations/${encodeURIComponent(clientId)}/statements${statementQuery(period, "json")}`,
+  );
+  return result.statement;
+}
+
+/**
+ * Ops / Super Admin. The statement as the PDF or CSV file the organization
+ * downloads. Generated on demand by the API and never stored.
+ */
+export async function downloadOrganizationStatement(
+  clientId: string,
+  period: StatementPeriod,
+  format: "pdf" | "csv",
+): Promise<Blob> {
+  return withRequestDeadline(undefined, async (signal) => {
+    const role = getWorkspaceRole();
+    const headers: Record<string, string> = {
+      Accept: format === "pdf" ? "application/pdf" : "text/csv",
+      ...(role ? { "X-GRIDGO-Role": role } : {}),
+    };
+    const token = await tokenProvider();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(
+      `${getApiBase()}/ops/organizations/${encodeURIComponent(clientId)}/statements${statementQuery(period, format)}`,
+      { headers, signal },
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      let data: unknown = text;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        /* keep the text */
+      }
+      const error = new ApiError(res.status, data);
+      if (error.kind === "forbidden") notifyForbidden(error);
+      throw error;
+    }
+    return res.blob();
+  });
 }
 
 // ---------------------------------------------------------------------------
