@@ -26,6 +26,8 @@ const mocks = vi.hoisted(() => ({
   reorderCatalogPhotos: vi.fn(),
   uploadCatalogItemPhoto: vi.fn(),
   attachCatalogItemPhoto: vi.fn(),
+  getSupplierReadiness: vi.fn(),
+  submitCatalogItemForReview: vi.fn(),
 }));
 
 vi.stubGlobal("React", React);
@@ -62,6 +64,8 @@ vi.mock("@/lib/api/client", async () => {
     reorderCatalogPhotos: mocks.reorderCatalogPhotos,
     uploadCatalogItemPhoto: mocks.uploadCatalogItemPhoto,
     attachCatalogItemPhoto: mocks.attachCatalogItemPhoto,
+    getSupplierReadiness: mocks.getSupplierReadiness,
+    submitCatalogItemForReview: mocks.submitCatalogItemForReview,
   };
 });
 
@@ -167,6 +171,9 @@ function stubLoad(item: ReturnType<typeof catalogItem>) {
     { code: "pdf", displayName: "PDF", inputKind: "file" },
   ]);
   mocks.getFileDownloadUrl.mockResolvedValue("https://files.test/file_1");
+  mocks.getSupplierReadiness.mockResolvedValue({
+    operational: { ready: true, missing: [], listings: [] },
+  });
   mocks.updateCatalogItem.mockImplementation(async (_id, _version, body) => ({
     item: { ...item.item, ...body, version: 4 },
   }));
@@ -418,9 +425,57 @@ describe("listing editor readiness checklist", () => {
     render(<ListingEditorPage />);
     expect(await screen.findByRole("heading", { level: 2, name: "Flyers" })).toBeVisible();
     // The client reading does not chip a live listing, so the header chip is the one.
-    expect(screen.getAllByText("On the board")).toHaveLength(1);
+    expect(screen.getAllByText("Live")).toHaveLength(1);
     await openEditorStep("Review");
     expect(screen.getByRole("button", { name: "Take it off the board" })).toBeEnabled();
+  });
+});
+
+describe("listing editor review", () => {
+  it("shows Operations' send-back reason and sends the listing for review again", async () => {
+    const sentBack = catalogItem({
+      reviewStatus: "needs_revision",
+      reviewReason: "Photo 2 shows the shop's logo. Replace it with a plain photo.",
+      hasApprovedVersion: false,
+      active: false,
+    });
+    stubLoad(sentBack);
+    mocks.submitCatalogItemForReview.mockResolvedValue({
+      item: { ...sentBack.item, reviewStatus: "pending", reviewReason: null, version: 4 },
+    });
+    render(<ListingEditorPage />);
+    expect(await screen.findByRole("heading", { name: /Operations sent this back/ })).toBeVisible();
+    expect(screen.getByText("Photo 2 shows the shop's logo. Replace it with a plain photo.")).toBeVisible();
+    expect(screen.getAllByText("Needs changes").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Send for review" }));
+    await waitFor(() =>
+      expect(mocks.submitCatalogItemForReview).toHaveBeenCalledWith(
+        sentBack.item.id,
+        sentBack.item.version,
+      ),
+    );
+    expect(await screen.findByText(/Sent to Operations/)).toBeVisible();
+    expect(screen.getByText(/Waiting for Operations to review/)).toBeVisible();
+  });
+
+  it("reads Pending review for a new listing Operations has not approved", async () => {
+    stubLoad(catalogItem({ reviewStatus: "pending", hasApprovedVersion: false }));
+    mocks.getSupplierReadiness.mockResolvedValue({
+      operational: {
+        ready: false,
+        missing: [],
+        listings: [
+          {
+            catalogItemId: "sci_1",
+            ready: false,
+            missing: [{ code: "listing_not_approved", message: "Operations must approve this listing.", action: "view_listing_review" }],
+          },
+        ],
+      },
+    });
+    render(<ListingEditorPage />);
+    expect(await screen.findByText("Pending review")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Send for review" })).toBeNull();
   });
 });
 
