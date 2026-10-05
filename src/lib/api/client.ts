@@ -253,43 +253,64 @@ export function getWorkspaceRole(): PortalRole | null {
         : null;
 }
 
+async function send(
+  path: string,
+  init: RequestInit,
+  signal: AbortSignal,
+  accept: string,
+  tokenOptions?: TokenProviderOptions,
+): Promise<Response> {
+  const role = path.startsWith("/auth/") ? null : getWorkspaceRole();
+  const headers: Record<string, string> = {
+    Accept: accept,
+    ...(role ? { "X-GRIDGO-Role": role } : {}),
+    ...(init.headers as Record<string, string> | undefined),
+  };
+  const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
+  if (init.body && !headers["Content-Type"] && !isFormData) {
+    headers["Content-Type"] = "application/json";
+  }
+  signal.throwIfAborted();
+  const token = await tokenProvider(tokenOptions);
+  signal.throwIfAborted();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
+}
+
+function parseBody(text: string): unknown {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function failed(path: string, status: number, body: unknown): ApiError {
+  const error = new ApiError(status, body);
+  if (error.kind === "forbidden" && !path.startsWith("/auth/")) notifyForbidden(error);
+  return error;
+}
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
   tokenOptions?: TokenProviderOptions,
 ): Promise<T> {
   return withRequestDeadline(init.signal, async (signal) => {
-    const role = path.startsWith("/auth/") ? null : getWorkspaceRole();
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-      ...(role ? { "X-GRIDGO-Role": role } : {}),
-      ...(init.headers as Record<string, string> | undefined),
-    };
-    const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
-    if (init.body && !headers["Content-Type"] && !isFormData) {
-      headers["Content-Type"] = "application/json";
-    }
-    signal.throwIfAborted();
-    const token = await tokenProvider(tokenOptions);
-    signal.throwIfAborted();
-    if (token) headers.Authorization = `Bearer ${token}`;
-
-    const res = await fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
-    const text = await res.text();
-    let data: unknown = null;
-    if (text) {
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = text;
-      }
-    }
-    if (!res.ok) {
-      const error = new ApiError(res.status, data);
-      if (error.kind === "forbidden" && !path.startsWith("/auth/")) notifyForbidden(error);
-      throw error;
-    }
+    const res = await send(path, init, signal, "application/json", tokenOptions);
+    const data = parseBody(await res.text());
+    if (!res.ok) throw failed(path, res.status, data);
     return data as T;
+  });
+}
+
+/** Raw bytes from an authenticated endpoint; errors still carry `{ error }`. */
+async function requestBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  return withRequestDeadline(init.signal, async (signal) => {
+    const res = await send(path, init, signal, "*/*");
+    if (!res.ok) throw failed(path, res.status, parseBody(await res.text()));
+    return res.blob();
   });
 }
 
@@ -940,6 +961,15 @@ export async function getFile(fileId: string): Promise<StoredFile> {
 export async function getFileDownloadUrl(fileId: string): Promise<string> {
   const result = await request<{ url: string }>(`/files/${fileId}/download-url`);
   return result.url;
+}
+
+/**
+ * The file's bytes through the API's own origin, under the same read rule as
+ * the signed link. The receipt reader uses it because a browser may refuse a
+ * storage address on the local network (dev storage) that the API can reach.
+ */
+export async function getFileContent(fileId: string): Promise<Blob> {
+  return requestBlob(`/files/${fileId}/content`);
 }
 
 /**

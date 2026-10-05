@@ -10,14 +10,31 @@
 
 import { useEffect, useState } from "react";
 
-import { getFileDownloadUrl } from "@/lib/api/client";
+import { getFileContent, getFileDownloadUrl, isApiError } from "@/lib/api/client";
 import {
   OCR_IDLE,
   referenceFromOcr,
   stripReferenceToken,
   type ReceiptOcrState,
 } from "@/lib/receiptOcr";
-import { recognizeReceiptFromUrl } from "@/lib/receiptOcrRecognize";
+import { recognizeReceipt, type ReceiptSource } from "@/lib/receiptOcrRecognize";
+
+/**
+ * Load the receipt through the API's own origin. Dev storage sits on a local
+ * network address the browser may refuse to fetch from the portal, while the
+ * API can always reach it. An API without that route, or a failed read there,
+ * falls back to the signed storage link (public HTTPS storage in production);
+ * either way the Client reference stays as the client sent it.
+ */
+async function receiptSource(fileId: string): Promise<ReceiptSource> {
+  try {
+    return await getFileContent(fileId);
+  } catch (err) {
+    // The signed link follows the same read rule, so a refusal stays a refusal.
+    if (isApiError(err) && err.kind === "forbidden") throw err;
+    return getFileDownloadUrl(fileId);
+  }
+}
 
 type Props = {
   fileId: string;
@@ -32,9 +49,9 @@ export function ReceiptReferenceOcr({ fileId, submittedReference }: Props) {
     setOcr({ status: "reading", reference: null });
     void (async () => {
       try {
-        const url = await getFileDownloadUrl(fileId);
+        const source = await receiptSource(fileId);
         if (cancelled) return;
-        const raw = await recognizeReceiptFromUrl(url, () => !cancelled);
+        const raw = await recognizeReceipt(source, () => !cancelled);
         if (cancelled) return;
         const reference = referenceFromOcr(raw);
         setOcr(

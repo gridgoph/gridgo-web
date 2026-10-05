@@ -163,7 +163,10 @@ function accept(raw: string): string | null {
  * one we can trust. Never invents a number from leftover digits.
  */
 export function extractPaymentReference(text: string): string | null {
-  const source = text.replace(/\u00a0/g, " ").replace(/(\d)[ \t]+0\)/g, "$1")
+  const source = text.replace(/\u00a0/g, " ")
+    // OCR reads October's "O" as a zero beside a number; "0ct 5" is a date.
+    .replace(/\b0ct(?=\.?[ \t]+\d)/gi, "Oct")
+    .replace(/(\d)[ \t]+0\)/g, "$1")
     .replace(/[ \t]+\d{1,2}[ \t]+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?[ \t,]+\d{4}\b[^\r\n]*/gi, "")
     .trim();
   if (!source) return null;
