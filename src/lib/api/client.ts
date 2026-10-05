@@ -14,6 +14,15 @@ import { withRequestDeadline } from "@/lib/api/requestDeadline";
 
 import type {
   Announcement,
+  HubCodeMismatch,
+  HubHandoutLog,
+  HubRecord,
+  HubWaitingOrder,
+  OrganizationAccount,
+  StaffInvite,
+  StaffInviteCreated,
+  StaffMember,
+  StaffRole,
   Basket,
   BasketInvoice,
   OrganizationStatement,
@@ -1119,11 +1128,17 @@ export async function getFileContent(fileId: string): Promise<Blob> {
  * Admin only from this portal, always with a written reason the API keeps in
  * the audit log. Cannot be undone; an open case answers `409 file_retention_hold`.
  */
-export async function deleteFileEarly(fileId: string, reason: string): Promise<StoredFile> {
-  const result = await request<{ file: StoredFile }>(`/files/${encodeURIComponent(fileId)}`, {
-    method: "DELETE",
-    body: JSON.stringify({ reason }),
-  });
+export async function deleteFileEarly(
+  fileId: string,
+  reason: string,
+): Promise<StoredFile> {
+  const result = await request<{ file: StoredFile }>(
+    `/files/${encodeURIComponent(fileId)}`,
+    {
+      method: "DELETE",
+      body: JSON.stringify({ reason }),
+    },
+  );
   return result.file;
 }
 
@@ -1212,7 +1227,9 @@ export async function listSeasonWindows(): Promise<SeasonWindowsEnvelope> {
   return request<SeasonWindowsEnvelope>("/admin/season-windows");
 }
 
-export async function createSeasonWindow(input: SeasonWindowInput): Promise<SeasonWindow> {
+export async function createSeasonWindow(
+  input: SeasonWindowInput,
+): Promise<SeasonWindow> {
   const result = await request<{ window: SeasonWindow }>("/admin/season-windows", {
     method: "POST",
     body: JSON.stringify(input),
@@ -1233,7 +1250,10 @@ export async function updateSeasonWindow(
   return result.window;
 }
 
-export async function deleteSeasonWindow(id: string, expectedVersion: number): Promise<void> {
+export async function deleteSeasonWindow(
+  id: string,
+  expectedVersion: number,
+): Promise<void> {
   await request<{ ok: true }>(`/admin/season-windows/${encodeURIComponent(id)}`, {
     method: "DELETE",
     body: JSON.stringify({ expectedVersion }),
@@ -1340,6 +1360,139 @@ export async function decideApprovalCase(
     `/approval-cases/${encodeURIComponent(caseId)}/${action}`,
     { method: "POST", body: JSON.stringify(input) },
   );
+}
+
+/**
+ * Ops / Super Admin, pending business case only: ask for the otherwise
+ * optional Mayor's or Barangay permit. The reason reaches the applicant, and
+ * approval is refused until a corrected revision includes the permit.
+ */
+export async function requestBusinessPermit(
+  caseId: string,
+  input: { expectedVersion: number; reason: string },
+): Promise<{ businessPermitRequired: true; version: number }> {
+  return request(
+    `/approval-cases/${encodeURIComponent(caseId)}/request-business-permit`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Organization accounts (gridgo-api docs/ORGANIZATION_ACCOUNTS_API.md)
+// ---------------------------------------------------------------------------
+
+/** Ops / Super Admin. The account with its full dated officer history. */
+export async function getOrganization(userId: string): Promise<OrganizationAccount> {
+  const result = await request<{ organization: OrganizationAccount }>(
+    `/ops/organizations/${encodeURIComponent(userId)}`,
+  );
+  return result.organization;
+}
+
+/**
+ * Ops / Super Admin. One audited in-app notice to the organization account
+ * (the shared login the current officer uses), never to past officers. Keep
+ * one `idempotencyKey` per wording so a retry cannot send it twice.
+ */
+export async function sendOrganizationNotice(
+  userId: string,
+  input: { title: string; body: string },
+  idempotencyKey: string,
+): Promise<{ notificationId: string }> {
+  return request(`/ops/organizations/${encodeURIComponent(userId)}/notice`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Invited staff — Super Admin only (gridgo-api docs/HUB_HANDOVER_API.md)
+// ---------------------------------------------------------------------------
+
+export async function listStaffRoles(): Promise<StaffRole[]> {
+  const result = await request<{ roles: StaffRole[] }>("/admin/staff/roles");
+  return result.roles;
+}
+
+export async function createStaffRole(input: StaffRole): Promise<StaffRole> {
+  const result = await request<{ role: StaffRole }>("/admin/staff/roles", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.role;
+}
+
+export async function listStaffInvites(): Promise<StaffInvite[]> {
+  const result = await request<{ invites: StaffInvite[] }>("/admin/staff/invites");
+  return result.invites;
+}
+
+/** The code comes back once, here, and is never readable again. */
+export async function createStaffInvite(input: {
+  roleCode: string;
+  expiresInDays?: number;
+}): Promise<StaffInviteCreated> {
+  return request<StaffInviteCreated>("/admin/staff/invites", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/** Stops an unused code working. A staff member who already joined keeps access. */
+export async function revokeStaffInvite(inviteId: string): Promise<void> {
+  await request(`/admin/staff/invites/${encodeURIComponent(inviteId)}/revoke`, {
+    method: "POST",
+  });
+}
+
+export async function listStaff(): Promise<StaffMember[]> {
+  const result = await request<{ staff: StaffMember[] }>("/admin/staff");
+  return result.staff;
+}
+
+/** Reassign a role, or suspend (`active: false`) / restore a staff profile. */
+export async function updateStaffMember(
+  userId: string,
+  input: { roleCode: string; active: boolean },
+): Promise<StaffMember> {
+  const result = await request<{ profile: StaffMember }>(
+    `/admin/staff/${encodeURIComponent(userId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return result.profile;
+}
+
+// ---------------------------------------------------------------------------
+// Pick-up hub — Operations and Super Admin
+// ---------------------------------------------------------------------------
+
+export async function getHub(): Promise<{ hub: HubRecord; sop: string[] }> {
+  return request("/ops/hub");
+}
+
+/** Newest first; `before` is the previous page's `nextCursor`. */
+export async function listHubHandouts(params?: {
+  before?: string | null;
+  limit?: number;
+}): Promise<HubHandoutLog> {
+  const q = buildQuery({ before: params?.before, limit: params?.limit });
+  return request<HubHandoutLog>(`/ops/hub/handouts${q}`);
+}
+
+export async function listHubWaiting(): Promise<HubWaitingOrder[]> {
+  const result = await request<{ orders: HubWaitingOrder[] }>("/ops/hub/unclaimed");
+  return result.orders;
+}
+
+export async function listHubCodeMismatches(): Promise<HubCodeMismatch[]> {
+  const result = await request<{ escalations: HubCodeMismatch[] }>(
+    "/ops/hub/escalations",
+  );
+  return result.escalations;
 }
 
 /** Ops / Super Admin — supplier or rider only. */
@@ -1927,14 +2080,18 @@ export type StaffCatalogQuery = {
   cursor?: string | null;
 };
 
-export async function listStaffCatalogItems(query: StaffCatalogQuery = {}): Promise<unknown> {
+export async function listStaffCatalogItems(
+  query: StaffCatalogQuery = {},
+): Promise<unknown> {
   const params = new URLSearchParams();
   const q = (query.q ?? "").trim();
   if (q) params.set("q", q);
   if (query.subcategoryCode) params.set("subcategoryCode", query.subcategoryCode);
   if (query.supplierId) params.set("supplierId", query.supplierId);
-  if (query.minPriceMinor != null) params.set("minPriceMinor", String(query.minPriceMinor));
-  if (query.maxPriceMinor != null) params.set("maxPriceMinor", String(query.maxPriceMinor));
+  if (query.minPriceMinor != null)
+    params.set("minPriceMinor", String(query.minPriceMinor));
+  if (query.maxPriceMinor != null)
+    params.set("maxPriceMinor", String(query.maxPriceMinor));
   if (query.limit != null) params.set("limit", String(query.limit));
   if (query.cursor) params.set("cursor", query.cursor);
   const search = params.toString();
@@ -1945,7 +2102,10 @@ export async function getStaffCatalogItem(itemId: string): Promise<unknown> {
   return request<unknown>(`/ops/catalog-items/${encodeURIComponent(itemId)}`);
 }
 
-export async function suspendStaffCatalogItem(itemId: string, reason: string): Promise<unknown> {
+export async function suspendStaffCatalogItem(
+  itemId: string,
+  reason: string,
+): Promise<unknown> {
   return request<unknown>(`/catalog-items/${encodeURIComponent(itemId)}/suspend`, {
     method: "POST",
     body: JSON.stringify({ reason }),
@@ -2276,12 +2436,18 @@ export async function listIssueReports(
   status: IssueReportStatus,
   page: { limit?: number; before?: string | null } = {},
 ): Promise<{ reports: IssueReport[]; counts: IssueReportCounts }> {
-  return request(`/ops/issue-reports${buildQuery({ status, limit: page.limit, before: page.before })}`);
+  return request(
+    `/ops/issue-reports${buildQuery({ status, limit: page.limit, before: page.before })}`,
+  );
 }
 
 export async function updateIssueReport(
   id: string,
-  input: { status: IssueReportStatus; publishedIn?: string | null; trackerIssueUrl?: string | null },
+  input: {
+    status: IssueReportStatus;
+    publishedIn?: string | null;
+    trackerIssueUrl?: string | null;
+  },
 ): Promise<IssueReport> {
   return request<IssueReport>(`/ops/issue-reports/${encodeURIComponent(id)}`, {
     method: "PATCH",
@@ -2454,7 +2620,10 @@ async function uploadPurpose(purpose: string, file: File): Promise<StoredFile> {
   const body = new FormData();
   body.append("purpose", purpose);
   body.append("file", file);
-  const uploaded = await request<{ file: StoredFile }>("/files", { method: "POST", body });
+  const uploaded = await request<{ file: StoredFile }>("/files", {
+    method: "POST",
+    body,
+  });
   return uploaded.file;
 }
 

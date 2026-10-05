@@ -12,7 +12,7 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CircleCheck, TriangleAlert } from "lucide-react";
+import { CircleCheck, FileSearch, FileWarning, TriangleAlert } from "lucide-react";
 
 import {
   presentVerification,
@@ -35,6 +35,11 @@ import {
   Detail,
   SupplierCategoryRanks,
 } from "@/components/approvals/applicant-identity";
+import {
+  ApplicationReviewSheet,
+  applicationTitle,
+  isOfficerHandover,
+} from "@/components/approvals/ApplicationReview";
 import {
   ReinstateDialog,
   type ReinstateResult,
@@ -72,6 +77,14 @@ import type {
   User,
 } from "@/lib/api/types";
 import { getTaxonomy } from "@/lib/api/client";
+import {
+  TRACK_LABEL,
+  applicationChecklist,
+  applicationTrack,
+  documentFileId,
+  missingDocuments,
+  needsChecklistResubmission,
+} from "@/lib/client-applications";
 import { formatDateTime } from "@/lib/format";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
@@ -132,6 +145,7 @@ export function SignupApprovals({ intro, view: controlledView, onViewChange }: P
   const [actionOk, setActionOk] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmTarget | null>(null);
   const [reason, setReason] = useState("");
+  const [reviewing, setReviewing] = useState<ApprovalCaseDetail | null>(null);
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -380,6 +394,10 @@ export function SignupApprovals({ intro, view: controlledView, onViewChange }: P
                 <BusinessApplicationCard
                   key={detail.approvalCase.id}
                   detail={detail}
+                  onReview={() => {
+                    setActionOk(null);
+                    setReviewing(detail);
+                  }}
                   onAction={(action) => {
                     setActionError(null);
                     setReason("");
@@ -454,6 +472,10 @@ export function SignupApprovals({ intro, view: controlledView, onViewChange }: P
                 <BusinessApplicationCard
                   key={detail.approvalCase.id}
                   detail={detail}
+                  onReview={() => {
+                    setActionOk(null);
+                    setReviewing(detail);
+                  }}
                   onAction={(action) => {
                     setActionError(null);
                     setReason("");
@@ -478,6 +500,18 @@ export function SignupApprovals({ intro, view: controlledView, onViewChange }: P
         </section>
       ) : null}
 
+      <ApplicationReviewSheet
+        detail={reviewing}
+        onOpenChange={(open) => {
+          if (!open) setReviewing(null);
+        }}
+        onDecided={(message) => {
+          setReviewing(null);
+          setActionError(null);
+          setActionOk(message);
+          void load();
+        }}
+      />
       <ReinstateDialog
         account={reinstating}
         onClose={() => setReinstating(null)}
@@ -644,25 +678,31 @@ function ApplicantCard({
 function BusinessApplicationCard({
   detail,
   onAction,
+  onReview,
 }: {
   detail: ApprovalCaseDetail;
   onAction: (action: VerificationAction) => void;
+  onReview: () => void;
 }) {
   const status = presentVerification(detail.approvalCase.status);
+  // A pending application is decided inside the review, document by document.
   const actions = businessApplicationActions(detail.approvalCase.status);
-  const requested =
-    detail.application?.accountType === "organization" ? "Organization" : "Business";
-  const title =
-    detail.application?.businessName ||
-    detail.clientProfile?.businessName ||
-    detail.applicant?.name ||
-    "Business application";
+  const track = applicationTrack(detail.application);
+  const requested = isOfficerHandover(detail)
+    ? "Organization officer handover"
+    : track
+      ? `${TRACK_LABEL[track]} client`
+      : detail.application?.accountType === "organization"
+        ? "Organization client"
+        : "Business client";
+  const title = applicationTitle(detail);
+  const pending = detail.approvalCase.status === "pending";
 
   return (
     <li className="gg-card flex flex-col gap-3">
       <ApplicantHeader
         title={title}
-        caption={[requested + " client", detail.applicant?.name, detail.applicant?.email]
+        caption={[requested, detail.applicant?.name, detail.applicant?.email]
           .filter(Boolean)
           .join(" · ")}
         status={status}
@@ -696,8 +736,10 @@ function BusinessApplicationCard({
         ) : null}
       </dl>
 
+      <ChecklistSummary detail={detail} />
+
       {detail.approvalCase.rejectionReason ? (
-        <p className="text-caption text-text-secondary m-0">
+        <p className="text-caption text-text-secondary m-0 whitespace-pre-line">
           Last note: {detail.approvalCase.rejectionReason}
         </p>
       ) : null}
@@ -707,20 +749,54 @@ function BusinessApplicationCard({
         </p>
       ) : null}
 
-      {actions.length ? (
-        <div className="flex flex-wrap gap-2 border-t border-outline-subtle pt-3">
-          {actions.map((action) => (
-            <Button
-              key={action.status}
-              variant={action.danger ? "danger" : "secondary"}
-              onClick={() => onAction(action)}
-            >
-              {action.label}
-            </Button>
-          ))}
-        </div>
-      ) : null}
+      <div className="flex flex-wrap gap-2 border-t border-outline-subtle pt-3">
+        <Button variant="secondary" onClick={onReview}>
+          <FileSearch className="size-4" aria-hidden />
+          {pending ? "Review documents" : "View application"}
+        </Button>
+        {actions.length ? (
+          <>
+            {actions.map((action) => (
+              <Button
+                key={action.status}
+                variant={action.danger ? "danger" : "secondary"}
+                onClick={() => onAction(action)}
+              >
+                {action.label}
+              </Button>
+            ))}
+          </>
+        ) : null}
+      </div>
     </li>
+  );
+}
+
+/** The track's checklist at a glance: what is on file, what is missing. */
+function ChecklistSummary({ detail }: { detail: ApprovalCaseDetail }) {
+  const application = detail.application;
+  if (needsChecklistResubmission(application)) {
+    if (detail.approvalCase.status !== "pending") return null;
+    return (
+      <p className="text-body text-text-secondary m-0 flex items-start gap-2">
+        <FileWarning className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+        Filed before the document checklist. It needs resubmitting with every document
+        before it can be approved.
+      </p>
+    );
+  }
+  const items = applicationChecklist(application);
+  const missing = missingDocuments(application);
+  const onFile = items.filter((item) => documentFileId(application, item.key)).length;
+  const required = items.filter((item) => item.required).length;
+  return (
+    <p className="text-body text-text-secondary m-0">
+      {missing.length
+        ? `Missing ${missing.map((item) => item.label).join(", ")}.`
+        : `All ${required} required documents on file`}
+      {onFile > required && !missing.length ? `, plus ${onFile - required} optional` : ""}
+      {missing.length ? "" : "."}
+    </p>
   );
 }
 
@@ -747,22 +823,6 @@ function businessApplicationActions(
   status: ApprovalCaseSummary["status"],
 ): VerificationAction[] {
   switch (status) {
-    case "pending":
-      return [
-        {
-          status: "approved",
-          label: "Approve",
-          consequence:
-            "Converts this personal client into the requested business or organization. They keep personal ordering until this decision is made.",
-        },
-        {
-          status: "rejected",
-          label: "Reject",
-          danger: true,
-          consequence:
-            "Leaves them as a personal client. Give a reason — it is the only explanation they receive.",
-        },
-      ];
     case "approved":
       return [
         {

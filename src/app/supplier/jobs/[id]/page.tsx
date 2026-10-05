@@ -4,7 +4,7 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Camera, History, ListChecks, Wallet } from "lucide-react";
+import { Camera, History, ListChecks, Scale, Wallet } from "lucide-react";
 
 import { MilestoneList } from "@/components/orders/MilestoneList";
 import { OrderMeta } from "@/components/orders/OrderMeta";
@@ -54,7 +54,9 @@ import {
   progressPhotos,
   progressReached,
 } from "@/lib/production-progress";
+import { uploadErrorMessage } from "@/lib/upload-errors";
 import {
+  CLAIM_HOLD_PACKING_REASON,
   actionsForJob,
   shopProofOutstanding,
   supplierWaitingOn,
@@ -73,6 +75,8 @@ function supplierErrorMessage(err: unknown): string {
       return PRODUCTION_PHOTO_COPY.supplierRefused;
     case "production_photo_upload_not_allowed":
       return PRODUCTION_PHOTO_COPY.supplierTooLate;
+    case "claim_hold_active":
+      return CLAIM_HOLD_PACKING_REASON;
     case "verification_not_approved":
     case "supplier_not_approved":
       return "Your account is still waiting for approval, so it cannot be given work yet. Operations will be in touch.";
@@ -180,6 +184,7 @@ export default function SupplierJobDetailPage() {
       setProofOpen(true);
       return;
     }
+    if (action.blockedReason) return;
     if (action.kind === "ready_for_pickup" && shopProofOutstanding(job)) return;
     if (action.destructive && !confirmDecline) {
       setConfirmDecline(true);
@@ -201,7 +206,9 @@ export default function SupplierJobDetailPage() {
       setConfirmDecline(false);
     } catch (err) {
       setActionError(supplierErrorMessage(err));
-      setPhotoRefused(err instanceof ApiError && err.code === "production_photo_required");
+      setPhotoRefused(
+        err instanceof ApiError && err.code === "production_photo_required",
+      );
       await load();
     } finally {
       setActing(null);
@@ -218,11 +225,7 @@ export default function SupplierJobDetailPage() {
       const stored = await uploadProductionPhoto(file);
       setPhotoFileId(stored.fileId);
     } catch (err) {
-      setPhotoError(
-        err instanceof ApiError && err.kind === "validation"
-          ? "That file is not a photo GRIDGO can take. Choose a JPEG, PNG or WebP."
-          : "File storage is unavailable, so this photo was not sent.",
-      );
+      setPhotoError(uploadErrorMessage(err, { what: "this photo" }));
     } finally {
       setActing(null);
     }
@@ -259,8 +262,10 @@ export default function SupplierJobDetailPage() {
     try {
       const stored = await uploadFulfilmentProof(file);
       setProofFileId(stored.fileId);
-    } catch {
-      setProofError("File storage is unavailable, so this evidence was not filed.");
+    } catch (err) {
+      setProofError(
+        uploadErrorMessage(err, { what: "this evidence", notSent: "was not filed" }),
+      );
     } finally {
       setActing(null);
     }
@@ -367,7 +372,10 @@ export default function SupplierJobDetailPage() {
               {primary ? (
                 <Button
                   variant="primary"
-                  disabled={acting !== null}
+                  disabled={acting !== null || Boolean(primary.blockedReason)}
+                  aria-describedby={
+                    primary.blockedReason ? "primary-blocked-reason" : undefined
+                  }
                   onClick={() => void runAction(primary)}
                 >
                   {acting === primary.kind
@@ -394,6 +402,15 @@ export default function SupplierJobDetailPage() {
                 "Nothing for you to do on this job right now. The timeline below shows where it has got to."}
             </p>
           )}
+          {primary?.blockedReason ? (
+            <p
+              id="primary-blocked-reason"
+              className="text-body text-text-primary m-0 flex max-w-prose items-start gap-2"
+            >
+              <Scale className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+              {primary.blockedReason}
+            </p>
+          ) : null}
           {primary && waiting ? (
             <p className="text-caption text-text-muted m-0">{waiting}</p>
           ) : null}
@@ -426,7 +443,9 @@ export default function SupplierJobDetailPage() {
           {actionError && !confirmDecline && !proofOpen && !photoOpen ? (
             <div className="flex flex-col items-start gap-2" role="alert">
               <p className="text-body text-error m-0">{actionError}</p>
-              {photoRefused && photoOpenState && primary?.kind !== "add_progress_photo" ? (
+              {photoRefused &&
+              photoOpenState &&
+              primary?.kind !== "add_progress_photo" ? (
                 <Button variant="secondary" onClick={openPhoto}>
                   <Camera size={16} strokeWidth={1.75} aria-hidden />
                   Add a progress photo

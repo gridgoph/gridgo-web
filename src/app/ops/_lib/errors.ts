@@ -19,15 +19,11 @@ const CODE_COPY: Record<string, string> = {
     PLATFORM_CONSTRAINT_COPY.assignment_notification_required.guidance,
   payout_held: PLATFORM_CONSTRAINT_COPY.payout_held.guidance,
   pof_required: PLATFORM_CONSTRAINT_COPY.pof_required.guidance,
-  milestone_not_reached:
-    PLATFORM_CONSTRAINT_COPY.milestone_not_reached.guidance,
+  milestone_not_reached: PLATFORM_CONSTRAINT_COPY.milestone_not_reached.guidance,
   issue_window_closed: PLATFORM_CONSTRAINT_COPY.issue_window_closed.guidance,
-  pickup_escalation_open:
-    PLATFORM_CONSTRAINT_COPY.pickup_escalation_open.guidance,
-  verification_not_approved:
-    PLATFORM_CONSTRAINT_COPY.verification_not_approved.guidance,
-  supplier_not_approved:
-    PLATFORM_CONSTRAINT_COPY.verification_not_approved.guidance,
+  pickup_escalation_open: PLATFORM_CONSTRAINT_COPY.pickup_escalation_open.guidance,
+  verification_not_approved: PLATFORM_CONSTRAINT_COPY.verification_not_approved.guidance,
+  supplier_not_approved: PLATFORM_CONSTRAINT_COPY.verification_not_approved.guidance,
   rider_not_approved: PLATFORM_CONSTRAINT_COPY.verification_not_approved.guidance,
   rider_documents_incomplete:
     "This rider still needs a current driver's licence on file before they can be approved.",
@@ -35,9 +31,10 @@ const CODE_COPY: Record<string, string> = {
     "This rider's driver's licence has expired. They need to replace it before you can approve.",
   approval_state_conflict:
     "This rider has not finished sending their application. Ask them to submit it from the rider app, then try again.",
-  approval_case_stale:
-    "This approval was updated. Refresh and review it again.",
+  approval_case_stale: "This approval was updated. Refresh and review it again.",
   note_required: "Add a note for the record before reinstating this account.",
+  claim_hold_active:
+    "A claim is holding payouts on this order. Clear the claim before it is packed or moved to ready for dispatch.",
   service_not_restorable:
     "One of the ticked service lines was not suspended with this account, so reinstating cannot bring it back. Refresh, then review that line on the Service lines tab.",
   escalation_already_resolved:
@@ -89,7 +86,8 @@ const CODE_COPY: Record<string, string> = {
     "Checkout takes either the full amount or 75% now and 25% before delivery. Choose one of the two.",
   promise_outside_business_hours:
     "Promise a Monday–Friday time from 8:00 am up to, but not including, 5:00 pm Philippine time.",
-  invalid_physical_invoice: "Choose a date and a time for the paper invoice, then set the promise.",
+  invalid_physical_invoice:
+    "Choose a date and a time for the paper invoice, then set the promise.",
   physical_invoice_not_found:
     "This order no longer has a paper-invoice request. Refresh the order.",
   // Client refunds (gridgo-api/docs/REFUNDS_API.md § Refusals).
@@ -139,7 +137,8 @@ const CODE_COPY: Record<string, string> = {
     "Record the exact reserved transfer and amount. Reload the refund and try again.",
   refund_no_transfer_confirmation_required:
     "Confirm that no money left the wallet before freeing this refund for another attempt.",
-  invalid_refund_paid_at: "Enter when the wallet sent the money. It cannot be in the future.",
+  invalid_refund_paid_at:
+    "Enter when the wallet sent the money. It cannot be in the future.",
   invalid_refund_file:
     "Upload the screenshot again. It must be a JPEG, PNG or WebP you uploaded yourself.",
   refund_supplier_payout_not_pending:

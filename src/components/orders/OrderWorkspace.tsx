@@ -6,6 +6,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
+  BellRing,
   ChevronLeft,
   CircleCheck,
   CircleDot,
@@ -335,8 +336,10 @@ export function OrderWorkspace({
     }
     // Shops named in the acceptance, recovery and deadline rows.
     if (order?.shopAcceptance?.supplierId) ids.add(order.shopAcceptance.supplierId);
-    if (order?.shopRecovery?.originalSupplierId) ids.add(order.shopRecovery.originalSupplierId);
-    if (order?.shopRecovery?.proposal?.supplierId) ids.add(order.shopRecovery.proposal.supplierId);
+    if (order?.shopRecovery?.originalSupplierId)
+      ids.add(order.shopRecovery.originalSupplierId);
+    if (order?.shopRecovery?.proposal?.supplierId)
+      ids.add(order.shopRecovery.proposal.supplierId);
     if (order?.rescheduleRequest?.supplierId) ids.add(order.rescheduleRequest.supplierId);
     for (const event of failures ?? []) if (event.supplierId) ids.add(event.supplierId);
     // Each shop group's rider, for the basket panel.
@@ -419,7 +422,10 @@ export function OrderWorkspace({
       await load();
     } catch (err) {
       setCorrectError(
-        opsErrorMessage(err, "The job could not be moved on. Refresh the order and try again."),
+        opsErrorMessage(
+          err,
+          "The job could not be moved on. Refresh the order and try again.",
+        ),
       );
     } finally {
       setActing(null);
@@ -644,7 +650,9 @@ export function OrderWorkspace({
                     summary={shopRowSummary(order)}
                     marker={SHOP_MARKER[shopRowTone(order)]}
                     trailing={
-                      recoveryNeedsOperations(order.shopRecovery) ? "Your call" : undefined
+                      recoveryNeedsOperations(order.shopRecovery)
+                        ? "Your call"
+                        : undefined
                     }
                   >
                     <ShopAcceptancePanel
@@ -914,7 +922,7 @@ function physicalInvoiceSummary(order: Order): string {
   const request = order.physicalInvoiceRequest;
   if (!request) return "";
   if (request.promisedDeliveryAt)
-    return `Promised ${formatDateTime(request.promisedDeliveryAt)}.`;
+    return `Promised ${formatDateTime(request.promisedDeliveryAt)}. Client notified in the app.`;
   return `Paper copy requested ${formatDateTime(request.requestedAt)}.`;
 }
 
@@ -1060,7 +1068,6 @@ type StepRowProps = {
   names: Record<string, string>;
   onCorrectProduction: () => void;
 };
-
 
 function StepRow({
   step,
@@ -1307,10 +1314,26 @@ function PhysicalInvoicePanel({
       <p className="text-body text-text-secondary m-0">
         Someone is there: {request.operatingHours}
       </p>
+      {request.promisedDeliveryAt ? (
+        <div
+          className="flex items-start gap-2 rounded-field border border-outline-subtle px-3 py-2"
+          role="status"
+        >
+          <BellRing className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
+          <p className="text-body text-text-primary m-0">
+            Promised for {formatDateTime(request.promisedDeliveryAt)}. Client notified:
+            GRIDGO sends them an in-app notice with the time whenever it is set or
+            changed.
+          </p>
+        </div>
+      ) : null}
       <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
         <legend className="text-caption text-text-muted p-0">
-          Promise delivery
+          {request.promisedDeliveryAt ? "Change the promise" : "Promise delivery"}
           <span className="mt-0.5 block">{DESK_WINDOW_LABEL}</span>
+          <span className="mt-0.5 block">
+            The client gets an in-app notice with the time you set.
+          </span>
         </legend>
         <div className="flex flex-wrap gap-2">
           <select
@@ -1347,7 +1370,9 @@ function PhysicalInvoicePanel({
           disabled={saving || !ready}
           onClick={() => onPromise(instant)}
         >
-          Set promise date
+          {request.promisedDeliveryAt
+            ? "Change promise and notify client"
+            : "Set promise and notify client"}
         </Button>
       </div>
     </div>
@@ -1445,7 +1470,8 @@ function ProductionStep({
   const proofOf = new Map<string, string>();
   for (const { milestone, proofs } of shopProofs) {
     for (const proof of proofs) {
-      if (galleryIds.has(proof.fileId)) proofOf.set(proof.fileId, milestoneName(milestone));
+      if (galleryIds.has(proof.fileId))
+        proofOf.set(proof.fileId, milestoneName(milestone));
     }
   }
   const filed = shopProofs
@@ -1565,7 +1591,10 @@ function CorrectionNote({
         aria-hidden
       />
       <div className="flex min-w-0 flex-col gap-1">
-        <p className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+        <p
+          className="text-body text-text-primary m-0"
+          style={{ fontFamily: "var(--font-medium)" }}
+        >
           Moved on by {who}
         </p>
         <p className="text-caption text-text-muted m-0">

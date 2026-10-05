@@ -52,6 +52,7 @@ describe("ROLE_NAV", () => {
       "/ops/rankings",
       "/ops/late-production",
       "/ops/shop-changes",
+      "/ops/hub",
       "/ops/escalations",
       "/ops/schedule",
       "/ops/payouts",
@@ -69,8 +70,10 @@ describe("ROLE_NAV", () => {
       "/admin/chat",
       "/admin/issue-reports",
       "/admin/riders",
+      "/admin/hub",
       "/admin/verification",
       "/admin/roles",
+      "/admin/staff",
       "/admin/supplier-products",
       "/admin/catalogue",
       "/admin/listing-reviews",
@@ -109,6 +112,7 @@ describe("ROLE_NAV", () => {
       "/admin/chat",
       "/admin/file-retention",
       "/admin/finance",
+      "/admin/hub",
       "/admin/issue-reports",
       "/admin/late-production",
       "/admin/listing-reviews",
@@ -121,6 +125,7 @@ describe("ROLE_NAV", () => {
       "/admin/season-windows",
       "/admin/settings",
       "/admin/shop-changes",
+      "/admin/staff",
       "/admin/supplier-products",
       "/admin/tracker",
       "/admin/verification",
@@ -130,6 +135,7 @@ describe("ROLE_NAV", () => {
       "/ops/claims",
       "/ops/dispatch",
       "/ops/escalations",
+      "/ops/hub",
       "/ops/issue-reports",
       "/ops/late-production",
       "/ops/listing-reviews",
@@ -215,6 +221,7 @@ describe("ROLE_NAV", () => {
       "/ops/rankings",
       "/ops/late-production",
       "/ops/shop-changes",
+      "/ops/hub",
       "/ops/escalations",
       "/ops/schedule",
     ]);
@@ -239,12 +246,18 @@ describe("ROLE_NAV", () => {
       "/admin/chat",
       "/admin/issue-reports",
       "/admin/riders",
+      "/admin/hub",
     ]);
     expect(
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-people")
         ?.items.map((n) => n.href),
-    ).toEqual(["/admin/verification", "/admin/roles", "/admin/supplier-products"]);
+    ).toEqual([
+      "/admin/verification",
+      "/admin/roles",
+      "/admin/staff",
+      "/admin/supplier-products",
+    ]);
     expect(
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-catalog")
