@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   listingBoardState,
+  listingCountLine,
+  takenDownLine,
   normalizeStaffCatalogDetail,
   normalizeStaffCatalogPage,
   shopLabel,
@@ -48,7 +50,7 @@ describe("staff catalog rows", () => {
     expect(page.rows[0]!.listing.onTheBoard).toBe(true);
     expect(listingBoardState(page.rows[0]!.listing).label).toBe("On the board");
     expect(listingBoardState({ onTheBoard: false, suspendReason: null }).label).toBe(
-      "Hidden by the shop",
+      "Off the board",
     );
     expect(
       listingBoardState({ onTheBoard: false, suspendReason: "Blurry sample" }).label,
@@ -98,5 +100,21 @@ describe("staff catalog rows", () => {
     expect(reversed).toEqual({
       error: "The lowest price has to sit at or below the highest.",
     });
+  });
+
+  it("counts the listings the API found, and says when more remain", () => {
+    expect(listingCountLine(40, 40, false)).toBe("40 listings");
+    expect(listingCountLine(1, 1, false)).toBe("1 listing");
+    expect(listingCountLine(3, 3, true)).toBe("3 listings match");
+    expect(listingCountLine(1, 1, true)).toBe("1 listing matches");
+    expect(listingCountLine(50, 120, false)).toBe("Showing 50 of 120 listings");
+    expect(listingCountLine(50, 61, true)).toBe("Showing 50 of 61 listings that match");
+  });
+
+  it("says when a listing was taken down, and stays plain without the time", () => {
+    expect(takenDownLine({ suspendedAt: "2026-10-04T07:12:00.000Z" })).toMatch(
+      /^Taken down Oct 4, 2026/,
+    );
+    expect(takenDownLine({ suspendedAt: null })).toBe("Taken down");
   });
 });

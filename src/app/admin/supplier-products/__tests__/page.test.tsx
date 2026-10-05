@@ -9,13 +9,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Taxonomy } from "@/lib/api/types";
 
-const { getTaxonomyMock, listStaffCatalogItemsMock, getStaffCatalogItemMock, suspendStaffCatalogItemMock } =
-  vi.hoisted(() => ({
-    getTaxonomyMock: vi.fn(),
-    listStaffCatalogItemsMock: vi.fn(),
-    getStaffCatalogItemMock: vi.fn(),
-    suspendStaffCatalogItemMock: vi.fn(),
-  }));
+const {
+  getTaxonomyMock,
+  listStaffCatalogItemsMock,
+  getStaffCatalogItemMock,
+  suspendStaffCatalogItemMock,
+  restoreStaffCatalogItemMock,
+} = vi.hoisted(() => ({
+  getTaxonomyMock: vi.fn(),
+  listStaffCatalogItemsMock: vi.fn(),
+  getStaffCatalogItemMock: vi.fn(),
+  suspendStaffCatalogItemMock: vi.fn(),
+  restoreStaffCatalogItemMock: vi.fn(),
+}));
 
 vi.stubGlobal("React", React);
 
@@ -51,6 +57,7 @@ vi.mock("@/lib/api/client", async () => {
     listStaffCatalogItems: listStaffCatalogItemsMock,
     getStaffCatalogItem: getStaffCatalogItemMock,
     suspendStaffCatalogItem: suspendStaffCatalogItemMock,
+    restoreStaffCatalogItem: restoreStaffCatalogItemMock,
   };
 });
 
@@ -105,7 +112,7 @@ afterEach(() => {
 });
 
 describe("Supplier products", () => {
-  it("shows the shop name on a sticker priced per metre and has no take-down control", async () => {
+  it("lists a sticker priced per metre in the table with its shop, and has no take-down control", async () => {
     getTaxonomyMock.mockResolvedValue(taxonomy);
     listStaffCatalogItemsMock.mockResolvedValue({
       items: [sticker],
@@ -115,17 +122,51 @@ describe("Supplier products", () => {
 
     render(<AdminSupplierProductsPage />);
 
-    const row = await screen.findByRole("link", { name: /Metre Press/ });
-    expect(row).toHaveAttribute("href", "/admin/supplier-products/sticker");
+    const table = await screen.findByRole("table", { name: "Supplier products" });
+    const link = within(table).getByRole("link", { name: "Die-cut sticker" });
+    expect(link).toHaveAttribute("href", "/admin/supplier-products/sticker");
+    const row = link.closest("tr")!;
     expect(within(row).getByTestId("listing-shop")).toHaveTextContent("Metre Press");
-    expect(within(row).getByText("Die-cut sticker")).toBeInTheDocument();
     expect(within(row).getByText("Stickers")).toBeInTheDocument();
     expect(within(row).getByText("₱25.00 per m")).toBeInTheDocument();
     expect(within(row).getByText("Finish: Gloss")).toBeInTheDocument();
     expect(within(row).getByRole("img", { name: "Sticker roll" })).toBeInTheDocument();
     expect(within(row).getByText("On the board")).toBeInTheDocument();
+    expect(screen.getByTestId("listing-count")).toHaveTextContent("1 listing");
     expect(screen.queryByRole("button", { name: /take down/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /restore/i })).not.toBeInTheDocument();
+  });
+
+  it("shows how many listings remain and loads the next page into the same table", async () => {
+    const user = userEvent.setup();
+    getTaxonomyMock.mockResolvedValue(taxonomy);
+    const second = {
+      ...sticker,
+      item: { ...sticker.item, id: "banner", name: "Vinyl banner", photos: [] },
+    };
+    listStaffCatalogItemsMock
+      .mockResolvedValueOnce({
+        items: [sticker],
+        shops: [sticker.shop],
+        total: 2,
+        nextCursor: "c2",
+      })
+      .mockResolvedValueOnce({ items: [second], shops: [sticker.shop], total: 2 });
+
+    render(<AdminSupplierProductsPage />);
+
+    expect(await screen.findByTestId("listing-count")).toHaveTextContent(
+      "Showing 1 of 2 listings",
+    );
+    await user.click(screen.getByRole("button", { name: "Show more listings" }));
+
+    const table = screen.getByRole("table", { name: "Supplier products" });
+    expect(await within(table).findByRole("link", { name: "Vinyl banner" })).toBeInTheDocument();
+    expect(listStaffCatalogItemsMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cursor: "c2" }),
+    );
+    expect(screen.getByTestId("listing-count")).toHaveTextContent("2 listings");
+    expect(screen.queryByRole("button", { name: "Show more listings" })).not.toBeInTheDocument();
   });
 
   it("shows the same shop name on the listing detail", async () => {
@@ -164,8 +205,57 @@ describe("Supplier products", () => {
     await waitFor(() => {
       expect(suspendStaffCatalogItemMock).toHaveBeenCalledWith("sticker", "Blurry sample");
     });
-    expect(await screen.findByText("Taken down")).toBeInTheDocument();
-    expect(screen.getByText(/Blurry sample/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Restore" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: /^Taken down/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Blurry sample")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Restore listing" })).toBeInTheDocument();
+  });
+
+  it("caps the reason at 2,000 characters", async () => {
+    getTaxonomyMock.mockResolvedValue(taxonomy);
+    getStaffCatalogItemMock.mockResolvedValue(sticker);
+
+    render(<AdminSupplierProductPage />);
+
+    expect(await screen.findByLabelText("Reason the shop will see")).toHaveAttribute(
+      "maxLength",
+      "2000",
+    );
+  });
+
+  it("shows when it was taken down and restores it, saying it stays hidden for the shop", async () => {
+    const user = userEvent.setup();
+    getTaxonomyMock.mockResolvedValue(taxonomy);
+    getStaffCatalogItemMock.mockResolvedValue({
+      ...sticker,
+      item: {
+        ...sticker.item,
+        active: false,
+        suspendReason: "Priced per metre",
+        suspendedAt: "2026-10-04T07:12:00.000Z",
+      },
+    });
+    restoreStaffCatalogItemMock.mockImplementation(async () => {
+      getStaffCatalogItemMock.mockResolvedValue({
+        ...sticker,
+        item: { ...sticker.item, active: false },
+      });
+      return {};
+    });
+
+    render(<AdminSupplierProductPage />);
+
+    expect(
+      await screen.findByRole("heading", { name: /^Taken down Oct 4, 2026/ }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Restore listing" }));
+
+    await waitFor(() => {
+      expect(restoreStaffCatalogItemMock).toHaveBeenCalledWith("sticker");
+    });
+    expect(await screen.findByText(/stays hidden until the shop puts it back/)).toBeInTheDocument();
+    expect(screen.getByText("Off the board")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Take down" })).toBeInTheDocument();
   });
 });

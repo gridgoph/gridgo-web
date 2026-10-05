@@ -31,6 +31,8 @@ export function listingErrorMessage(err: unknown, fallback: string): string {
         return "Choose a kind of work from the list GRIDGO offers for this category.";
       case "listing_starter_not_found":
         return "That GRIDGO starter is no longer available. Start from a blank listing.";
+      case "listing_suspended":
+        return "GRIDGO took this listing down, so it cannot go back on the board. Refresh to read why.";
       case "item_in_use":
         return "Kept for a job already ordered — it is off the board and no client can see it.";
       default:

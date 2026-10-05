@@ -25,6 +25,18 @@ describe("notificationHref", () => {
     ).toBe("/supplier/catalogue/sci_sticker");
   });
 
+  it("opens the restored listing for the shop, and nothing for staff", () => {
+    expect(
+      notificationHref(
+        "supplier",
+        note({ type: "listing_restored", catalogItemId: "sci_sticker" }),
+      ),
+    ).toBe("/supplier/catalogue/sci_sticker");
+    expect(notificationHref("supplier", note({ type: "listing_restored" }))).toBe(
+      "/supplier/catalogue",
+    );
+  });
+
   it("deep-links supplier jobs and ops/admin orders", () => {
     const row = note({ orderId: "ord_9" });
     expect(notificationHref("supplier", row)).toBe("/supplier/jobs/ord_9");

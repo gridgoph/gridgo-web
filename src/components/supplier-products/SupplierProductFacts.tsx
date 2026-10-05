@@ -15,78 +15,71 @@ export function productTypeName(taxonomy: Taxonomy | null, code: string): string
   return name || code || "Unknown product type";
 }
 
+/** The listing as Super Admin reads it on the detail page: shop first, then what clients see. */
 export function SupplierProductFacts({
   shop,
   listing,
   taxonomy,
-  heading,
 }: {
   shop: StaffShop;
   listing: Listing;
   taxonomy: Taxonomy | null;
-  /** Detail uses a page heading. A row uses a smaller line. */
-  heading?: "page" | "row";
 }) {
-  const shopName = shopLabel(shop);
   const board = listingBoardState(listing);
   return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <p className="m-0 text-caption text-text-secondary" data-testid="listing-shop">
-        {shopName}
-      </p>
-      {heading === "page" ? (
-        <h1 className="m-0 text-h2 text-text-primary">{listing.name}</h1>
-      ) : (
-        <p className="m-0 text-body font-medium text-text-primary">{listing.name}</p>
-      )}
-      <p className="m-0 text-body text-text-secondary">
-        {productTypeName(taxonomy, listing.subcategoryCode)}
-      </p>
-      <p className="m-0 text-body text-text-primary">{listingPriceLine(listing)}</p>
-      <p className="m-0 text-body text-text-secondary">{specSummary(listing)}</p>
-      <PhotoStrip listing={listing} />
-      <div className="flex flex-wrap items-center gap-3">
-        <StatusChip tone={board.tone} icon={board.icon} label={board.label} />
-        {listing.suspendReason ? (
-          <p className="m-0 text-body text-text-secondary">
-            Reason the shop sees: {listing.suspendReason}
-          </p>
-        ) : null}
-        <p className="m-0 text-caption text-text-secondary">
-          Last change {formatDateTime(listing.updatedAt)}
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex min-w-0 flex-col gap-1">
+        <p className="text-body text-text-secondary m-0" data-testid="listing-shop">
+          {shopLabel(shop)}
         </p>
+        <h1 className="text-h2 text-text-primary m-0">{listing.name || "Untitled listing"}</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <StatusChip tone={board.tone} icon={board.icon} label={board.label} />
+          <span className="text-caption text-text-muted">
+            Last change {formatDateTime(listing.updatedAt)}
+          </span>
+        </div>
       </div>
+      <dl className="m-0 grid gap-x-6 gap-y-2 sm:grid-cols-[max-content_1fr]">
+        <dt className="text-caption text-text-muted">Product type</dt>
+        <dd className="text-body text-text-primary m-0">
+          {productTypeName(taxonomy, listing.subcategoryCode)}
+        </dd>
+        <dt className="text-caption text-text-muted">Price</dt>
+        <dd className="text-body text-text-primary m-0 tabular-nums">
+          {listingPriceLine(listing)}
+        </dd>
+        <dt className="text-caption text-text-muted">Specs</dt>
+        <dd className="text-body text-text-primary m-0">{specSummary(listing)}</dd>
+      </dl>
+      <PhotoStrip listing={listing} />
     </div>
   );
 }
 
 function PhotoStrip({ listing }: { listing: Listing }) {
   if (!listing.photos.length) {
-    return <p className="m-0 text-caption text-text-secondary">No photos</p>;
+    return <p className="text-caption text-text-muted m-0">No sample photos</p>;
   }
-  const shown = listing.photos.slice(0, 4);
   return (
-    <div className="flex items-center gap-2">
-      {shown.map((photo) =>
-        photo.downloadUrl ? (
-          <img
-            key={photo.fileId}
-            src={photo.downloadUrl}
-            alt={photo.altText || listing.name}
-            className="size-12 rounded-md border border-outline object-cover"
-          />
-        ) : (
-          <span
-            key={photo.fileId}
-            className="inline-flex size-12 items-center justify-center rounded-md border border-outline text-caption text-text-secondary"
-          >
-            Photo
-          </span>
-        ),
-      )}
-      <p className="m-0 text-caption text-text-secondary">
-        {listing.photos.length} {listing.photos.length === 1 ? "photo" : "photos"}
-      </p>
-    </div>
+    <ul className="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Sample photos">
+      {listing.photos.map((photo) => (
+        <li key={photo.fileId}>
+          {photo.downloadUrl ? (
+            // Signed, short-lived file URLs: next/image would proxy and cache them.
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={photo.downloadUrl}
+              alt={photo.altText || listing.name}
+              className="border-outline size-24 rounded-md border object-cover"
+            />
+          ) : (
+            <span className="border-outline text-text-muted inline-flex size-24 items-center justify-center rounded-md border text-caption">
+              Photo not available
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }

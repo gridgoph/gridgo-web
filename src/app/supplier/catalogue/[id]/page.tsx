@@ -1194,9 +1194,15 @@ export default function ListingEditorPage() {
                   onJump={jumpTo}
                 />
                 {listing.suspendReason ? (
-                  <p className="text-body text-text-primary m-0" role="note">
-                    GRIDGO suspended this listing: {listing.suspendReason}
-                  </p>
+                  <div className="flex flex-col gap-1" role="note">
+                    <p className="text-body text-text-primary m-0">
+                      GRIDGO took this listing down, so clients cannot see it. Reason:{" "}
+                      {listing.suspendReason}
+                    </p>
+                    <p className="text-caption text-text-secondary m-0">
+                      You can still edit it. Only GRIDGO can put it back on the board.
+                    </p>
+                  </div>
                 ) : (
                   <Button
                     variant="primary"

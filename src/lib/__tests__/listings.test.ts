@@ -201,16 +201,18 @@ describe("listings", () => {
     ]);
   });
 
-  it("shows an operations suspension on the same listing the shop already has", () => {
+  it("shows a Super Admin take-down on the same listing the shop already has", () => {
     const suspended = normalizeListing({
       id: "sci_held",
       supplierServiceId: "svc_1",
       name: "Flyers",
       active: false,
       suspendReason: "Blurry sample",
+      suspendedAt: "2026-10-04T07:12:00.000Z",
     });
     expect(suspended?.onTheBoard).toBe(false);
     expect(suspended?.suspendReason).toBe("Blurry sample");
+    expect(suspended?.suspendedAt).toBe("2026-10-04T07:12:00.000Z");
     expect(
       boardStanding(
         suspended!,
@@ -218,7 +220,7 @@ describe("listings", () => {
         true,
       ),
     ).toEqual({
-      label: "Suspended",
+      label: "Taken down by GRIDGO",
       tone: "warning",
       icon: "triangle-alert",
       note: "Blurry sample",

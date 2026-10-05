@@ -5,7 +5,7 @@
  * approval is not on the API yet, and this module does not invent one.
  */
 
-import { pesosToMinor } from "@/lib/format";
+import { formatDateTime, pesosToMinor } from "@/lib/format";
 import {
   normalizeListing,
   priceLine,
@@ -101,14 +101,15 @@ export function shopLabel(shop: StaffShop): string {
 }
 
 export type ListingBoardState = {
-  label: "Taken down" | "On the board" | "Hidden by the shop";
+  label: "Taken down" | "On the board" | "Off the board";
   tone: StatusTone;
   icon: StatusIconName;
 };
 
 /**
- * Taken down is the Super Admin suspension (`suspendReason`).
- * On the board / hidden is the shop's own `active` switch.
+ * Taken down is the Super Admin take-down (`suspendReason`); the shop reads it
+ * as "Taken down by GRIDGO". On / off the board is the shop's own `active`
+ * switch, which a restore leaves off until the shop turns it back on.
  */
 export function listingBoardState(
   listing: Pick<Listing, "onTheBoard" | "suspendReason">,
@@ -119,7 +120,30 @@ export function listingBoardState(
   if (listing.onTheBoard) {
     return { label: "On the board", tone: "success", icon: "circle-check" };
   }
-  return { label: "Hidden by the shop", tone: "neutral", icon: "circle-dashed" };
+  return { label: "Off the board", tone: "neutral", icon: "circle-dashed" };
+}
+
+/** The API caps a take-down reason at 2,000 characters. */
+export const TAKE_DOWN_REASON_MAX = 2000;
+
+/** "Taken down 4 Oct 2026, 3:12 PM", or plain "Taken down" on an API without the time. */
+export function takenDownLine(listing: Pick<Listing, "suspendedAt">): string {
+  return listing.suspendedAt
+    ? `Taken down ${formatDateTime(listing.suspendedAt)}`
+    : "Taken down";
+}
+
+/**
+ * The total the API counted for these filters, and how many are loaded:
+ * "40 listings", "3 listings match", "Showing 50 of 120 listings".
+ */
+export function listingCountLine(shown: number, total: number, filtered: boolean): string {
+  const noun = total === 1 ? "listing" : "listings";
+  if (shown < total) {
+    return `Showing ${shown} of ${total} ${noun}${filtered ? " that match" : ""}`;
+  }
+  if (!filtered) return `${total} ${noun}`;
+  return `${total} ${noun} ${total === 1 ? "matches" : "match"}`;
 }
 
 export function specSummary(listing: Listing): string {
