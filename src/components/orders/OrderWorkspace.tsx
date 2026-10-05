@@ -1102,7 +1102,9 @@ function StepRow({
     <SectionRow
       id={step.id as SectionId}
       heading={definition?.label ?? step.label}
-      summary={stepSummary(order, step)}
+      summary={
+        step.id === "payment" && basket ? basketPaymentSummary(basket) : stepSummary(order, step)
+      }
       marker={STEP_MARKER[step.status]}
       trailing={trailing}
       current={current}
@@ -1219,6 +1221,20 @@ function StepRow({
  * A step's closed line. The quality check reads the file's live wait while it
  * is waiting on Operations, and when it was passed once it has been.
  */
+/** The Payment row of a basket group speaks for the one payment, not the group's part. */
+function basketPaymentSummary(basket: Basket): string {
+  const amount = formatPhp(basket.payment?.amountMinor ?? basket.totalMinor);
+  const shops = `${basket.groups.length} shops`;
+  switch (basket.payment?.status) {
+    case "pending_confirmation":
+      return `One payment of ${amount} for ${shops} is waiting on you.`;
+    case "confirmed":
+      return `One payment of ${amount} for ${shops}, confirmed.`;
+    default:
+      return `One payment of ${amount} for ${shops}, not sent yet.`;
+  }
+}
+
 function stepSummary(order: Order, step: WorkspaceStep): string {
   const stage = step.id as Exclude<typeof step.id, "done">;
   if (stage === "qa") {

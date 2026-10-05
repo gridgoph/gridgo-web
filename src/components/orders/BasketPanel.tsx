@@ -5,7 +5,6 @@ import Link from "next/link";
 import { CircleCheck, TriangleAlert } from "lucide-react";
 
 import { OrderMoneyLines } from "@/components/orders/OrderMoneyLines";
-import { ShopModeChip } from "@/components/orders/ShopModeChip";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { getBasketInvoice } from "@/lib/api/client";
@@ -57,11 +56,10 @@ export function BasketPanel({ basket, orderId, tree, names }: Props) {
             own job, rider, payout and refund.
           </p>
         </div>
-        <ShopModeChip mode={{ kind: "multi", shops: basket.groups.length }} />
       </div>
 
       <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] items-baseline gap-x-4 gap-y-1">
-        <dt className="text-caption text-text-muted">Client paid</dt>
+        <dt className="text-caption text-text-muted">One payment</dt>
         <dd className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1">
           <span
             className="text-h2 text-text-primary tabular-nums"
@@ -283,7 +281,7 @@ function CombinedReceipt({ basketId }: { basketId: string }) {
         </Button>
       </div>
       {open ? (
-        <div id="basket-receipt" className="gg-panel flex flex-col gap-3">
+        <div id="basket-receipt" className="gg-panel flex w-full max-w-xl flex-col gap-3">
           {loading ? (
             <p className="text-body text-text-secondary m-0" role="status">
               Loading the receipt…

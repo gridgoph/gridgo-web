@@ -151,9 +151,8 @@ export default function AdminFinancePage() {
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5">
               {groupPositionLabel(o, shopCounts)
-                ? `${groupPositionLabel(o, shopCounts)}, one payment · `
-                : ""}
-              {presentZone(o.zone)}
+                ? `${groupPositionLabel(o, shopCounts)}, one payment${o.zone ? ` · ${presentZone(o.zone)}` : ""}`
+                : presentZone(o.zone)}
             </p>
           </div>
         ),

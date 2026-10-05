@@ -128,6 +128,9 @@ it("confirms the one transfer for every shop through the basket, never the group
     name: "Confirm payment for all 2 shops",
   });
   expect(screen.getByTestId("basket-payment-amount")).toHaveTextContent("₱688.00");
+  expect(
+    screen.getByText("One payment of ₱688.00 for 2 shops is waiting on you."),
+  ).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Confirm this payment" })).toBeNull();
   await userEvent.click(confirm);
 
