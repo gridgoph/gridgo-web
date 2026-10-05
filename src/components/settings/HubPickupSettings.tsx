@@ -23,7 +23,6 @@ import { Input } from "@/components/ui/input";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, updateSettings } from "@/lib/api/client";
 import type { HubPickup, PlatformSettings } from "@/lib/api/types";
-import { formatDate } from "@/lib/format";
 import {
   HUB_CLOSURE_MAX,
   MANILA_OFFSET_MINUTES,
@@ -541,8 +540,14 @@ function ReadOnlyHours({ hub, zone }: { hub: HubPickup; zone: string }) {
 }
 
 /** A closure day is a Manila calendar day, whatever the reader's clock says. */
+const MANILA_DAY = new Intl.DateTimeFormat("en-PH", {
+  dateStyle: "medium",
+  timeZone: "Asia/Manila",
+});
+
 function dayLabel(day: string): string {
-  return formatDate(`${day}T00:00:00+08:00`);
+  const at = new Date(`${day}T00:00:00+08:00`);
+  return Number.isNaN(at.getTime()) ? day : MANILA_DAY.format(at);
 }
 
 function zoneLabel(offsetMinutes: number): string {
