@@ -59,6 +59,7 @@ export type NavIconKey =
   | "retention"
   | "dropouts"
   | "products"
+  | "listing-reviews"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -106,7 +107,8 @@ export type NavCountKey =
   | "jobs-need-action"
   | "tracker-needs-decision"
   | "refunds-waiting"
-  | "shop-changes-needs-ops";
+  | "shop-changes-needs-ops"
+  | "listing-reviews-waiting";
 
 /**
  * One rail section. A missing `label` is a top-level cluster (Overview / Jobs)
@@ -295,6 +297,17 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "signups-waiting",
+        },
+        {
+          // New listings and changes to live ones wait here until approved.
+          id: "ops-listing-reviews",
+          href: "/ops/listing-reviews",
+          label: "Listing reviews",
+          title: "Listing reviews",
+          icon: "listing-reviews",
+          ready: true,
+          placeholderBody: "",
+          count: "listing-reviews-waiting",
         },
       ],
     },
@@ -523,6 +536,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "catalogue",
           ready: true,
           placeholderBody: "",
+        },
+        {
+          id: "admin-listing-reviews",
+          href: "/admin/listing-reviews",
+          label: "Listing reviews",
+          title: "Listing reviews",
+          icon: "listing-reviews",
+          ready: true,
+          placeholderBody: "",
+          count: "listing-reviews-waiting",
         },
         {
           id: "admin-zones",

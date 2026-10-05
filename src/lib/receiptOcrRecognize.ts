@@ -8,6 +8,9 @@
 
 export type ReceiptOcrRaw = { text: string; confidence: number };
 
+/** The receipt's bytes (read through the API), or a signed storage link. */
+export type ReceiptSource = Blob | string;
+
 type TesseractWorker = {
   recognize: (image: HTMLCanvasElement | string) => Promise<{
     data: { text?: string; confidence?: number };
@@ -58,8 +61,8 @@ function loadTesseract(): Promise<TesseractNS> {
  * reference type the same way the client WebView does, without changing the
  * stored receipt.
  */
-export async function receiptImageFromUrl(source: string): Promise<HTMLCanvasElement> {
-  const objectUrl = await blobUrlFor(source);
+export async function receiptImageFrom(source: ReceiptSource): Promise<HTMLCanvasElement> {
+  const objectUrl = URL.createObjectURL(await receiptBlob(source));
   try {
     const img = new Image();
     img.src = objectUrl;
@@ -77,20 +80,20 @@ export async function receiptImageFromUrl(source: string): Promise<HTMLCanvasEle
   }
 }
 
-async function blobUrlFor(source: string): Promise<string> {
+async function receiptBlob(source: ReceiptSource): Promise<Blob> {
+  if (typeof source !== "string") return source;
   const response = await fetch(source);
   if (!response.ok) throw new Error("That screenshot could not be read.");
-  const blob = await response.blob();
-  return URL.createObjectURL(blob);
+  return response.blob();
 }
 
-export async function recognizeReceiptFromUrl(
-  url: string,
+export async function recognizeReceipt(
+  source: ReceiptSource,
   isCurrent: () => boolean = () => true,
 ): Promise<ReceiptOcrRaw> {
   const Tesseract = await loadTesseract();
   if (!isCurrent()) throw new Error("replaced");
-  const canvas = await receiptImageFromUrl(url);
+  const canvas = await receiptImageFrom(source);
   if (!isCurrent()) throw new Error("replaced");
   const worker = await Tesseract.createWorker("eng", 1, {
     workerPath: "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js",

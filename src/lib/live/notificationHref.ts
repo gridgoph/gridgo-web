@@ -22,6 +22,19 @@ export function notificationHref(role: Role, notification: Notification): string
       : "/supplier/catalogue";
   }
 
+  // Listing review (gridgo-api#154). The notice names no listing, so staff
+  // land on the desk and the shop on its board, where the standing shows.
+  if (type === "catalog_review_pending" || type === "catalog_review_decided") {
+    if (role === "super_admin") return "/admin/listing-reviews";
+    if (role === "ops_admin") return "/ops/listing-reviews";
+    if (role === "supplier") {
+      return notification.catalogItemId
+        ? `/supplier/catalogue/${encodeURIComponent(notification.catalogItemId)}`
+        : "/supplier/catalogue";
+    }
+    return null;
+  }
+
   if (isSupplierServiceDecision(type) && role === "supplier") {
     return "/supplier/catalogue";
   }
