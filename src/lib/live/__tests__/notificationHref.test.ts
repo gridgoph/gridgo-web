@@ -149,4 +149,46 @@ describe("notificationHref", () => {
       "/ops/overview",
     );
   });
+
+  it("opens an organization notice or reminder on that organization, in each tree", () => {
+    const reminder = note({
+      type: "organization_officer_confirmation",
+      organizationUserId: "user_org",
+    });
+    expect(notificationHref("ops_admin", reminder)).toBe("/ops/organizations/user_org");
+    expect(notificationHref("super_admin", reminder)).toBe(
+      "/admin/organizations/user_org",
+    );
+    expect(notificationHref("supplier", reminder)).toBeNull();
+  });
+
+  it("lands hub pick-up alerts on the hub desk, even with an order", () => {
+    for (const type of [
+      "hub_unclaimed_escalated",
+      "hub_redelivery_requested",
+      "handover_escalated",
+    ]) {
+      expect(notificationHref("ops_admin", note({ type, orderId: "ord_1" }))).toBe(
+        "/ops/hub",
+      );
+      expect(notificationHref("super_admin", note({ type, orderId: "ord_1" }))).toBe(
+        "/admin/hub",
+      );
+    }
+  });
+
+  it("opens staff changes on Staff for Super Admin only", () => {
+    expect(notificationHref("super_admin", note({ type: "staff_invite_created" }))).toBe(
+      "/admin/staff",
+    );
+    expect(notificationHref("ops_admin", note({ type: "staff_invite_created" }))).toBe(
+      "/ops/overview",
+    );
+  });
+
+  it("sends a business permit request to the approval queue", () => {
+    const permit = note({ type: "client_application_document_requested" });
+    expect(notificationHref("ops_admin", permit)).toBe("/ops/approvals");
+    expect(notificationHref("super_admin", permit)).toBe("/admin/verification");
+  });
 });

@@ -56,6 +56,72 @@ export type BusinessApplication = {
   businessName: string | null;
   businessNature: string | null;
   accountType: "business" | "organization";
+  /** 1 once the application carries the document checklist; absent on a name-only case. */
+  schemaVersion?: number;
+  /** Business track. Organizations have none. */
+  businessType?: "sole_proprietor" | "partnership" | "corporation" | null;
+  school?: string | null;
+  /** The shared organization login email, verified with a one-time code. */
+  organizationEmail?: string | null;
+  emailVerifiedAt?: string | null;
+  /** Organization applicant (the officer). */
+  officer?: ApplicationPerson | null;
+  /** Business applicant (owner or authorised signatory). */
+  signatory?: ApplicationPerson | null;
+  /** Checklist key → opaque file id. Readable by Operations and Super Admin only. */
+  documents?: Record<string, string> | null;
+  facultyAdviserContact?: string | null;
+  /** Operations asked for the otherwise optional business permit. */
+  businessPermitRequired?: boolean;
+};
+
+/** Private personal details matched against the applicant's ID. */
+export type ApplicationPerson = {
+  fullName: string;
+  dateOfBirth?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  governmentIdType?:
+    "philid" | "ephilid" | "passport" | "drivers_license" | "umid" | string | null;
+  governmentIdExpiresOn?: string | null;
+  governmentIdHasNoExpiry?: boolean;
+  originalId?: boolean;
+  detailsMatchId?: boolean;
+  studentIdExpiresOn?: string | null;
+};
+
+/** One dated entry in an organization's officer of record. */
+export type OrganizationOfficer = {
+  id: string;
+  fullName: string;
+  startedAt?: string | null;
+  /** `null` while this officer is the current one. */
+  endedAt?: string | null;
+  verifiedAt: string | null;
+  approvalCaseId?: string | null;
+  applicationRevision?: number | null;
+};
+
+/** `GET /ops/organizations/:userId` (and the approval case's `organization`). */
+export type OrganizationAccount = {
+  userId: string;
+  name: string | null;
+  school: string | null;
+  email: string | null;
+  /** `null` until a first officer is verified (legacy or pending accounts). */
+  currentOfficer: OrganizationOfficer | null;
+  confirmedAt: string | null;
+  nextConfirmationAt: string | null;
+  confirmationRequestedAt: string | null;
+  approvalCase: {
+    id: string;
+    status: ApprovalCaseSummary["status"];
+    version: number;
+    applicationRevision: number;
+  } | null;
+  actions: string[];
+  /** Detail reads only. Oldest first. */
+  officerHistory?: OrganizationOfficer[];
 };
 
 /**
@@ -82,6 +148,8 @@ export type ApprovalCaseDetail = {
   application?: BusinessApplication;
   /** Supplier cases on the reinstate API. Absent: this API restores the account only. */
   suspendedServiceLines?: SuspendedServiceLine[];
+  /** Organization cases: the account and its dated officer history. */
+  organization?: OrganizationAccount | null;
 };
 
 /** `POST /approval-cases/:id/<decision>` answers with the fresh detail. */
@@ -304,13 +372,15 @@ export type PayoutMilestoneCode =
  * never paid and never will be; what the shop is still owed became a separate
  * `SupplierSettlementPayout`. Never present it as paid.
  */
-export type PayoutMilestoneStatus = "pending_pof" | "pof_attached" | "released" | "superseded";
+export type PayoutMilestoneStatus =
+  "pending_pof" | "pof_attached" | "released" | "superseded";
 
 /**
  * What a stage's release waits on: the shop's own proof, the rider's delivery
  * evidence, or the complaint window closing with no open claim.
  */
-export type PayoutReleaseRequirement = "shop_proof" | "delivery_proof" | "issue_window_closed";
+export type PayoutReleaseRequirement =
+  "shop_proof" | "delivery_proof" | "issue_window_closed";
 
 /** `1` legacy four stages, `2` the escrow split; `null` before commitment. */
 export type PayoutPlanVersion = 1 | 2;
@@ -390,10 +460,7 @@ export type PickupCheck = {
  * repeat all six checks and a fresh count before taking the package.
  */
 export type PickupChecklistStatus =
-  | "not_started"
-  | "passed"
-  | "failed_escalated"
-  | "escalation_resolved";
+  "not_started" | "passed" | "failed_escalated" | "escalation_resolved";
 
 /**
  * What the rider counts at the counter, one row per order line. The API
@@ -468,11 +535,7 @@ export type OrderLineMeasurement = {
  * `gridgo-api/docs/ORDER_MATCH_API.md`.
  */
 export type ArtworkLinkFormat =
-  | "canva_link"
-  | "google_drive"
-  | "dropbox"
-  | "we_transfer"
-  | "other_link";
+  "canva_link" | "google_drive" | "dropbox" | "we_transfer" | "other_link";
 
 export type ArtworkLink = {
   formatCode: ArtworkLinkFormat | (string & {});
@@ -634,7 +697,10 @@ export type Order = {
   /** Ops / Super Admin only. Client refund totals on this order. */
   refundFinance?: RefundFinance;
   /** Ops / Super Admin and the rider, once settled. */
-  refundDeliverySettlement?: { riderEntitlementMinor: number; settlementId: string } | null;
+  refundDeliverySettlement?: {
+    riderEntitlementMinor: number;
+    settlementId: string;
+  } | null;
   /**
    * Ops / Super Admin only. Where the assigned shop wants this money sent:
    * the receiving QR the release desk scans plus the words to check it by.
@@ -707,7 +773,10 @@ export type Order = {
   /** The shop's one production-deadline request (ORDER_RESCHEDULE_API.md). */
   rescheduleRequest?: RescheduleRequest | null;
   /** Delivery or hub pick-up, chosen before matching (gridgo-client#158). */
-  requestFulfillment?: { fulfillmentMode: "delivery" | "pickup"; dropoff: MapPoint | null } | null;
+  requestFulfillment?: {
+    fulfillmentMode: "delivery" | "pickup";
+    dropoff: MapPoint | null;
+  } | null;
   /** The hub's schedule and fee as snapshotted at checkout, on a pick-up order. */
   hubPickup?: HubPickup | null;
   /** Already inside `deliveryFeeMinor` on a pick-up order. Never add the two. */
@@ -734,11 +803,7 @@ export type FileCheck = {
 // ---- Shop acceptance and recovery (gridgo-api SHOP_RECOVERY_API.md) ----
 
 export type ShopAcceptanceStatus =
-  | "pending"
-  | "accepted"
-  | "timed_out"
-  | "declined"
-  | "cancelled";
+  "pending" | "accepted" | "timed_out" | "declined" | "cancelled";
 
 export type ShopAcceptance = {
   supplierId: string;
@@ -753,11 +818,7 @@ export type ShopAcceptance = {
 export type ShopFailureKind = "timed_out" | "declined" | "cancelled";
 
 export type ShopRecoveryStatus =
-  | "awaiting_client"
-  | "ops_review"
-  | "refund_requested"
-  | "refunded"
-  | "accepted";
+  "awaiting_client" | "ops_review" | "refund_requested" | "refunded" | "accepted";
 
 /** The replacement GRIDGO found. Ops / Super Admin see who and when. */
 export type ShopRecoveryProposal = {
@@ -804,11 +865,7 @@ export type ShopFailureEvent = {
 // ---- Production deadline requests (gridgo-api ORDER_RESCHEDULE_API.md) ----
 
 export type RescheduleStatus =
-  | "pending"
-  | "accepted"
-  | "declined"
-  | "expired"
-  | "operations_required";
+  "pending" | "accepted" | "declined" | "expired" | "operations_required";
 
 export type RescheduleResolution =
   | "rematch_offered"
@@ -880,6 +937,8 @@ export type Notification = {
   approvalCaseId?: string | null;
   catalogItemId?: string | null;
   announcementId?: string | null;
+  /** Organization reminders and notices name the organization account. */
+  organizationUserId?: string | null;
   title: string;
   body: string;
   /** Broadcast picture. Public HTTPS link or `/public/announcement-images/<fileId>`. */
@@ -962,7 +1021,8 @@ export type LegacyDeliveryFeeBand = {
   feeMinor: number;
 };
 
-export type DeliveryFeeBand = FlatDeliveryZoneBand | OutOfZoneDeliveryBand | LegacyDeliveryFeeBand;
+export type DeliveryFeeBand =
+  FlatDeliveryZoneBand | OutOfZoneDeliveryBand | LegacyDeliveryFeeBand;
 
 export type PaymentQr = {
   method: "qr_manual" | string;
@@ -1750,12 +1810,7 @@ export type PostAnnouncementInput = {
 
 /** The report's six statuses, exact wire values. */
 export type TrackerStatus =
-  | "open"
-  | "in-review"
-  | "merged-dev"
-  | "live"
-  | "needs-decision"
-  | "blocked";
+  "open" | "in-review" | "merged-dev" | "live" | "needs-decision" | "blocked";
 
 export type TrackerAttachment = {
   id: string;
@@ -1945,7 +2000,9 @@ export type IssueReport = {
 };
 
 /** `tracked` is missing from an API that predates the tracker link. */
-export type IssueReportCounts = Record<Exclude<IssueReportStatus, "tracked">, number> & { tracked?: number };
+export type IssueReportCounts = Record<Exclude<IssueReportStatus, "tracked">, number> & {
+  tracked?: number;
+};
 
 // ---- Client refunds (available-funds settlement, `available_funds_v1`) ----
 // Contract: gridgo-api/docs/REFUNDS_API.md. Every `*Minor` is integer centavos.
@@ -2130,4 +2187,88 @@ export type SettlementInput = {
   principalMinor?: number;
   /** Historical direct-store plans only. */
   directStoreCollectedMinor?: 0;
+};
+
+// ---------------------------------------------------------------------------
+// Invited staff and the pick-up hub (gridgo-api docs/HUB_HANDOVER_API.md)
+// ---------------------------------------------------------------------------
+
+/** A configurable staff role. `hub_staff` is built in. */
+export type StaffRole = {
+  code: string;
+  name: string;
+  /** May hand out hub orders. */
+  canHandout: boolean;
+};
+
+/** Never carries the code: it is shown once, when the invite is created. */
+export type StaffInvite = {
+  id: string;
+  roleCode: string;
+  createdBy: string | null;
+  createdAt: string;
+  expiresAt: string;
+  redeemedBy: string | null;
+  redeemedAt: string | null;
+  revokedAt: string | null;
+};
+
+export type StaffInviteCreated = { invite: StaffInvite; code: string };
+
+export type StaffMember = {
+  userId: string;
+  name?: string | null;
+  roleCode: string;
+  active: boolean;
+  updatedAt: string;
+};
+
+export type HubRecord = {
+  id: string;
+  name: string;
+  point?: MapPoint | null;
+  feeMinor?: number;
+  schedule: WeeklySchedule | null;
+};
+
+export type HubHandout = {
+  id: string;
+  orderId: string;
+  staffId: string;
+  /** The staff member's name at the time of the handover. */
+  staffName: string;
+  hubId: string;
+  at: string;
+};
+
+export type HubStaffTotal = { staffId: string; name: string; count: number };
+
+export type HubHandoutLog = {
+  handouts: HubHandout[];
+  /** Counts over every handout, not just this page. */
+  staffTotals: HubStaffTotal[];
+  nextCursor: string | null;
+};
+
+export type HubRedeliveryRequest = {
+  status: "pending_operations" | string;
+  costAccepted: boolean;
+  at: string;
+  by: string;
+};
+
+/** A ready pick-up order nobody has collected yet. */
+export type HubWaitingOrder = {
+  orderId: string;
+  state: string;
+  readyAt: string | null;
+  /** Completed open hub days the client missed. */
+  missedDays: number;
+  /** True from the third missed hub day: Operations now owns the next step. */
+  operationsRequired: boolean;
+  redeliveryRequest: HubRedeliveryRequest | null;
+};
+
+export type HubCodeMismatch = HubWaitingOrder & {
+  escalation: { by: string; at: string; reason: string };
 };

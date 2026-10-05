@@ -58,6 +58,8 @@ export type NavIconKey =
   | "retention"
   | "dropouts"
   | "products"
+  | "hub"
+  | "staff"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -350,6 +352,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           count: "shop-changes-needs-ops",
         },
         {
+          id: "ops-hub",
+          href: "/ops/hub",
+          label: "Hub pick-up",
+          title: "Hub pick-up",
+          icon: "hub",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "ops-escalations",
           href: "/ops/escalations",
           label: "Escalations",
@@ -461,6 +472,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
         },
+        {
+          id: "admin-hub",
+          href: "/admin/hub",
+          label: "Hub pick-up",
+          title: "Hub pick-up",
+          icon: "hub",
+          ready: true,
+          placeholderBody: "",
+        },
       ],
     },
     {
@@ -485,6 +505,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Roles",
           title: "Roles",
           icon: "roles",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-staff",
+          href: "/admin/staff",
+          label: "Staff",
+          title: "Staff",
+          icon: "staff",
           ready: true,
           placeholderBody: "",
         },
@@ -720,7 +749,8 @@ export function contextTitleForPath(
   if (pathname.startsWith("/admin/catalogue/jobs/")) return "Print job";
   if (pathname === "/admin/catalogue/categories/new") return "Add category";
   if (pathname.startsWith("/admin/catalogue/categories/")) return "Category";
-  if (pathname === "/ops/settings" || pathname === "/ops/audit") return "Super Admin only";
+  if (pathname === "/ops/settings" || pathname === "/ops/audit")
+    return "Super Admin only";
   if (pathname.startsWith("/ops/orders/")) return "Order workspace";
   if (pathname.startsWith("/ops/payouts/")) return "Payout review";
   if (pathname.startsWith("/ops/refunds/") || pathname.startsWith("/admin/refunds/")) {
@@ -728,7 +758,12 @@ export function contextTitleForPath(
   }
   if (pathname.startsWith("/admin/supplier-products/")) return "Supplier product";
   if (pathname.startsWith("/admin/orders/")) return "Order workspace";
-  if (pathname.startsWith("/ops/late-production/") || pathname.startsWith("/admin/late-production/")) {
+  // One organization; its statement page below it has a title of its own.
+  if (/^\/(ops|admin)\/organizations\/[^/]+\/?$/.test(pathname)) return "Organization";
+  if (
+    pathname.startsWith("/ops/late-production/") ||
+    pathname.startsWith("/admin/late-production/")
+  ) {
     return "Shop's late jobs";
   }
   if (pathname === "/admin/escalations" || pathname.startsWith("/admin/escalations/")) {

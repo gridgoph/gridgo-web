@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from "react";
+import { useCallback, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useClerk, useUser } from "@clerk/nextjs";
@@ -57,6 +52,8 @@ import {
   Users,
   Wallet,
   TimerOff,
+  Warehouse,
+  IdCard,
   type LucideIcon,
 } from "lucide-react";
 
@@ -191,6 +188,8 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   retention: FileClock,
   dropouts: Shuffle,
   products: PackageSearch,
+  hub: Warehouse,
+  staff: IdCard,
   "group-shop": Store,
   "group-money": HandCoins,
   "group-queue": Inbox,
@@ -498,7 +497,9 @@ function RailNavSubItem({
           attention={itemNeedsAttention(item, counts)}
         />
       </SidebarMenuSubButton>
-      {!item.ready ? <SidebarMenuBadge className="top-1/2! -translate-y-1/2">Soon</SidebarMenuBadge> : null}
+      {!item.ready ? (
+        <SidebarMenuBadge className="top-1/2! -translate-y-1/2">Soon</SidebarMenuBadge>
+      ) : null}
     </SidebarMenuSubItem>
   );
 }
@@ -539,7 +540,9 @@ function RailNavParent({
         <Icon strokeWidth={1.75} aria-hidden />
         <span className="min-w-0 truncate">{group.label}</span>
         <NavCountBadge
-          count={open && !showOpenGroupTotal(group, counts) ? 0 : groupCount(group, counts)}
+          count={
+            open && !showOpenGroupTotal(group, counts) ? 0 : groupCount(group, counts)
+          }
           attention={groupNeedsAttention(group, counts)}
           total={open ? "open" : "closed"}
         />
@@ -598,7 +601,12 @@ function RailNavFlyout({ group, pathname }: { group: NavGroup; pathname: string 
             attention={groupNeedsAttention(group, counts)}
           />
         </DropdownMenuTrigger>
-        <DropdownMenuContent side="right" align="start" sideOffset={10} className="min-w-56">
+        <DropdownMenuContent
+          side="right"
+          align="start"
+          sideOffset={10}
+          className="min-w-56"
+        >
           <DropdownMenuGroup>
             <DropdownMenuLabel>{label}</DropdownMenuLabel>
             {group.items.map((item) => {

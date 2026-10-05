@@ -3,17 +3,14 @@ import { describe, expect, it } from "vitest";
 import type { PayoutMilestone } from "@/lib/api/types";
 import { presentOrderState } from "@/lib/order-state";
 import {
+  CLAIM_HOLD_PACKING_REASON,
   actionsForJob,
   needsSupplierAction,
   primaryAction,
   supplierWaitingOn,
 } from "@/lib/supplier-actions";
 
-function job(
-  state: string,
-  milestones: PayoutMilestone[] = [],
-  payoutHold = false,
-) {
+function job(state: string, milestones: PayoutMilestone[] = [], payoutHold = false) {
   return { state, payoutMilestones: milestones, payoutHold };
 }
 
@@ -59,11 +56,15 @@ describe("actionsForJob", () => {
     const actions = actionsForJob(job("supplier_assigned"));
     expect(actions.map((a) => a.kind)).toEqual(["accept", "decline"]);
     expect(actions.filter((a) => a.primary)).toHaveLength(1);
-    expect(primaryAction(job("supplier_assigned"))?.targetState).toBe("payment_authorized");
+    expect(primaryAction(job("supplier_assigned"))?.targetState).toBe(
+      "payment_authorized",
+    );
     expect(primaryAction(job("supplier_assigned"))?.label).toBe("Accept job");
     const decline = actions.find((a) => a.kind === "decline");
     expect(decline?.targetState).toBe("approved_for_matching");
-    expect(actions.filter((a) => a.kind !== "accept" && a.kind !== "decline")).toEqual([]);
+    expect(actions.filter((a) => a.kind !== "accept" && a.kind !== "decline")).toEqual(
+      [],
+    );
   });
 
   it("sends no price when the shop accepts an assigned job", () => {
@@ -147,11 +148,15 @@ describe("actionsForJob", () => {
       milestone("delivered", "pending_pof"),
       milestone("retention", "pending_pof"),
     ];
-    expect(actionsForJob(job("production", filed)).map((action) => action.label)).toEqual([
+    expect(actionsForJob(job("production", filed)).map((action) => action.label)).toEqual(
+      ["Package for pickup"],
+    );
+    expect(primaryAction(job("production", filed))?.targetState).toBe(
+      "ready_for_dispatch",
+    );
+    expect(primaryAction(job("supplier_self_qc", filed))?.label).toBe(
       "Package for pickup",
-    ]);
-    expect(primaryAction(job("production", filed))?.targetState).toBe("ready_for_dispatch");
-    expect(primaryAction(job("supplier_self_qc", filed))?.label).toBe("Package for pickup");
+    );
   });
 
   it("never asks the shop to file delivery or retention evidence", () => {
@@ -170,5 +175,30 @@ describe("actionsForJob", () => {
     expect(actionsForJob(job("ready_for_dispatch"))).toEqual([]);
     expect(actionsForJob(job("completed"))).toEqual([]);
     expect(needsSupplierAction(job("ready_for_dispatch"))).toBe(false);
+  });
+});
+
+describe("claim hold", () => {
+  const filed = [
+    milestone("production_started", "pof_attached"),
+    milestone("delivered", "pending_pof"),
+    milestone("window_closed", "pending_pof"),
+  ];
+
+  it("keeps Package for pickup on the page, disabled with the reason", () => {
+    for (const state of ["production", "supplier_self_qc"]) {
+      const [action] = actionsForJob(job(state, filed, true));
+      expect(action?.label).toBe("Package for pickup");
+      expect(action?.blockedReason).toBe(CLAIM_HOLD_PACKING_REASON);
+    }
+    expect(CLAIM_HOLD_PACKING_REASON).toMatch(/Operations must clear the claim/);
+  });
+
+  it("is not something the shop needs to do while Operations decides", () => {
+    expect(needsSupplierAction(job("production", filed, true))).toBe(false);
+    expect(needsSupplierAction(job("production", filed, false))).toBe(true);
+    expect(
+      actionsForJob(job("production", filed, false))[0]?.blockedReason,
+    ).toBeUndefined();
   });
 });

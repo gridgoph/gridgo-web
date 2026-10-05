@@ -91,6 +91,9 @@ it("shows a pending business application in the sign-up queue", async () => {
   expect(await screen.findByText("Bautista Trading")).toBeInTheDocument();
   expect(screen.getByText(/Organization client/)).toBeInTheDocument();
   expect(screen.getByText("Events")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Reject" })).toBeInTheDocument();
+  // A pending application is decided inside the document review, not on the card.
+  expect(screen.getByRole("button", { name: "Review documents" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+  // Filed before the checklist existed: it has to be resubmitted first.
+  expect(screen.getByText(/Filed before the document checklist/)).toBeInTheDocument();
 });

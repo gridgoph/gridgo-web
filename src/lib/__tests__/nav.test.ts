@@ -15,8 +15,12 @@ describe("ROLE_NAV", () => {
       const icons = items.map((item) => item.icon);
       expect(new Set(icons).size).toBe(icons.length);
     }
-    const products = ROLE_NAV.super_admin.find((item) => item.href === "/admin/supplier-products");
-    const catalogue = ROLE_NAV.super_admin.find((item) => item.href === "/admin/catalogue");
+    const products = ROLE_NAV.super_admin.find(
+      (item) => item.href === "/admin/supplier-products",
+    );
+    const catalogue = ROLE_NAV.super_admin.find(
+      (item) => item.href === "/admin/catalogue",
+    );
     expect(products?.icon).not.toBe(catalogue?.icon);
   });
 
@@ -47,6 +51,7 @@ describe("ROLE_NAV", () => {
       "/ops/rankings",
       "/ops/late-production",
       "/ops/shop-changes",
+      "/ops/hub",
       "/ops/escalations",
       "/ops/schedule",
       "/ops/payouts",
@@ -63,8 +68,10 @@ describe("ROLE_NAV", () => {
       "/admin/chat",
       "/admin/issue-reports",
       "/admin/riders",
+      "/admin/hub",
       "/admin/verification",
       "/admin/roles",
+      "/admin/staff",
       "/admin/supplier-products",
       "/admin/catalogue",
       "/admin/zones",
@@ -101,6 +108,7 @@ describe("ROLE_NAV", () => {
       "/admin/chat",
       "/admin/file-retention",
       "/admin/finance",
+      "/admin/hub",
       "/admin/issue-reports",
       "/admin/late-production",
       "/admin/overview",
@@ -111,6 +119,7 @@ describe("ROLE_NAV", () => {
       "/admin/season-windows",
       "/admin/settings",
       "/admin/shop-changes",
+      "/admin/staff",
       "/admin/supplier-products",
       "/admin/tracker",
       "/admin/verification",
@@ -120,6 +129,7 @@ describe("ROLE_NAV", () => {
       "/ops/claims",
       "/ops/dispatch",
       "/ops/escalations",
+      "/ops/hub",
       "/ops/issue-reports",
       "/ops/late-production",
       "/ops/orders",
@@ -203,6 +213,7 @@ describe("ROLE_NAV", () => {
       "/ops/rankings",
       "/ops/late-production",
       "/ops/shop-changes",
+      "/ops/hub",
       "/ops/escalations",
       "/ops/schedule",
     ]);
@@ -216,12 +227,23 @@ describe("ROLE_NAV", () => {
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-top")
         ?.items.map((n) => n.href),
-    ).toEqual(["/admin/overview", "/admin/chat", "/admin/issue-reports", "/admin/riders"]);
+    ).toEqual([
+      "/admin/overview",
+      "/admin/chat",
+      "/admin/issue-reports",
+      "/admin/riders",
+      "/admin/hub",
+    ]);
     expect(
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-people")
         ?.items.map((n) => n.href),
-    ).toEqual(["/admin/verification", "/admin/roles", "/admin/supplier-products"]);
+    ).toEqual([
+      "/admin/verification",
+      "/admin/roles",
+      "/admin/staff",
+      "/admin/supplier-products",
+    ]);
     expect(
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-catalog")
@@ -296,13 +318,15 @@ describe("Operational settings and audit", () => {
 
     for (const role of ["ops_admin", "supplier", "client", "rider"] as const) {
       const hrefs = navForRole(role).map((n) => n.href);
-      expect(hrefs.some((href) => href.endsWith("/settings") || href.endsWith("/audit"))).toBe(
-        false,
-      );
+      expect(
+        hrefs.some((href) => href.endsWith("/settings") || href.endsWith("/audit")),
+      ).toBe(false);
     }
     expect(contextTitleForPath("/ops/settings", "ops_admin")).toBe("Super Admin only");
     expect(contextTitleForPath("/ops/audit", "ops_admin")).toBe("Super Admin only");
-    expect(contextTitleForPath("/admin/settings", "super_admin")).toBe("Operational settings");
+    expect(contextTitleForPath("/admin/settings", "super_admin")).toBe(
+      "Operational settings",
+    );
     expect(contextTitleForPath("/admin/audit", "super_admin")).toBe("Audit log");
   });
 });
@@ -343,9 +367,9 @@ describe("nav helpers", () => {
     expect(contextTitleForPath("/admin/supplier-products", "super_admin")).toBe(
       "Supplier products",
     );
-    expect(contextTitleForPath("/admin/supplier-products/sci_sticker", "super_admin")).toBe(
-      "Supplier product",
-    );
+    expect(
+      contextTitleForPath("/admin/supplier-products/sci_sticker", "super_admin"),
+    ).toBe("Supplier product");
     expect(contextTitleForPath("/admin/catalogue/jobs/new", "super_admin")).toBe(
       "Add print job",
     );

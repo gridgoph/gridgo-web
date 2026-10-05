@@ -90,7 +90,9 @@ it("shows who the paper invoice goes to, then the promised time after it is save
   ).toBeInTheDocument();
   expect(screen.getByText("Your call")).toBeInTheDocument();
   expect(screen.getByText("Ana Reyes")).toBeInTheDocument();
-  expect(screen.getByText("7th floor, 12 J.P. Laurel Ave, Davao City")).toBeInTheDocument();
+  expect(
+    screen.getByText("7th floor, 12 J.P. Laurel Ave, Davao City"),
+  ).toBeInTheDocument();
   expect(screen.getByText("Mon–Fri 9am–5pm")).toBeInTheDocument();
   expect(screen.getByText("Someone is there: Mon–Fri 9am–5pm")).toBeInTheDocument();
   expect(screen.queryByRole("option", { name: /Sat/ })).not.toBeInTheDocument();
@@ -98,11 +100,15 @@ it("shows who the paper invoice goes to, then the promised time after it is save
 
   const date = screen.getByLabelText("Promise delivery date");
   // The second weekday offered is always in the future, whatever the clock says.
-  const weekday = Array.from((date as HTMLSelectElement).options).filter((option) => option.value)[1];
+  const weekday = Array.from((date as HTMLSelectElement).options).filter(
+    (option) => option.value,
+  )[1];
   expect(weekday).toBeTruthy();
   await userEvent.selectOptions(date, weekday!.value);
   await userEvent.selectOptions(screen.getByLabelText("Promise delivery time"), "10:00");
-  await userEvent.click(screen.getByRole("button", { name: "Set promise date" }));
+  await userEvent.click(
+    screen.getByRole("button", { name: "Set promise and notify client" }),
+  );
 
   const promised = mutations[0]?.body as { promisedDeliveryAt: string };
   expect(mutations).toEqual([
@@ -112,9 +118,18 @@ it("shows who the paper invoice goes to, then the promised time after it is save
     },
   ]);
   expect(
-    await screen.findByText(`Promised ${formatDateTime(promised.promisedDeliveryAt)}.`),
+    await screen.findByText(
+      `Promised ${formatDateTime(promised.promisedDeliveryAt)}. Client notified in the app.`,
+    ),
   ).toBeInTheDocument();
   expect(screen.getByText("Promised")).toBeInTheDocument();
+  // The panel says the client heard about it, and the next save is a change.
+  expect(
+    screen.getByText(/Client notified: GRIDGO sends them an in-app notice/),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Change promise and notify client" }),
+  ).toBeInTheDocument();
 });
 
 it("offers only desk times still ahead, so a promise is never already late", async () => {
@@ -145,7 +160,9 @@ it("does not offer today once the desk has closed", async () => {
   render(<OrderWorkspace queueHref="/ops/orders" />);
 
   const date = await screen.findByLabelText("Promise delivery date");
-  const first = Array.from((date as HTMLSelectElement).options).find((option) => option.value);
+  const first = Array.from((date as HTMLSelectElement).options).find(
+    (option) => option.value,
+  );
   expect(first?.value).toBe("2026-09-28");
 });
 
@@ -164,10 +181,14 @@ it("explains a promise the API refuses in plain words", async () => {
   render(<OrderWorkspace queueHref="/ops/orders" />);
 
   const date = await screen.findByLabelText("Promise delivery date");
-  const weekday = Array.from((date as HTMLSelectElement).options).filter((option) => option.value)[1];
+  const weekday = Array.from((date as HTMLSelectElement).options).filter(
+    (option) => option.value,
+  )[1];
   await userEvent.selectOptions(date, weekday.value);
   await userEvent.selectOptions(screen.getByLabelText("Promise delivery time"), "10:00");
-  await userEvent.click(screen.getByRole("button", { name: "Set promise date" }));
+  await userEvent.click(
+    screen.getByRole("button", { name: "Set promise and notify client" }),
+  );
 
   expect(
     await screen.findByText(/Promise a Monday–Friday time from 8:00 am/),
