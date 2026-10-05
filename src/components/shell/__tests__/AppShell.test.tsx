@@ -227,6 +227,14 @@ describe("AppShell chrome", () => {
     expect(mark?.querySelectorAll("circle")).toHaveLength(9);
   });
 
+  it("lets the page column shrink, so a wide table scrolls inside itself", () => {
+    const { container } = renderShell("/admin/overview");
+    // A flex child without min-w-0 grows to its widest table and widens the page.
+    expect(container.querySelector('[data-slot="sidebar-inset"]')?.className).toMatch(
+      /\bmin-w-0\b/,
+    );
+  });
+
   it("centers the collapsed-rail header mark on the nav icon column", () => {
     const { container } = renderShell("/admin/overview");
     const header = container.querySelector('[data-slot="sidebar-header"]');
@@ -396,7 +404,7 @@ describe("AppShell chrome", () => {
     expect(openUserProfileMock).toHaveBeenCalledTimes(1);
   });
 
-  it("opens Log out and Settings for admin, Settings for ops, and no Settings for suppliers", async () => {
+  it("opens Log out and Settings for admin, and no Settings for Operations or suppliers", async () => {
     const user = userEvent.setup();
     const { container: admin } = renderShell("/admin/overview");
     const adminFooter = admin.querySelector('[data-slot="sidebar-footer"]');
@@ -421,10 +429,7 @@ describe("AppShell chrome", () => {
       }),
     );
     expect(await screen.findByRole("menuitem", { name: "Log out" })).toBeInTheDocument();
-    expect(screen.getByRole("menuitem", { name: "Settings" })).toHaveAttribute(
-      "href",
-      "/ops/settings",
-    );
+    expect(screen.queryByRole("menuitem", { name: "Settings" })).not.toBeInTheDocument();
 
     cleanup();
     const { container: supplier } = renderShell("/supplier/jobs");
@@ -494,11 +499,14 @@ describe("AppShell chrome", () => {
     );
     expect(within(opsNav).getByRole("link", { name: "Chat" })).toBeInTheDocument();
     expect(within(opsNav).getByRole("link", { name: "Issue reports" })).toBeInTheDocument();
-    for (const label of ["Queue", "Field", "Money", "System"]) {
+    for (const label of ["Queue", "Field", "Money"]) {
       const trigger = within(opsNav).getByRole("button", { name: label });
       expect(trigger).toHaveAttribute("aria-expanded", "false");
       expect(trigger.querySelector(".lucide-chevron-right")).not.toBeNull();
     }
+    expect(within(opsNav).queryByRole("button", { name: "System" })).toBeNull();
+    expect(within(opsNav).queryByRole("link", { name: "Operational settings" })).toBeNull();
+    expect(within(opsNav).queryByRole("link", { name: "Audit" })).toBeNull();
     // A folded group's pages are out of the tab order until it opens.
     expect(within(opsNav).queryByRole("link", { name: "Dispatch" })).toBeNull();
 
@@ -742,7 +750,7 @@ describe("AppShell chrome", () => {
     it("heads each role's rail with small muted section labels", () => {
       renderShell("/ops/overview");
       let nav = screen.getByRole("navigation", { name: "Primary navigation" });
-      expect(headings(nav)).toEqual(["Desk", "Work", "Platform"]);
+      expect(headings(nav)).toEqual(["Desk", "Work"]);
       // Each heading names its run of rows for assistive tech too.
       const work = within(nav).getByRole("group", { name: "Work" });
       for (const label of ["Queue", "Field", "Money"]) {
@@ -771,7 +779,7 @@ describe("AppShell chrome", () => {
       const nav = screen.getByRole("navigation", { name: "Primary navigation" });
       expect(nav.querySelector('[data-slot="sidebar-group-label"]')).toBeNull();
       expect(within(nav).queryByText("Desk")).toBeNull();
-      expect(nav.querySelectorAll("[data-nav-section]")).toHaveLength(3);
+      expect(nav.querySelectorAll("[data-nav-section]")).toHaveLength(2);
     });
   });
 

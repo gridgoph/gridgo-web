@@ -10,6 +10,16 @@ import {
 } from "@/lib/nav";
 
 describe("ROLE_NAV", () => {
+  it("gives every page in a rail its own icon", () => {
+    for (const items of Object.values(ROLE_NAV)) {
+      const icons = items.map((item) => item.icon);
+      expect(new Set(icons).size).toBe(icons.length);
+    }
+    const products = ROLE_NAV.super_admin.find((item) => item.href === "/admin/supplier-products");
+    const catalogue = ROLE_NAV.super_admin.find((item) => item.href === "/admin/catalogue");
+    expect(products?.icon).not.toBe(catalogue?.icon);
+  });
+
   it("covers the full supplier surface", () => {
     const hrefs = ROLE_NAV.supplier.map((n) => n.href);
     expect(hrefs).toEqual([
@@ -43,8 +53,6 @@ describe("ROLE_NAV", () => {
       "/ops/refunds",
       "/ops/claims",
       "/ops/recovery",
-      "/ops/settings",
-      "/ops/audit",
     ]);
   });
 
@@ -57,6 +65,7 @@ describe("ROLE_NAV", () => {
       "/admin/riders",
       "/admin/verification",
       "/admin/roles",
+      "/admin/supplier-products",
       "/admin/catalogue",
       "/admin/zones",
       "/admin/finance",
@@ -102,11 +111,11 @@ describe("ROLE_NAV", () => {
       "/admin/season-windows",
       "/admin/settings",
       "/admin/shop-changes",
+      "/admin/supplier-products",
       "/admin/tracker",
       "/admin/verification",
       "/admin/zones",
       "/ops/approvals",
-      "/ops/audit",
       "/ops/chat",
       "/ops/claims",
       "/ops/dispatch",
@@ -121,7 +130,6 @@ describe("ROLE_NAV", () => {
       "/ops/refunds",
       "/ops/riders",
       "/ops/schedule",
-      "/ops/settings",
       "/ops/shop-changes",
       "/supplier/capacity",
       "/supplier/catalogue",
@@ -160,7 +168,6 @@ describe("ROLE_NAV", () => {
       "Queue",
       "Field",
       "Money",
-      "System",
     ]);
     expect(ROLE_NAV_GROUPS.super_admin.map((g) => g.label ?? g.id)).toEqual([
       "admin-top",
@@ -204,11 +211,6 @@ describe("ROLE_NAV", () => {
         .find((g) => g.id === "ops-money")
         ?.items.map((n) => n.href),
     ).toEqual(["/ops/payouts", "/ops/refunds", "/ops/claims", "/ops/recovery"]);
-    expect(
-      ROLE_NAV_GROUPS.ops_admin
-        .find((g) => g.id === "ops-system")
-        ?.items.map((n) => n.href),
-    ).toEqual(["/ops/settings", "/ops/audit"]);
 
     expect(
       ROLE_NAV_GROUPS.super_admin
@@ -219,7 +221,7 @@ describe("ROLE_NAV", () => {
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-people")
         ?.items.map((n) => n.href),
-    ).toEqual(["/admin/verification", "/admin/roles"]);
+    ).toEqual(["/admin/verification", "/admin/roles", "/admin/supplier-products"]);
     expect(
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-catalog")
@@ -276,6 +278,35 @@ describe("ROLE_NAV", () => {
   });
 });
 
+describe("Operational settings and audit", () => {
+  it("keeps both on the Super Admin menu only", () => {
+    const admin = navForRole("super_admin");
+    expect(admin.find((n) => n.href === "/admin/settings")).toMatchObject({
+      label: "Operational settings",
+      ready: true,
+    });
+    expect(admin.find((n) => n.href === "/admin/audit")).toMatchObject({
+      label: "Audit",
+      ready: true,
+    });
+    const system = navGroupsForRole("super_admin").find((g) => g.id === "admin-system");
+    expect(system?.items.map((n) => n.href)).toEqual(
+      expect.arrayContaining(["/admin/settings", "/admin/audit"]),
+    );
+
+    for (const role of ["ops_admin", "supplier", "client", "rider"] as const) {
+      const hrefs = navForRole(role).map((n) => n.href);
+      expect(hrefs.some((href) => href.endsWith("/settings") || href.endsWith("/audit"))).toBe(
+        false,
+      );
+    }
+    expect(contextTitleForPath("/ops/settings", "ops_admin")).toBe("Super Admin only");
+    expect(contextTitleForPath("/ops/audit", "ops_admin")).toBe("Super Admin only");
+    expect(contextTitleForPath("/admin/settings", "super_admin")).toBe("Operational settings");
+    expect(contextTitleForPath("/admin/audit", "super_admin")).toBe("Audit log");
+  });
+});
+
 describe("Tracker visibility", () => {
   it("shows the Tracker to Super Admin only, under Platform › System, counting decisions", () => {
     const tracker = navForRole("super_admin").find((n) => n.href === "/admin/tracker");
@@ -309,6 +340,12 @@ describe("nav helpers", () => {
       "Pickup escalations",
     );
     expect(contextTitleForPath("/admin/zones", "super_admin")).toBe("Delivery zones");
+    expect(contextTitleForPath("/admin/supplier-products", "super_admin")).toBe(
+      "Supplier products",
+    );
+    expect(contextTitleForPath("/admin/supplier-products/sci_sticker", "super_admin")).toBe(
+      "Supplier product",
+    );
     expect(contextTitleForPath("/admin/catalogue/jobs/new", "super_admin")).toBe(
       "Add print job",
     );

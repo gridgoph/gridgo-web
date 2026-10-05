@@ -23,6 +23,7 @@ vi.mock("@/lib/api/client", async (importOriginal) => ({
   updateSettings,
 }));
 const { OperationalSettings } = await import("@/components/settings/OperationalSettings");
+const { HubPickupSettings } = await import("@/components/settings/HubPickupSettings");
 
 afterEach(() => {
   cleanup();
@@ -55,7 +56,7 @@ it("lets Super Admin set the hours from unset and saves the whole object through
     version: 5,
     hubPickup: { point, ...input.hubPickup },
   }));
-  render(<OperationalSettings role="super_admin" />);
+  render(<OperationalSettings />);
 
   await screen.findByRole("heading", { name: "Hub pick-up" });
   const card = hubCard();
@@ -92,7 +93,7 @@ it("lets Super Admin set the hours from unset and saves the whole object through
 it("warns before a first pick-up charge and reloads on a version conflict", async () => {
   getSettings.mockResolvedValue(unset);
   updateSettings.mockRejectedValue(new ApiError(409, { error: "settings_version_conflict" }));
-  render(<OperationalSettings role="super_admin" />);
+  render(<OperationalSettings />);
   await screen.findByRole("heading", { name: "Hub pick-up" });
   const card = hubCard();
 
@@ -108,10 +109,15 @@ it("warns before a first pick-up charge and reloads on a version conflict", asyn
   expect(getSettings).toHaveBeenCalledTimes(2);
 });
 
-it("shows Operations the hours and fee without controls", async () => {
-  getSettings.mockResolvedValue({ ...unset, hubPickup: { point, schedule: mwf, feeMinor: 2000 } });
-  render(<OperationalSettings />);
-  await screen.findByRole("heading", { name: "Hub pick-up" });
+it("draws the card without controls when it cannot edit", () => {
+  render(
+    <HubPickupSettings
+      settings={{ ...unset, hubPickup: { point, schedule: mwf, feeMinor: 2000 } }}
+      canEdit={false}
+      onSaved={() => {}}
+      onConflict={() => {}}
+    />,
+  );
   const card = hubCard();
   expect(within(card).getByText("Mon, Wed, Fri: 9:00 AM to 5:00 PM")).toBeInTheDocument();
   expect(within(card).getByText(/Closed Dec 25, 2026/)).toBeInTheDocument();
@@ -125,6 +131,6 @@ it("says so when the API has no hub settings", async () => {
   const { hubPickup: _omit, ...older } = unset;
   void _omit;
   getSettings.mockResolvedValue(older);
-  render(<OperationalSettings role="super_admin" />);
+  render(<OperationalSettings />);
   expect(await screen.findByTestId("hub-unavailable")).toBeInTheDocument();
 });

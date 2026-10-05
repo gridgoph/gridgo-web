@@ -35,7 +35,6 @@ describe("rail section headings", () => {
     expect(shape("ops_admin")).toEqual([
       ["Desk", ["ops-top"]],
       ["Work", ["Queue", "Field", "Money"]],
-      ["Platform", ["System"]],
     ]);
     expect(shape("super_admin")).toEqual([
       ["Desk", ["admin-top"]],
@@ -111,7 +110,7 @@ describe("rail counts", () => {
 
     expect(groupNeedsAttention(queue, { "signups-waiting": 2 })).toBe(false);
     expect(groupCount(group("ops_admin", "ops-field"), { "escalations-open": 1 })).toBe(1);
-    expect(groupCount(group("ops_admin", "ops-system"), counts)).toBe(0);
+    expect(groupCount(group("super_admin", "admin-system"), counts)).toBe(0);
   });
 
   it("keeps an open group's total only when it sums more than one row", () => {

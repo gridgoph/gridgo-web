@@ -4,7 +4,7 @@
  * contract "Delivery distance zones" in `gridgo-api/docs/OPERATIONAL_MODEL_V2_API.md`).
  *
  * Keys, labels and order are fixed by the API, which refuses any other table
- * (`400 invalid_delivery_fee_bands`). Operations and Super Admin edit the upper
+ * (`400 invalid_delivery_fee_bands`). Super Admin edits the upper
  * limit of Nearby, Away and Long Distance (whole metres, 1 to 100 km, strictly
  * increasing, inclusive) and the prices: one flat fee on each of those three,
  * and a base fee plus a per-kilometre fee on Out of Zone, which starts above

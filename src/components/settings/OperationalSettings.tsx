@@ -11,14 +11,17 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
  * after delivery, what delivery costs in each distance zone, and the GCash
  * plate checkout scans.
  *
- * The service fee is folded into the client's printing price. Operations can
+ * The service fee is folded into the client's printing price. Super Admin can
  * name that fee on checkout or hide the row; Operations and Super Admin still
  * see the split on every order. The screen shows both receipts side by side
  * so a rate change can be read as money before it is saved.
  *
  * The zone prices ship as placeholders, not the captain's — the screen marks
- * them so, because someone has to decide the real ones. One implementation,
- * mounted for Operations and Super Admin alike.
+ * them so, because someone has to decide the real ones.
+ *
+ * Super Admin only (gridgo-web#112): mounted at `/admin/settings`, and the API
+ * refuses every settings write from anyone else. `/ops/settings` is the
+ * Super Admin only screen, never this form.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -227,15 +230,7 @@ function zonesFrom(bands: DeliveryFeeBand[]): ZoneDraft | null {
   return isZonedTable(bands) ? zoneDraft(bands) : null;
 }
 
-export function OperationalSettings({
-  role = "ops_admin",
-}: {
-  /**
-   * The tree this is mounted in. Only Super Admin may change late-production
-   * penalties; Operations reads them.
-   */
-  role?: "ops_admin" | "super_admin";
-} = {}) {
+export function OperationalSettings() {
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -633,7 +628,7 @@ export function OperationalSettings({
       {/* Next to the delivery zones: the other way a client gets their order. */}
       <HubPickupSettings
         settings={settings}
-        canEdit={role === "super_admin"}
+        canEdit
         disabled={busy}
         onSaved={(next) => {
           settingsRef.current = next;
@@ -698,7 +693,7 @@ export function OperationalSettings({
 
       <ProductionPenalties
         settings={settings}
-        canEdit={role === "super_admin"}
+        canEdit
         disabled={busy}
         onSaved={(next) => {
           settingsRef.current = next;

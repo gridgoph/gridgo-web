@@ -3,13 +3,12 @@
 /**
  * Late-production penalties on Operational settings (gridgo-api#123).
  *
- * The three tier rates and the real-deductions switch. Every role that opens
- * settings reads them; only Super Admin changes them — the API answers any
- * other caller `403` — so Operations gets the same card without inputs.
+ * The three tier rates and the real-deductions switch. Only Super Admin
+ * changes them (the API answers any other caller `403`); `canEdit` false draws
+ * the same card without inputs.
  *
- * The card saves on its own, not with "Save settings": that button sends the
- * fields Operations may write, and adding this object to it would refuse the
- * whole save for Operations. Both go through the same `expectedVersion`
+ * The card saves on its own, not with "Save settings", so a rate change is
+ * never carried along with an unrelated edit. Both go through the same `expectedVersion`
  * handshake. The switch saves the moment it is confirmed, with the rates in
  * force, because it is the one control here that moves real money: turning
  * it on says so in a dialog that cannot be confirmed by reflex.
@@ -70,7 +69,7 @@ const medium = { fontFamily: "var(--font-medium)" } as const;
 
 type Props = {
   settings: PlatformSettings;
-  /** Super Admin. Operations sees the same figures without controls. */
+  /** False draws the figures without controls. */
   canEdit: boolean;
   /** The settings row after a save, so the page's version stays current. */
   onSaved: (next: PlatformSettings) => void;

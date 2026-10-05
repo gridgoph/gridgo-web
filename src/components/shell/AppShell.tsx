@@ -39,6 +39,7 @@ import {
   MessageSquare,
   MessageSquareWarning,
   Package,
+  PackageSearch,
   QrCode,
   Route,
   Scale,
@@ -189,6 +190,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   refunds: BanknoteArrowDown,
   retention: FileClock,
   dropouts: Shuffle,
+  products: PackageSearch,
   "group-shop": Store,
   "group-money": HandCoins,
   "group-queue": Inbox,
@@ -215,9 +217,8 @@ const ICON_CELL =
 const ACTIVE_PAGE =
   "text-[var(--color-action-yellow)] hover:text-[var(--color-action-yellow)] data-active:font-medium data-active:text-[var(--color-action-yellow)]";
 
-/** Operational settings only — suppliers have no settings route. */
-function settingsHrefForRole(role: Role): "/ops/settings" | "/admin/settings" | null {
-  if (role === "ops_admin") return "/ops/settings";
+/** Operational settings are Super Admin only. */
+function settingsHrefForRole(role: Role): "/admin/settings" | null {
   if (role === "super_admin") return "/admin/settings";
   return null;
 }
@@ -844,7 +845,7 @@ export function AppShell({ role, children }: Props) {
       >
         <PortalSidebar role={role} />
 
-        <SidebarInset className="bg-canvas">
+        <SidebarInset className="bg-canvas min-w-0">
           <header className="sticky top-0 z-30 flex h-14 shrink-0 items-stretch gap-2 border-b border-outline bg-surface pl-1.5 pr-3">
             {/* The only navigation toggle in the shell. Tight left padding keeps
                 it next to the rail; the header has no second account control. */}

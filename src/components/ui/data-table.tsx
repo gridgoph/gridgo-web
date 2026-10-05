@@ -530,6 +530,11 @@ type Props<T> = {
   getRowId: (row: T) => string;
   /** Trailing actions. Pinned on desktop so scrolling wide rows never hides them. */
   rowActions?: (row: T) => React.ReactNode;
+  /**
+   * Desktop row actions are icon-only unless this is `labeled`. Phone cards
+   * always show the verb. Opt in on the screens that need the words visible.
+   */
+  rowActionsDensity?: RowActionsDensity;
   /** Shown instead of the table when there is genuinely no data. */
   empty?: React.ReactNode;
   className?: string;
@@ -569,6 +574,7 @@ export function DataTable<T>({
   data,
   getRowId,
   rowActions,
+  rowActionsDensity = "icon",
   empty,
   className,
   caption,
@@ -845,7 +851,7 @@ export function DataTable<T>({
                     {rowActions ? (
                       <TableCell className="bg-surface border-outline-subtle sticky right-0 border-l text-center">
                         <div className="flex flex-wrap items-center justify-center gap-2">
-                          <RowActionsDensityContext.Provider value="icon">
+                          <RowActionsDensityContext.Provider value={rowActionsDensity}>
                             {rowActions(row.original)}
                           </RowActionsDensityContext.Provider>
                         </div>
