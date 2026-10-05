@@ -1,10 +1,11 @@
-import { EmptyState } from "@/components/ui/EmptyState";
+import { SuperAdminOnly } from "@/components/shell/SuperAdminOnly";
 
 export default function OpsSettingsPage() {
   return (
-    <EmptyState
-      title="Super Admin only"
-      body="Operational settings are changed by Super Admin."
+    <SuperAdminOnly
+      body="Operational settings, including delivery zones and fees, are changed by Super Admin."
+      adminHref="/admin/settings"
+      adminLabel="Open settings as Super Admin"
     />
   );
 }
