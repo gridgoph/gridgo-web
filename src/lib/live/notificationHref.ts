@@ -13,6 +13,28 @@ import type { Notification, Role } from "@/lib/api/types";
 export function notificationHref(role: Role, notification: Notification): string | null {
   const type = notification.type ?? "";
 
+  if (
+    (type === "listing_suspended" || type === "listing_restored") &&
+    role === "supplier"
+  ) {
+    return notification.catalogItemId
+      ? `/supplier/catalogue/${encodeURIComponent(notification.catalogItemId)}`
+      : "/supplier/catalogue";
+  }
+
+  // Listing review (gridgo-api#154). The notice names no listing, so staff
+  // land on the desk and the shop on its board, where the standing shows.
+  if (type === "catalog_review_pending" || type === "catalog_review_decided") {
+    if (role === "super_admin") return "/admin/listing-reviews";
+    if (role === "ops_admin") return "/ops/listing-reviews";
+    if (role === "supplier") {
+      return notification.catalogItemId
+        ? `/supplier/catalogue/${encodeURIComponent(notification.catalogItemId)}`
+        : "/supplier/catalogue";
+    }
+    return null;
+  }
+
   if (isSupplierServiceDecision(type) && role === "supplier") {
     return "/supplier/catalogue";
   }
@@ -20,6 +42,35 @@ export function notificationHref(role: Role, notification: Notification): string
   if (isServiceReview(type)) {
     if (role === "super_admin") return "/admin/verification?tab=services";
     if (role === "ops_admin") return "/ops/approvals?tab=services";
+  }
+
+  // Organization reminders and Operations' own notices name the account.
+  if (
+    notification.organizationUserId &&
+    (role === "super_admin" || role === "ops_admin")
+  ) {
+    const tree = role === "super_admin" ? "admin" : "ops";
+    return `/${tree}/organizations/${encodeURIComponent(notification.organizationUserId)}`;
+  }
+
+  // A permit request is a decision on the business application.
+  if (type === "client_application_document_requested") {
+    if (role === "super_admin") return "/admin/verification";
+    if (role === "ops_admin") return "/ops/approvals";
+    return null;
+  }
+
+  // Unclaimed pick-ups and paid redelivery requests are worked on the hub desk.
+  if (isHub(type)) {
+    if (role === "super_admin") return "/admin/hub";
+    if (role === "ops_admin") return "/ops/hub";
+  }
+
+  // Staff invites and profile changes: Super Admin manages them.
+  if (type.startsWith("staff_")) {
+    if (role === "super_admin") return "/admin/staff";
+    if (role === "ops_admin") return "/ops/overview";
+    return null;
   }
 
   if (isSignup(notification)) {
@@ -94,6 +145,14 @@ export function notificationHref(role: Role, notification: Notification): string
   }
 
   return null;
+}
+
+function isHub(type: string): boolean {
+  return (
+    type.startsWith("hub_") ||
+    type.startsWith("ops_hub_") ||
+    type === "handover_escalated"
+  );
 }
 
 function isPayout(type: string): boolean {

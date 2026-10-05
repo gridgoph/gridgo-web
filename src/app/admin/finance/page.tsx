@@ -29,7 +29,9 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { listClaims, listOrders } from "@/lib/api/client";
+import { basketShopCounts, groupPositionLabel } from "@/lib/baskets";
 import { orderDeliverySplit } from "@/lib/delivery-split";
+import { asDeduction, orderFeeSplit } from "@/lib/organization-discount";
 import type { Claim, Order } from "@/lib/api/types";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import {
@@ -50,7 +52,7 @@ const splitChartConfig = {
     color: "var(--color-chart-1)",
   },
   commissionMinor: {
-    label: "GRIDGO service fee",
+    label: "GRIDGO service fee kept",
     color: "var(--color-chart-2)",
   },
   riderPayoutMinor: {
@@ -122,6 +124,9 @@ export default function AdminFinancePage() {
   }, [orders, claims]);
 
   const rows = useMemo(() => (orders ? reconciliationRows(orders) : []), [orders]);
+  // A multi-shop order is one row per shop group here, never a basket total
+  // on top of them: each group is its own ledger.
+  const shopCounts = useMemo(() => basketShopCounts(orders ?? []), [orders]);
   const splits = useMemo(() => (orders ? orderMoneySplits(orders) : []), [orders]);
   // Only the delivery parts some order actually has get a bar and a legend entry.
   const deliveryBars = DELIVERY_BARS.filter((key) =>
@@ -145,7 +150,9 @@ export default function AdminFinancePage() {
               {o.title}
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5">
-              {presentZone(o.zone)}
+              {groupPositionLabel(o, shopCounts)
+                ? `${groupPositionLabel(o, shopCounts)}, one payment${o.zone ? ` · ${presentZone(o.zone)}` : ""}`
+                : presentZone(o.zone)}
             </p>
           </div>
         ),
@@ -189,11 +196,24 @@ export default function AdminFinancePage() {
         id: "commission",
         header: "Service fee",
         sortValue: (o) => o.serviceFeeMinor ?? -1,
-        cell: (o) => (
-          <span className="text-body text-text-secondary tabular-nums whitespace-nowrap">
-            {o.serviceFeeMinor !== undefined ? formatPhp(o.serviceFeeMinor) : "—"}
-          </span>
-        ),
+        cell: (o) => {
+          // On an organization order, the fee GRIDGO keeps, with the gross fee
+          // and the discount it gave beneath so the shortfall is visible.
+          const fee = orderFeeSplit(o);
+          return (
+            <span className="flex flex-col">
+              <span className="text-body text-text-secondary tabular-nums whitespace-nowrap">
+                {o.serviceFeeMinor !== undefined ? formatPhp(o.serviceFeeMinor) : "—"}
+              </span>
+              {fee ? (
+                <span className="text-caption text-text-muted tabular-nums whitespace-nowrap">
+                  {formatPhp(fee.grossMinor)} fee,{" "}
+                  {asDeduction(formatPhp(fee.discountMinor))} organization discount
+                </span>
+              ) : null}
+            </span>
+          );
+        },
       },
       {
         id: "delivery",
@@ -241,7 +261,7 @@ export default function AdminFinancePage() {
           ),
       },
     ],
-    [],
+    [shopCounts],
   );
 
   const claimColumns = useMemo<DataTableColumn<Claim>[]>(
@@ -311,6 +331,7 @@ export default function AdminFinancePage() {
   const awaiting = rollup ? formatFigure(rollup.awaitingConfirmation) : blank;
   const outstanding = rollup ? formatFigure(rollup.outstanding) : blank;
   const commission = rollup ? formatFigure(rollup.commissionEarned) : blank;
+  const orgDiscounts = rollup ? formatFigure(rollup.organizationDiscounts) : blank;
   const deliveryShare = rollup ? formatFigure(rollup.deliveryShareEarned) : blank;
   const riderPayout = rollup ? formatFigure(rollup.riderDeliveryPayout) : blank;
   const released = rollup ? formatFigure(rollup.supplierReleased) : blank;
@@ -372,7 +393,7 @@ export default function AdminFinancePage() {
         <h2 id="out-heading" className="text-h3 text-text-primary m-0">
           GRIDGO and supplier earnings
         </h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <FigureCard
             label="Service fee earned"
             value={commission.value}
@@ -380,7 +401,25 @@ export default function AdminFinancePage() {
               commission.hint ??
               (rollup?.unpricedOrderCount
                 ? `${rollup.unpricedOrderCount} order${rollup.unpricedOrderCount === 1 ? "" : "s"} not priced yet`
-                : "At the rate each order was priced at, on top of the supplier price")
+                : rollup?.organizationOrderCount
+                  ? "What GRIDGO keeps, after the organization discounts beside it"
+                  : "At the rate each order was priced at, on top of the supplier price")
+            }
+            loading={pending}
+          />
+          <FigureCard
+            label="Organization discounts"
+            value={
+              rollup?.organizationOrderCount
+                ? asDeduction(orgDiscounts.value)
+                : orgDiscounts.value
+            }
+            hint={
+              rollup
+                ? rollup.organizationOrderCount
+                  ? `Taken from the service fee on ${rollup.organizationOrderCount} organization order${rollup.organizationOrderCount === 1 ? "" : "s"}. Shops and riders are paid in full.`
+                  : "No organization order yet. A discount comes out of the service fee, never the shop's or rider's share."
+                : "Taken from the service fee, never the shop's or rider's share"
             }
             loading={pending}
           />
@@ -426,8 +465,9 @@ export default function AdminFinancePage() {
         </h2>
         <p className="text-body text-text-secondary m-0 mb-3 max-w-prose">
           The client total, part by part. The supplier keeps its asking price in full; the
-          service fee sits on top of it, and delivery on top of that &mdash; cut between
-          the rider and GRIDGO at the rate each order was priced at.
+          service fee GRIDGO keeps sits on top of it (after any organization discount),
+          and delivery on top of that &mdash; cut between the rider and GRIDGO at the rate
+          each order was priced at.
         </p>
         {pending ? (
           <Skeleton className="h-72 w-full rounded-card" aria-hidden />

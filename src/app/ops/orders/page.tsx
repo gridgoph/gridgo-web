@@ -14,6 +14,8 @@ import {
   stageNeedsOperations,
   type Stage,
 } from "@/app/ops/_lib/pipeline";
+import { FileCheckQueue } from "@/components/orders/FileCheckQueue";
+import { ShopModeChip } from "@/components/orders/ShopModeChip";
 import { Button } from "@/components/ui/button";
 import {
   DataTable,
@@ -28,6 +30,12 @@ import { ApiError, listOrders } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
+import {
+  basketShopCounts,
+  groupPositionLabel,
+  shopModeLabel,
+  shopModeOf,
+} from "@/lib/baskets";
 import { presentOrderState } from "@/lib/order-state";
 import { describeQuantity } from "@/lib/quantity";
 
@@ -95,6 +103,10 @@ export default function OpsOrdersPage() {
     );
   }, [orders, stage]);
 
+  // Counted across every order, not the stage on screen: a basket's groups
+  // move through the stages independently.
+  const shopCounts = useMemo(() => basketShopCounts(orders ?? []), [orders]);
+
   const columns = useMemo<DataTableColumn<Order>[]>(
     () => [
       {
@@ -103,24 +115,30 @@ export default function OpsOrdersPage() {
         primary: true,
         sortValue: (order) => order.title ?? "",
         filterValue: (order) =>
-          `${order.title ?? ""} ${order.id} ${order.material ?? ""}`,
-        cell: (order) => (
-          <div className="min-w-0">
-            <p
-              className="text-body text-text-primary m-0 truncate"
-              style={{ fontFamily: "var(--font-medium)" }}
-            >
-              {order.title || "Untitled order"}
-            </p>
-            <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
-              Order {order.id}
-            </p>
-            <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
-              {describeQuantity(order.quantity, order.unit)}
-              {order.material ? ` · ${order.material}` : ""}
-            </p>
-          </div>
-        ),
+          `${order.title ?? ""} ${order.id} ${order.material ?? ""} ${shopModeLabel(shopModeOf(order, shopCounts))} ${order.groupLabel ?? ""}`,
+        cell: (order) => {
+          const position = groupPositionLabel(order, shopCounts);
+          return (
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                <p
+                  className="text-body text-text-primary m-0 min-w-0 truncate"
+                  style={{ fontFamily: "var(--font-medium)" }}
+                >
+                  {order.title || "Untitled order"}
+                </p>
+                <ShopModeChip mode={shopModeOf(order, shopCounts)} />
+              </div>
+              <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
+                {position ? `${position} · ` : ""}Order {order.id}
+              </p>
+              <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
+                {describeQuantity(order.quantity, order.unit)}
+                {order.material ? ` · ${order.material}` : ""}
+              </p>
+            </div>
+          );
+        },
       },
       {
         id: "status",
@@ -173,7 +191,7 @@ export default function OpsOrdersPage() {
         ),
       },
     ],
-    [],
+    [shopCounts],
   );
 
   if (loading && !orders) return <SkeletonLines lines={6} />;
@@ -213,12 +231,15 @@ export default function OpsOrdersPage() {
                 router.replace(`/ops/orders?stage=${entry.id}`, { scroll: false });
               }}
               className="gg-chip min-h-11 flex items-center gap-2 px-3"
+              // The monochrome structural fill (`--primary`). `--color-accent`
+              // is remapped to shadcn's light hover wash, which left the
+              // selected stage's white label unreadable.
               style={{
-                background: selected ? "var(--color-accent)" : "var(--color-surface)",
+                background: selected ? "var(--primary)" : "var(--color-surface)",
                 color: selected
-                  ? "var(--color-accent-on)"
+                  ? "var(--primary-foreground)"
                   : "var(--color-text-secondary)",
-                borderColor: selected ? "var(--color-accent)" : "var(--color-outline)",
+                borderColor: selected ? "var(--primary)" : "var(--color-outline)",
               }}
             >
               <span className="text-body">{entry.label}</span>
@@ -245,38 +266,47 @@ export default function OpsOrdersPage() {
         })}
       </nav>
 
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <p className="text-body text-text-secondary m-0">{active?.hint}</p>
-        <Button variant="secondary" onClick={() => void load()}>
-          Refresh
-        </Button>
-      </div>
-
-      {rows.length === 0 ? (
-        <EmptyState
-          title={`Nothing at ${active?.label.toLowerCase()}`}
-          body="Orders arrive here as they reach this step. Try another step, or refresh."
-          action={
+      {stage === "qa" ? (
+        // The file check is its own queue: oldest first, a live wait, and Pass
+        // or Send back from the row. Orders still in payment review show their
+        // wait beneath it.
+        <FileCheckQueue orders={orders ?? []} onChanged={load} />
+      ) : (
+        <>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-body text-text-secondary m-0">{active?.hint}</p>
             <Button variant="secondary" onClick={() => void load()}>
               Refresh
             </Button>
-          }
-        />
-      ) : (
-        <DataTable
-          columns={columns}
-          data={rows}
-          getRowId={(order) => order.id}
-          caption={`Orders at ${active?.label}`}
-          filterPlaceholder="Filter orders…"
-          rowActions={(order) => (
-            <DataTableRowAction
-              label="Open"
-              icon={Eye}
-              href={`/ops/orders/${order.id}`}
+          </div>
+
+          {rows.length === 0 ? (
+            <EmptyState
+              title={`Nothing at ${active?.label.toLowerCase()}`}
+              body="Orders arrive here as they reach this step. Try another step, or refresh."
+              action={
+                <Button variant="secondary" onClick={() => void load()}>
+                  Refresh
+                </Button>
+              }
+            />
+          ) : (
+            <DataTable
+              columns={columns}
+              data={rows}
+              getRowId={(order) => order.id}
+              caption={`Orders at ${active?.label}`}
+              filterPlaceholder="Filter orders…"
+              rowActions={(order) => (
+                <DataTableRowAction
+                  label="Open"
+                  icon={Eye}
+                  href={`/ops/orders/${order.id}`}
+                />
+              )}
             />
           )}
-        />
+        </>
       )}
     </div>
   );

@@ -15,6 +15,7 @@ import { formatRatePercent } from "@/components/settings/service-fee";
 import type { Order } from "@/lib/api/types";
 import { orderDeliverySplit, platformShareBps } from "@/lib/delivery-split";
 import { formatPhp } from "@/lib/format";
+import { asDeduction, discountLabel, orderFeeSplit } from "@/lib/organization-discount";
 import { balanceNotRequired, installmentLabel } from "@/lib/payments";
 
 type Props = {
@@ -48,7 +49,29 @@ export function MoneyBreakdown({ order, headingId }: Props) {
       hint: "What the supplier asked for and keeps in full",
     });
   }
-  if (order.serviceFeeMinor !== undefined) {
+  const fee = orderFeeSplit(order);
+  if (fee) {
+    // An organization order: the discount comes out of GRIDGO's fee and
+    // nothing else, so the shop's price above it never moves.
+    supplierRows.push(
+      {
+        label: `GRIDGO service fee${
+          fee.feeRateBps != null ? ` (${formatRatePercent(fee.feeRateBps)})` : ""
+        }`,
+        value: formatPhp(fee.grossMinor),
+        hint: "Added on top of the supplier price. Never shown to the client.",
+      },
+      {
+        label: discountLabel(fee.discountRateBps),
+        value: asDeduction(formatPhp(fee.discountMinor)),
+        hint: "Given to an approved organization out of GRIDGO's fee",
+      },
+      {
+        label: "Fee GRIDGO keeps",
+        value: formatPhp(fee.netMinor),
+      },
+    );
+  } else if (order.serviceFeeMinor !== undefined) {
     supplierRows.push({
       label: `GRIDGO service fee${
         order.serviceFeeRateBps != null ? ` (${formatRatePercent(order.serviceFeeRateBps)})` : ""
@@ -64,6 +87,13 @@ export function MoneyBreakdown({ order, headingId }: Props) {
       label: "Subtotal",
       value: formatPhp(order.subtotalMinor),
       hint: "What the client sees as the price of the work",
+    });
+  }
+  if (fee) {
+    clientRows.push({
+      label: "Organization discount",
+      value: asDeduction(formatPhp(fee.discountMinor)),
+      hint: "The client sees this line; it is already off the total",
     });
   }
   clientRows.push({

@@ -530,6 +530,11 @@ type Props<T> = {
   getRowId: (row: T) => string;
   /** Trailing actions. Pinned on desktop so scrolling wide rows never hides them. */
   rowActions?: (row: T) => React.ReactNode;
+  /**
+   * Desktop row actions are icon-only unless this is `labeled`. Phone cards
+   * always show the verb. Opt in on the screens that need the words visible.
+   */
+  rowActionsDensity?: RowActionsDensity;
   /** Shown instead of the table when there is genuinely no data. */
   empty?: React.ReactNode;
   className?: string;
@@ -569,6 +574,7 @@ export function DataTable<T>({
   data,
   getRowId,
   rowActions,
+  rowActionsDensity = "icon",
   empty,
   className,
   caption,
@@ -720,8 +726,11 @@ export function DataTable<T>({
                   className="border-outline-subtle border-b p-4 last:border-b-0"
                 >
                   {primaryCell ? (
-                    <div className="mb-3 flex items-start justify-between gap-3">
-                      <div className="min-w-0">
+                    // Actions sit beside the title while the title keeps 10rem;
+                    // a row with several labelled actions puts them beneath it
+                    // rather than squeezing the title to a few letters.
+                    <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1 basis-40">
                         <p className="text-caption text-text-muted m-0">
                           {
                             (primaryCell.column.columnDef.meta as ColumnMeta<T>)
@@ -842,7 +851,7 @@ export function DataTable<T>({
                     {rowActions ? (
                       <TableCell className="bg-surface border-outline-subtle sticky right-0 border-l text-center">
                         <div className="flex flex-wrap items-center justify-center gap-2">
-                          <RowActionsDensityContext.Provider value="icon">
+                          <RowActionsDensityContext.Provider value={rowActionsDensity}>
                             {rowActions(row.original)}
                           </RowActionsDensityContext.Provider>
                         </div>

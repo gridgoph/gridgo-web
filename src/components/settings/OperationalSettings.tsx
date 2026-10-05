@@ -11,14 +11,17 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
  * after delivery, what delivery costs in each distance zone, and the GCash
  * plate checkout scans.
  *
- * The service fee is folded into the client's printing price. Operations can
+ * The service fee is folded into the client's printing price. Super Admin can
  * name that fee on checkout or hide the row; Operations and Super Admin still
  * see the split on every order. The screen shows both receipts side by side
  * so a rate change can be read as money before it is saved.
  *
  * The zone prices ship as placeholders, not the captain's — the screen marks
- * them so, because someone has to decide the real ones. One implementation,
- * mounted for Operations and Super Admin alike.
+ * them so, because someone has to decide the real ones.
+ *
+ * Super Admin only (gridgo-web#112): mounted at `/admin/settings`, and the API
+ * refuses every settings write from anyone else. `/ops/settings` is the
+ * Super Admin only screen, never this form.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -37,6 +40,11 @@ import {
 } from "@/components/settings/RiderDeliveryShare";
 import { CheckoutPayment, checkoutPaymentLabel } from "@/components/settings/CheckoutPayment";
 import { DeliveryZones, DeliveryZonesSkeleton } from "@/components/settings/DeliveryZones";
+import { HubPickupSettings } from "@/components/settings/HubPickupSettings";
+import {
+  ORGANIZATION_DISCOUNT_INVALID,
+  OrganizationDiscount,
+} from "@/components/settings/OrganizationDiscount";
 import { ProductionPenalties } from "@/components/settings/ProductionPenalties";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -54,6 +62,7 @@ import { ISSUE_WINDOW_MAX_HOURS, ISSUE_WINDOW_MIN_HOURS, productionNudgeValueBou
 import type { DeliveryFeeBand, PlatformSettings, ProductionNudge, ProductionNudgeUnit } from "@/lib/api/types";
 import { Switch } from "@/components/ui/switch";
 import { RIDER_SHARE_INVALID } from "@/lib/delivery-split";
+import { discountRuleProblem } from "@/lib/organization-discount";
 import {
   applyZoneDraft,
   isZonedTable,
@@ -144,6 +153,11 @@ function nudgeFrom(settings: PlatformSettings): ProductionNudge {
   return settings.productionNudge ?? DEFAULT_PRODUCTION_NUDGE;
 }
 
+/** The stored discount as typed in the field; empty when the API holds none. */
+function discountInput(bps: number | undefined): string {
+  return bps === undefined ? "" : bpsToPercentInput(bps);
+}
+
 function feeVisibleOf(settings: Pick<PlatformSettings, "serviceFeeVisibleToClient">): boolean {
   return settings.serviceFeeVisibleToClient !== false;
 }
@@ -226,15 +240,7 @@ function zonesFrom(bands: DeliveryFeeBand[]): ZoneDraft | null {
   return isZonedTable(bands) ? zoneDraft(bands) : null;
 }
 
-export function OperationalSettings({
-  role = "ops_admin",
-}: {
-  /**
-   * The tree this is mounted in. Only Super Admin may change late-production
-   * penalties; Operations reads them.
-   */
-  role?: "ops_admin" | "super_admin";
-} = {}) {
+export function OperationalSettings() {
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -246,6 +252,8 @@ export function OperationalSettings({
 
   const [rate, setRate] = useState("");
   const [riderShare, setRiderShare] = useState("");
+  /** Empty while the API holds no organization discount; nothing is sent for it then. */
+  const [orgDiscount, setOrgDiscount] = useState("");
   /** Undefined while the API holds no checkout split; nothing is sent for it then. */
   const [checkoutPercent, setCheckoutPercent] = useState<number | undefined>(undefined);
   const [hours, setHours] = useState("");
@@ -274,6 +282,13 @@ export function OperationalSettings({
           preserveDraft && previous && current !== riderShareInput(previous.riderCommissionBps)
             ? current
             : riderShareInput(next.riderCommissionBps),
+        );
+        setOrgDiscount((current) =>
+          preserveDraft &&
+          previous &&
+          current !== discountInput(previous.organizationDiscountRateBps)
+            ? current
+            : discountInput(next.organizationDiscountRateBps),
         );
         setCheckoutPercent((current) =>
           preserveDraft && previous && current !== previous.downpaymentPercent
@@ -354,6 +369,20 @@ export function OperationalSettings({
       setSaveError(RIDER_SHARE_INVALID);
       return;
     }
+    // An API without organization discounts holds no rate; nothing is sent for it.
+    const discountSupported = settings.organizationDiscountRateBps !== undefined;
+    const parsedDiscount = discountSupported ? percentInputToBps(orgDiscount) : null;
+    if (discountSupported && parsedDiscount === null) {
+      setSaveError(ORGANIZATION_DISCOUNT_INVALID);
+      return;
+    }
+    // The discount is paid out of the fee, so the fee may never be below it.
+    const discountProblem =
+      parsedDiscount !== null ? discountRuleProblem(parsedRate, parsedDiscount) : null;
+    if (discountProblem) {
+      setSaveError(discountProblem);
+      return;
+    }
     const parsedHours = Number(hours.trim());
     if (
       !Number.isInteger(parsedHours) ||
@@ -385,6 +414,7 @@ export function OperationalSettings({
         serviceFeeRateBps: parsedRate,
         serviceFeeVisibleToClient: feeVisible,
         ...(parsedRiderShare !== null ? { riderCommissionBps: parsedRiderShare } : {}),
+        ...(parsedDiscount !== null ? { organizationDiscountRateBps: parsedDiscount } : {}),
         // An API without the setting holds no checkout split; nothing is sent for it.
         ...(checkoutPercent !== undefined ? { downpaymentPercent: checkoutPercent } : {}),
         issueWindowHours: parsedHours,
@@ -395,12 +425,14 @@ export function OperationalSettings({
           parsedRiderShare,
           { from: settings.downpaymentPercent, to: checkoutPercent },
           { from: settings.deliveryFeeBands, to: parsedBands.bands },
+          { from: settings.organizationDiscountRateBps, to: parsedDiscount ?? undefined },
         ),
       });
       setSettings(next);
       setRate(bpsToPercentInput(next.serviceFeeRateBps));
       setFeeVisible(feeVisibleOf(next));
       setRiderShare(riderShareInput(next.riderCommissionBps));
+      setOrgDiscount(discountInput(next.organizationDiscountRateBps));
       setCheckoutPercent(next.downpaymentPercent);
       setHours(String(next.issueWindowHours));
       setZones(zonesFrom(next.deliveryFeeBands));
@@ -409,12 +441,16 @@ export function OperationalSettings({
         next.riderCommissionBps !== undefined
           ? `, give the rider ${formatRatePercent(next.riderCommissionBps)} of each delivery fee,`
           : "";
+      const discountPart =
+        next.organizationDiscountRateBps !== undefined
+          ? ` Approved organizations get ${formatRatePercent(next.organizationDiscountRateBps)} off, out of that fee.`
+          : "";
       const checkoutPart =
         next.downpaymentPercent !== undefined
           ? ` Checkout: ${checkoutPaymentLabel(next.downpaymentPercent)}.`
           : "";
       setSaveOk(
-        `Saved. Orders placed from now on carry a ${formatRatePercent(next.serviceFeeRateBps)} service fee${riderPart} and price delivery from these zones, and issue windows opened from now use the new length.${checkoutPart} Orders already placed keep the figures they were given.`,
+        `Saved. Orders placed from now on carry a ${formatRatePercent(next.serviceFeeRateBps)} service fee${riderPart} and price delivery from these zones, and issue windows opened from now use the new length.${discountPart}${checkoutPart} Orders already placed keep the figures they were given.`,
       );
     } catch (err) {
       if (err instanceof ApiError && err.code === "settings_version_conflict") {
@@ -424,6 +460,13 @@ export function OperationalSettings({
           "Someone else saved these settings a moment ago. Their values are now shown as in force — check your changes against them, then save again.",
         );
         await load(true);
+      } else if (
+        err instanceof ApiError &&
+        err.code === "organization_discount_exceeds_service_fee"
+      ) {
+        setSaveError(
+          "The service fee cannot be lower than the organization discount, which is paid out of it. Raise the fee or lower the discount, then save again.",
+        );
       } else if (
         err instanceof ApiError &&
         err.code === "invalid_delivery_fee_bands" &&
@@ -492,6 +535,7 @@ export function OperationalSettings({
     rate !== bpsToPercentInput(settings.serviceFeeRateBps) ||
     feeVisible !== feeVisibleOf(settings) ||
     riderShare !== riderShareInput(settings.riderCommissionBps) ||
+    orgDiscount !== discountInput(settings.organizationDiscountRateBps) ||
     checkoutPercent !== settings.downpaymentPercent ||
     hours !== String(settings.issueWindowHours) ||
     JSON.stringify(zones) !== JSON.stringify(zonesFrom(settings.deliveryFeeBands)) ||
@@ -503,6 +547,15 @@ export function OperationalSettings({
   const rateInvalid = rate.trim() !== "" && percentInputToBps(rate) === null;
   const draftRiderBps =
     percentInputToBps(riderShare) ?? settings.riderCommissionBps ?? 0;
+  const discountInvalid =
+    settings.organizationDiscountRateBps !== undefined &&
+    percentInputToBps(orgDiscount) === null;
+  const draftDiscountBps =
+    percentInputToBps(orgDiscount) ?? settings.organizationDiscountRateBps ?? 0;
+  const discountProblem =
+    settings.organizationDiscountRateBps !== undefined && !rateInvalid && !discountInvalid
+      ? discountRuleProblem(draftRateBps, draftDiscountBps)
+      : null;
   const riderShareInvalid =
     settings.riderCommissionBps !== undefined && percentInputToBps(riderShare) === null;
 
@@ -535,7 +588,7 @@ export function OperationalSettings({
                 aria-label="Show on client checkout"
               />
             </Field>
-            <Field data-invalid={rateInvalid || undefined}>
+            <Field data-invalid={rateInvalid || discountProblem ? true : undefined}>
               <FieldLabel htmlFor="service-fee-rate">Rate on the shop price</FieldLabel>
               <div className="relative max-w-40">
                 <Input
@@ -543,8 +596,10 @@ export function OperationalSettings({
                   inputMode="decimal"
                   className="pr-9"
                   value={rate}
-                  aria-invalid={rateInvalid || undefined}
-                  aria-describedby="service-fee-help"
+                  aria-invalid={rateInvalid || discountProblem ? true : undefined}
+                  aria-describedby={
+                    discountProblem ? "service-fee-help fee-below-discount" : "service-fee-help"
+                  }
                   onChange={(e) => setRate(e.target.value)}
                 />
                 <span
@@ -555,6 +610,18 @@ export function OperationalSettings({
                 </span>
               </div>
               <FieldDescription id="service-fee-help">{RATE_HELP}</FieldDescription>
+              {discountProblem ? (
+                <p
+                  id="fee-below-discount"
+                  className="text-body text-error m-0 max-w-prose"
+                  data-testid="fee-below-discount"
+                >
+                  This fee is below the {formatRatePercent(draftDiscountBps)} organization
+                  discount, which is paid out of it. Raise the fee to at least{" "}
+                  {formatRatePercent(draftDiscountBps)}, or lower the discount under
+                  Organization discount below.
+                </p>
+              ) : null}
             </Field>
             <p className="text-body text-text-secondary m-0" data-testid="rate-in-force">
               In force right now:{" "}
@@ -582,6 +649,16 @@ export function OperationalSettings({
           <WorkedReceipts rateBps={draftRateBps} feeVisible={feeVisible} />
         </div>
       </section>
+
+      <OrganizationDiscount
+        value={orgDiscount}
+        onChange={setOrgDiscount}
+        inForceBps={settings.organizationDiscountRateBps}
+        draftBps={draftDiscountBps}
+        feeBps={draftRateBps}
+        invalid={discountInvalid}
+        problem={discountProblem}
+      />
 
       <RiderDeliveryShare
         value={riderShare}
@@ -627,6 +704,18 @@ export function OperationalSettings({
           setZones((current) => (current ? { ...current, [field]: value } : current))
         }
         disabled={busy}
+      />
+
+      {/* Next to the delivery zones: the other way a client gets their order. */}
+      <HubPickupSettings
+        settings={settings}
+        canEdit
+        disabled={busy}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={() => load(true)}
       />
 
       <section className="gg-card p-3" aria-labelledby="production-nudge-heading">
@@ -685,7 +774,7 @@ export function OperationalSettings({
 
       <ProductionPenalties
         settings={settings}
-        canEdit={role === "super_admin"}
+        canEdit
         disabled={busy}
         onSaved={(next) => {
           settingsRef.current = next;
@@ -768,7 +857,11 @@ export function OperationalSettings({
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        <Button variant="primary" disabled={busy || !dirty} onClick={() => void save()}>
+        <Button
+          variant="primary"
+          disabled={busy || !dirty || Boolean(discountProblem)}
+          onClick={() => void save()}
+        >
           {busy ? "Saving…" : "Save settings"}
         </Button>
         <Button
@@ -778,6 +871,7 @@ export function OperationalSettings({
             setRate(bpsToPercentInput(settings.serviceFeeRateBps));
             setFeeVisible(feeVisibleOf(settings));
             setRiderShare(riderShareInput(settings.riderCommissionBps));
+            setOrgDiscount(discountInput(settings.organizationDiscountRateBps));
             setCheckoutPercent(settings.downpaymentPercent);
             setHours(String(settings.issueWindowHours));
             setZones(zonesFrom(settings.deliveryFeeBands));
@@ -806,6 +900,10 @@ export function settingsChangeReason(
     to: undefined,
   },
   zones: { from: DeliveryFeeBand[]; to: DeliveryFeeBand[] } = { from: [], to: [] },
+  discount: { from: number | undefined; to: number | undefined } = {
+    from: undefined,
+    to: undefined,
+  },
 ): string {
   const changes: string[] = [];
   if (previousRiderBps !== undefined && nextRiderBps !== null && previousRiderBps !== nextRiderBps) {
@@ -819,6 +917,11 @@ export function settingsChangeReason(
   if (isZonedTable(zones.from) && isZonedTable(zones.to)) {
     const moved = zoneChanges(zones.from, zones.to);
     if (moved.length) changes.push(`delivery zones ${moved.join(", ")}`);
+  }
+  if (discount.from !== undefined && discount.to !== undefined && discount.from !== discount.to) {
+    changes.push(
+      `organization discount ${formatRatePercent(discount.from)} to ${formatRatePercent(discount.to)}`,
+    );
   }
   return changes.length
     ? `Updated from the portal: ${changes.join("; ")}`

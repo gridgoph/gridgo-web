@@ -16,15 +16,21 @@ import {
   getTracker,
   getWorkspaceRole,
   listApprovalCases,
+  listCatalogReviews,
   listClaims,
   listEscalations,
   listIssueReports,
   listJobs,
   listOrders,
+  listProductTypeRequests,
   listRefunds,
+  listRescheduleRequests,
+  listShopFailures,
   listUsers,
+  isApiError,
 } from "@/lib/api/client";
 import { claimBlocksPayout } from "@/lib/api/constraints";
+import { normalizeProductTypeRequests, normalizeReviewPage } from "@/lib/listing-review";
 import { listSupportChatThreads } from "@/lib/api/support-chat";
 import type { InvalidateResource } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
@@ -32,6 +38,7 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import type { NavCountKey } from "@/lib/nav";
 import type { NavCounts } from "@/lib/nav-counts";
 import { refundNeedsStaff } from "@/lib/refunds";
+import { buildNeedsOperations } from "@/lib/shop-changes";
 import { needsSupplierAction } from "@/lib/supplier-actions";
 
 type CountSource = {
@@ -97,6 +104,24 @@ const NAV_COUNT_SOURCES: Record<NavCountKey, CountSource> = {
     refreshOnNavigate: true,
     load: async () => (await listIssueReports("new")).counts.new ?? 0,
   },
+  // The Dropouts & delays page's "Needs Operations" list, from the same two
+  // reads. An API without deadline requests answers 404: count recoveries only.
+  "shop-changes-needs-ops": {
+    resources: ["orders", "jobs"],
+    load: async () => {
+      const [events, requests] = await Promise.all([
+        listShopFailures(),
+        listRescheduleRequests().then(
+          (queue) => queue.requests,
+          (err) => {
+            if (isApiError(err) && err.status === 404) return [];
+            throw err;
+          },
+        ),
+      ]);
+      return buildNeedsOperations(events, requests).length;
+    },
+  },
   "jobs-need-action": {
     resources: ["jobs"],
     load: async () => (await listJobs()).filter((job) => needsSupplierAction(job)).length,
@@ -109,6 +134,19 @@ const NAV_COUNT_SOURCES: Record<NavCountKey, CountSource> = {
       const role = getWorkspaceRole() ?? "ops_admin";
       return (await listRefunds()).filter((refund) => refundNeedsStaff(refund, role))
         .length;
+    },
+  },
+  // The Listing reviews desk's Waiting tab: listings plus product-type
+  // requests, one page of each: past 50 the badge is a floor and the desk
+  // has the exact figure.
+  "listing-reviews-waiting": {
+    resources: ["catalog"],
+    load: async () => {
+      const [listings, requests] = await Promise.all([
+        listCatalogReviews("pending").then(normalizeReviewPage),
+        listProductTypeRequests("pending").then(normalizeProductTypeRequests),
+      ]);
+      return listings.entries.length + requests.requests.length;
     },
   },
   // GitHub is the source, so no stream covers it. The API caches its GitHub

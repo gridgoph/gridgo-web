@@ -28,7 +28,10 @@ import { activitySortValue, jobActivity, relativeTime } from "../_lib/job-activi
 const NO_ACTION = "No action needed";
 
 function nextStepLabel(job: Order): string {
-  return primaryAction(job)?.label ?? NO_ACTION;
+  const action = primaryAction(job);
+  if (!action) return NO_ACTION;
+  // A claim hold blocks packing: the shop waits on Operations, not on itself.
+  return action.blockedReason ? "Waiting on Operations (claim)" : action.label;
 }
 
 /** Whether a due date falls inside the next `hours`. */

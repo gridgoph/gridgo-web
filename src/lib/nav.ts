@@ -55,7 +55,13 @@ export type NavIconKey =
   | "reports"
   | "tracker"
   | "refunds"
+  | "organizations"
   | "retention"
+  | "dropouts"
+  | "products"
+  | "hub"
+  | "staff"
+  | "listing-reviews"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -102,7 +108,9 @@ export type NavCountKey =
   | "issue-reports-new"
   | "jobs-need-action"
   | "tracker-needs-decision"
-  | "refunds-waiting";
+  | "refunds-waiting"
+  | "shop-changes-needs-ops"
+  | "listing-reviews-waiting";
 
 /**
  * One rail section. A missing `label` is a top-level cluster (Overview / Jobs)
@@ -292,6 +300,17 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
           count: "signups-waiting",
         },
+        {
+          // New listings and changes to live ones wait here until approved.
+          id: "ops-listing-reviews",
+          href: "/ops/listing-reviews",
+          label: "Listing reviews",
+          title: "Listing reviews",
+          icon: "listing-reviews",
+          ready: true,
+          placeholderBody: "",
+          count: "listing-reviews-waiting",
+        },
       ],
     },
     {
@@ -333,6 +352,25 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Late production",
           title: "Late production",
           icon: "lapses",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "ops-shop-changes",
+          href: "/ops/shop-changes",
+          label: "Dropouts & delays",
+          title: "Shop dropouts and delays",
+          icon: "dropouts",
+          ready: true,
+          placeholderBody: "",
+          count: "shop-changes-needs-ops",
+        },
+        {
+          id: "ops-hub",
+          href: "/ops/hub",
+          label: "Hub pick-up",
+          title: "Hub pick-up",
+          icon: "hub",
           ready: true,
           placeholderBody: "",
         },
@@ -383,6 +421,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           count: "refunds-waiting",
         },
         {
+          id: "ops-organizations",
+          href: "/ops/organizations",
+          label: "Organizations",
+          title: "Organizations",
+          icon: "organizations",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "ops-claims",
           href: "/ops/claims",
           label: "Claims & holds",
@@ -398,32 +445,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Recovery",
           title: "Recovery",
           icon: "recovery",
-          ready: true,
-          placeholderBody: "",
-        },
-      ],
-    },
-    {
-      id: "ops-system",
-      section: "Platform",
-      label: "System",
-      icon: "group-system",
-      items: [
-        {
-          id: "ops-settings",
-          href: "/ops/settings",
-          label: "Operational settings",
-          title: "Operational settings",
-          icon: "settings",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "ops-audit",
-          href: "/ops/audit",
-          label: "Audit",
-          title: "Audit log",
-          icon: "audit",
           ready: true,
           placeholderBody: "",
         },
@@ -474,6 +495,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
         },
+        {
+          id: "admin-hub",
+          href: "/admin/hub",
+          label: "Hub pick-up",
+          title: "Hub pick-up",
+          icon: "hub",
+          ready: true,
+          placeholderBody: "",
+        },
       ],
     },
     {
@@ -501,6 +531,24 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
         },
+        {
+          id: "admin-staff",
+          href: "/admin/staff",
+          label: "Staff",
+          title: "Staff",
+          icon: "staff",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-supplier-products",
+          href: "/admin/supplier-products",
+          label: "Supplier products",
+          title: "Supplier products",
+          icon: "products",
+          ready: true,
+          placeholderBody: "",
+        },
       ],
     },
     {
@@ -517,6 +565,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "catalogue",
           ready: true,
           placeholderBody: "",
+        },
+        {
+          id: "admin-listing-reviews",
+          href: "/admin/listing-reviews",
+          label: "Listing reviews",
+          title: "Listing reviews",
+          icon: "listing-reviews",
+          ready: true,
+          placeholderBody: "",
+          count: "listing-reviews-waiting",
         },
         {
           id: "admin-zones",
@@ -555,6 +613,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           count: "refunds-waiting",
         },
         {
+          id: "admin-organizations",
+          href: "/admin/organizations",
+          label: "Organizations",
+          title: "Organizations",
+          icon: "organizations",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "admin-late-production",
           href: "/admin/late-production",
           label: "Late production",
@@ -562,6 +629,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "lapses",
           ready: true,
           placeholderBody: "",
+        },
+        {
+          id: "admin-shop-changes",
+          href: "/admin/shop-changes",
+          label: "Dropouts & delays",
+          title: "Shop dropouts and delays",
+          icon: "dropouts",
+          ready: true,
+          placeholderBody: "",
+          count: "shop-changes-needs-ops",
         },
       ],
     },
@@ -714,13 +791,24 @@ export function contextTitleForPath(
   if (pathname.startsWith("/admin/catalogue/jobs/")) return "Print job";
   if (pathname === "/admin/catalogue/categories/new") return "Add category";
   if (pathname.startsWith("/admin/catalogue/categories/")) return "Category";
+  if (pathname === "/ops/settings" || pathname === "/ops/audit")
+    return "Super Admin only";
   if (pathname.startsWith("/ops/orders/")) return "Order workspace";
   if (pathname.startsWith("/ops/payouts/")) return "Payout review";
   if (pathname.startsWith("/ops/refunds/") || pathname.startsWith("/admin/refunds/")) {
     return "Refund case";
   }
+  if (pathname.startsWith("/admin/supplier-products/")) return "Supplier product";
+  if (/^\/(ops|admin)\/organizations\/[^/]+\/statement$/.test(pathname)) {
+    return "Organization statement";
+  }
   if (pathname.startsWith("/admin/orders/")) return "Order workspace";
-  if (pathname.startsWith("/ops/late-production/") || pathname.startsWith("/admin/late-production/")) {
+  // One organization; its statement page below it has a title of its own.
+  if (/^\/(ops|admin)\/organizations\/[^/]+\/?$/.test(pathname)) return "Organization";
+  if (
+    pathname.startsWith("/ops/late-production/") ||
+    pathname.startsWith("/admin/late-production/")
+  ) {
     return "Shop's late jobs";
   }
   if (pathname === "/admin/escalations" || pathname.startsWith("/admin/escalations/")) {

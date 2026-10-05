@@ -14,6 +14,20 @@ import { withRequestDeadline } from "@/lib/api/requestDeadline";
 
 import type {
   Announcement,
+  HubCodeMismatch,
+  HubHandoutLog,
+  HubRecord,
+  HubWaitingOrder,
+  OrganizationAccount,
+  StaffInvite,
+  StaffInviteCreated,
+  StaffMember,
+  StaffRole,
+  Basket,
+  BasketInvoice,
+  OrganizationStatement,
+  OrganizationSummary,
+  StatementPeriod,
   AuthMe,
   AuditEntry,
   CatalogItem,
@@ -81,6 +95,10 @@ import type {
   SeasonWindowInput,
   SeasonWindowsEnvelope,
   ProductionLapse,
+  RescheduleQueue,
+  RescheduleRequest,
+  ShopFailureEvent,
+  ShopRecovery,
   SupplierProductionLapses,
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
@@ -249,43 +267,64 @@ export function getWorkspaceRole(): PortalRole | null {
         : null;
 }
 
+async function send(
+  path: string,
+  init: RequestInit,
+  signal: AbortSignal,
+  accept: string,
+  tokenOptions?: TokenProviderOptions,
+): Promise<Response> {
+  const role = path.startsWith("/auth/") ? null : getWorkspaceRole();
+  const headers: Record<string, string> = {
+    Accept: accept,
+    ...(role ? { "X-GRIDGO-Role": role } : {}),
+    ...(init.headers as Record<string, string> | undefined),
+  };
+  const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
+  if (init.body && !headers["Content-Type"] && !isFormData) {
+    headers["Content-Type"] = "application/json";
+  }
+  signal.throwIfAborted();
+  const token = await tokenProvider(tokenOptions);
+  signal.throwIfAborted();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
+}
+
+function parseBody(text: string): unknown {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function failed(path: string, status: number, body: unknown): ApiError {
+  const error = new ApiError(status, body);
+  if (error.kind === "forbidden" && !path.startsWith("/auth/")) notifyForbidden(error);
+  return error;
+}
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
   tokenOptions?: TokenProviderOptions,
 ): Promise<T> {
   return withRequestDeadline(init.signal, async (signal) => {
-    const role = path.startsWith("/auth/") ? null : getWorkspaceRole();
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-      ...(role ? { "X-GRIDGO-Role": role } : {}),
-      ...(init.headers as Record<string, string> | undefined),
-    };
-    const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
-    if (init.body && !headers["Content-Type"] && !isFormData) {
-      headers["Content-Type"] = "application/json";
-    }
-    signal.throwIfAborted();
-    const token = await tokenProvider(tokenOptions);
-    signal.throwIfAborted();
-    if (token) headers.Authorization = `Bearer ${token}`;
-
-    const res = await fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
-    const text = await res.text();
-    let data: unknown = null;
-    if (text) {
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = text;
-      }
-    }
-    if (!res.ok) {
-      const error = new ApiError(res.status, data);
-      if (error.kind === "forbidden" && !path.startsWith("/auth/")) notifyForbidden(error);
-      throw error;
-    }
+    const res = await send(path, init, signal, "application/json", tokenOptions);
+    const data = parseBody(await res.text());
+    if (!res.ok) throw failed(path, res.status, data);
     return data as T;
+  });
+}
+
+/** Raw bytes from an authenticated endpoint; errors still carry `{ error }`. */
+async function requestBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  return withRequestDeadline(init.signal, async (signal) => {
+    const res = await send(path, init, signal, "*/*");
+    if (!res.ok) throw failed(path, res.status, parseBody(await res.text()));
+    return res.blob();
   });
 }
 
@@ -515,6 +554,143 @@ export async function rejectPayment(
 }
 
 // ---------------------------------------------------------------------------
+// Multi-shop baskets (gridgo-api docs/MULTI_SHOP_CHECKOUT_API.md)
+// ---------------------------------------------------------------------------
+
+function normalizeBasket(basket: Basket): Basket {
+  return {
+    ...basket,
+    groups: (basket.groups ?? []).map((group) => ({
+      ...group,
+      order: normalizeOrder(group.order),
+    })),
+  };
+}
+
+/** Ops / Super Admin: every basket, each with its live groups. */
+export async function listBaskets(): Promise<Basket[]> {
+  const result = await request<{ baskets: Basket[] }>("/baskets");
+  return (result.baskets ?? []).map(normalizeBasket);
+}
+
+/** One basket: the single payment and every shop group's own order. */
+export async function getBasket(basketId: string): Promise<Basket> {
+  const result = await request<{ basket: Basket }>(
+    `/baskets/${encodeURIComponent(basketId)}`,
+  );
+  return normalizeBasket(result.basket);
+}
+
+/** The basket's one immutable receipt (the same one every group's invoice route returns). */
+export async function getBasketInvoice(basketId: string): Promise<BasketInvoice> {
+  const result = await request<{ invoice: BasketInvoice }>(
+    `/baskets/${encodeURIComponent(basketId)}/invoice`,
+  );
+  return result.invoice;
+}
+
+/**
+ * Ops / Super Admin. Confirms the one transfer for every group at once. A
+ * group's own `/orders/:id/payments/...` routes answer `409
+ * basket_payment_required`; this is the only way.
+ */
+export async function confirmBasketPayment(basketId: string): Promise<Basket> {
+  const result = await request<{ basket: Basket }>(
+    `/baskets/${encodeURIComponent(basketId)}/payment/confirm`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+  return normalizeBasket(result.basket);
+}
+
+/** Ops / Super Admin. Sends the one transfer back for every group; the reason is the client's to read. */
+export async function rejectBasketPayment(
+  basketId: string,
+  input: { reason: string },
+): Promise<Basket> {
+  const result = await request<{ basket: Basket }>(
+    `/baskets/${encodeURIComponent(basketId)}/payment/reject`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return normalizeBasket(result.basket);
+}
+
+// ---------------------------------------------------------------------------
+// Organizations and statements (gridgo-api docs/ORGANIZATION_MONEY_API.md)
+// ---------------------------------------------------------------------------
+
+/** Ops / Super Admin. Up to 50 organizations per page, keyset by user id. */
+export async function listOrganizations(
+  after?: string,
+): Promise<{ organizations: OrganizationSummary[]; nextCursor: string | null }> {
+  const result = await request<{
+    organizations: (OrganizationSummary | null)[];
+    nextCursor: string | null;
+  }>(`/ops/organizations${buildQuery({ after })}`);
+  return {
+    organizations: (result.organizations ?? []).filter(
+      (row): row is OrganizationSummary => row !== null,
+    ),
+    nextCursor: result.nextCursor ?? null,
+  };
+}
+
+function statementQuery(period: StatementPeriod, format: "json" | "pdf" | "csv"): string {
+  return buildQuery(
+    period.period === "custom"
+      ? { period: "custom", from: period.from, to: period.to, format }
+      : { period: period.period, format },
+  );
+}
+
+/** Ops / Super Admin. The same statement the organization exports, for one period. */
+export async function getOrganizationStatement(
+  clientId: string,
+  period: StatementPeriod,
+): Promise<OrganizationStatement> {
+  const result = await request<{ statement: OrganizationStatement }>(
+    `/ops/organizations/${encodeURIComponent(clientId)}/statements${statementQuery(period, "json")}`,
+  );
+  return result.statement;
+}
+
+/**
+ * Ops / Super Admin. The statement as the PDF or CSV file the organization
+ * downloads. Generated on demand by the API and never stored.
+ */
+export async function downloadOrganizationStatement(
+  clientId: string,
+  period: StatementPeriod,
+  format: "pdf" | "csv",
+): Promise<Blob> {
+  return withRequestDeadline(undefined, async (signal) => {
+    const role = getWorkspaceRole();
+    const headers: Record<string, string> = {
+      Accept: format === "pdf" ? "application/pdf" : "text/csv",
+      ...(role ? { "X-GRIDGO-Role": role } : {}),
+    };
+    const token = await tokenProvider();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(
+      `${getApiBase()}/ops/organizations/${encodeURIComponent(clientId)}/statements${statementQuery(period, format)}`,
+      { headers, signal },
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      let data: unknown = text;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        /* keep the text */
+      }
+      const error = new ApiError(res.status, data);
+      if (error.kind === "forbidden") notifyForbidden(error);
+      throw error;
+    }
+    return res.blob();
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Milestone payouts
 // ---------------------------------------------------------------------------
 
@@ -693,7 +869,7 @@ export async function getSettings(): Promise<PlatformSettings> {
 }
 
 /**
- * Ops / Super Admin. Any field may be sent on its own; `expectedVersion` is
+ * Super Admin only. Any field may be sent on its own; `expectedVersion` is
  * the version the caller last read, so two people cannot overwrite each other.
  * A 409 `settings_version_conflict` means reload and look again.
  */
@@ -738,6 +914,67 @@ export async function recordProductionNoCommunication(
   return result.lapses;
 }
 
+// ---------------------------------------------------------------------------
+// Shop acceptance, recovery and deadline requests
+// (gridgo-api SHOP_RECOVERY_API.md, ORDER_RESCHEDULE_API.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ops / Super Admin. Every timeout, decline and cancellation a shop has had,
+ * optionally for one shop, each with its order's current recovery.
+ */
+export async function listShopFailures(
+  filter: { supplierId?: string } = {},
+): Promise<ShopFailureEvent[]> {
+  const query = filter.supplierId
+    ? `?supplierId=${encodeURIComponent(filter.supplierId)}`
+    : "";
+  const result = await request<{ events: ShopFailureEvent[] }>(
+    `/ops/shop-failures${query}`,
+  );
+  return result.events ?? [];
+}
+
+/** The order's recovery as this caller may read it; `null` when there is none. */
+export async function getShopRecovery(orderId: string): Promise<ShopRecovery | null> {
+  const result = await request<{ recovery: ShopRecovery | null }>(
+    `/orders/${encodeURIComponent(orderId)}/shop-recovery`,
+  );
+  return result.recovery ?? null;
+}
+
+/**
+ * Ops / Super Admin. Deadline requests, newest first. `totalRequests` is the
+ * lifetime count for the shop filter, before the status filter.
+ */
+export async function listRescheduleRequests(
+  filter: { status?: string; supplierId?: string } = {},
+): Promise<RescheduleQueue> {
+  const params = new URLSearchParams();
+  if (filter.status) params.set("status", filter.status);
+  if (filter.supplierId) params.set("supplierId", filter.supplierId);
+  const query = params.toString();
+  const result = await request<RescheduleQueue>(
+    `/ops/reschedule-requests${query ? `?${query}` : ""}`,
+  );
+  return { totalRequests: result.totalRequests ?? 0, requests: result.requests ?? [] };
+}
+
+/**
+ * Ops / Super Admin. Records an agreed continuation under the current terms
+ * and releases only this request's hold. The reason is required and audited.
+ */
+export async function resolveRescheduleRequest(
+  orderId: string,
+  body: { requestId: string; reason: string },
+): Promise<RescheduleRequest> {
+  const result = await request<{ request: RescheduleRequest }>(
+    `/orders/${encodeURIComponent(orderId)}/reschedule-request/resolve`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+  return result.request;
+}
+
 /** Hosted payment-QR path checkout and this portal fetch without a signed URL. */
 export function paymentQrPublicPath(fileId?: string): string {
   return fileId
@@ -746,7 +983,7 @@ export function paymentQrPublicPath(fileId?: string): string {
 }
 
 /**
- * Ops / Super Admin. JPEG, PNG or WebP, 5 MiB. Uploads `purpose=payment_qr`
+ * Super Admin only. JPEG, PNG or WebP, 5 MiB. Uploads `purpose=payment_qr`
  * then activates that file as the platform receiving plate.
  */
 export async function uploadPaymentQr(file: File): Promise<PlatformSettings> {
@@ -878,15 +1115,30 @@ export async function getFileDownloadUrl(fileId: string): Promise<string> {
 }
 
 /**
+ * The file's bytes through the API's own origin, under the same read rule as
+ * the signed link. The receipt reader uses it because a browser may refuse a
+ * storage address on the local network (dev storage) that the API can reach.
+ */
+export async function getFileContent(fileId: string): Promise<Blob> {
+  return requestBlob(`/files/${fileId}/content`);
+}
+
+/**
  * Early deletion (contract "DELETE /files/:fileId" in STORAGE_API.md). Super
  * Admin only from this portal, always with a written reason the API keeps in
  * the audit log. Cannot be undone; an open case answers `409 file_retention_hold`.
  */
-export async function deleteFileEarly(fileId: string, reason: string): Promise<StoredFile> {
-  const result = await request<{ file: StoredFile }>(`/files/${encodeURIComponent(fileId)}`, {
-    method: "DELETE",
-    body: JSON.stringify({ reason }),
-  });
+export async function deleteFileEarly(
+  fileId: string,
+  reason: string,
+): Promise<StoredFile> {
+  const result = await request<{ file: StoredFile }>(
+    `/files/${encodeURIComponent(fileId)}`,
+    {
+      method: "DELETE",
+      body: JSON.stringify({ reason }),
+    },
+  );
   return result.file;
 }
 
@@ -975,7 +1227,9 @@ export async function listSeasonWindows(): Promise<SeasonWindowsEnvelope> {
   return request<SeasonWindowsEnvelope>("/admin/season-windows");
 }
 
-export async function createSeasonWindow(input: SeasonWindowInput): Promise<SeasonWindow> {
+export async function createSeasonWindow(
+  input: SeasonWindowInput,
+): Promise<SeasonWindow> {
   const result = await request<{ window: SeasonWindow }>("/admin/season-windows", {
     method: "POST",
     body: JSON.stringify(input),
@@ -996,7 +1250,10 @@ export async function updateSeasonWindow(
   return result.window;
 }
 
-export async function deleteSeasonWindow(id: string, expectedVersion: number): Promise<void> {
+export async function deleteSeasonWindow(
+  id: string,
+  expectedVersion: number,
+): Promise<void> {
   await request<{ ok: true }>(`/admin/season-windows/${encodeURIComponent(id)}`, {
     method: "DELETE",
     body: JSON.stringify({ expectedVersion }),
@@ -1103,6 +1360,139 @@ export async function decideApprovalCase(
     `/approval-cases/${encodeURIComponent(caseId)}/${action}`,
     { method: "POST", body: JSON.stringify(input) },
   );
+}
+
+/**
+ * Ops / Super Admin, pending business case only: ask for the otherwise
+ * optional Mayor's or Barangay permit. The reason reaches the applicant, and
+ * approval is refused until a corrected revision includes the permit.
+ */
+export async function requestBusinessPermit(
+  caseId: string,
+  input: { expectedVersion: number; reason: string },
+): Promise<{ businessPermitRequired: true; version: number }> {
+  return request(
+    `/approval-cases/${encodeURIComponent(caseId)}/request-business-permit`,
+    {
+      method: "POST",
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Organization accounts (gridgo-api docs/ORGANIZATION_ACCOUNTS_API.md)
+// ---------------------------------------------------------------------------
+
+/** Ops / Super Admin. The account with its full dated officer history. */
+export async function getOrganization(userId: string): Promise<OrganizationAccount> {
+  const result = await request<{ organization: OrganizationAccount }>(
+    `/ops/organizations/${encodeURIComponent(userId)}`,
+  );
+  return result.organization;
+}
+
+/**
+ * Ops / Super Admin. One audited in-app notice to the organization account
+ * (the shared login the current officer uses), never to past officers. Keep
+ * one `idempotencyKey` per wording so a retry cannot send it twice.
+ */
+export async function sendOrganizationNotice(
+  userId: string,
+  input: { title: string; body: string },
+  idempotencyKey: string,
+): Promise<{ notificationId: string }> {
+  return request(`/ops/organizations/${encodeURIComponent(userId)}/notice`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(input),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Invited staff — Super Admin only (gridgo-api docs/HUB_HANDOVER_API.md)
+// ---------------------------------------------------------------------------
+
+export async function listStaffRoles(): Promise<StaffRole[]> {
+  const result = await request<{ roles: StaffRole[] }>("/admin/staff/roles");
+  return result.roles;
+}
+
+export async function createStaffRole(input: StaffRole): Promise<StaffRole> {
+  const result = await request<{ role: StaffRole }>("/admin/staff/roles", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.role;
+}
+
+export async function listStaffInvites(): Promise<StaffInvite[]> {
+  const result = await request<{ invites: StaffInvite[] }>("/admin/staff/invites");
+  return result.invites;
+}
+
+/** The code comes back once, here, and is never readable again. */
+export async function createStaffInvite(input: {
+  roleCode: string;
+  expiresInDays?: number;
+}): Promise<StaffInviteCreated> {
+  return request<StaffInviteCreated>("/admin/staff/invites", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/** Stops an unused code working. A staff member who already joined keeps access. */
+export async function revokeStaffInvite(inviteId: string): Promise<void> {
+  await request(`/admin/staff/invites/${encodeURIComponent(inviteId)}/revoke`, {
+    method: "POST",
+  });
+}
+
+export async function listStaff(): Promise<StaffMember[]> {
+  const result = await request<{ staff: StaffMember[] }>("/admin/staff");
+  return result.staff;
+}
+
+/** Reassign a role, or suspend (`active: false`) / restore a staff profile. */
+export async function updateStaffMember(
+  userId: string,
+  input: { roleCode: string; active: boolean },
+): Promise<StaffMember> {
+  const result = await request<{ profile: StaffMember }>(
+    `/admin/staff/${encodeURIComponent(userId)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return result.profile;
+}
+
+// ---------------------------------------------------------------------------
+// Pick-up hub — Operations and Super Admin
+// ---------------------------------------------------------------------------
+
+export async function getHub(): Promise<{ hub: HubRecord; sop: string[] }> {
+  return request("/ops/hub");
+}
+
+/** Newest first; `before` is the previous page's `nextCursor`. */
+export async function listHubHandouts(params?: {
+  before?: string | null;
+  limit?: number;
+}): Promise<HubHandoutLog> {
+  const q = buildQuery({ before: params?.before, limit: params?.limit });
+  return request<HubHandoutLog>(`/ops/hub/handouts${q}`);
+}
+
+export async function listHubWaiting(): Promise<HubWaitingOrder[]> {
+  const result = await request<{ orders: HubWaitingOrder[] }>("/ops/hub/unclaimed");
+  return result.orders;
+}
+
+export async function listHubCodeMismatches(): Promise<HubCodeMismatch[]> {
+  const result = await request<{ escalations: HubCodeMismatch[] }>(
+    "/ops/hub/escalations",
+  );
+  return result.escalations;
 }
 
 /** Ops / Super Admin — supplier or rider only. */
@@ -1550,6 +1940,13 @@ export async function resolveIssue(
 // Audit
 // ---------------------------------------------------------------------------
 
+/**
+ * The full log is Super Admin only. Operations may read only its workspace
+ * records: `action` of `order.production_override`, `file.early_delete` or
+ * `file.retention_delete`, or `entityType: "file"` with an `entityId`; any
+ * other scope is `403`. `__tests__/ops-audit-scope.test.ts` holds the call
+ * sites outside the admin tree to that.
+ */
 export async function listAudit(filters?: {
   entityType?: string;
   entityId?: string;
@@ -1670,6 +2067,135 @@ export async function listCatalogItems(query: CatalogListQuery = {}): Promise<un
 
 export async function getCatalogItem(itemId: string): Promise<unknown> {
   return request<unknown>(`/me/catalog-items/${encodeURIComponent(itemId)}`);
+}
+
+/** Staff index of every shop's listings. Shop is on each row. */
+export type StaffCatalogQuery = {
+  q?: string | null;
+  subcategoryCode?: string | null;
+  supplierId?: string | null;
+  minPriceMinor?: number | null;
+  maxPriceMinor?: number | null;
+  limit?: number | null;
+  cursor?: string | null;
+};
+
+export async function listStaffCatalogItems(
+  query: StaffCatalogQuery = {},
+): Promise<unknown> {
+  const params = new URLSearchParams();
+  const q = (query.q ?? "").trim();
+  if (q) params.set("q", q);
+  if (query.subcategoryCode) params.set("subcategoryCode", query.subcategoryCode);
+  if (query.supplierId) params.set("supplierId", query.supplierId);
+  if (query.minPriceMinor != null)
+    params.set("minPriceMinor", String(query.minPriceMinor));
+  if (query.maxPriceMinor != null)
+    params.set("maxPriceMinor", String(query.maxPriceMinor));
+  if (query.limit != null) params.set("limit", String(query.limit));
+  if (query.cursor) params.set("cursor", query.cursor);
+  const search = params.toString();
+  return request<unknown>(`/ops/catalog-items${search ? `?${search}` : ""}`);
+}
+
+export async function getStaffCatalogItem(itemId: string): Promise<unknown> {
+  return request<unknown>(`/ops/catalog-items/${encodeURIComponent(itemId)}`);
+}
+
+export async function suspendStaffCatalogItem(
+  itemId: string,
+  reason: string,
+): Promise<unknown> {
+  return request<unknown>(`/catalog-items/${encodeURIComponent(itemId)}/suspend`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function restoreStaffCatalogItem(itemId: string): Promise<unknown> {
+  return request<unknown>(`/catalog-items/${encodeURIComponent(itemId)}/restore`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Listing review (gridgo-api#154). Contract: gridgo-api
+// docs/SUPPLIER_CATALOG_API.md#listing-review-and-product-type-picker
+// ---------------------------------------------------------------------------
+
+export type ReviewQueueStatus = "pending" | "approved" | "needs_revision";
+
+/** Up to 50 listings in one review state; `after` is the last item id read. */
+export async function listCatalogReviews(
+  status: ReviewQueueStatus = "pending",
+  after?: string | null,
+): Promise<unknown> {
+  const params = new URLSearchParams({ status });
+  if (after) params.set("after", after);
+  return request<unknown>(`/ops/catalog-reviews?${params.toString()}`);
+}
+
+export type CatalogReviewDecision =
+  | { status: "approved"; photosUnbranded: true }
+  | { status: "needs_revision"; reason: string };
+
+export async function decideCatalogReview(
+  itemId: string,
+  expectedVersion: number,
+  decision: CatalogReviewDecision,
+): Promise<unknown> {
+  return request<unknown>(`/ops/catalog-reviews/${encodeURIComponent(itemId)}/decision`, {
+    method: "POST",
+    body: JSON.stringify({ expectedVersion, ...decision }),
+  });
+}
+
+/** The approved version clients see now, for comparing a pending change. */
+export async function getStaffPublicCatalogItem(itemId: string): Promise<unknown> {
+  return request<unknown>(`/ops/catalog/items/${encodeURIComponent(itemId)}`);
+}
+
+export async function listProductTypeRequests(
+  status?: ReviewQueueStatus | null,
+  after?: string | null,
+): Promise<unknown> {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (after) params.set("after", after);
+  const search = params.toString();
+  return request<unknown>(`/ops/product-type-requests${search ? `?${search}` : ""}`);
+}
+
+export type ProductTypeDecision =
+  | { status: "approved"; code: string }
+  | { status: "needs_revision"; reason: string };
+
+export async function decideProductTypeRequest(
+  requestId: string,
+  expectedVersion: number,
+  decision: ProductTypeDecision,
+): Promise<unknown> {
+  return request<unknown>(
+    `/ops/product-type-requests/${encodeURIComponent(requestId)}/decision`,
+    { method: "POST", body: JSON.stringify({ expectedVersion, ...decision }) },
+  );
+}
+
+/** Send a listing (back) to Operations. Fails `409 listing_incomplete` with `blockers`. */
+export async function submitCatalogItemForReview(
+  itemId: string,
+  version: number | null,
+): Promise<unknown> {
+  return request<unknown>(`/me/catalog-items/${encodeURIComponent(itemId)}/submit`, {
+    method: "POST",
+    ...versioned(version, {}),
+  });
+}
+
+/** Whether matching can use each of this shop's listings, and the missing steps. */
+export async function getSupplierReadiness(): Promise<unknown> {
+  return request<unknown>("/me/supplier-readiness");
 }
 
 export async function listMySupplierServices(): Promise<unknown> {
@@ -1910,12 +2436,18 @@ export async function listIssueReports(
   status: IssueReportStatus,
   page: { limit?: number; before?: string | null } = {},
 ): Promise<{ reports: IssueReport[]; counts: IssueReportCounts }> {
-  return request(`/ops/issue-reports${buildQuery({ status, limit: page.limit, before: page.before })}`);
+  return request(
+    `/ops/issue-reports${buildQuery({ status, limit: page.limit, before: page.before })}`,
+  );
 }
 
 export async function updateIssueReport(
   id: string,
-  input: { status: IssueReportStatus; publishedIn?: string | null; trackerIssueUrl?: string | null },
+  input: {
+    status: IssueReportStatus;
+    publishedIn?: string | null;
+    trackerIssueUrl?: string | null;
+  },
 ): Promise<IssueReport> {
   return request<IssueReport>(`/ops/issue-reports/${encodeURIComponent(id)}`, {
     method: "PATCH",
@@ -2088,7 +2620,10 @@ async function uploadPurpose(purpose: string, file: File): Promise<StoredFile> {
   const body = new FormData();
   body.append("purpose", purpose);
   body.append("file", file);
-  const uploaded = await request<{ file: StoredFile }>("/files", { method: "POST", body });
+  const uploaded = await request<{ file: StoredFile }>("/files", {
+    method: "POST",
+    body,
+  });
   return uploaded.file;
 }
 

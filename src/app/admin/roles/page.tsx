@@ -78,7 +78,7 @@ function standingLabel(user: User): string {
 
 function accountConsequence(action: AccountAction): string {
   if (action === "suspend") {
-    return "They stay in this directory and their sign-in stays valid. The app replaces their workspace with this reason until you restore the account. Accreditation is unchanged.";
+    return "This suspends the account. They stay in this directory and their sign-in stays valid. The app replaces their workspace with this reason until you restore the account. Accreditation is unchanged.";
   }
   if (action === "remove") {
     return "This does not delete the person, their orders, or their sign-in. They stay in this directory and see this reason instead of the app until you restore the account.";
@@ -453,6 +453,7 @@ export default function AdminRolesPage() {
           itemLabel="people"
           defaultSortId="role"
           facets={facets}
+          rowActionsDensity="labeled"
           rowActions={(u) => {
             const status = u.accountStatus ?? "active";
             return (
@@ -464,39 +465,43 @@ export default function AdminRolesPage() {
                     href={suspendedQueueHref("admin")}
                   />
                 ) : null}
-                <DataTableRowAction
-                  label="Change role"
-                  icon={UserCog}
-                  onClick={() => {
-                    setTarget(u);
-                    setNextRole(u.role);
-                    setReason("");
-                    setTypedConfirm("");
-                    setActionError(null);
-                  }}
-                />
-                {status !== "suspended" ? (
+                <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Role">
                   <DataTableRowAction
-                    label="Suspend account"
-                    icon={Ban}
-                    onClick={() => openAccount(u, "suspend")}
+                    label="Change role"
+                    icon={UserCog}
+                    onClick={() => {
+                      setTarget(u);
+                      setNextRole(u.role);
+                      setReason("");
+                      setTypedConfirm("");
+                      setActionError(null);
+                    }}
                   />
-                ) : null}
-                {status !== "removed" ? (
-                  <DataTableRowAction
-                    label="Remove account"
-                    icon={UserX}
-                    variant="danger"
-                    onClick={() => openAccount(u, "remove")}
-                  />
-                ) : null}
-                {status === "suspended" || status === "removed" ? (
-                  <DataTableRowAction
-                    label="Restore account"
-                    icon={RotateCcw}
-                    onClick={() => openAccount(u, "restore")}
-                  />
-                ) : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Account">
+                  {status !== "suspended" ? (
+                    <DataTableRowAction
+                      label="Suspend account"
+                      icon={Ban}
+                      onClick={() => openAccount(u, "suspend")}
+                    />
+                  ) : null}
+                  {status !== "removed" ? (
+                    <DataTableRowAction
+                      label="Remove account"
+                      icon={UserX}
+                      variant="danger"
+                      onClick={() => openAccount(u, "remove")}
+                    />
+                  ) : null}
+                  {status === "suspended" || status === "removed" ? (
+                    <DataTableRowAction
+                      label="Restore account"
+                      icon={RotateCcw}
+                      onClick={() => openAccount(u, "restore")}
+                    />
+                  ) : null}
+                </div>
               </>
             );
           }}

@@ -31,6 +31,7 @@ vi.mock("@/lib/api/client", async (importOriginal) => ({
   updateSettings,
 }));
 const { OperationalSettings } = await import("@/components/settings/OperationalSettings");
+const { ProductionPenalties } = await import("@/components/settings/ProductionPenalties");
 
 afterEach(() => {
   cleanup();
@@ -59,7 +60,7 @@ it("lets Super Admin save the three rates through the version handshake", async 
     version: 8,
     productionPenalty: { ...penalty, minorBps: 800 },
   });
-  render(<OperationalSettings role="super_admin" />);
+  render(<OperationalSettings />);
 
   const minor = await screen.findByLabelText("Share of what is still owed", {
     selector: "#penalty-rate-minor",
@@ -97,7 +98,7 @@ it("lets Super Admin save the three rates through the version handshake", async 
 
 it("refuses a later tier that takes less before anything is sent", async () => {
   getSettings.mockResolvedValue(stored);
-  render(<OperationalSettings role="super_admin" />);
+  render(<OperationalSettings />);
 
   fireEvent.change(
     await screen.findByLabelText("Share of what is still owed", {
@@ -120,7 +121,7 @@ it("needs an explicit acknowledgement before turning real deductions on", async 
     version: 8,
     productionPenalty: { ...penalty, deductionsEnabled: true },
   });
-  render(<OperationalSettings role="super_admin" />);
+  render(<OperationalSettings />);
 
   expect(await screen.findByTestId("penalty-gate")).toHaveTextContent("Warnings only");
   fireEvent.click(screen.getByRole("switch", { name: "Deduct from shop payouts" }));
@@ -150,7 +151,7 @@ it("needs an explicit acknowledgement before turning real deductions on", async 
 
 it("keeps deductions off when the dialog is dismissed", async () => {
   getSettings.mockResolvedValue(stored);
-  render(<OperationalSettings role="super_admin" />);
+  render(<OperationalSettings />);
 
   fireEvent.click(
     await screen.findByRole("switch", { name: "Deduct from shop payouts" }),
@@ -173,7 +174,7 @@ it("reloads underneath a stale version", async () => {
   updateSettings.mockRejectedValue(
     new ApiError(409, { error: "settings_version_conflict" }),
   );
-  render(<OperationalSettings role="super_admin" />);
+  render(<OperationalSettings />);
 
   fireEvent.change(
     await screen.findByLabelText("Share of what is still owed", {
@@ -191,9 +192,15 @@ it("reloads underneath a stale version", async () => {
   await waitFor(() => expect(getSettings).toHaveBeenCalledTimes(2));
 });
 
-it("shows Operations the rates and the switch without controls", async () => {
-  getSettings.mockResolvedValue(stored);
-  render(<OperationalSettings />);
+it("draws the rates and the switch without controls when it cannot edit", async () => {
+  render(
+    <ProductionPenalties
+      settings={stored as never}
+      canEdit={false}
+      onSaved={() => {}}
+      onConflict={() => {}}
+    />,
+  );
 
   expect(await screen.findByTestId("penalty-rate-moderate-value")).toHaveTextContent(
     "15%",
@@ -207,7 +214,7 @@ it("shows Operations the rates and the switch without controls", async () => {
   expect(screen.getByText(/Only Super Admin changes these/)).toBeInTheDocument();
 });
 
-it("leaves penalties out of the main save so Operations is never refused", async () => {
+it("leaves penalties out of the main save", async () => {
   getSettings.mockResolvedValue(stored);
   updateSettings.mockResolvedValue({ ...stored, version: 8, issueWindowHours: 48 });
   render(<OperationalSettings />);
@@ -223,7 +230,7 @@ it("leaves penalties out of the main save so Operations is never refused", async
 
 it("says so on an API without penalties", async () => {
   getSettings.mockResolvedValue({ ...stored, productionPenalty: undefined });
-  render(<OperationalSettings role="super_admin" />);
+  render(<OperationalSettings />);
 
   expect(await screen.findByTestId("penalty-unavailable")).toBeInTheDocument();
 });

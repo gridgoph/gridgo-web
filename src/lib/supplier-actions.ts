@@ -19,6 +19,10 @@
  * `src/lib/production-progress.ts`). A start-of-production photo counts, so on
  * most jobs the proof above already covers it; a PDF proof does not, and then
  * the shop is asked for a photo before packing is offered.
+ *
+ * While a claim holds payouts (`payoutHold`), Package for pickup stays on the
+ * page but disabled, with the reason: the API refuses to pack until
+ * Operations clears the claim (`409 claim_hold_active`, gridgoph/gridgo-web#74).
  */
 
 import type { Order, PayoutMilestone } from "@/lib/api/types";
@@ -35,7 +39,8 @@ export type SupplierActionKind =
   | "add_progress_photo";
 
 /** A stage the shop files its own proof for. The order's plan decides which. */
-export type ShopProofCode = "production_started" | "printing" | "packaging_qc" | (string & {});
+export type ShopProofCode =
+  "production_started" | "printing" | "packaging_qc" | (string & {});
 
 export type SupplierAction = {
   kind: SupplierActionKind;
@@ -56,7 +61,15 @@ export type SupplierAction = {
   proofHint?: string;
   /** Set on `add_proof`: the part as a phrase, "start-of-production". */
   proofNoun?: string;
+  /**
+   * Shown but not available: why, in the shop's words. A blocked action is
+   * never what the shop "needs" to do; someone else has to act first.
+   */
+  blockedReason?: string;
 };
+
+export const CLAIM_HOLD_PACKING_REASON =
+  "A claim is holding payouts on this order. Operations must clear the claim before you package it for pickup.";
 
 type ShopOrder = Pick<Order, "state" | "payoutMilestones" | "payoutHold"> &
   Partial<Pick<Order, "payoutPlanVersion" | "productionProgress">>;
@@ -200,7 +213,10 @@ export function actionsForJob(order: ShopOrder): SupplierAction[] {
       if (owed) return [proofAction(owed)];
       // Proof filed as a PDF, or no proof stage at all: still no picture of
       // the job, and the API refuses to pack it without one.
-      return productionPhotoMissing(order) ? [ADD_PROGRESS_PHOTO] : [PACKAGE_FOR_PICKUP];
+      if (productionPhotoMissing(order)) return [ADD_PROGRESS_PHOTO];
+      return order.payoutHold === true
+        ? [{ ...PACKAGE_FOR_PICKUP, blockedReason: CLAIM_HOLD_PACKING_REASON }]
+        : [PACKAGE_FOR_PICKUP];
     default:
       return owed ? [proofAction(owed)] : [];
   }
@@ -211,7 +227,7 @@ export function primaryAction(order: ShopOrder): SupplierAction | null {
 }
 
 export function needsSupplierAction(order: ShopOrder): boolean {
-  return actionsForJob(order).some((a) => a.primary);
+  return actionsForJob(order).some((a) => a.primary && !a.blockedReason);
 }
 
 /**

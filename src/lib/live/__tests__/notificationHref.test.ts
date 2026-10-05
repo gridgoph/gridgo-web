@@ -16,6 +16,39 @@ function note(partial: Partial<Notification>): Notification {
 }
 
 describe("notificationHref", () => {
+  it("opens the taken-down listing for the shop", () => {
+    expect(
+      notificationHref(
+        "supplier",
+        note({ type: "listing_suspended", catalogItemId: "sci_sticker" }),
+      ),
+    ).toBe("/supplier/catalogue/sci_sticker");
+  });
+
+  it("lands a listing-review notice on each role's own desk or board", () => {
+    for (const type of ["catalog_review_pending", "catalog_review_decided"]) {
+      expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/listing-reviews");
+      expect(notificationHref("super_admin", note({ type }))).toBe("/admin/listing-reviews");
+      expect(notificationHref("supplier", note({ type }))).toBe("/supplier/catalogue");
+      expect(
+        notificationHref("supplier", note({ type, catalogItemId: "sci_sticker" })),
+      ).toBe("/supplier/catalogue/sci_sticker");
+      expect(notificationHref("rider", note({ type }))).toBeNull();
+    }
+  });
+
+  it("opens the restored listing for the shop, and nothing for staff", () => {
+    expect(
+      notificationHref(
+        "supplier",
+        note({ type: "listing_restored", catalogItemId: "sci_sticker" }),
+      ),
+    ).toBe("/supplier/catalogue/sci_sticker");
+    expect(notificationHref("supplier", note({ type: "listing_restored" }))).toBe(
+      "/supplier/catalogue",
+    );
+  });
+
   it("deep-links supplier jobs and ops/admin orders", () => {
     const row = note({ orderId: "ord_9" });
     expect(notificationHref("supplier", row)).toBe("/supplier/jobs/ord_9");
@@ -27,6 +60,20 @@ describe("notificationHref", () => {
     const row = note({ type: "ops_order_progress", orderId: "ord_9" });
     expect(notificationHref("ops_admin", row)).toBe("/ops/orders/ord_9");
     expect(notificationHref("super_admin", row)).toBe("/admin/orders/ord_9");
+  });
+
+  it("opens a new file check, a shop dropout and a deadline request on the order, in each tree", () => {
+    for (const type of [
+      "ops_job_needs_qa",
+      "shop_recovery",
+      "order_reschedule_requested",
+      "order_reschedule_operations_required",
+      "order_reschedule_refund_requested",
+    ]) {
+      const row = note({ type, orderId: "ord_9" });
+      expect(notificationHref("ops_admin", row)).toBe("/ops/orders/ord_9");
+      expect(notificationHref("super_admin", row)).toBe("/admin/orders/ord_9");
+    }
   });
 
   it("lands payout releases on the Operations payout desk", () => {
@@ -113,5 +160,47 @@ describe("notificationHref", () => {
     expect(notificationHref("ops_admin", note({ type: "role_changed" }))).toBe(
       "/ops/overview",
     );
+  });
+
+  it("opens an organization notice or reminder on that organization, in each tree", () => {
+    const reminder = note({
+      type: "organization_officer_confirmation",
+      organizationUserId: "user_org",
+    });
+    expect(notificationHref("ops_admin", reminder)).toBe("/ops/organizations/user_org");
+    expect(notificationHref("super_admin", reminder)).toBe(
+      "/admin/organizations/user_org",
+    );
+    expect(notificationHref("supplier", reminder)).toBeNull();
+  });
+
+  it("lands hub pick-up alerts on the hub desk, even with an order", () => {
+    for (const type of [
+      "hub_unclaimed_escalated",
+      "hub_redelivery_requested",
+      "handover_escalated",
+    ]) {
+      expect(notificationHref("ops_admin", note({ type, orderId: "ord_1" }))).toBe(
+        "/ops/hub",
+      );
+      expect(notificationHref("super_admin", note({ type, orderId: "ord_1" }))).toBe(
+        "/admin/hub",
+      );
+    }
+  });
+
+  it("opens staff changes on Staff for Super Admin only", () => {
+    expect(notificationHref("super_admin", note({ type: "staff_invite_created" }))).toBe(
+      "/admin/staff",
+    );
+    expect(notificationHref("ops_admin", note({ type: "staff_invite_created" }))).toBe(
+      "/ops/overview",
+    );
+  });
+
+  it("sends a business permit request to the approval queue", () => {
+    const permit = note({ type: "client_application_document_requested" });
+    expect(notificationHref("ops_admin", permit)).toBe("/ops/approvals");
+    expect(notificationHref("super_admin", permit)).toBe("/admin/verification");
   });
 });

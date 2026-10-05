@@ -5,6 +5,18 @@ import { SignIn, SignOutButton, useAuth } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 
 /**
+ * `withSignUp={false}` does not stop Clerk drawing its "Don't have an account?
+ * Sign up" footer while the instance allows public sign-up, so the staff login
+ * hides that one footer action (`footerAction__signIn`). Other footer actions,
+ * such as "Use another method", stay.
+ */
+export const SIGN_IN_APPEARANCE = {
+  elements: {
+    footerAction__signIn: { display: "none" },
+  },
+} as const;
+
+/**
  * Clerk session controls must stay on the client. Rendering SignedIn/SignedOut
  * from the login Server Component calls server auth() and 500s /login in the
  * unsigned smoke container.
@@ -46,6 +58,7 @@ export function LoginAuthPanel() {
       fallbackRedirectUrl="/"
       transferable={false}
       withSignUp={false}
+      appearance={SIGN_IN_APPEARANCE}
     />
   );
 }

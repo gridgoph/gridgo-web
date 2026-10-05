@@ -207,4 +207,26 @@ describe("DataTable", () => {
       expect(button).toHaveAttribute("data-slot", "tooltip-trigger");
     }
   });
+
+  it("shows the verb on desktop when a screen asks for labeled row actions", () => {
+    render(
+      <TooltipProvider>
+        <DataTable
+          columns={COLUMNS}
+          data={[ROWS[0]]}
+          getRowId={(r) => r.id}
+          rowActionsDensity="labeled"
+          rowActions={() => (
+            <DataTableRowAction label="Suspend" icon={Ban} variant="danger" />
+          )}
+        />
+      </TooltipProvider>,
+    );
+
+    const buttons = screen.getAllByRole("button", { name: "Suspend" });
+    expect(buttons).toHaveLength(2);
+    for (const button of buttons) {
+      expect(button).toHaveTextContent("Suspend");
+    }
+  });
 });

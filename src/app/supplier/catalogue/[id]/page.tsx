@@ -26,6 +26,7 @@ import {
   type SaveState,
 } from "@/app/supplier/_components/SaveStatus";
 import { SegmentedControl } from "@/app/supplier/_components/SegmentedControl";
+import { ListingReviewNotice } from "@/app/supplier/_components/ListingReviewNotice";
 import {
   ARCHIVED_SENTENCE,
   listingErrorMessage,
@@ -57,12 +58,14 @@ import {
   deleteCatalogOption,
   deleteCatalogOptionGroup,
   getCatalogItem,
+  getSupplierReadiness,
   getTaxonomy,
   isApiError,
   listAcceptedFileFormats,
   listCatalogItemPrepSteps,
   putCatalogItemFileFormats,
   reorderCatalogPhotos,
+  submitCatalogItemForReview,
   updateCatalogItem,
   updateCatalogItemPrepStep,
   updateCatalogOption,
@@ -84,6 +87,7 @@ import {
   needsPrinterMaxWidth,
   nextFreeSlot,
   normalizeListing,
+  normalizeListingReadiness,
   normalizePrepSteps,
   normalizeServiceLines,
   parsePrinterMaxWidthFeet,
@@ -96,6 +100,7 @@ import {
   unitChoiceLabel,
   type BoardField,
   type Listing,
+  type ListingReadiness,
   type PrepStep,
   type PricingUnit,
   type ServiceLine,
@@ -130,6 +135,7 @@ const FIELD_IDS: Record<BoardField, string> = {
   printerMaxWidth: "printer-max-width",
   turnaround: "section-ready-in",
   groups: "section-picks",
+  specs: "section-picks",
   formats: "section-artwork",
 };
 
@@ -160,6 +166,7 @@ const STEP_OF_FIELD: Record<BoardField, EditorStepId> = {
   printerMaxWidth: "pick",
   turnaround: "speed",
   groups: "steps",
+  specs: "steps",
   formats: "artwork",
 };
 
@@ -238,6 +245,7 @@ export default function ListingEditorPage() {
   const shopApproved = useAuth().user?.verificationStatus === "approved";
 
   const [listing, setListing] = useState<Listing | null>(null);
+  const [readiness, setReadiness] = useState<ListingReadiness | null>(null);
   const [services, setServices] = useState<ServiceLine[]>([]);
   const [taxonomy, setTaxonomy] = useState<Taxonomy | null>(null);
   const [prepSteps, setPrepSteps] = useState<PrepStep[]>([]);
@@ -264,16 +272,19 @@ export default function ListingEditorPage() {
   const load = useSerializedLoad(
     useCallback(async () => {
       try {
-        const [itemBody, servicesBody, tax, stepsBody, formatList] = await Promise.all([
-          getCatalogItem(id),
-          loadShopServiceLines().catch(() => ({ services: [] })),
-          getTaxonomy(),
-          listCatalogItemPrepSteps(id).catch(() => ({ prepSteps: [] })),
-          listAcceptedFileFormats().catch(() => []),
-        ]);
+        const [itemBody, servicesBody, tax, stepsBody, formatList, ready] =
+          await Promise.all([
+            getCatalogItem(id),
+            loadShopServiceLines().catch(() => ({ services: [] })),
+            getTaxonomy(),
+            listCatalogItemPrepSteps(id).catch(() => ({ prepSteps: [] })),
+            listAcceptedFileFormats().catch(() => []),
+            getSupplierReadiness().then(normalizeListingReadiness, () => null),
+          ]);
         const next = normalizeListing(itemBody);
         if (!next) throw new Error("unreadable");
         setListing(next);
+        setReadiness(ready?.get(next.id) ?? null);
         setServices(normalizeServiceLines(servicesBody));
         setTaxonomy(tax);
         setPrepSteps(normalizePrepSteps(stepsBody));
@@ -341,7 +352,15 @@ export default function ListingEditorPage() {
   const checklist = merged && context ? boardChecklist(merged, context) : [];
   const firstMissing = checklist.find((requirement) => !requirement.done) ?? null;
   const standing =
-    merged && context ? boardStanding(merged, context, shopApproved) : null;
+    merged && context
+      ? boardStanding(
+          { ...merged, suspendReason: listing?.suspendReason ?? null },
+          context,
+          shopApproved,
+          // Unsaved edits change what readiness last saw; trust it only when clean.
+          dirty ? null : readiness,
+        )
+      : null;
   const inheritedHours = context?.inheritedTurnaroundHours ?? null;
   const resolvedHours = merged ? effectiveTurnaroundHours(merged, inheritedHours) : null;
   const covers = listing
@@ -395,6 +414,7 @@ export default function ListingEditorPage() {
       });
       setNotice(null);
       setSaveState({ kind: "saved", at: Date.now() });
+      void refreshReadiness();
       return true;
     } catch (err) {
       setSaveState({
@@ -402,6 +422,41 @@ export default function ListingEditorPage() {
         message: listingErrorMessage(err, "Could not save this listing."),
       });
       return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** What matching sees changes with a save; read it again. */
+  async function refreshReadiness() {
+    try {
+      const ready = normalizeListingReadiness(await getSupplierReadiness());
+      setReadiness(ready.get(id) ?? null);
+    } catch {
+      /* Keep the last reading; the checklist still covers the listing. */
+    }
+  }
+
+  async function sendForReview() {
+    if (!listing) return;
+    setBusy(true);
+    setActionError(null);
+    try {
+      const saved = normalizeListing(
+        await submitCatalogItemForReview(listing.id, listing.version),
+      );
+      if (!saved) throw new Error("unreadable");
+      setListing(saved);
+      setDraft((current) =>
+        current ? { ...current, version: saved.version } : draftFrom(saved),
+      );
+      setNotice("Sent to Operations. You will get a notification when they decide.");
+      void refreshReadiness();
+    } catch (err) {
+      setActionError(listingErrorMessage(err, "Could not send this listing for review."));
+      if (isApiError(err) && err.code === "catalog_item_stale") {
+        await load().catch(() => undefined);
+      }
     } finally {
       setBusy(false);
     }
@@ -726,7 +781,16 @@ export default function ListingEditorPage() {
                 label={standing.label}
                 icon={standing.icon}
               />
-              {standing.note ? (
+              {standing.secondary === "pending_review" ? (
+                <StatusChip tone="info" label="Changes in review" icon="clock" />
+              ) : standing.secondary === "needs_changes" ? (
+                <StatusChip tone="warning" label="Needs changes" icon="square-pen" />
+              ) : null}
+              {/* Review states explain themselves in the notice below. */}
+              {standing.note &&
+              standing.kind !== "needs_changes" &&
+              standing.kind !== "pending_review" &&
+              !standing.secondary ? (
                 <p className="text-caption text-text-secondary m-0">{standing.note}</p>
               ) : null}
             </div>
@@ -737,6 +801,12 @@ export default function ListingEditorPage() {
         ) : null}
         {notice ? <p className="text-body text-text-secondary m-0">{notice}</p> : null}
       </div>
+
+      <ListingReviewNotice
+        listing={listing}
+        busy={busy || dirty}
+        onSend={() => void sendForReview()}
+      />
 
       <div className="lg:grid lg:grid-cols-[minmax(18rem,28rem)_minmax(0,1fr)] lg:items-start lg:gap-8 xl:gap-10">
         <aside
@@ -1187,16 +1257,35 @@ export default function ListingEditorPage() {
                   targets={FIELD_IDS}
                   onJump={jumpTo}
                 />
-                <Button
-                  variant="primary"
-                  disabled={busy || firstMissing != null}
-                  aria-describedby={
-                    firstMissing ? requirementRowId(firstMissing.key) : undefined
-                  }
-                  onClick={() => void persist(!listing.onTheBoard)}
-                >
-                  {listing.onTheBoard ? "Take it off the board" : "Put it on the board"}
-                </Button>
+                {listing.suspendReason ? (
+                  <div className="flex flex-col gap-1" role="note">
+                    <p className="text-body text-text-primary m-0">
+                      GRIDGO took this listing down, so clients cannot see it. Reason:{" "}
+                      {listing.suspendReason}
+                    </p>
+                    <p className="text-caption text-text-secondary m-0">
+                      You can still edit it. Only GRIDGO can put it back on the board.
+                    </p>
+                  </div>
+                ) : (
+                  <Button
+                    variant="primary"
+                    disabled={busy || firstMissing != null}
+                    aria-describedby={
+                      firstMissing ? requirementRowId(firstMissing.key) : undefined
+                    }
+                    onClick={() => void persist(!listing.onTheBoard)}
+                  >
+                    {listing.onTheBoard ? "Take it off the board" : "Put it on the board"}
+                  </Button>
+                )}
+                {listing.reviewStatus ? (
+                  <p className="text-caption text-text-secondary m-0 max-w-prose">
+                    Operations reviews every new listing, and any change to its price, specs,
+                    artwork formats or photos, before clients see it. Photos must not show a
+                    watermark, logo or shop branding.
+                  </p>
+                ) : null}
                 <div className="border-outline flex flex-col gap-2 border-t pt-6">
                   <p className="text-caption text-text-secondary m-0">
                     Taking it down for good? A listing a client has already ordered from is kept
