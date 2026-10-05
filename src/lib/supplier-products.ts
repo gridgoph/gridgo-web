@@ -1,8 +1,9 @@
 /**
  * Super Admin view of every shop's listings.
  *
- * Status on a row is the shop's own `active` flag (`onTheBoard`). Listing
- * approval is not on the API yet, and this module does not invent one.
+ * Status on a row is the shop's own `active` flag (`onTheBoard`), with the
+ * Operations review beside it (`listingReviewState`, gridgo-api#154). Review
+ * decisions live on the Listing reviews desk, not here.
  */
 
 import { formatDateTime, pesosToMinor } from "@/lib/format";
@@ -120,6 +121,23 @@ export function listingBoardState(
     return { label: "On the board", tone: "success", icon: "circle-check" };
   }
   return { label: "Off the board", tone: "neutral", icon: "circle-dashed" };
+}
+
+/** Pending review or sent back; null once approved or on an API without review. */
+export function listingReviewState(
+  listing: Pick<Listing, "reviewStatus" | "hasApprovedVersion">,
+): { label: "In review" | "Change in review" | "Sent back"; tone: StatusTone; icon: StatusIconName } | null {
+  if (listing.reviewStatus === "needs_revision") {
+    return { label: "Sent back", tone: "warning", icon: "square-pen" };
+  }
+  if (listing.reviewStatus === "pending") {
+    return {
+      label: listing.hasApprovedVersion ? "Change in review" : "In review",
+      tone: "info",
+      icon: "clock",
+    };
+  }
+  return null;
 }
 
 /** The API caps a take-down reason at 2,000 characters. */

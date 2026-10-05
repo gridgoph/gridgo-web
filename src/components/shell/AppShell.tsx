@@ -12,6 +12,7 @@ import { useClerk, useUser } from "@clerk/nextjs";
 import {
   AlertTriangle,
   ArrowLeftRight,
+  BadgeCheck,
   Banknote,
   BanknoteArrowDown,
   FileClock,
@@ -191,6 +192,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   retention: FileClock,
   dropouts: Shuffle,
   products: PackageSearch,
+  "listing-reviews": BadgeCheck,
   "group-shop": Store,
   "group-money": HandCoins,
   "group-queue": Inbox,

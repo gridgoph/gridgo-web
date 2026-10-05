@@ -124,6 +124,13 @@ catalogue when the notice has no id. The API addresses catalogue invalidation to
 so Super Admin's Supplier products pages see another admin's take-down on the next load,
 not live.
 
+Listing review notices (`catalog_review_pending`, `catalog_review_decided`) name no listing
+(gridgo-api#154). Operations lands on `/ops/listing-reviews` and Super Admin on
+`/admin/listing-reviews`; the shop lands on its catalogue, or the listing when a notice
+carries `catalogItemId`. The arrival is the live alert (chime, toast, desktop alert); an open
+desk re-reads on the `catalog` invalidation, marks newly arrived listings and product-type
+requests **New** and announces them politely.
+
 Operations approvals and Super Admin verification mount the same sign-up and service-line
 queues. Service-review links select `?tab=services`; sign-up links select the default tab.
 Tab selection follows the URL so an inbox link can switch an already-open queue. Both route

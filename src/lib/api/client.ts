@@ -1787,6 +1787,85 @@ export async function restoreStaffCatalogItem(itemId: string): Promise<unknown> 
   });
 }
 
+// ---------------------------------------------------------------------------
+// Listing review (gridgo-api#154). Contract: gridgo-api
+// docs/SUPPLIER_CATALOG_API.md#listing-review-and-product-type-picker
+// ---------------------------------------------------------------------------
+
+export type ReviewQueueStatus = "pending" | "approved" | "needs_revision";
+
+/** Up to 50 listings in one review state; `after` is the last item id read. */
+export async function listCatalogReviews(
+  status: ReviewQueueStatus = "pending",
+  after?: string | null,
+): Promise<unknown> {
+  const params = new URLSearchParams({ status });
+  if (after) params.set("after", after);
+  return request<unknown>(`/ops/catalog-reviews?${params.toString()}`);
+}
+
+export type CatalogReviewDecision =
+  | { status: "approved"; photosUnbranded: true }
+  | { status: "needs_revision"; reason: string };
+
+export async function decideCatalogReview(
+  itemId: string,
+  expectedVersion: number,
+  decision: CatalogReviewDecision,
+): Promise<unknown> {
+  return request<unknown>(`/ops/catalog-reviews/${encodeURIComponent(itemId)}/decision`, {
+    method: "POST",
+    body: JSON.stringify({ expectedVersion, ...decision }),
+  });
+}
+
+/** The approved version clients see now, for comparing a pending change. */
+export async function getStaffPublicCatalogItem(itemId: string): Promise<unknown> {
+  return request<unknown>(`/ops/catalog/items/${encodeURIComponent(itemId)}`);
+}
+
+export async function listProductTypeRequests(
+  status?: ReviewQueueStatus | null,
+  after?: string | null,
+): Promise<unknown> {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (after) params.set("after", after);
+  const search = params.toString();
+  return request<unknown>(`/ops/product-type-requests${search ? `?${search}` : ""}`);
+}
+
+export type ProductTypeDecision =
+  | { status: "approved"; code: string }
+  | { status: "needs_revision"; reason: string };
+
+export async function decideProductTypeRequest(
+  requestId: string,
+  expectedVersion: number,
+  decision: ProductTypeDecision,
+): Promise<unknown> {
+  return request<unknown>(
+    `/ops/product-type-requests/${encodeURIComponent(requestId)}/decision`,
+    { method: "POST", body: JSON.stringify({ expectedVersion, ...decision }) },
+  );
+}
+
+/** Send a listing (back) to Operations. Fails `409 listing_incomplete` with `blockers`. */
+export async function submitCatalogItemForReview(
+  itemId: string,
+  version: number | null,
+): Promise<unknown> {
+  return request<unknown>(`/me/catalog-items/${encodeURIComponent(itemId)}/submit`, {
+    method: "POST",
+    ...versioned(version, {}),
+  });
+}
+
+/** Whether matching can use each of this shop's listings, and the missing steps. */
+export async function getSupplierReadiness(): Promise<unknown> {
+  return request<unknown>("/me/supplier-readiness");
+}
+
 export async function listMySupplierServices(): Promise<unknown> {
   return request<unknown>("/me/supplier-services");
 }
