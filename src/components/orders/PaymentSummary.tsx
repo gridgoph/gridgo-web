@@ -133,6 +133,7 @@ export function PaymentSummary({ order, renderActions }: Props) {
                   fileId={payment.proofFileId}
                   label="QR proof"
                   caption={payment.reference}
+                  deletable
                 />
               </div>
             ) : null}

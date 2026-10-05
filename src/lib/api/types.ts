@@ -335,6 +335,12 @@ export type PayoutMilestone = {
   receiptFileId?: string | null;
   /** The wallet's reference number typed at release. Same visibility. */
   reference?: string | null;
+  /**
+   * What a late-production deduction took off this stage. `amountMinor` is
+   * already net of it; the two add back to the stage's original share. Absent
+   * or 0 means none. Ops / Super Admin and the assigned shop only.
+   */
+  productionDeductionMinor?: number;
   /** Set when a refund settlement closed this stage unpaid. */
   supersededAt?: string | null;
   supersededBySettlementId?: string | null;
@@ -537,6 +543,13 @@ export type Order = {
   readyBy?: string | null;
   /** When the shop actually finished, stamped as it hands over to a rider. */
   readyAt?: string | null;
+  /**
+   * Late-production (Ops / Super Admin and the assigned shop): the order was
+   * severely late, so Operations may review handing it to another shop.
+   */
+  productionReassignmentEligible?: boolean;
+  /** Set when Operations recorded that the shop could not be reached. */
+  productionNoCommunication?: { at: string; by: string; reason: string } | null;
   cancelledAt?: string | null;
   cancelledBy?: string | null;
   cancellationReason?: string | null;
@@ -833,6 +846,12 @@ export type PlatformSettings = {
    */
   downpaymentPercent?: number;
   deliveryFeeBands: DeliveryFeeBand[];
+  /**
+   * Late-production penalties: the three tier rates and the real-deductions
+   * gate (off by default). Every role reads it; only Super Admin may write it.
+   * Absent on an API that predates penalties; the screen then says so.
+   */
+  productionPenalty?: ProductionPenaltyPolicy;
   /** Manual QR checkout. `imageUrl` is the replaceable plate. */
   paymentQr?: PaymentQr;
 };
@@ -845,7 +864,75 @@ export type UpdateSettingsInput = {
   downpaymentPercent?: number;
   deliveryFeeBands?: DeliveryFeeBand[];
   productionNudge?: ProductionNudge;
+  /** Super Admin only, always the complete object (`403` for anyone else). */
+  productionPenalty?: ProductionPenaltyPolicy;
   reason?: string;
+};
+
+// ---- Late-production penalties ----
+// Contract: gridgo-api docs/PRODUCTION_PENALTIES_API.md.
+
+export type ProductionPenaltyTier = "minor" | "moderate" | "severe";
+
+/**
+ * Basis points of what GRIDGO still owes the shop on the order (500 = 5%),
+ * 0–10,000, never decreasing from minor to severe. `deductionsEnabled` is the
+ * real-money gate and ships off.
+ */
+export type ProductionPenaltyPolicy = {
+  deductionsEnabled: boolean;
+  minorBps: number;
+  moderateBps: number;
+  severeBps: number;
+};
+
+export type ProductionLapseWarning = {
+  tier: ProductionPenaltyTier | string;
+  at: string;
+  /** The exact text the shop received. */
+  message: string;
+  /** Moderate and severe warnings go on the shop's record. */
+  formal: boolean;
+};
+
+/**
+ * `warning_only`: the gate was off when the lapse began, so it never deducts.
+ * `warned`: the gate was on; one deduction is assessed once the job finishes
+ * or turns severe. `applied`: deducted. `closed`: a refund or cancellation
+ * ended it without a deduction.
+ */
+export type ProductionLapseStatus = "warning_only" | "warned" | "applied" | "closed";
+
+/** One order a shop finished (or is still finishing) after its ready-by time. */
+export type ProductionLapse = {
+  id: string;
+  orderId: string;
+  supplierId: string;
+  /** The ready-by deadline it missed. */
+  deadlineAt: string;
+  detectedAt: string;
+  /** The furthest tier reached. */
+  tier: ProductionPenaltyTier | string;
+  rateBps: number;
+  settingsVersion: number;
+  /** The policy in force when the first warning went out. */
+  policy: ProductionPenaltyPolicy;
+  warnings: ProductionLapseWarning[];
+  /** The unpaid balance the deduction was taken from. 0 until assessed — not a quote. */
+  remainingBalanceMinor: number;
+  /** 0 until assessed. */
+  deductionMinor: number;
+  appliedAt: string | null;
+  closedAt: string | null;
+  /** Severe: Operations may review handing the order to another shop. */
+  reassignmentEligible: boolean;
+  status: ProductionLapseStatus | string;
+};
+
+export type SupplierProductionLapses = {
+  supplierId: string;
+  /** Newest first. */
+  lapses: ProductionLapse[];
 };
 
 // ---- Escalations (v2) ----
@@ -983,6 +1070,21 @@ export type StoredFile = {
   references: FileReference[];
   /** Present only when the bytes carried something worth reading. */
   detected?: DetectedArtwork;
+};
+
+/**
+ * `GET /admin/files/retention` (Super Admin). Always a dry run: what the next
+ * scheduled pass would delete, by file purpose. `deletionEnabled` is the API's
+ * `GRIDGO_FILE_RETENTION_DELETE_ENABLED` flag, off unless configured.
+ */
+export type FileRetentionReport = {
+  at: string;
+  dryRun: boolean;
+  deletionEnabled: boolean;
+  total: number;
+  byPurpose: Record<string, number>;
+  deleted: number;
+  failed: number;
 };
 
 export type CreditLedgerEntry = {
@@ -1366,6 +1468,84 @@ export type Announcement = {
    * Non-zero only for `everyone`; role audiences cannot reach them.
    */
   unclaimedDevices: number;
+};
+
+// ---------------------------------------------------------------------------
+// Season windows — Super Admin writes them; clients see them on the deadline
+// calendar, a home banner six to four weeks ahead, and (only once the push
+// switch is on) one pre-season notice. Awareness only: no date is ever blocked.
+//
+// Contract: gridgo-api docs/SEASON_WINDOWS_API.md.
+
+export type SeasonDemandLevel = "Normal" | "Busy" | "Peak";
+
+export type SeasonWindowStatus = "upcoming" | "current" | "past";
+
+/** Inclusive `YYYY-MM-DD` dates in Asia/Manila, computed by the server. */
+export type SeasonBannerInterval = {
+  startDate: string;
+  endDate: string;
+  active: boolean;
+};
+
+export type SeasonWindow = {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string;
+  demandLevel: SeasonDemandLevel;
+  message: string;
+  status: SeasonWindowStatus;
+  banner: SeasonBannerInterval;
+  version: number;
+  /** When the pre-season notice was queued. Once set, never cleared. */
+  noticeQueuedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SeasonWindowsEnvelope = {
+  timeZone: string;
+  /** Manila calendar day on the server clock. */
+  today: string;
+  awarenessOnly: true;
+  windows: SeasonWindow[];
+  banners: SeasonWindow[];
+};
+
+export type SeasonWindowInput = {
+  name: string;
+  startDate: string;
+  endDate: string;
+  demandLevel: SeasonDemandLevel;
+  message: string;
+};
+
+export type SeasonPushSettings = {
+  enabled: boolean;
+  version: number;
+};
+
+export type SeasonPushDryRunWindow = {
+  id: string;
+  name: string;
+  banner: SeasonBannerInterval;
+  noticeQueuedAt: string | null;
+  /** Inside the banner interval and never queued. */
+  due: boolean;
+  wouldNotifyClients: number;
+  wouldNotifyDevices: number;
+};
+
+/** Prospective counts, reported even while the switch is off. Mutates nothing. */
+export type SeasonPushDryRun = {
+  enabled: boolean;
+  version: number;
+  timeZone: string;
+  today: string;
+  eligibleClients: number;
+  eligibleDevices: number;
+  windows: SeasonPushDryRunWindow[];
 };
 
 export type PostAnnouncementInput = {

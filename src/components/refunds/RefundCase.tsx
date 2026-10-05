@@ -929,6 +929,7 @@ function RequestPanel({
                     ? `Evidence ${index + 1} of ${refund.evidenceFileIds.length}`
                     : "Evidence"
                 }
+                deletable
               />
             </li>
           ))}
@@ -1542,6 +1543,7 @@ function TransferPanel({
             fileId={payment.receiptFileId}
             label={payment.evidenceLabel || TRANSFER_EVIDENCE_LABEL}
             caption={payment.reference}
+            deletable
           />
         </div>
       </div>

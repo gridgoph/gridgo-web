@@ -37,6 +37,7 @@ import {
 } from "@/components/settings/RiderDeliveryShare";
 import { CheckoutPayment, checkoutPaymentLabel } from "@/components/settings/CheckoutPayment";
 import { DeliveryZones, DeliveryZonesSkeleton } from "@/components/settings/DeliveryZones";
+import { ProductionPenalties } from "@/components/settings/ProductionPenalties";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -54,12 +55,14 @@ import type { DeliveryFeeBand, PlatformSettings, ProductionNudge, ProductionNudg
 import { Switch } from "@/components/ui/switch";
 import { RIDER_SHARE_INVALID } from "@/lib/delivery-split";
 import {
-  applyZonePrices,
+  applyZoneDraft,
   isZonedTable,
+  limitsMoved,
   mergeZoneDrafts,
-  zonePriceChanges,
-  zonePriceDraft,
-  type ZonePriceDraft,
+  zoneChanges,
+  zoneDraft,
+  zoneLimitErrorMessage,
+  type ZoneDraft,
 } from "@/lib/delivery-zones";
 import { formatPhp } from "@/lib/format";
 
@@ -218,12 +221,20 @@ const HOURS_HELP = (
   </>
 );
 
-/** The zone prices as typed, or null when the API does not hold the four zones. */
-function zonesFrom(bands: DeliveryFeeBand[]): ZonePriceDraft | null {
-  return isZonedTable(bands) ? zonePriceDraft(bands) : null;
+/** The zone limits and prices as typed, or null when the API does not hold the four zones. */
+function zonesFrom(bands: DeliveryFeeBand[]): ZoneDraft | null {
+  return isZonedTable(bands) ? zoneDraft(bands) : null;
 }
 
-export function OperationalSettings() {
+export function OperationalSettings({
+  role = "ops_admin",
+}: {
+  /**
+   * The tree this is mounted in. Only Super Admin may change late-production
+   * penalties; Operations reads them.
+   */
+  role?: "ops_admin" | "super_admin";
+} = {}) {
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -238,7 +249,7 @@ export function OperationalSettings() {
   /** Undefined while the API holds no checkout split; nothing is sent for it then. */
   const [checkoutPercent, setCheckoutPercent] = useState<number | undefined>(undefined);
   const [hours, setHours] = useState("");
-  const [zones, setZones] = useState<ZonePriceDraft | null>(null);
+  const [zones, setZones] = useState<ZoneDraft | null>(null);
   const [nudge, setNudge] = useState<NudgeDraft>(toNudgeDraft({ version: 0, issueWindowHours: 24, serviceFeeRateBps: 1000, deliveryFeeBands: [] }));
   const [feeVisible, setFeeVisible] = useState(true);
   const [qrBusy, setQrBusy] = useState(false);
@@ -319,12 +330,12 @@ export function OperationalSettings() {
   useLiveReload("settings", () => load(true));
 
   /**
-   * The full table to send: the four zones with the typed prices, or, on an
-   * API from before the zones, its bands exactly as stored.
+   * The full table to send: the four zones with the typed limits and prices,
+   * or, on an API from before the zones, its bands exactly as stored.
    */
   function readBands(stored: DeliveryFeeBand[]): { bands: DeliveryFeeBand[] } | { problem: string } {
     if (!zones || !isZonedTable(stored)) return { bands: stored };
-    return applyZonePrices(stored, zones);
+    return applyZoneDraft(stored, zones);
   }
 
   async function save() {
@@ -413,8 +424,22 @@ export function OperationalSettings() {
           "Someone else saved these settings a moment ago. Their values are now shown as in force — check your changes against them, then save again.",
         );
         await load(true);
+      } else if (
+        err instanceof ApiError &&
+        err.code === "invalid_delivery_fee_bands" &&
+        isZonedTable(settings.deliveryFeeBands) &&
+        isZonedTable(parsedBands.bands) &&
+        limitsMoved(settings.deliveryFeeBands, parsedBands.bands)
+      ) {
+        // An API from before editable limits refuses any limit but its own.
+        setSaveError(
+          "The API behind this portal does not take new zone limits yet. Put the limits back to the ones in force to save the other changes.",
+        );
       } else {
-        setSaveError(opsErrorMessage(err, "Could not save these settings. Try again."));
+        setSaveError(
+          zoneLimitErrorMessage(err) ??
+            opsErrorMessage(err, "Could not save these settings. Try again."),
+        );
       }
     } finally {
       setBusy(false);
@@ -573,38 +598,36 @@ export function OperationalSettings() {
         disabled={busy}
       />
 
-      <div className="grid w-full gap-3 lg:grid-cols-2 lg:items-start">
-        <section className="gg-card p-3" aria-labelledby="window-heading">
-          <h2 id="window-heading" className="text-h3 text-text-primary m-0">
-            Issue window
-          </h2>
-          <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
-            {ISSUE_WINDOW_COPY}
-          </p>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="issue-hours">Hours after delivery</FieldLabel>
-              <Input
-                id="issue-hours"
-                inputMode="numeric"
-                className="max-w-40"
-                value={hours}
-                onChange={(e) => setHours(e.target.value)}
-              />
-              <FieldDescription>{HOURS_HELP}</FieldDescription>
-            </Field>
-          </FieldGroup>
-        </section>
+      <section className="gg-card p-3" aria-labelledby="window-heading">
+        <h2 id="window-heading" className="text-h3 text-text-primary m-0">
+          Issue window
+        </h2>
+        <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
+          {ISSUE_WINDOW_COPY}
+        </p>
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="issue-hours">Hours after delivery</FieldLabel>
+            <Input
+              id="issue-hours"
+              inputMode="numeric"
+              className="max-w-40"
+              value={hours}
+              onChange={(e) => setHours(e.target.value)}
+            />
+            <FieldDescription>{HOURS_HELP}</FieldDescription>
+          </Field>
+        </FieldGroup>
+      </section>
 
-        <DeliveryZones
-          stored={settings.deliveryFeeBands}
-          draft={zones}
-          onChange={(field, value) =>
-            setZones((current) => (current ? { ...current, [field]: value } : current))
-          }
-          disabled={busy}
-        />
-      </div>
+      <DeliveryZones
+        stored={settings.deliveryFeeBands}
+        draft={zones}
+        onChange={(field, value) =>
+          setZones((current) => (current ? { ...current, [field]: value } : current))
+        }
+        disabled={busy}
+      />
 
       <section className="gg-card p-3" aria-labelledby="production-nudge-heading">
         <h2 id="production-nudge-heading" className="text-h3 text-text-primary m-0">
@@ -659,6 +682,17 @@ export function OperationalSettings() {
           In force right now: {productionNudgeInForce(nudgeFrom(settings))}
         </p>
       </section>
+
+      <ProductionPenalties
+        settings={settings}
+        canEdit={role === "super_admin"}
+        disabled={busy}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={() => load(true)}
+      />
 
       <section className="gg-card p-3" aria-labelledby="payment-qr-heading">
         <h2 id="payment-qr-heading" className="text-h3 text-text-primary m-0">
@@ -761,7 +795,7 @@ export function OperationalSettings() {
 
 /**
  * The audit line saved with the change. The API requires one; a rider share,
- * checkout payment or delivery zone price change is named in it so the audit
+ * checkout payment, delivery zone limit or price change is named in it so the audit
  * log says who moved that money and to what.
  */
 export function settingsChangeReason(
@@ -783,7 +817,7 @@ export function settingsChangeReason(
     changes.push(`checkout payment ${checkout.from}% to ${checkout.to}% up front`);
   }
   if (isZonedTable(zones.from) && isZonedTable(zones.to)) {
-    const moved = zonePriceChanges(zones.from, zones.to);
+    const moved = zoneChanges(zones.from, zones.to);
     if (moved.length) changes.push(`delivery zones ${moved.join(", ")}`);
   }
   return changes.length
@@ -990,23 +1024,21 @@ function SettingsSkeleton() {
 
       <RiderDeliveryShareSkeleton />
 
-      <div className="grid w-full gap-3 lg:grid-cols-2 lg:items-start">
-        <section className="gg-card p-3">
-          <h2 className="text-h3 text-text-primary m-0">Issue window</h2>
-          <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
-            {ISSUE_WINDOW_COPY}
-          </p>
-          <p className="text-caption text-text-secondary m-0 mb-1">
-            Hours after delivery
-          </p>
-          <Skeleton className="h-11 max-w-40 rounded-field" aria-hidden />
-          <p className="text-caption text-text-muted m-0 mt-2 max-w-prose">
-            {HOURS_HELP}
-          </p>
-        </section>
+      <section className="gg-card p-3">
+        <h2 className="text-h3 text-text-primary m-0">Issue window</h2>
+        <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
+          {ISSUE_WINDOW_COPY}
+        </p>
+        <p className="text-caption text-text-secondary m-0 mb-1">
+          Hours after delivery
+        </p>
+        <Skeleton className="h-11 max-w-40 rounded-field" aria-hidden />
+        <p className="text-caption text-text-muted m-0 mt-2 max-w-prose">
+          {HOURS_HELP}
+        </p>
+      </section>
 
-        <DeliveryZonesSkeleton />
-      </div>
+      <DeliveryZonesSkeleton />
 
       <section className="gg-card p-3">
         <h2 className="text-h3 text-text-primary m-0">Payment QR</h2>

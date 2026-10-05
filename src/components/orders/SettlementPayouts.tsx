@@ -160,6 +160,7 @@ export function SettlementPayouts({
                           fileId={payout.receiptFileId}
                           label={TRANSFER_EVIDENCE_LABEL}
                           caption={payout.reference}
+                          deletable
                         />
                       </div>
                     ) : null}

@@ -164,6 +164,14 @@ export function PayoutMilestones({
                         {superseded ? <span className="sr-only">, not paid</span> : null}
                       </span>
                     ) : null}
+                    {milestone.productionDeductionMinor ? (
+                      <span
+                        className="text-caption text-text-muted tabular-nums"
+                        data-testid={`stage-deduction-${milestone.code}`}
+                      >
+                        After {formatPhp(milestone.productionDeductionMinor)} late deduction
+                      </span>
+                    ) : null}
                     <StatusChip
                       tone={status.tone}
                       label={status.label}
@@ -189,7 +197,7 @@ export function PayoutMilestones({
                       <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 md:grid-cols-2">
                         {proofs.map((proof) => (
                           <li key={proof.fileId} className="min-w-0">
-                            <EvidencePlate fileId={proof.fileId} label={proof.label} />
+                            <EvidencePlate fileId={proof.fileId} label={proof.label} deletable />
                             <p className="text-caption text-text-muted m-0 mt-1">
                               {describeProof(proof, formatDateTime)}
                             </p>
@@ -232,6 +240,7 @@ export function PayoutMilestones({
                         fileId={milestone.receiptFileId}
                         label="Wallet receipt"
                         caption={milestone.reference ?? null}
+                        deletable
                       />
                     </div>
                   ) : null}

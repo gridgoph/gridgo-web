@@ -39,6 +39,7 @@ import type {
   PortalRoleProjection,
   PostAnnouncementInput,
   StoredFile,
+  FileRetentionReport,
   SupplierService,
   PublicCatalogShop,
   PublicCatalogShopSummary,
@@ -74,6 +75,13 @@ import type {
   RefundRequest,
   RefundStatus,
   SettlementInput,
+  SeasonPushDryRun,
+  SeasonPushSettings,
+  SeasonWindow,
+  SeasonWindowInput,
+  SeasonWindowsEnvelope,
+  ProductionLapse,
+  SupplierProductionLapses,
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
 
@@ -700,6 +708,36 @@ export async function updateSettings(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Late-production penalties (gridgo-api docs/PRODUCTION_PENALTIES_API.md)
+// ---------------------------------------------------------------------------
+
+/** Ops / Super Admin. One shop's late finishes, newest first. */
+export async function listSupplierProductionLapses(
+  supplierId: string,
+): Promise<SupplierProductionLapses> {
+  return request<SupplierProductionLapses>(
+    `/users/${encodeURIComponent(supplierId)}/production-lapses`,
+  );
+}
+
+/**
+ * Ops / Super Admin. Records that the shop on an overdue, unfinished order
+ * could not be reached, which makes the lapse severe. Audited; the reason is
+ * required (`400 reason_required`). `409 production_deadline_not_missed` when
+ * the order is finished, not active or not yet late.
+ */
+export async function recordProductionNoCommunication(
+  orderId: string,
+  reason: string,
+): Promise<ProductionLapse[]> {
+  const result = await request<{ lapses: ProductionLapse[] }>(
+    `/orders/${encodeURIComponent(orderId)}/production-no-communication`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
+  return result.lapses;
+}
+
 /** Hosted payment-QR path checkout and this portal fetch without a signed URL. */
 export function paymentQrPublicPath(fileId?: string): string {
   return fileId
@@ -839,6 +877,24 @@ export async function getFileDownloadUrl(fileId: string): Promise<string> {
   return result.url;
 }
 
+/**
+ * Early deletion (contract "DELETE /files/:fileId" in STORAGE_API.md). Super
+ * Admin only from this portal, always with a written reason the API keeps in
+ * the audit log. Cannot be undone; an open case answers `409 file_retention_hold`.
+ */
+export async function deleteFileEarly(fileId: string, reason: string): Promise<StoredFile> {
+  const result = await request<{ file: StoredFile }>(`/files/${encodeURIComponent(fileId)}`, {
+    method: "DELETE",
+    body: JSON.stringify({ reason }),
+  });
+  return result.file;
+}
+
+/** Super Admin. Read-only counts of what the next retention pass would delete. */
+export async function getFileRetention(): Promise<FileRetentionReport> {
+  return request<FileRetentionReport>("/admin/files/retention");
+}
+
 // ---------------------------------------------------------------------------
 // Pilot Credits — a non-cash grant ledger. Never a way to pay for an order.
 // ---------------------------------------------------------------------------
@@ -905,6 +961,74 @@ export async function uploadAnnouncementImage(file: File): Promise<string> {
     body,
   });
   return announcementImagePublicPath(result.file.fileId);
+}
+
+// ---------------------------------------------------------------------------
+// Season windows — Super Admin only. Contract: gridgo-api
+// docs/SEASON_WINDOWS_API.md. Saving a window never notifies a client; only
+// the push switch (off by default) lets the scheduler send one notice per
+// window when its banner opens.
+// ---------------------------------------------------------------------------
+
+/** Every window, past ones included, plus the server's Manila `today`. */
+export async function listSeasonWindows(): Promise<SeasonWindowsEnvelope> {
+  return request<SeasonWindowsEnvelope>("/admin/season-windows");
+}
+
+export async function createSeasonWindow(input: SeasonWindowInput): Promise<SeasonWindow> {
+  const result = await request<{ window: SeasonWindow }>("/admin/season-windows", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.window;
+}
+
+/** Sends only the changed fields; a stale version is `409 season_window_version_conflict`. */
+export async function updateSeasonWindow(
+  id: string,
+  expectedVersion: number,
+  changes: Partial<SeasonWindowInput>,
+): Promise<SeasonWindow> {
+  const result = await request<{ window: SeasonWindow }>(
+    `/admin/season-windows/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify({ ...changes, expectedVersion }) },
+  );
+  return result.window;
+}
+
+export async function deleteSeasonWindow(id: string, expectedVersion: number): Promise<void> {
+  await request<{ ok: true }>(`/admin/season-windows/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    body: JSON.stringify({ expectedVersion }),
+  });
+}
+
+export async function getSeasonPushSettings(): Promise<SeasonPushSettings> {
+  return request<SeasonPushSettings>("/admin/season-windows/push-settings");
+}
+
+/**
+ * Turning this on lets the next scheduler tick notify every client with a
+ * registered phone for each window whose banner is showing. `reason` is
+ * required (1–500 characters) and lands in the audit log.
+ */
+export async function updateSeasonPushSettings(input: {
+  enabled: boolean;
+  expectedVersion: number;
+  reason: string;
+}): Promise<SeasonPushSettings> {
+  return request<SeasonPushSettings>("/admin/season-windows/push-settings", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+/** Who would be notified, counted without sending or changing anything. */
+export async function seasonPushDryRun(): Promise<SeasonPushDryRun> {
+  return request<SeasonPushDryRun>("/admin/season-windows/push-dry-run", {
+    method: "POST",
+    body: "{}",
+  });
 }
 
 // ---------------------------------------------------------------------------

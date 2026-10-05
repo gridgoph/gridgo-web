@@ -116,6 +116,11 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
                   >
                     {formatPhp(milestone.amountMinor)}
                     {superseded ? <span className="sr-only">, not paid</span> : null}
+                    {milestone.productionDeductionMinor ? (
+                      <span className="text-caption text-text-muted block text-right" style={{ fontFamily: "var(--font-sans)" }}>
+                        After {formatPhp(milestone.productionDeductionMinor)} late deduction
+                      </span>
+                    ) : null}
                   </p>
                 ) : null}
               </div>

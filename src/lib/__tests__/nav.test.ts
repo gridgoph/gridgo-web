@@ -35,6 +35,7 @@ describe("ROLE_NAV", () => {
       "/ops/dispatch",
       "/ops/riders",
       "/ops/rankings",
+      "/ops/late-production",
       "/ops/escalations",
       "/ops/schedule",
       "/ops/payouts",
@@ -59,12 +60,21 @@ describe("ROLE_NAV", () => {
       "/admin/zones",
       "/admin/finance",
       "/admin/refunds",
+      "/admin/late-production",
       "/admin/settings",
       "/admin/audit",
       "/admin/planning",
+      "/admin/season-windows",
       "/admin/tracker",
+      "/admin/file-retention",
       "/admin/broadcast",
     ]);
+  });
+
+  it("keeps File retention off the Operations and supplier rails", () => {
+    for (const role of ["ops_admin", "supplier"] as const) {
+      expect(ROLE_NAV[role].some((n) => n.href.includes("file-retention"))).toBe(false);
+    }
   });
 
   it("marks only existing screens as ready", () => {
@@ -78,13 +88,16 @@ describe("ROLE_NAV", () => {
       "/admin/broadcast",
       "/admin/catalogue",
       "/admin/chat",
+      "/admin/file-retention",
       "/admin/finance",
       "/admin/issue-reports",
+      "/admin/late-production",
       "/admin/overview",
       "/admin/planning",
       "/admin/refunds",
       "/admin/riders",
       "/admin/roles",
+      "/admin/season-windows",
       "/admin/settings",
       "/admin/tracker",
       "/admin/verification",
@@ -96,6 +109,7 @@ describe("ROLE_NAV", () => {
       "/ops/dispatch",
       "/ops/escalations",
       "/ops/issue-reports",
+      "/ops/late-production",
       "/ops/orders",
       "/ops/overview",
       "/ops/payouts",
@@ -176,6 +190,7 @@ describe("ROLE_NAV", () => {
       "/ops/dispatch",
       "/ops/riders",
       "/ops/rankings",
+      "/ops/late-production",
       "/ops/escalations",
       "/ops/schedule",
     ]);
@@ -209,7 +224,7 @@ describe("ROLE_NAV", () => {
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-money")
         ?.items.map((n) => n.href),
-    ).toEqual(["/admin/finance", "/admin/refunds"]);
+    ).toEqual(["/admin/finance", "/admin/refunds", "/admin/late-production"]);
     expect(
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-system")
@@ -218,7 +233,9 @@ describe("ROLE_NAV", () => {
       "/admin/settings",
       "/admin/audit",
       "/admin/planning",
+      "/admin/season-windows",
       "/admin/tracker",
+      "/admin/file-retention",
       "/admin/broadcast",
     ]);
 
