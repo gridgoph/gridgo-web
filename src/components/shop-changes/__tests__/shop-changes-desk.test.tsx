@@ -117,7 +117,7 @@ it("puts the paid-share dropout and the held deadline request in Needs Operation
   expect(rows[0]).toHaveTextContent("Menu boards");
   expect(rows[0]).toHaveTextContent(/deduction of ₱250.00 was already taken/);
   expect(rows[1]).toHaveTextContent("Event tarpaulin");
-  expect(rows[1]).toHaveTextContent("Cancelled after accepting, at");
+  expect(rows[1]).toHaveTextContent("Cancelled after accepting (in production)");
   // The timeout is with the client, not Operations.
   expect(within(section).queryByText("Calling cards")).not.toBeInTheDocument();
   expect(rows[1].querySelector('a[href="/ops/orders/o-paid"]')).not.toBeNull();

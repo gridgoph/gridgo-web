@@ -43,10 +43,23 @@ export function presentFailureKind(kind: ShopFailureKind | string): string {
   }
 }
 
-/** The order state the shop failed at, in the words the queues use. */
+/**
+ * How far the shop had got when it dropped out. A dropout is read by how
+ * serious it was, so these say where the work stood, not the order's
+ * payment-flavoured state name.
+ */
+const FAILURE_STAGE: Record<string, string> = {
+  supplier_assigned: "Before accepting",
+  payment_authorized: "Accepted, not started",
+  production: "In production",
+  supplier_self_qc: "Packing",
+  ready_for_dispatch: "Packed, waiting for a rider",
+  rider_assigned: "Rider on the way",
+};
+
 export function presentFailureStage(stage: string | null | undefined): string {
   if (!stage) return "Unknown stage";
-  return presentOrderState(stage).label;
+  return FAILURE_STAGE[stage] ?? presentOrderState(stage).label;
 }
 
 export function recoveryNeedsOperations(
@@ -157,6 +170,10 @@ export function rescheduleOperationsReason(
     ? `${applied}, so the client's decline cannot move the order to another shop by itself.`
     : `${applied}, so the new date was not applied. Dates and deductions are unchanged.`;
 }
+
+/** The same, short enough for a queue row. */
+export const RECOVERY_OPERATIONS_SHORT =
+  "The shop was already paid a share, so no replacement was offered. Decide how the order continues.";
 
 export const RECOVERY_OPERATIONS_REASON =
   "The shop was already paid a share of this order, so GRIDGO did not look for a replacement. Decide how the order continues; the client can still ask for a full refund.";

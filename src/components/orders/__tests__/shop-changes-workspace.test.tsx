@@ -120,6 +120,10 @@ it("opens the dropout and the held deadline request when they need Operations", 
   expect(
     await screen.findByText("Needs Operations: the shop dropped out after a share was paid."),
   ).toBeInTheDocument();
+  // The order still says production, but the work is paused.
+  expect(
+    screen.getByText("Paused: the shop dropped out. The rows below say what happens next."),
+  ).toBeInTheDocument();
   const recovery = await screen.findByTestId("shop-recovery");
   expect(within(recovery).getByText(/already paid a share of this order/)).toBeInTheDocument();
   expect(await screen.findByText("Cancelled after accepting, at In production")).toBeInTheDocument();

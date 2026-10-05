@@ -267,7 +267,7 @@ export function HubPickupSettings({
                   >
                     {long}
                   </span>
-                  <div className="flex min-w-0 flex-1 flex-col gap-2">
+                  <div className="flex min-w-0 flex-col gap-2">
                     {windows.length === 0 ? (
                       <span className="text-body text-text-muted min-h-11 flex items-center">
                         Closed

@@ -45,7 +45,7 @@ import { formatDateTime, formatPhp } from "@/lib/format";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import {
-  RECOVERY_OPERATIONS_REASON,
+  RECOVERY_OPERATIONS_SHORT,
   buildNeedsOperations,
   canResolveReschedule,
   presentFailureKind,
@@ -126,7 +126,7 @@ export function ShopChangesDesk({ tree }: { tree: Tree }) {
     void Promise.all(
       missing.map((id) =>
         getUser(id).then(
-          (user) => [id, user.name] as const,
+          (user) => [id, user.supplierName || user.name] as const,
           () => [id, ""] as const,
         ),
       ),
@@ -181,10 +181,10 @@ export function ShopChangesDesk({ tree }: { tree: Tree }) {
           item.kind === "recovery" ? (
             <div className="flex flex-col gap-0.5">
               <span className="text-body text-text-primary">
-                {presentFailureKind(item.event.kind)}, at {presentFailureStage(item.event.stage)}
+                {presentFailureKind(item.event.kind)} ({presentFailureStage(item.event.stage).toLowerCase()})
               </span>
-              <span className="text-caption text-text-muted max-w-prose">
-                {RECOVERY_OPERATIONS_REASON}
+              <span className="text-caption text-text-muted block min-w-64 max-w-md whitespace-normal">
+                {RECOVERY_OPERATIONS_SHORT}
               </span>
             </div>
           ) : (
@@ -193,7 +193,7 @@ export function ShopChangesDesk({ tree }: { tree: Tree }) {
                 Deadline request {item.request.status === "declined" ? "declined" : "accepted"} by
                 the client
               </span>
-              <span className="text-caption text-text-muted max-w-prose">
+              <span className="text-caption text-text-muted block min-w-64 max-w-md whitespace-normal">
                 {rescheduleOperationsReason(item.request, formatPhp)}
               </span>
             </div>
@@ -248,7 +248,7 @@ export function ShopChangesDesk({ tree }: { tree: Tree }) {
           <div className="flex min-w-0 flex-col gap-0.5">
             <span className="text-body text-text-primary">{presentFailureKind(event.kind)}</span>
             {event.reason ? (
-              <span className="text-caption text-text-muted line-clamp-2">
+              <span className="text-caption text-text-muted line-clamp-2 block min-w-48 max-w-xs whitespace-normal">
                 &ldquo;{event.reason}&rdquo;
               </span>
             ) : null}
@@ -302,7 +302,7 @@ export function ShopChangesDesk({ tree }: { tree: Tree }) {
             <p className="text-body text-text-primary m-0 truncate" style={medium}>
               {title(request.orderId)}
             </p>
-            <p className="text-caption text-text-muted m-0 mt-0.5 line-clamp-2">
+            <p className="text-caption text-text-muted m-0 mt-0.5 line-clamp-2 min-w-48 max-w-xs whitespace-normal">
               &ldquo;{request.reason}&rdquo;
             </p>
           </div>
@@ -391,7 +391,7 @@ export function ShopChangesDesk({ tree }: { tree: Tree }) {
         <p className="text-body text-text-secondary m-0 max-w-prose">
           Every time a shop did not answer within its hour, declined, cancelled before pickup,
           or asked for a later date. GRIDGO offers the client a replacement or a refund on its
-          own; the cases below the line are the ones it cannot settle without you.
+          own. Needs Operations holds the cases it cannot settle without you.
         </p>
         <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
@@ -488,20 +488,11 @@ export function ShopChangesDesk({ tree }: { tree: Tree }) {
               itemLabel="requests"
               pageSize={20}
               rowActions={(request) => (
-                <>
-                  {canResolveReschedule(request) ? (
-                    <DataTableRowAction
-                      label="Record a resolution"
-                      icon={NotebookPen}
-                      onClick={() => setResolving(request)}
-                    />
-                  ) : null}
-                  <DataTableRowAction
-                    label="Open order"
-                    icon={Eye}
-                    href={orderHref(request.orderId)}
-                  />
-                </>
+                <DataTableRowAction
+                  label="Open order"
+                  icon={Eye}
+                  href={orderHref(request.orderId)}
+                />
               )}
             />
           )}

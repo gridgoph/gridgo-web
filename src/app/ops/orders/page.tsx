@@ -214,12 +214,15 @@ export default function OpsOrdersPage() {
                 router.replace(`/ops/orders?stage=${entry.id}`, { scroll: false });
               }}
               className="gg-chip min-h-11 flex items-center gap-2 px-3"
+              // The monochrome structural fill (`--primary`). `--color-accent`
+              // is remapped to shadcn's light hover wash, which left the
+              // selected stage's white label unreadable.
               style={{
-                background: selected ? "var(--color-accent)" : "var(--color-surface)",
+                background: selected ? "var(--primary)" : "var(--color-surface)",
                 color: selected
-                  ? "var(--color-accent-on)"
+                  ? "var(--primary-foreground)"
                   : "var(--color-text-secondary)",
-                borderColor: selected ? "var(--color-accent)" : "var(--color-outline)",
+                borderColor: selected ? "var(--primary)" : "var(--color-outline)",
               }}
             >
               <span className="text-body">{entry.label}</span>

@@ -130,6 +130,7 @@ import { describeQuantity } from "@/lib/quantity";
 import { presentRefundStatus, refundIsActive, refundKindLabel } from "@/lib/refunds";
 import {
   failuresForOrder,
+  recoveryHoldsWork,
   recoveryNeedsOperations,
   rescheduleNeedsOperations,
 } from "@/lib/shop-changes";
@@ -323,7 +324,8 @@ export function OrderWorkspace({
     void Promise.all(
       missing.map((id) =>
         getUser(id).then(
-          (user) => [id, user.name] as const,
+          // A shop reads by its shop name; everyone else by their own.
+          (user) => [id, user.supplierName || user.name] as const,
           () => [id, ""] as const,
         ),
       ),
@@ -1131,6 +1133,16 @@ function stepSummary(order: Order, step: WorkspaceStep): string {
     }
     if (step.status === "done" && check?.status === "passed" && check.reviewedAt) {
       return `File passed ${formatDateTime(check.reviewedAt)}.`;
+    }
+  }
+  // A dropout or a declined deadline request stops the shop's work, whatever
+  // state the order still carries.
+  if (stage === "production" && step.status === "current") {
+    if (recoveryHoldsWork(order.shopRecovery)) {
+      return "Paused: the shop dropped out. The rows below say what happens next.";
+    }
+    if (order.rescheduleRequest?.workHeld) {
+      return "Paused while the shop's deadline request is settled.";
     }
   }
   return stageSummary(order, stage, formatPhp, formatDateTime);
