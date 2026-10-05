@@ -162,3 +162,14 @@ it("says so when nothing is waiting", () => {
   render(<FileCheckQueue orders={[sentBack]} onChanged={() => {}} />);
   expect(screen.getByText("No files waiting on you")).toBeInTheDocument();
 });
+
+it("never makes a non-HTTPS design link clickable", () => {
+  const unsafe = order("o-js", "Unsafe link", "needs_qa", 3, {
+    productionItems: [
+      { id: "l", artworkLinks: [{ url: "javascript:alert(1)" }] },
+    ] as Order["productionItems"],
+  });
+  const { container } = render(<FileCheckQueue orders={[unsafe]} onChanged={() => {}} />);
+  expect(container.querySelector('a[href^="javascript"]')).toBeNull();
+  expect(screen.getAllByText(/not a secure link/).length).toBeGreaterThan(0);
+});

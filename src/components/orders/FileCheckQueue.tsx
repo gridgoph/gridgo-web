@@ -42,7 +42,12 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { Textarea } from "@/components/ui/textarea";
 import { transitionOrder } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
-import { artworkSource, orderDesignLinks, providerName } from "@/lib/design-links";
+import {
+  artworkSource,
+  orderDesignLinks,
+  providerName,
+  safeLinkHref,
+} from "@/lib/design-links";
 import {
   SEND_BACK_REASON_MAX,
   buildFileCheckQueue,
@@ -375,18 +380,28 @@ function ArtworkCell({ order }: { order: Order }) {
           {files === 1 ? "1 file" : `${files} files`}
         </span>
       ) : null}
-      {links.map((link) => (
-        <a
-          key={link.key}
-          href={link.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-body text-text-primary truncate underline underline-offset-2"
-        >
-          {providerName(link.provider)} link
-          <span className="sr-only"> (opens in a new tab)</span>
-        </a>
-      ))}
+      {links.map((link) => {
+        // HTTPS only, as everywhere a design link is drawn: anything else is
+        // shown as words, never as something to click.
+        const href = safeLinkHref(link.url);
+        const label = `${providerName(link.provider)} link`;
+        return href ? (
+          <a
+            key={link.key}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-body text-text-primary truncate underline underline-offset-2"
+          >
+            {label}
+            <span className="sr-only"> (opens in a new tab)</span>
+          </a>
+        ) : (
+          <span key={link.key} className="text-body text-text-muted truncate">
+            {label} (not a secure link)
+          </span>
+        );
+      })}
     </div>
   );
 }
