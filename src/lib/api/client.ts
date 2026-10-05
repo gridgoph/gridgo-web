@@ -1550,7 +1550,13 @@ export async function resolveIssue(
 // Audit
 // ---------------------------------------------------------------------------
 
-/** Super Admin only. */
+/**
+ * The full log is Super Admin only. Operations may read only its workspace
+ * records: `action` of `order.production_override`, `file.early_delete` or
+ * `file.retention_delete`, or `entityType: "file"` with an `entityId`; any
+ * other scope is `403`. `__tests__/ops-audit-scope.test.ts` holds the call
+ * sites outside the admin tree to that.
+ */
 export async function listAudit(filters?: {
   entityType?: string;
   entityId?: string;

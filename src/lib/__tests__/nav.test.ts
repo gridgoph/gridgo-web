@@ -10,6 +10,16 @@ import {
 } from "@/lib/nav";
 
 describe("ROLE_NAV", () => {
+  it("gives every page in a rail its own icon", () => {
+    for (const items of Object.values(ROLE_NAV)) {
+      const icons = items.map((item) => item.icon);
+      expect(new Set(icons).size).toBe(icons.length);
+    }
+    const products = ROLE_NAV.super_admin.find((item) => item.href === "/admin/supplier-products");
+    const catalogue = ROLE_NAV.super_admin.find((item) => item.href === "/admin/catalogue");
+    expect(products?.icon).not.toBe(catalogue?.icon);
+  });
+
   it("covers the full supplier surface", () => {
     const hrefs = ROLE_NAV.supplier.map((n) => n.href);
     expect(hrefs).toEqual([

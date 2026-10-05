@@ -56,6 +56,7 @@ export type NavIconKey =
   | "tracker"
   | "refunds"
   | "retention"
+  | "products"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -480,7 +481,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           href: "/admin/supplier-products",
           label: "Supplier products",
           title: "Supplier products",
-          icon: "catalogue",
+          icon: "products",
           ready: true,
           placeholderBody: "",
         },
