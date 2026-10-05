@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  describeCalendarDate,
   describePeriod,
   isPlainId,
   manilaMonthStart,
@@ -50,6 +51,11 @@ describe("Manila dates", () => {
     expect(describePeriod({ from: "2026-10-01", to: "2026-10-31" })).toBe(
       "1 Oct – 31 Oct 2026",
     );
+  });
+
+  it("describes a statement row's closing date the same way", () => {
+    expect(describeCalendarDate("2026-10-04")).toBe("4 Oct 2026");
+    expect(describeCalendarDate("not a date")).toBe("not a date");
   });
 });
 

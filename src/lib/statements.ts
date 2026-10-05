@@ -99,6 +99,14 @@ export function describePeriod(period: { from: string; to: string }): string {
   return `${format(period.from, !sameYear)} – ${format(period.to, true)}`;
 }
 
+/** "4 Oct 2026" for a statement row's `YYYY-MM-DD` Manila date, as the period reads. */
+export function describeCalendarDate(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const month = match ? MONTHS[Number(match[2]) - 1] : undefined;
+  if (!match || !month) return value;
+  return `${Number(match[3])} ${month} ${match[1]}`;
+}
+
 /** A user id as the API issues them; anything else never reaches a request path. */
 export function isPlainId(value: string): boolean {
   return /^[A-Za-z0-9_-]{1,128}$/.test(value);

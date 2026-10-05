@@ -229,6 +229,26 @@ describe("Listing reviews desk", () => {
     expect(screen.getByRole("button", { name: "Approve listing" })).toBeDisabled();
   });
 
+  it("names no fallback artwork formats when the listing accepts none", async () => {
+    api.listCatalogReviews.mockResolvedValue({
+      items: [item({ acceptedFormats: [], reviewBlockers: ["accepted_file_formats"] })],
+      nextCursor: null,
+    });
+    render(<ListingReviewsDesk tree="ops" />);
+    expect(await screen.findByText("It accepts no artwork formats.")).toBeVisible();
+    expect(screen.queryByText("Artwork accepted")).not.toBeInTheDocument();
+    expect(screen.queryByText("The service line's formats")).not.toBeInTheDocument();
+  });
+
+  it("names the service line's formats when the listing inherits them", async () => {
+    api.listCatalogReviews.mockResolvedValue({
+      items: [item({ acceptedFormats: [] })],
+      nextCursor: null,
+    });
+    render(<ListingReviewsDesk tree="ops" />);
+    expect(await screen.findByText("The service line's formats")).toBeVisible();
+  });
+
   it("sends back only with a reason the shop will read", async () => {
     const user = userEvent.setup();
     render(<ListingReviewsDesk tree="ops" />);

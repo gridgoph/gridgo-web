@@ -69,6 +69,8 @@ it("reads the statement the organization exports, marked not a tax document", as
   expect(screen.getByTestId("statement-count")).toHaveTextContent("2");
   expect(screen.getByTestId("statement-discount")).toHaveTextContent("₱70.00");
   expect(screen.getByText("1 Oct – 31 Oct 2026")).toBeInTheDocument();
+  expect(screen.getAllByText("3 Oct 2026").length).toBeGreaterThan(0);
+  expect(screen.queryByText("2026-10-03")).not.toBeInTheDocument();
   expect(screen.getByTestId("statement-notice")).toHaveTextContent(
     "Not a tax document. Official receipts are issued separately.",
   );

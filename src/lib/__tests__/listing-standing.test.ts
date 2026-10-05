@@ -142,6 +142,24 @@ describe("listing standing (gridgo-web#111)", () => {
     expect(standing).toMatchObject({ kind: "pending_review", label: "Pending review" });
   });
 
+  it("reads Pending review for a submitted listing the board's checklist still finds a gap in", () => {
+    const standing = boardStanding(
+      listing({ reviewStatus: "pending", hasApprovedVersion: false, description: "" }),
+      context,
+      true,
+      notReady("listing_not_approved"),
+    );
+    expect(standing).toMatchObject({
+      kind: "pending_review",
+      label: "Pending review",
+      note: "Operations checks every new listing before clients see it.",
+    });
+    expect(standing.steps).toEqual([
+      "Say what this is, so a client knows what they are ordering.",
+    ]);
+    expect(standingCounts([standing])).toMatchObject({ pending_review: 1, not_ready: 0 });
+  });
+
   it("reads Needs changes with Operations' reason, before anything else but a take-down", () => {
     const standing = boardStanding(
       listing({

@@ -20,9 +20,28 @@ vi.mock("@clerk/nextjs", () => ({
     isLoaded: true,
     isSignedIn: clerkSignedIn.current,
   }),
-  SignIn: (props: Record<string, unknown>) => {
+  // Draws the footer Clerk draws while its instance allows public sign-up, and
+  // applies `appearance.elements` to it the way Clerk does, so the test reads
+  // what a person would see rather than only the props.
+  SignIn: (props: {
+    appearance?: { elements?: Record<string, React.CSSProperties | undefined> };
+  }) => {
     signInPropsMock(props);
-    return <div data-testid="clerk-sign-in">Clerk sign in</div>;
+    const elements = props.appearance?.elements ?? {};
+    return (
+      <div data-testid="clerk-sign-in">
+        Clerk sign in
+        <div className="cl-footer">
+          <div
+            className="cl-footerAction cl-footerAction__signIn"
+            style={{ ...elements.footerAction, ...elements.footerAction__signIn }}
+          >
+            <span>Don&apos;t have an account?</span>
+            <a href="https://accounts.example/sign-up">Sign up</a>
+          </div>
+        </div>
+      </div>
+    );
   },
   SignOutButton: ({
     children,
@@ -72,6 +91,7 @@ describe("LoginPage", () => {
       screen.getByText(/New privileged accounts cannot be created here/i),
     ).toBeVisible();
     expect(screen.queryByRole("link", { name: /sign up/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Don.t have an account/i)).not.toBeVisible();
     expect(screen.queryByRole("button", { name: /sign up/i })).not.toBeInTheDocument();
   });
 

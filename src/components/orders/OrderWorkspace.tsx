@@ -605,6 +605,7 @@ export function OrderWorkspace({
                   }
                   basket={basket}
                   basketError={basketError}
+                  tree={tree}
                   onConfirmBasket={() =>
                     void decideBasketPayment("confirm-basket", confirmBasketPayment)
                   }
@@ -1059,6 +1060,7 @@ type StepRowProps = {
   onRejectPayment: (installment: PaymentInstallment, reason: string) => void;
   basket: Basket | null;
   basketError: string | null;
+  tree: "ops" | "admin";
   onConfirmBasket: () => void;
   onRejectBasket: (reason: string) => void;
   onApprove: () => void;
@@ -1081,6 +1083,7 @@ function StepRow({
   onRejectPayment,
   basket,
   basketError,
+  tree,
   onConfirmBasket,
   onRejectBasket,
   onApprove,
@@ -1122,6 +1125,7 @@ function StepRow({
             order={order}
             basket={basket}
             basketError={basketError}
+            tree={tree}
             busy={busy}
             onConfirm={onConfirmBasket}
             onReject={onRejectBasket}

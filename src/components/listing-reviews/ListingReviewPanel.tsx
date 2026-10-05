@@ -153,7 +153,11 @@ export function ListingReviewPanel({
 
         <PhotoBench listing={listing} />
 
-        <ListingFacts listing={listing} formatName={formatName} />
+        <ListingFacts
+          listing={listing}
+          formatName={formatName}
+          noFormats={entry.blockers.includes("accepted_file_formats")}
+        />
 
         {listing.description ? (
           <section aria-labelledby={`${ruleId}-about`} className="flex flex-col gap-1">
@@ -330,9 +334,12 @@ function PhotoBench({ listing }: { listing: Listing }) {
 function ListingFacts({
   listing,
   formatName,
+  noFormats,
 }: {
   listing: Listing;
   formatName: (code: string) => string;
+  /** The API reports no artwork format at all, so there is no fallback to name. */
+  noFormats: boolean;
 }) {
   const cap = printerCapLine(listing.printerMaxWidthFeet);
   const groups = [...listing.groups].sort((a, b) => a.sortOrder - b.sortOrder);
@@ -375,12 +382,16 @@ function ListingFacts({
             <dd className="text-body text-text-primary m-0">{cap}</dd>
           </>
         ) : null}
-        <dt className="text-caption text-text-muted">Artwork accepted</dt>
-        <dd className="text-body text-text-primary m-0">
-          {listing.formatCodes.length
-            ? listing.formatCodes.map(formatName).join(", ")
-            : "The service line's formats"}
-        </dd>
+        {noFormats ? null : (
+          <>
+            <dt className="text-caption text-text-muted">Artwork accepted</dt>
+            <dd className="text-body text-text-primary m-0">
+              {listing.formatCodes.length
+                ? listing.formatCodes.map(formatName).join(", ")
+                : "The service line's formats"}
+            </dd>
+          </>
+        )}
       </dl>
 
       <div className="flex flex-col gap-2">

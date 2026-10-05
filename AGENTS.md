@@ -297,7 +297,10 @@ Both were evaluated here and deliberately not adopted:
    hold, each with its own facet. Screenshots: `docs/screenshots/account-standing/`.
 
 `/login` never offers sign-up: `SignIn` uses `withSignUp={false}` and
-`transferable={false}`. There is no sign-up route or role selector. The public
+`transferable={false}`. Clerk still draws its "Don't have an account? Sign up" footer while the
+instance allows public sign-up, so `SIGN_IN_APPEARANCE` (`src/app/login/LoginAuthPanel.tsx`)
+hides `footerAction__signIn` only (never all of `footerAction`, which also carries "Use another
+method"). There is no sign-up route or role selector. The public
 page still never names an account; `scripts/assert-no-account-addresses.mjs` checks the
 emitted client and server output, and the login tests enforce sign-in-only behavior.
 

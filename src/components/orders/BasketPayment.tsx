@@ -1,9 +1,16 @@
+import Link from "next/link";
+
 import { EvidencePlate } from "@/components/orders/EvidencePreview";
 import { ReceiptReferenceOcr } from "@/components/orders/ReceiptReferenceOcr";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { StatusChip } from "@/components/ui/StatusChip";
 import type { Basket, Order } from "@/lib/api/types";
-import { basketPaymentPending, currentGroup } from "@/lib/baskets";
+import {
+  basketPaymentPending,
+  cancelledShares,
+  currentGroup,
+  type CancelledShare,
+} from "@/lib/baskets";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentConfirmationSource, presentPaymentStatus } from "@/lib/order-state";
 
@@ -12,6 +19,8 @@ type Props = {
   basket: Basket | null;
   /** Set when the basket could not be read; the actions then stay hidden. */
   basketError: string | null;
+  /** Which tree the links stay inside. */
+  tree: "ops" | "admin";
   busy: boolean;
   onConfirm: () => void;
   onReject: (reason: string) => void;
@@ -29,6 +38,7 @@ export function BasketPayment({
   order,
   basket,
   basketError,
+  tree,
   busy,
   onConfirm,
   onReject,
@@ -47,7 +57,7 @@ export function BasketPayment({
   const payment = basket.payment;
   const status = presentPaymentStatus(payment.status);
   const group = currentGroup(basket, order.id);
-  const cancelled = basket.groups.filter((entry) => entry.order.state === "cancelled");
+  const owed = cancelledShares(basket);
   return (
     <div className="rounded-card border border-outline-subtle px-4 py-3">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
@@ -128,10 +138,8 @@ export function BasketPayment({
             {formatPhp(payment.amountMinor ?? basket.totalMinor)} before confirming.
             Confirming pays for all {basket.groups.length} shops at once; each
             shop&rsquo;s file check still happens on its own order.
-            {cancelled.length
-              ? ` ${cancelled.map((entry) => entry.label).join(" and ")} ${cancelled.length === 1 ? "was" : "were"} cancelled and stay${cancelled.length === 1 ? "s" : ""} cancelled.`
-              : ""}
           </p>
+          <CancelledShareNotes shares={owed} orderId={order.id} tree={tree} />
           <div className="flex flex-wrap gap-2">
             <Button variant="primary" disabled={busy} onClick={onConfirm}>
               Confirm payment for all {basket.groups.length} shops
@@ -147,6 +155,12 @@ export function BasketPayment({
         </div>
       ) : null}
 
+      {owed.length && !basketPaymentPending(basket) ? (
+        <div className="mt-3">
+          <CancelledShareNotes shares={owed} orderId={order.id} tree={tree} />
+        </div>
+      ) : null}
+
       {payment.proofFileId ? (
         <div className="mt-3">
           <EvidencePlate
@@ -158,5 +172,45 @@ export function BasketPayment({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * A cancelled group's money is inside the one payment, and confirming takes
+ * it. Each note says how much, and links to the order it is refunded from.
+ */
+export function CancelledShareNotes({
+  shares,
+  orderId,
+  tree,
+}: {
+  shares: CancelledShare[];
+  /** The order this workspace is open on; it gets no link to itself. */
+  orderId: string;
+  tree: "ops" | "admin";
+}) {
+  if (!shares.length) return null;
+  return (
+    <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label="Cancelled shops to refund">
+      {shares.map((share) => (
+        <li
+          key={share.orderId}
+          className="rounded-field border-warning flex flex-col gap-2 border px-3 py-2"
+          data-testid={`cancelled-share-${share.label}`}
+        >
+          <p className="text-body text-text-primary m-0">{share.sentence}</p>
+          {share.orderId === orderId ? null : (
+            <div>
+              <Link
+                href={`/${tree}/orders/${encodeURIComponent(share.orderId)}`}
+                className={buttonVariants({ variant: "secondary", size: "sm" })}
+              >
+                Open {share.label}&rsquo;s order
+              </Link>
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }

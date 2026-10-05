@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   basketShopCounts,
+  cancelledShare,
+  cancelledShares,
   groupMoney,
   groupPositionLabel,
   groupRefundState,
@@ -82,5 +84,42 @@ describe("groupRefundState", () => {
     expect(groupRefundState({ refundDisposition: "cancelled" }).label).toBe(
       "Refund settled",
     );
+  });
+});
+
+describe("cancelledShare", () => {
+  const cancelledB = { ...shopB, state: "cancelled" };
+
+  it("says how much of a waiting payment a cancelled group holds, and where it is refunded", () => {
+    const basket = basketOf([shopA, cancelledB]);
+    expect(cancelledShares(basket)).toEqual([
+      {
+        label: "Shop B",
+        orderId: "ord_b",
+        amountMinor: 22300,
+        paid: false,
+        sentence:
+          "₱223.00 of this payment is for Shop B, which was cancelled. After confirming, refund it from Shop B's order.",
+      },
+    ]);
+  });
+
+  it("says the money is owed back once the payment is confirmed", () => {
+    const basket = basketOf([shopA, cancelledB]);
+    basket.payment.status = "confirmed";
+    const share = cancelledShare(basket, basket.groups[1]);
+    expect(share?.paid).toBe(true);
+    expect(share?.sentence).toBe(
+      "₱223.00 of the client's payment is for Shop B, which was cancelled. Refund it from Shop B's order.",
+    );
+  });
+
+  it("says nothing for a live group, an unpaid basket, or a refund already under way", () => {
+    const basket = basketOf([shopA, cancelledB]);
+    expect(cancelledShare(basket, basket.groups[0])).toBeNull();
+    basket.payment.status = "not_submitted";
+    expect(cancelledShares(basket)).toEqual([]);
+    const refunding = basketOf([shopA, { ...cancelledB, refundHold: true }]);
+    expect(cancelledShares(refunding)).toEqual([]);
   });
 });

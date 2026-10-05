@@ -142,6 +142,32 @@ it("confirms the one transfer for every shop through the basket, never the group
   expect(requests.some((request) => request.path.includes("/payments/"))).toBe(false);
 });
 
+it("says how much of the payment is a cancelled shop's, and where to refund it", async () => {
+  basket = basketOf([shopA, { ...shopB, state: "cancelled" }]);
+  render(<OrderWorkspace queueHref="/admin/orders" />);
+
+  await screen.findByRole("button", { name: "Confirm payment for all 2 shops" });
+  const note = screen.getAllByTestId("cancelled-share-Shop B")[0];
+  expect(note).toHaveTextContent(
+    "₱223.00 of this payment is for Shop B, which was cancelled. After confirming, refund it from Shop B's order.",
+  );
+  expect(within(note).getByRole("link", { name: "Open Shop B’s order" })).toHaveAttribute(
+    "href",
+    "/admin/orders/ord_b",
+  );
+
+  const b = screen.getByTestId("group-Shop B");
+  expect(within(b).getByText("Owed after confirming")).toBeInTheDocument();
+  expect(within(b).queryByText("No refund")).toBeNull();
+  expect(screen.getByTestId("group-owed-Shop B")).toHaveTextContent(
+    "₱223.00 of this payment is for Shop B, which was cancelled.",
+  );
+  expect(within(b).getByRole("link", { name: "Open Shop B's order to refund" })).toHaveAttribute(
+    "href",
+    "/admin/orders/ord_b",
+  );
+});
+
 it("offers no payment action when the basket could not be read", async () => {
   vi.stubGlobal(
     "fetch",
