@@ -40,7 +40,10 @@ export type StatusIconName =
   | "circle-help"
   | "ban"
   // A GitHub issue (issue reports linked to the tracker).
-  | "circle-dot";
+  | "circle-dot"
+  // Single-Shop and Multi-Shop orders (one shop, or one payment split across shops).
+  | "store"
+  | "split";
 
 export type StatePresentation = {
   label: string;

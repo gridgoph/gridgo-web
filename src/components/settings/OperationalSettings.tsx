@@ -41,6 +41,10 @@ import {
 import { CheckoutPayment, checkoutPaymentLabel } from "@/components/settings/CheckoutPayment";
 import { DeliveryZones, DeliveryZonesSkeleton } from "@/components/settings/DeliveryZones";
 import { HubPickupSettings } from "@/components/settings/HubPickupSettings";
+import {
+  ORGANIZATION_DISCOUNT_INVALID,
+  OrganizationDiscount,
+} from "@/components/settings/OrganizationDiscount";
 import { ProductionPenalties } from "@/components/settings/ProductionPenalties";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -58,6 +62,7 @@ import { ISSUE_WINDOW_MAX_HOURS, ISSUE_WINDOW_MIN_HOURS, productionNudgeValueBou
 import type { DeliveryFeeBand, PlatformSettings, ProductionNudge, ProductionNudgeUnit } from "@/lib/api/types";
 import { Switch } from "@/components/ui/switch";
 import { RIDER_SHARE_INVALID } from "@/lib/delivery-split";
+import { discountRuleProblem } from "@/lib/organization-discount";
 import {
   applyZoneDraft,
   isZonedTable,
@@ -146,6 +151,11 @@ type NudgeDraft = {
 
 function nudgeFrom(settings: PlatformSettings): ProductionNudge {
   return settings.productionNudge ?? DEFAULT_PRODUCTION_NUDGE;
+}
+
+/** The stored discount as typed in the field; empty when the API holds none. */
+function discountInput(bps: number | undefined): string {
+  return bps === undefined ? "" : bpsToPercentInput(bps);
 }
 
 function feeVisibleOf(settings: Pick<PlatformSettings, "serviceFeeVisibleToClient">): boolean {
@@ -242,6 +252,8 @@ export function OperationalSettings() {
 
   const [rate, setRate] = useState("");
   const [riderShare, setRiderShare] = useState("");
+  /** Empty while the API holds no organization discount; nothing is sent for it then. */
+  const [orgDiscount, setOrgDiscount] = useState("");
   /** Undefined while the API holds no checkout split; nothing is sent for it then. */
   const [checkoutPercent, setCheckoutPercent] = useState<number | undefined>(undefined);
   const [hours, setHours] = useState("");
@@ -270,6 +282,13 @@ export function OperationalSettings() {
           preserveDraft && previous && current !== riderShareInput(previous.riderCommissionBps)
             ? current
             : riderShareInput(next.riderCommissionBps),
+        );
+        setOrgDiscount((current) =>
+          preserveDraft &&
+          previous &&
+          current !== discountInput(previous.organizationDiscountRateBps)
+            ? current
+            : discountInput(next.organizationDiscountRateBps),
         );
         setCheckoutPercent((current) =>
           preserveDraft && previous && current !== previous.downpaymentPercent
@@ -350,6 +369,20 @@ export function OperationalSettings() {
       setSaveError(RIDER_SHARE_INVALID);
       return;
     }
+    // An API without organization discounts holds no rate; nothing is sent for it.
+    const discountSupported = settings.organizationDiscountRateBps !== undefined;
+    const parsedDiscount = discountSupported ? percentInputToBps(orgDiscount) : null;
+    if (discountSupported && parsedDiscount === null) {
+      setSaveError(ORGANIZATION_DISCOUNT_INVALID);
+      return;
+    }
+    // The discount is paid out of the fee, so the fee may never be below it.
+    const discountProblem =
+      parsedDiscount !== null ? discountRuleProblem(parsedRate, parsedDiscount) : null;
+    if (discountProblem) {
+      setSaveError(discountProblem);
+      return;
+    }
     const parsedHours = Number(hours.trim());
     if (
       !Number.isInteger(parsedHours) ||
@@ -381,6 +414,7 @@ export function OperationalSettings() {
         serviceFeeRateBps: parsedRate,
         serviceFeeVisibleToClient: feeVisible,
         ...(parsedRiderShare !== null ? { riderCommissionBps: parsedRiderShare } : {}),
+        ...(parsedDiscount !== null ? { organizationDiscountRateBps: parsedDiscount } : {}),
         // An API without the setting holds no checkout split; nothing is sent for it.
         ...(checkoutPercent !== undefined ? { downpaymentPercent: checkoutPercent } : {}),
         issueWindowHours: parsedHours,
@@ -391,12 +425,14 @@ export function OperationalSettings() {
           parsedRiderShare,
           { from: settings.downpaymentPercent, to: checkoutPercent },
           { from: settings.deliveryFeeBands, to: parsedBands.bands },
+          { from: settings.organizationDiscountRateBps, to: parsedDiscount ?? undefined },
         ),
       });
       setSettings(next);
       setRate(bpsToPercentInput(next.serviceFeeRateBps));
       setFeeVisible(feeVisibleOf(next));
       setRiderShare(riderShareInput(next.riderCommissionBps));
+      setOrgDiscount(discountInput(next.organizationDiscountRateBps));
       setCheckoutPercent(next.downpaymentPercent);
       setHours(String(next.issueWindowHours));
       setZones(zonesFrom(next.deliveryFeeBands));
@@ -405,12 +441,16 @@ export function OperationalSettings() {
         next.riderCommissionBps !== undefined
           ? `, give the rider ${formatRatePercent(next.riderCommissionBps)} of each delivery fee,`
           : "";
+      const discountPart =
+        next.organizationDiscountRateBps !== undefined
+          ? ` Approved organizations get ${formatRatePercent(next.organizationDiscountRateBps)} off, out of that fee.`
+          : "";
       const checkoutPart =
         next.downpaymentPercent !== undefined
           ? ` Checkout: ${checkoutPaymentLabel(next.downpaymentPercent)}.`
           : "";
       setSaveOk(
-        `Saved. Orders placed from now on carry a ${formatRatePercent(next.serviceFeeRateBps)} service fee${riderPart} and price delivery from these zones, and issue windows opened from now use the new length.${checkoutPart} Orders already placed keep the figures they were given.`,
+        `Saved. Orders placed from now on carry a ${formatRatePercent(next.serviceFeeRateBps)} service fee${riderPart} and price delivery from these zones, and issue windows opened from now use the new length.${discountPart}${checkoutPart} Orders already placed keep the figures they were given.`,
       );
     } catch (err) {
       if (err instanceof ApiError && err.code === "settings_version_conflict") {
@@ -420,6 +460,13 @@ export function OperationalSettings() {
           "Someone else saved these settings a moment ago. Their values are now shown as in force — check your changes against them, then save again.",
         );
         await load(true);
+      } else if (
+        err instanceof ApiError &&
+        err.code === "organization_discount_exceeds_service_fee"
+      ) {
+        setSaveError(
+          "The service fee cannot be lower than the organization discount, which is paid out of it. Raise the fee or lower the discount, then save again.",
+        );
       } else if (
         err instanceof ApiError &&
         err.code === "invalid_delivery_fee_bands" &&
@@ -488,6 +535,7 @@ export function OperationalSettings() {
     rate !== bpsToPercentInput(settings.serviceFeeRateBps) ||
     feeVisible !== feeVisibleOf(settings) ||
     riderShare !== riderShareInput(settings.riderCommissionBps) ||
+    orgDiscount !== discountInput(settings.organizationDiscountRateBps) ||
     checkoutPercent !== settings.downpaymentPercent ||
     hours !== String(settings.issueWindowHours) ||
     JSON.stringify(zones) !== JSON.stringify(zonesFrom(settings.deliveryFeeBands)) ||
@@ -499,6 +547,15 @@ export function OperationalSettings() {
   const rateInvalid = rate.trim() !== "" && percentInputToBps(rate) === null;
   const draftRiderBps =
     percentInputToBps(riderShare) ?? settings.riderCommissionBps ?? 0;
+  const discountInvalid =
+    settings.organizationDiscountRateBps !== undefined &&
+    percentInputToBps(orgDiscount) === null;
+  const draftDiscountBps =
+    percentInputToBps(orgDiscount) ?? settings.organizationDiscountRateBps ?? 0;
+  const discountProblem =
+    settings.organizationDiscountRateBps !== undefined && !rateInvalid && !discountInvalid
+      ? discountRuleProblem(draftRateBps, draftDiscountBps)
+      : null;
   const riderShareInvalid =
     settings.riderCommissionBps !== undefined && percentInputToBps(riderShare) === null;
 
@@ -577,7 +634,23 @@ export function OperationalSettings() {
 
           <WorkedReceipts rateBps={draftRateBps} feeVisible={feeVisible} />
         </div>
+        {discountProblem ? (
+          <p className="text-body text-error m-0 mt-3 max-w-prose" data-testid="fee-below-discount">
+            This fee is below the {formatRatePercent(draftDiscountBps)} organization discount,
+            which is paid out of it. See Organization discount below.
+          </p>
+        ) : null}
       </section>
+
+      <OrganizationDiscount
+        value={orgDiscount}
+        onChange={setOrgDiscount}
+        inForceBps={settings.organizationDiscountRateBps}
+        draftBps={draftDiscountBps}
+        feeBps={draftRateBps}
+        invalid={discountInvalid}
+        problem={discountProblem}
+      />
 
       <RiderDeliveryShare
         value={riderShare}
@@ -776,7 +849,11 @@ export function OperationalSettings() {
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        <Button variant="primary" disabled={busy || !dirty} onClick={() => void save()}>
+        <Button
+          variant="primary"
+          disabled={busy || !dirty || Boolean(discountProblem)}
+          onClick={() => void save()}
+        >
           {busy ? "Saving…" : "Save settings"}
         </Button>
         <Button
@@ -786,6 +863,7 @@ export function OperationalSettings() {
             setRate(bpsToPercentInput(settings.serviceFeeRateBps));
             setFeeVisible(feeVisibleOf(settings));
             setRiderShare(riderShareInput(settings.riderCommissionBps));
+            setOrgDiscount(discountInput(settings.organizationDiscountRateBps));
             setCheckoutPercent(settings.downpaymentPercent);
             setHours(String(settings.issueWindowHours));
             setZones(zonesFrom(settings.deliveryFeeBands));
@@ -814,6 +892,10 @@ export function settingsChangeReason(
     to: undefined,
   },
   zones: { from: DeliveryFeeBand[]; to: DeliveryFeeBand[] } = { from: [], to: [] },
+  discount: { from: number | undefined; to: number | undefined } = {
+    from: undefined,
+    to: undefined,
+  },
 ): string {
   const changes: string[] = [];
   if (previousRiderBps !== undefined && nextRiderBps !== null && previousRiderBps !== nextRiderBps) {
@@ -827,6 +909,11 @@ export function settingsChangeReason(
   if (isZonedTable(zones.from) && isZonedTable(zones.to)) {
     const moved = zoneChanges(zones.from, zones.to);
     if (moved.length) changes.push(`delivery zones ${moved.join(", ")}`);
+  }
+  if (discount.from !== undefined && discount.to !== undefined && discount.from !== discount.to) {
+    changes.push(
+      `organization discount ${formatRatePercent(discount.from)} to ${formatRatePercent(discount.to)}`,
+    );
   }
   return changes.length
     ? `Updated from the portal: ${changes.join("; ")}`

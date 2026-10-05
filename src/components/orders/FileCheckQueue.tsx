@@ -59,6 +59,8 @@ import {
   type FileCheckRow,
 } from "@/lib/file-check";
 import { formatDateTime } from "@/lib/format";
+import { basketShopCounts, groupPositionLabel, shopModeOf } from "@/lib/baskets";
+import { ShopModeChip } from "@/components/orders/ShopModeChip";
 import { describeQuantity } from "@/lib/quantity";
 
 const medium = { fontFamily: "var(--font-medium)" } as const;
@@ -125,6 +127,8 @@ export function FileCheckQueue({
 
   const oldest = queue.ready.find((row) => row.waitSeconds !== null)?.waitSeconds ?? null;
 
+  const shopCounts = useMemo(() => basketShopCounts(orders), [orders]);
+
   const columns = useMemo<DataTableColumn<FileCheckRow>[]>(
     () => [
       {
@@ -145,7 +149,13 @@ export function FileCheckQueue({
                 <StatusChip tone="info" icon="circle-dot" label="New" />
               ) : null}
             </p>
+            <div className="mt-1">
+              <ShopModeChip mode={shopModeOf(row.order, shopCounts)} />
+            </div>
             <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
+              {groupPositionLabel(row.order, shopCounts)
+                ? `${groupPositionLabel(row.order, shopCounts)} · `
+                : ""}
               Order {row.order.id}
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
@@ -170,7 +180,7 @@ export function FileCheckQueue({
         cell: (row) => <ArtworkCell order={row.order} />,
       },
     ],
-    [fresh],
+    [fresh, shopCounts],
   );
 
   async function decided(message: string) {

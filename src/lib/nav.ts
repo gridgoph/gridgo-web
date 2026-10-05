@@ -55,6 +55,7 @@ export type NavIconKey =
   | "reports"
   | "tracker"
   | "refunds"
+  | "organizations"
   | "retention"
   | "dropouts"
   | "products"
@@ -420,6 +421,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           count: "refunds-waiting",
         },
         {
+          id: "ops-organizations",
+          href: "/ops/organizations",
+          label: "Organizations",
+          title: "Organizations",
+          icon: "organizations",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "ops-claims",
           href: "/ops/claims",
           label: "Claims & holds",
@@ -603,6 +613,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           count: "refunds-waiting",
         },
         {
+          id: "admin-organizations",
+          href: "/admin/organizations",
+          label: "Organizations",
+          title: "Organizations",
+          icon: "organizations",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "admin-late-production",
           href: "/admin/late-production",
           label: "Late production",
@@ -780,6 +799,9 @@ export function contextTitleForPath(
     return "Refund case";
   }
   if (pathname.startsWith("/admin/supplier-products/")) return "Supplier product";
+  if (/^\/(ops|admin)\/organizations\/[^/]+\/statement$/.test(pathname)) {
+    return "Organization statement";
+  }
   if (pathname.startsWith("/admin/orders/")) return "Order workspace";
   // One organization; its statement page below it has a title of its own.
   if (/^\/(ops|admin)\/organizations\/[^/]+\/?$/.test(pathname)) return "Organization";
