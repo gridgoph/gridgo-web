@@ -689,6 +689,187 @@ export type Order = {
    * and the rider.
    */
   physicalInvoiceRequest?: PhysicalInvoiceRequest | null;
+
+  /**
+   * Operations' file check (gridgo-api#122, contract "Artwork checkout gate and
+   * Operations handoff" in ORDER_MATCH_API.md). The shop sees nothing of the
+   * order until it is `passed`. Ops / Super Admin and the owning client; absent
+   * on an older order or API. Read through `src/lib/file-check.ts`.
+   */
+  fileCheck?: FileCheck | null;
+  /**
+   * The assigned shop's one-opening-hour window to accept (SHOP_RECOVERY_API.md).
+   * Ops / Super Admin and the assigned shop.
+   */
+  shopAcceptance?: ShopAcceptance | null;
+  /** The open (or last) recovery after a shop could not take or keep the order. */
+  shopRecovery?: ShopRecovery | null;
+  /** The shop's one production-deadline request (ORDER_RESCHEDULE_API.md). */
+  rescheduleRequest?: RescheduleRequest | null;
+  /** Delivery or hub pick-up, chosen before matching (gridgo-client#158). */
+  requestFulfillment?: { fulfillmentMode: "delivery" | "pickup"; dropoff: MapPoint | null } | null;
+  /** The hub's schedule and fee as snapshotted at checkout, on a pick-up order. */
+  hubPickup?: HubPickup | null;
+  /** Already inside `deliveryFeeMinor` on a pick-up order. Never add the two. */
+  pickupFeeMinor?: number;
+};
+
+// ---- Operations file check (gridgo-api#122) ----
+
+export type FileCheckStatus = "pending" | "passed" | "failed" | "cancelled";
+
+export type FileCheck = {
+  status: FileCheckStatus;
+  /** When the wait began: checkout, or the client's resubmission. */
+  requestedAt: string;
+  reviewedAt: string | null;
+  /** Ops / Super Admin only. */
+  reviewedBy?: string | null;
+  /** Why the file was sent back, in words the client reads. */
+  reason: string | null;
+  /** Computed by the API at read time; 0 once decided. */
+  waitingSeconds: number;
+};
+
+// ---- Shop acceptance and recovery (gridgo-api SHOP_RECOVERY_API.md) ----
+
+export type ShopAcceptanceStatus =
+  | "pending"
+  | "accepted"
+  | "timed_out"
+  | "declined"
+  | "cancelled";
+
+export type ShopAcceptance = {
+  supplierId: string;
+  assignedAt: string;
+  /** Absolute expiry: one hour of the shop's opening time, not 60 wall minutes. */
+  deadlineAt: string;
+  workingMinutes: number;
+  status: ShopAcceptanceStatus;
+  acceptedAt?: string | null;
+};
+
+export type ShopFailureKind = "timed_out" | "declined" | "cancelled";
+
+export type ShopRecoveryStatus =
+  | "awaiting_client"
+  | "ops_review"
+  | "refund_requested"
+  | "refunded"
+  | "accepted";
+
+/** The replacement GRIDGO found. Ops / Super Admin see who and when. */
+export type ShopRecoveryProposal = {
+  supplierId: string;
+  pickup?: MapPoint | null;
+  /** The replacement shop's ready-by. */
+  readyBy: string;
+  /** What the client is told. */
+  promiseBy: string;
+  expiresAt: string;
+};
+
+export type ShopRecovery = {
+  id: string;
+  status: ShopRecoveryStatus;
+  originalSupplierId?: string;
+  /** The order state when the shop failed. */
+  stage?: string;
+  createdAt?: string;
+  originalSnapshot?: {
+    pickup?: MapPoint | null;
+    readyBy: string | null;
+    promiseBy: string | null;
+  };
+  proposal?: ShopRecoveryProposal | null;
+  refundRequestId?: string | null;
+  acceptedAt?: string | null;
+};
+
+/** One timeout, decline or cancellation, from `GET /ops/shop-failures`. */
+export type ShopFailureEvent = {
+  id: string;
+  orderId: string;
+  supplierId: string;
+  kind: ShopFailureKind;
+  stage: string;
+  reason: string;
+  at: string;
+  actorId: string | null;
+  /** The order's current recovery, which may be a later one. */
+  recovery?: ShopRecovery | null;
+};
+
+// ---- Production deadline requests (gridgo-api ORDER_RESCHEDULE_API.md) ----
+
+export type RescheduleStatus =
+  | "pending"
+  | "accepted"
+  | "declined"
+  | "expired"
+  | "operations_required";
+
+export type RescheduleResolution =
+  | "rematch_offered"
+  | "no_match"
+  | "operations_required"
+  | "rematched"
+  | "refund_requested"
+  | "resolved";
+
+/** The Ops / Super Admin projection. */
+export type RescheduleRequest = {
+  id: string;
+  orderId: string;
+  supplierId?: string;
+  reason: string;
+  status: RescheduleStatus;
+  requestedAt: string;
+  /** requestedAt + 24 hours. */
+  expiresAt: string;
+  answeredAt: string | null;
+  resolution: RescheduleResolution | null;
+  refundRequestId: string | null;
+  /** True while work and payouts are stopped for this request. */
+  workHeld: boolean;
+  originalReadyBy?: string | null;
+  proposedReadyBy?: string | null;
+  originalPromiseBy?: string | null;
+  proposedPromiseBy?: string | null;
+  canRequestRefund?: boolean;
+  rematch?: { id: string; promiseBy: string; expiresAt: string } | null;
+  appliedDeductionMinor?: number;
+  resolvedAt?: string | null;
+  resolutionReason?: string | null;
+};
+
+export type RescheduleQueue = {
+  /** The shop's lifetime count (before the status filter). */
+  totalRequests: number;
+  requests: RescheduleRequest[];
+};
+
+// ---- Hub pick-up (gridgo-api OPERATIONAL_MODEL_V2_API.md "Hub pick-up settings") ----
+
+/** One opening window: weekday 0 Sunday … 6 Saturday, minutes after midnight. */
+export type WeeklyWindow = { weekday: number; opensMinute: number; closesMinute: number };
+
+/** Inclusive `YYYY-MM-DD` days the hub is shut. */
+export type ScheduleClosure = { startDay: string; endDay: string };
+
+export type WeeklySchedule = {
+  utcOffsetMinutes: number;
+  week: WeeklyWindow[];
+  closures?: ScheduleClosure[];
+};
+
+export type HubPickup = {
+  /** Read-only: GRIDGO's own counter. */
+  point?: MapPoint | null;
+  /** `null` means the hours are not set yet — never "open all week". */
+  schedule: WeeklySchedule | null;
+  feeMinor: number;
 };
 
 export type Notification = {
@@ -852,6 +1033,11 @@ export type PlatformSettings = {
    * Absent on an API that predates penalties; the screen then says so.
    */
   productionPenalty?: ProductionPenaltyPolicy;
+  /**
+   * The hub's pick-up hours and flat fee. Every role reads it; only Super
+   * Admin writes it. Absent on an API that predates hub pick-up.
+   */
+  hubPickup?: HubPickup;
   /** Manual QR checkout. `imageUrl` is the replaceable plate. */
   paymentQr?: PaymentQr;
 };
@@ -866,6 +1052,8 @@ export type UpdateSettingsInput = {
   productionNudge?: ProductionNudge;
   /** Super Admin only, always the complete object (`403` for anyone else). */
   productionPenalty?: ProductionPenaltyPolicy;
+  /** Super Admin only, always `{schedule, feeMinor}`; the point is read-only. */
+  hubPickup?: Pick<HubPickup, "schedule" | "feeMinor">;
   reason?: string;
 };
 

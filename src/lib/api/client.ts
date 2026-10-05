@@ -81,6 +81,10 @@ import type {
   SeasonWindowInput,
   SeasonWindowsEnvelope,
   ProductionLapse,
+  RescheduleQueue,
+  RescheduleRequest,
+  ShopFailureEvent,
+  ShopRecovery,
   SupplierProductionLapses,
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
@@ -736,6 +740,67 @@ export async function recordProductionNoCommunication(
     { method: "POST", body: JSON.stringify({ reason }) },
   );
   return result.lapses;
+}
+
+// ---------------------------------------------------------------------------
+// Shop acceptance, recovery and deadline requests
+// (gridgo-api SHOP_RECOVERY_API.md, ORDER_RESCHEDULE_API.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ops / Super Admin. Every timeout, decline and cancellation a shop has had,
+ * optionally for one shop, each with its order's current recovery.
+ */
+export async function listShopFailures(
+  filter: { supplierId?: string } = {},
+): Promise<ShopFailureEvent[]> {
+  const query = filter.supplierId
+    ? `?supplierId=${encodeURIComponent(filter.supplierId)}`
+    : "";
+  const result = await request<{ events: ShopFailureEvent[] }>(
+    `/ops/shop-failures${query}`,
+  );
+  return result.events ?? [];
+}
+
+/** The order's recovery as this caller may read it; `null` when there is none. */
+export async function getShopRecovery(orderId: string): Promise<ShopRecovery | null> {
+  const result = await request<{ recovery: ShopRecovery | null }>(
+    `/orders/${encodeURIComponent(orderId)}/shop-recovery`,
+  );
+  return result.recovery ?? null;
+}
+
+/**
+ * Ops / Super Admin. Deadline requests, newest first. `totalRequests` is the
+ * lifetime count for the shop filter, before the status filter.
+ */
+export async function listRescheduleRequests(
+  filter: { status?: string; supplierId?: string } = {},
+): Promise<RescheduleQueue> {
+  const params = new URLSearchParams();
+  if (filter.status) params.set("status", filter.status);
+  if (filter.supplierId) params.set("supplierId", filter.supplierId);
+  const query = params.toString();
+  const result = await request<RescheduleQueue>(
+    `/ops/reschedule-requests${query ? `?${query}` : ""}`,
+  );
+  return { totalRequests: result.totalRequests ?? 0, requests: result.requests ?? [] };
+}
+
+/**
+ * Ops / Super Admin. Records an agreed continuation under the current terms
+ * and releases only this request's hold. The reason is required and audited.
+ */
+export async function resolveRescheduleRequest(
+  orderId: string,
+  body: { requestId: string; reason: string },
+): Promise<RescheduleRequest> {
+  const result = await request<{ request: RescheduleRequest }>(
+    `/orders/${encodeURIComponent(orderId)}/reschedule-request/resolve`,
+    { method: "POST", body: JSON.stringify(body) },
+  );
+  return result.request;
 }
 
 /** Hosted payment-QR path checkout and this portal fetch without a signed URL. */

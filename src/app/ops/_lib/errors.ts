@@ -57,6 +57,24 @@ const CODE_COPY: Record<string, string> = {
   supplier_not_found: "That account is not a shop, so it has no late jobs to show.",
   production_photo_upload_not_allowed:
     "This job has left production, so it no longer takes progress photos. Refresh the order.",
+  file_check_reason_required:
+    "Say what the client needs to fix. The file cannot be sent back without a reason.",
+  shop_recovery_pending:
+    "This order is already waiting on a replacement or a refund. Refresh to see where it stands.",
+  shop_cancel_not_available:
+    "The rider has already collected this order, so the shop can no longer drop it.",
+  shop_recovery_requires_operations:
+    "A share was already paid to the shop, so this order needs your decision before anything moves.",
+  shop_acceptance_expired:
+    "The shop's hour to accept has passed. GRIDGO is offering the client a replacement or a refund.",
+  reschedule_resolution_unavailable:
+    "This deadline request is no longer waiting on Operations. Refresh to see its outcome.",
+  reschedule_fulfillment_stopped:
+    "Work on this order is paused by a declined deadline request. Resolve the request first.",
+  invalid_reschedule_reason: "Write the resolution in 1 to 2,000 characters.",
+  invalid_hub_pickup: "Enter the pick-up fee as a whole amount of 0 or more.",
+  invalid_hub_pickup_schedule:
+    "Check the hub hours: closing after opening, no overlaps on a day, and closures with a first and last day.",
   transition_not_allowed:
     "That step is not available from where this order is now. Refresh and take the action the order offers.",
   payment_method_not_allowed:

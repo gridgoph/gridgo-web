@@ -56,6 +56,7 @@ export type NavIconKey =
   | "tracker"
   | "refunds"
   | "retention"
+  | "dropouts"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -102,7 +103,8 @@ export type NavCountKey =
   | "issue-reports-new"
   | "jobs-need-action"
   | "tracker-needs-decision"
-  | "refunds-waiting";
+  | "refunds-waiting"
+  | "shop-changes-needs-ops";
 
 /**
  * One rail section. A missing `label` is a top-level cluster (Overview / Jobs)
@@ -337,6 +339,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          id: "ops-shop-changes",
+          href: "/ops/shop-changes",
+          label: "Dropouts & delays",
+          title: "Shop dropouts and delays",
+          icon: "dropouts",
+          ready: true,
+          placeholderBody: "",
+          count: "shop-changes-needs-ops",
+        },
+        {
           id: "ops-escalations",
           href: "/ops/escalations",
           label: "Escalations",
@@ -562,6 +574,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "lapses",
           ready: true,
           placeholderBody: "",
+        },
+        {
+          id: "admin-shop-changes",
+          href: "/admin/shop-changes",
+          label: "Dropouts & delays",
+          title: "Shop dropouts and delays",
+          icon: "dropouts",
+          ready: true,
+          placeholderBody: "",
+          count: "shop-changes-needs-ops",
         },
       ],
     },

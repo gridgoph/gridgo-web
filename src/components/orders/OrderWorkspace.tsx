@@ -11,6 +11,7 @@ import {
   CircleDot,
   Lock,
   ShieldAlert,
+  TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
 
@@ -25,6 +26,14 @@ import {
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { CorrectProductionDialog } from "@/components/orders/CorrectProductionDialog";
 import { CounterCheck } from "@/components/orders/CounterCheck";
+import {
+  DeadlinePanel,
+  ShopAcceptancePanel,
+  deadlineRowSummary,
+  shopRowSummary,
+  shopRowTone,
+  shopRowVisible,
+} from "@/components/orders/ShopChanges";
 import { useFileDeletionAccess } from "@/components/files/FileDeletionAccess";
 import { OrderFileDeletions } from "@/components/files/OrderFileDeletions";
 import { EvidencePlate, EvidenceStrip } from "@/components/orders/EvidencePreview";
@@ -60,7 +69,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { installmentsAwaitingConfirmation } from "@/lib/api/constraints";
 import { counterRow, counterStep } from "@/lib/counter-check";
 import { deliveryEvidenceItems } from "@/lib/evidence";
-import { artworkQaCheckLabel, artworkSource, orderDesignLinks } from "@/lib/design-links";
+import { artworkSource, orderDesignLinks } from "@/lib/design-links";
+import { fileCheckOf, fileCheckWaitLine, qaChecksFor } from "@/lib/file-check";
 import {
   confirmPayment,
   fileRefundRequest,
@@ -69,6 +79,7 @@ import {
   listAudit,
   listEscalations,
   listOrderRefunds,
+  listShopFailures,
   newIdempotencyKey,
   promisePhysicalInvoice,
   rejectPayment,
@@ -83,6 +94,7 @@ import type {
   PaymentInstallment,
   PayoutMilestone,
   RefundRequest,
+  ShopFailureEvent,
 } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
@@ -116,6 +128,11 @@ import {
 } from "@/lib/production-progress";
 import { describeQuantity } from "@/lib/quantity";
 import { presentRefundStatus, refundIsActive, refundKindLabel } from "@/lib/refunds";
+import {
+  failuresForOrder,
+  recoveryNeedsOperations,
+  rescheduleNeedsOperations,
+} from "@/lib/shop-changes";
 import { cn } from "@/lib/utils";
 import { orderDeliverySplit, platformShareBps } from "@/lib/delivery-split";
 
@@ -132,6 +149,8 @@ type SectionId =
   | "payment"
   | "qa"
   | "production"
+  | "shop"
+  | "deadline"
   | "counter"
   | "delivery"
   | "payout"
@@ -183,6 +202,8 @@ export function OrderWorkspace({
   const [resolveId, setResolveId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [refunds, setRefunds] = useState<RefundRequest[] | null>(null);
+  const [failures, setFailures] = useState<ShopFailureEvent[] | null>(null);
+  const [failuresError, setFailuresError] = useState<string | null>(null);
   const [corrections, setCorrections] = useState<ProductionCorrection[]>([]);
   const [correcting, setCorrecting] = useState(false);
   const [correctError, setCorrectError] = useState<string | null>(null);
@@ -215,6 +236,22 @@ export function OrderWorkspace({
           // audit log that records them. Without it the step still shows.
           listAudit({ orderId, action: PRODUCTION_OVERRIDE_ACTION }).catch(() => null),
         ]);
+        // A shop's timeouts, declines and cancellations are their own read,
+        // made only when the order has been through a recovery. Best effort:
+        // the row says so when they could not be read.
+        if (next.shopRecovery) {
+          try {
+            setFailures(failuresForOrder(await listShopFailures(), orderId));
+            setFailuresError(null);
+          } catch {
+            setFailuresError(
+              "The shop dropouts on this order could not be loaded. Refresh the order to try again.",
+            );
+          }
+        } else {
+          setFailures(null);
+          setFailuresError(null);
+        }
         setRefunds(orderRefunds);
         setCorrections(productionCorrections(overrides, orderId));
         setOrder(next);
@@ -270,8 +307,14 @@ export function OrderWorkspace({
     for (const correction of corrections) {
       if (correction.actorId) ids.add(correction.actorId);
     }
+    // Shops named in the acceptance, recovery and deadline rows.
+    if (order?.shopAcceptance?.supplierId) ids.add(order.shopAcceptance.supplierId);
+    if (order?.shopRecovery?.originalSupplierId) ids.add(order.shopRecovery.originalSupplierId);
+    if (order?.shopRecovery?.proposal?.supplierId) ids.add(order.shopRecovery.proposal.supplierId);
+    if (order?.rescheduleRequest?.supplierId) ids.add(order.rescheduleRequest.supplierId);
+    for (const event of failures ?? []) if (event.supplierId) ids.add(event.supplierId);
     return [...ids].sort().join(",");
-  }, [order, escalations, corrections]);
+  }, [order, escalations, corrections, failures]);
 
   useEffect(() => {
     const missing = people.split(",").filter((id) => id && !(id in names));
@@ -511,6 +554,57 @@ export function OrderWorkspace({
                 Between the shop and the road: the rider's count and six
                 checks at the counter. A gate on custody, not a payout stage.
               */}
+                {/*
+                  When a shop could not take, keep or meet the order: its
+                  acceptance window and dropouts, then its deadline request.
+                */}
+                {step.id === "production" && shopRowVisible(order) ? (
+                  <SectionRow
+                    id="shop"
+                    heading="Shop acceptance"
+                    summary={shopRowSummary(order)}
+                    marker={SHOP_MARKER[shopRowTone(order)]}
+                    trailing={
+                      recoveryNeedsOperations(order.shopRecovery) ? "Your call" : undefined
+                    }
+                  >
+                    <ShopAcceptancePanel
+                      order={order}
+                      failures={failures}
+                      failuresError={failuresError}
+                      names={names}
+                      tree={tree}
+                    />
+                  </SectionRow>
+                ) : null}
+                {step.id === "production" && order.rescheduleRequest ? (
+                  <SectionRow
+                    id="deadline"
+                    heading="Deadline request"
+                    summary={deadlineRowSummary(order.rescheduleRequest)}
+                    marker={
+                      rescheduleNeedsOperations(order.rescheduleRequest)
+                        ? SHOP_MARKER.attention
+                        : order.rescheduleRequest.workHeld ||
+                            order.rescheduleRequest.status === "pending"
+                          ? SHOP_MARKER.open
+                          : SHOP_MARKER.quiet
+                    }
+                    trailing={
+                      rescheduleNeedsOperations(order.rescheduleRequest)
+                        ? "Your call"
+                        : undefined
+                    }
+                  >
+                    <DeadlinePanel
+                      order={order}
+                      request={order.rescheduleRequest}
+                      names={names}
+                      tree={tree}
+                      onResolved={load}
+                    />
+                  </SectionRow>
+                ) : null}
                 {step.id === "production" ? (
                   <CounterRow
                     order={order}
@@ -687,6 +781,8 @@ export function defaultOpenSections(order: Order): SectionId[] {
     ids.add("physical-invoice");
   }
   if (releasableMilestones(order).length > 0) ids.add("payout");
+  if (recoveryNeedsOperations(order.shopRecovery)) ids.add("shop");
+  if (rescheduleNeedsOperations(order.rescheduleRequest)) ids.add("deadline");
   if (isCancelled(order)) ids.add("history");
   return [...ids];
 }
@@ -790,6 +886,13 @@ function payoutTrailing(order: Order): string {
     : `${progress.releasedCount} of ${progress.count} released`;
 }
 
+const SHOP_MARKER: Record<ReturnType<typeof shopRowTone>, MarkerSpec> = {
+  attention: { icon: TriangleAlert, tone: "current" },
+  open: { icon: CircleDot, tone: "current" },
+  done: { icon: CircleCheck, tone: "success" },
+  quiet: { icon: CircleDot, tone: "muted" },
+};
+
 function Marker({ icon: Icon, tone }: MarkerSpec) {
   return (
     <span
@@ -875,20 +978,6 @@ type StepRowProps = {
   onCorrectProduction: () => void;
 };
 
-/**
- * What Operations must have looked at before approving artwork.
- *
- * These are not stored anywhere and are not a record: they are a hand on the
- * arm. Approving sends the job to a shop that will print exactly what is on the
- * screen, and four deliberate ticks is the cheapest way to stop that being one
- * reflexive click.
- */
-const QA_CHECKS = [
-  { id: "artwork", label: "Artwork opens and is high enough resolution" },
-  { id: "spec", label: "Specification matches what the client ordered" },
-  { id: "quantity", label: "Quantity looks deliberate" },
-  { id: "address", label: "Delivery address is somewhere a rider can go" },
-];
 
 function StepRow({
   step,
@@ -911,9 +1000,7 @@ function StepRow({
   const current = step.status === "current";
   const artwork = artworkSource(order);
   const designLinks = orderDesignLinks(order);
-  const qaChecks = QA_CHECKS.map((check) =>
-    check.id === "artwork" ? { ...check, label: artworkQaCheckLabel(artwork) } : check,
-  );
+  const qaChecks = qaChecksFor(order);
   const busy = acting !== null;
   const trailing =
     step.id === "payment"
@@ -928,12 +1015,7 @@ function StepRow({
     <SectionRow
       id={step.id as SectionId}
       heading={definition?.label ?? step.label}
-      summary={stageSummary(
-        order,
-        step.id as Exclude<typeof step.id, "done">,
-        formatPhp,
-        formatDateTime,
-      )}
+      summary={stepSummary(order, step)}
       marker={STEP_MARKER[step.status]}
       trailing={trailing}
       current={current}
@@ -1033,6 +1115,25 @@ function StepRow({
       ) : null}
     </SectionRow>
   );
+}
+
+/**
+ * A step's closed line. The quality check reads the file's live wait while it
+ * is waiting on Operations, and when it was passed once it has been.
+ */
+function stepSummary(order: Order, step: WorkspaceStep): string {
+  const stage = step.id as Exclude<typeof step.id, "done">;
+  if (stage === "qa") {
+    const check = fileCheckOf(order);
+    if (step.status === "current") {
+      const waiting = fileCheckWaitLine(order);
+      if (waiting) return waiting;
+    }
+    if (step.status === "done" && check?.status === "passed" && check.reviewedAt) {
+      return `File passed ${formatDateTime(check.reviewedAt)}.`;
+    }
+  }
+  return stageSummary(order, stage, formatPhp, formatDateTime);
 }
 
 function PhysicalInvoicePanel({
