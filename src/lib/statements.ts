@@ -86,3 +86,43 @@ export function describePeriod(period: { from: string; to: string }): string {
   const sameYear = period.from.slice(0, 4) === period.to.slice(0, 4);
   return `${format(period.from, !sameYear)} – ${format(period.to, true)}`;
 }
+
+export type OrganizationStanding = {
+  label: string;
+  tone: "success" | "info" | "error" | "neutral";
+  icon: "circle-check" | "clock" | "circle-x" | "ban" | "circle-dot";
+};
+
+/** Where an organization's application stands, for the list's status chip. */
+export function presentOrganizationStanding(
+  status: string | null | undefined,
+): OrganizationStanding {
+  switch (status) {
+    case "approved":
+      return { label: "Approved", tone: "success", icon: "circle-check" };
+    case "pending":
+      return { label: "Under review", tone: "info", icon: "clock" };
+    case "rejected":
+      return { label: "Not approved", tone: "error", icon: "circle-x" };
+    case "suspended":
+      return { label: "Suspended", tone: "error", icon: "ban" };
+    default:
+      return { label: "No application", tone: "neutral", icon: "circle-dot" };
+  }
+}
+
+/** Plain recovery copy for a statement read that failed. */
+export function statementErrorMessage(code: string | null | undefined): string {
+  switch (code) {
+    case "organization_approval_required":
+      return "Statements are only kept for organizations Operations has approved. This account is not approved, or its approval was withdrawn.";
+    case "invalid_statement_period":
+      return "That period cannot be read. Choose dates in order, at most 366 days apart.";
+    case "statement_total_too_large":
+      return "That period holds too much to total. Choose a shorter one.";
+    case "invalid_statement_money":
+      return "An order in this period has money the statement cannot add up. Tell engineering which organization this is.";
+    default:
+      return "The statement could not be loaded. Try again.";
+  }
+}
