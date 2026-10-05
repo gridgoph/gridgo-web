@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   listingBoardState,
   listingCountLine,
+  listingReviewState,
   takenDownLine,
   normalizeStaffCatalogDetail,
   normalizeStaffCatalogPage,
@@ -116,5 +117,19 @@ describe("staff catalog rows", () => {
       /^Taken down Oct 4, 2026/,
     );
     expect(takenDownLine({ suspendedAt: null })).toBe("Taken down");
+  });
+});
+
+describe("listingReviewState", () => {
+  it("names a pending new listing, a pending change and a send-back, and nothing once approved", () => {
+    expect(listingReviewState({ reviewStatus: "pending", hasApprovedVersion: false })?.label).toBe("In review");
+    expect(listingReviewState({ reviewStatus: "pending", hasApprovedVersion: true })?.label).toBe(
+      "Change in review",
+    );
+    expect(listingReviewState({ reviewStatus: "needs_revision", hasApprovedVersion: false })?.label).toBe(
+      "Sent back",
+    );
+    expect(listingReviewState({ reviewStatus: "approved", hasApprovedVersion: true })).toBeNull();
+    expect(listingReviewState({ reviewStatus: null, hasApprovedVersion: null })).toBeNull();
   });
 });

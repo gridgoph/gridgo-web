@@ -16,11 +16,13 @@ import {
   getTracker,
   getWorkspaceRole,
   listApprovalCases,
+  listCatalogReviews,
   listClaims,
   listEscalations,
   listIssueReports,
   listJobs,
   listOrders,
+  listProductTypeRequests,
   listRefunds,
   listRescheduleRequests,
   listShopFailures,
@@ -28,6 +30,7 @@ import {
   isApiError,
 } from "@/lib/api/client";
 import { claimBlocksPayout } from "@/lib/api/constraints";
+import { normalizeProductTypeRequests, normalizeReviewPage } from "@/lib/listing-review";
 import { listSupportChatThreads } from "@/lib/api/support-chat";
 import type { InvalidateResource } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
@@ -131,6 +134,19 @@ const NAV_COUNT_SOURCES: Record<NavCountKey, CountSource> = {
       const role = getWorkspaceRole() ?? "ops_admin";
       return (await listRefunds()).filter((refund) => refundNeedsStaff(refund, role))
         .length;
+    },
+  },
+  // The Listing reviews desk's Waiting tab: listings plus product-type
+  // requests, one page of each: past 50 the badge is a floor and the desk
+  // has the exact figure.
+  "listing-reviews-waiting": {
+    resources: ["catalog"],
+    load: async () => {
+      const [listings, requests] = await Promise.all([
+        listCatalogReviews("pending").then(normalizeReviewPage),
+        listProductTypeRequests("pending").then(normalizeProductTypeRequests),
+      ]);
+      return listings.entries.length + requests.requests.length;
     },
   },
   // GitHub is the source, so no stream covers it. The API caches its GitHub

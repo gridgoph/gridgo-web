@@ -81,6 +81,7 @@ describe("listings", () => {
       "packageQty",
       "turnaround",
       "formats",
+      "specs",
       "groups",
     ]);
 
@@ -219,10 +220,11 @@ describe("listings", () => {
         { inheritedTurnaroundHours: null, inheritedFormatCodes: [] },
         true,
       ),
-    ).toEqual({
+    ).toMatchObject({
+      kind: "taken_down",
       label: "Taken down by GRIDGO",
-      tone: "warning",
-      icon: "triangle-alert",
+      tone: "error",
+      icon: "ban",
       note: "Blurry sample",
     });
   });

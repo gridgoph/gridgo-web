@@ -25,6 +25,18 @@ describe("notificationHref", () => {
     ).toBe("/supplier/catalogue/sci_sticker");
   });
 
+  it("lands a listing-review notice on each role's own desk or board", () => {
+    for (const type of ["catalog_review_pending", "catalog_review_decided"]) {
+      expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/listing-reviews");
+      expect(notificationHref("super_admin", note({ type }))).toBe("/admin/listing-reviews");
+      expect(notificationHref("supplier", note({ type }))).toBe("/supplier/catalogue");
+      expect(
+        notificationHref("supplier", note({ type, catalogItemId: "sci_sticker" })),
+      ).toBe("/supplier/catalogue/sci_sticker");
+      expect(notificationHref("rider", note({ type }))).toBeNull();
+    }
+  });
+
   it("opens the restored listing for the shop, and nothing for staff", () => {
     expect(
       notificationHref(

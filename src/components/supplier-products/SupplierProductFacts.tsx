@@ -4,6 +4,7 @@ import type { Listing } from "@/lib/listings";
 import { StatusChip } from "@/components/ui/StatusChip";
 import {
   listingBoardState,
+  listingReviewState,
   listingPriceLine,
   shopLabel,
   specSummary,
@@ -26,6 +27,7 @@ export function SupplierProductFacts({
   taxonomy: Taxonomy | null;
 }) {
   const board = listingBoardState(listing);
+  const review = listingReviewState(listing);
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex min-w-0 flex-col gap-1">
@@ -37,6 +39,9 @@ export function SupplierProductFacts({
         </h1>
         <div className="flex flex-wrap items-center gap-3">
           <StatusChip tone={board.tone} icon={board.icon} label={board.label} />
+          {review ? (
+            <StatusChip tone={review.tone} icon={review.icon} label={review.label} />
+          ) : null}
           <span className="text-caption text-text-muted">
             Last change {formatDateTime(listing.updatedAt)}
           </span>

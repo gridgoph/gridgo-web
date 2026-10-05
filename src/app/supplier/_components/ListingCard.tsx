@@ -7,11 +7,14 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import {
   boardContextFor,
   boardStanding,
+  LISTING_STANDING_LABEL,
   priceLine,
   printerCapLine,
   readyInLine,
   subcategoryName,
+  type BoardStanding,
   type Listing,
+  type ListingReadiness,
   type ServiceLine,
 } from "@/lib/listings";
 import type { Taxonomy } from "@/lib/api/types";
@@ -21,6 +24,8 @@ type Props = {
   taxonomy: Taxonomy | null;
   services: ServiceLine[];
   shopApproved: boolean;
+  /** This listing's entry from `GET /me/supplier-readiness`, when it loaded. */
+  readiness?: ListingReadiness | null;
   layout?: "tile" | "row";
   /**
    * Draw the tile without its link — the editor shows the shop what a client
@@ -34,18 +39,18 @@ export function ListingCard({
   taxonomy,
   services,
   shopApproved,
+  readiness,
   layout = "tile",
   preview = false,
 }: Props) {
   const context = boardContextFor(listing, services);
-  const standing = boardStanding(listing, context, shopApproved);
+  const standing = boardStanding(listing, context, shopApproved, readiness);
   const first = listing.photos[0];
   const hours =
     listing.turnaroundMode === "override"
       ? listing.turnaroundHours
       : context.inheritedTurnaroundHours;
   const cap = printerCapLine(listing.printerMaxWidthFeet);
-  const showChip = standing.label !== "On the board" || standing.note;
 
   const photo = (
     <SamplePhoto
@@ -80,10 +85,8 @@ export function ListingCard({
           </div>
           <div className="flex flex-col items-end gap-1 pr-2">
             <p className="text-body text-text-primary m-0 md:hidden">{priceLine(listing)}</p>
-            {showChip ? (
-              <StatusChip tone={standing.tone} label={standing.label} icon={standing.icon} />
-            ) : (
-              <p className="text-caption text-text-muted m-0 hidden md:block">{readyInLine(hours)}</p>
+            {preview && standing.kind === "live" ? null : (
+              <StandingChips standing={standing} align="end" />
             )}
           </div>
         </>
@@ -101,8 +104,9 @@ export function ListingCard({
           <p className="text-body text-text-primary m-0">{priceLine(listing)}</p>
           {cap ? <p className="text-caption text-text-secondary m-0">{cap}</p> : null}
           <p className="text-caption text-text-secondary m-0">{readyInLine(hours)}</p>
-          {showChip ? (
-            <StatusChip tone={standing.tone} label={standing.label} icon={standing.icon} />
+          {preview && standing.kind === "live" ? null : <StandingChips standing={standing} />}
+          {standing.note && (standing.kind !== "live" || standing.secondary) ? (
+            <p className="text-caption text-text-secondary m-0 line-clamp-2">{standing.note}</p>
           ) : null}
         </div>
       )}
@@ -150,6 +154,36 @@ export function ListingCard({
       >
         {copy}
       </Link>
+    </div>
+  );
+}
+
+/**
+ * The standing chip on every tile and row, Live included, so a shop can tell
+ * at a glance which listings clients see. A live listing with an edit under
+ * review, or sent back, carries that state as a second chip.
+ */
+function StandingChips({
+  standing,
+  align = "start",
+}: {
+  standing: BoardStanding;
+  align?: "start" | "end";
+}) {
+  return (
+    <div
+      className={
+        align === "end"
+          ? "flex flex-wrap items-center justify-end gap-1.5"
+          : "flex flex-wrap items-center gap-1.5"
+      }
+    >
+      <StatusChip tone={standing.tone} label={standing.label} icon={standing.icon} />
+      {standing.secondary === "pending_review" ? (
+        <StatusChip tone="info" label="Changes in review" icon="clock" />
+      ) : standing.secondary === "needs_changes" ? (
+        <StatusChip tone="warning" label={LISTING_STANDING_LABEL.needs_changes} icon="square-pen" />
+      ) : null}
     </div>
   );
 }

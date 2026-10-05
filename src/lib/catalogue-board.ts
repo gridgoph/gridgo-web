@@ -1,24 +1,64 @@
-import { subcategoryName, type Listing } from "@/lib/listings";
+import {
+  LISTING_STANDING_LABEL,
+  LISTING_STANDING_ORDER,
+  subcategoryName,
+  type BoardStanding,
+  type Listing,
+  type ListingStandingKind,
+} from "@/lib/listings";
 import type { Taxonomy } from "@/lib/api/types";
 
 export type BoardQuery = {
   q: string;
   kind: string;
-  onBoard: OnBoardFilter;
+  standing: StandingFilter;
   sort: CatalogueSort;
 };
 
-export type OnBoardFilter = "all" | "on_the_board" | "hidden";
+/** "all", or one of the six standings the supplier app shows. */
+export type StandingFilter = "all" | ListingStandingKind;
 export type CatalogueSort = "board" | "name" | "price_low" | "price_high" | "fastest";
 
-export const PAGE_SIZE = 12;
+/**
+ * The list endpoint's largest page. Standing is worked out here from the
+ * listing, its review and readiness, not by the API, so the page reads the
+ * whole board (a shop has tens of listings, not thousands) and filters it.
+ */
+export const PAGE_SIZE = 50;
+/** Pages read before the board stops and says it is showing a part. */
+export const MAX_BOARD_PAGES = 20;
 export const MAX_HUNT_LENGTH = 80;
 
-export const ON_BOARD_OPTIONS: readonly { value: OnBoardFilter; label: string }[] = [
+export const STANDING_OPTIONS: readonly { value: StandingFilter; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "on_the_board", label: "On the board" },
-  { value: "hidden", label: "Hidden" },
+  ...LISTING_STANDING_ORDER.map((kind) => ({ value: kind, label: LISTING_STANDING_LABEL[kind] })),
 ];
+
+export type StandingCounts = Record<StandingFilter, number>;
+
+/**
+ * How many listings each filter shows. A Live listing with an edit under
+ * review or sent back counts under Live and under that state, so the
+ * choices can add up to more than All.
+ */
+export function standingCounts(
+  standings: readonly Pick<BoardStanding, "kind" | "secondary">[],
+): StandingCounts {
+  const counts = { all: standings.length } as StandingCounts;
+  for (const kind of LISTING_STANDING_ORDER) counts[kind] = 0;
+  for (const standing of standings) {
+    counts[standing.kind] += 1;
+    if (standing.secondary) counts[standing.secondary] += 1;
+  }
+  return counts;
+}
+
+export function matchesStanding(
+  standing: Pick<BoardStanding, "kind" | "secondary">,
+  filter: StandingFilter,
+): boolean {
+  return filter === "all" || standing.kind === filter || standing.secondary === filter;
+}
 
 export const CATALOGUE_SORTS: readonly {
   value: CatalogueSort;
@@ -35,7 +75,7 @@ export const CATALOGUE_SORTS: readonly {
 export const DEFAULT_BOARD_QUERY: BoardQuery = {
   q: "",
   kind: "all",
-  onBoard: "all",
+  standing: "all",
   sort: "board",
 };
 
@@ -62,7 +102,6 @@ export type CatalogListQuery = {
   q?: string | null;
   sort?: CatalogueSort;
   subcategoryCode?: string | null;
-  active?: boolean | null;
   limit?: number | null;
   cursor?: string | null;
 };
@@ -76,7 +115,6 @@ export function toListQuery(
     q: query.q.trim() || null,
     sort: query.sort,
     subcategoryCode: query.kind === "all" ? null : query.kind,
-    active: query.onBoard === "all" ? null : query.onBoard === "on_the_board",
     limit: pageSize,
     cursor,
   };

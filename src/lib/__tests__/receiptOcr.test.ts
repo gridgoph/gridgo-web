@@ -110,6 +110,16 @@ Sep 8, 2026 9:48 PM
     )).toBe("9044838604781");
   });
 
+  // Tesseract reads October's "O" as a zero when the date sits close to the
+  // number. "0ct 5" is a date, never the tail of the reference.
+  it.each([
+    ["Ref No. 9044 838 604781 0ct 5, 2026 10:42 AM", "9044838604781"],
+    ["Ref No. 9044838604781 0ct. 28, 2026 3:15 PM", "9044838604781"],
+    ["Reference No. 9044838604781 5 0ct 2026", "9044838604781"],
+  ])("reads %s as an October date beside the reference", (text, reference) => {
+    expect(extractPaymentReference(text)).toBe(reference);
+  });
+
   it("does not treat a +63 mobile as the wallet reference", () => {
     expect(
       extractPaymentReference("Sent via GCash\n+63 975 942 4438\nSep 8, 2026"),

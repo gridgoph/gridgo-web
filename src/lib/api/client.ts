@@ -262,44 +262,64 @@ export function getWorkspaceRole(): PortalRole | null {
         : null;
 }
 
+async function send(
+  path: string,
+  init: RequestInit,
+  signal: AbortSignal,
+  accept: string,
+  tokenOptions?: TokenProviderOptions,
+): Promise<Response> {
+  const role = path.startsWith("/auth/") ? null : getWorkspaceRole();
+  const headers: Record<string, string> = {
+    Accept: accept,
+    ...(role ? { "X-GRIDGO-Role": role } : {}),
+    ...(init.headers as Record<string, string> | undefined),
+  };
+  const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
+  if (init.body && !headers["Content-Type"] && !isFormData) {
+    headers["Content-Type"] = "application/json";
+  }
+  signal.throwIfAborted();
+  const token = await tokenProvider(tokenOptions);
+  signal.throwIfAborted();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
+}
+
+function parseBody(text: string): unknown {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function failed(path: string, status: number, body: unknown): ApiError {
+  const error = new ApiError(status, body);
+  if (error.kind === "forbidden" && !path.startsWith("/auth/")) notifyForbidden(error);
+  return error;
+}
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
   tokenOptions?: TokenProviderOptions,
 ): Promise<T> {
   return withRequestDeadline(init.signal, async (signal) => {
-    const role = path.startsWith("/auth/") ? null : getWorkspaceRole();
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-      ...(role ? { "X-GRIDGO-Role": role } : {}),
-      ...(init.headers as Record<string, string> | undefined),
-    };
-    const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
-    if (init.body && !headers["Content-Type"] && !isFormData) {
-      headers["Content-Type"] = "application/json";
-    }
-    signal.throwIfAborted();
-    const token = await tokenProvider(tokenOptions);
-    signal.throwIfAborted();
-    if (token) headers.Authorization = `Bearer ${token}`;
-
-    const res = await fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
-    const text = await res.text();
-    let data: unknown = null;
-    if (text) {
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = text;
-      }
-    }
-    if (!res.ok) {
-      const error = new ApiError(res.status, data);
-      if (error.kind === "forbidden" && !path.startsWith("/auth/"))
-        notifyForbidden(error);
-      throw error;
-    }
+    const res = await send(path, init, signal, "application/json", tokenOptions);
+    const data = parseBody(await res.text());
+    if (!res.ok) throw failed(path, res.status, data);
     return data as T;
+  });
+}
+
+/** Raw bytes from an authenticated endpoint; errors still carry `{ error }`. */
+async function requestBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  return withRequestDeadline(init.signal, async (signal) => {
+    const res = await send(path, init, signal, "*/*");
+    if (!res.ok) throw failed(path, res.status, parseBody(await res.text()));
+    return res.blob();
   });
 }
 
@@ -950,6 +970,15 @@ export async function getFile(fileId: string): Promise<StoredFile> {
 export async function getFileDownloadUrl(fileId: string): Promise<string> {
   const result = await request<{ url: string }>(`/files/${fileId}/download-url`);
   return result.url;
+}
+
+/**
+ * The file's bytes through the API's own origin, under the same read rule as
+ * the signed link. The receipt reader uses it because a browser may refuse a
+ * storage address on the local network (dev storage) that the API can reach.
+ */
+export async function getFileContent(fileId: string): Promise<Blob> {
+  return requestBlob(`/files/${fileId}/content`);
 }
 
 /**
@@ -1946,6 +1975,85 @@ export async function restoreStaffCatalogItem(itemId: string): Promise<unknown> 
     method: "POST",
     body: JSON.stringify({}),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Listing review (gridgo-api#154). Contract: gridgo-api
+// docs/SUPPLIER_CATALOG_API.md#listing-review-and-product-type-picker
+// ---------------------------------------------------------------------------
+
+export type ReviewQueueStatus = "pending" | "approved" | "needs_revision";
+
+/** Up to 50 listings in one review state; `after` is the last item id read. */
+export async function listCatalogReviews(
+  status: ReviewQueueStatus = "pending",
+  after?: string | null,
+): Promise<unknown> {
+  const params = new URLSearchParams({ status });
+  if (after) params.set("after", after);
+  return request<unknown>(`/ops/catalog-reviews?${params.toString()}`);
+}
+
+export type CatalogReviewDecision =
+  | { status: "approved"; photosUnbranded: true }
+  | { status: "needs_revision"; reason: string };
+
+export async function decideCatalogReview(
+  itemId: string,
+  expectedVersion: number,
+  decision: CatalogReviewDecision,
+): Promise<unknown> {
+  return request<unknown>(`/ops/catalog-reviews/${encodeURIComponent(itemId)}/decision`, {
+    method: "POST",
+    body: JSON.stringify({ expectedVersion, ...decision }),
+  });
+}
+
+/** The approved version clients see now, for comparing a pending change. */
+export async function getStaffPublicCatalogItem(itemId: string): Promise<unknown> {
+  return request<unknown>(`/ops/catalog/items/${encodeURIComponent(itemId)}`);
+}
+
+export async function listProductTypeRequests(
+  status?: ReviewQueueStatus | null,
+  after?: string | null,
+): Promise<unknown> {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (after) params.set("after", after);
+  const search = params.toString();
+  return request<unknown>(`/ops/product-type-requests${search ? `?${search}` : ""}`);
+}
+
+export type ProductTypeDecision =
+  | { status: "approved"; code: string }
+  | { status: "needs_revision"; reason: string };
+
+export async function decideProductTypeRequest(
+  requestId: string,
+  expectedVersion: number,
+  decision: ProductTypeDecision,
+): Promise<unknown> {
+  return request<unknown>(
+    `/ops/product-type-requests/${encodeURIComponent(requestId)}/decision`,
+    { method: "POST", body: JSON.stringify({ expectedVersion, ...decision }) },
+  );
+}
+
+/** Send a listing (back) to Operations. Fails `409 listing_incomplete` with `blockers`. */
+export async function submitCatalogItemForReview(
+  itemId: string,
+  version: number | null,
+): Promise<unknown> {
+  return request<unknown>(`/me/catalog-items/${encodeURIComponent(itemId)}/submit`, {
+    method: "POST",
+    ...versioned(version, {}),
+  });
+}
+
+/** Whether matching can use each of this shop's listings, and the missing steps. */
+export async function getSupplierReadiness(): Promise<unknown> {
+  return request<unknown>("/me/supplier-readiness");
 }
 
 export async function listMySupplierServices(): Promise<unknown> {

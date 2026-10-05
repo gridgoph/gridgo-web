@@ -34,6 +34,7 @@ import {
   filtersAreSet,
   filtersFromSearchParams,
   listingBoardState,
+  listingReviewState,
   listingCountLine,
   listingPriceLine,
   normalizeStaffCatalogPage,
@@ -249,7 +250,15 @@ export function SupplierProductList() {
         sortValue: (row) => listingBoardState(row.listing).label,
         cell: (row) => {
           const board = listingBoardState(row.listing);
-          return <StatusChip tone={board.tone} icon={board.icon} label={board.label} />;
+          const review = listingReviewState(row.listing);
+          return (
+            <span className="inline-flex flex-wrap gap-1.5">
+              <StatusChip tone={board.tone} icon={board.icon} label={board.label} />
+              {review ? (
+                <StatusChip tone={review.tone} icon={review.icon} label={review.label} />
+              ) : null}
+            </span>
+          );
         },
       },
       {
