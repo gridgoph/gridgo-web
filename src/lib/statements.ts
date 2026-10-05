@@ -74,17 +74,34 @@ export function statementFileName(
   return `organization-statement-${period.from}-${period.to}.${format}`;
 }
 
-/** "1 Oct – 31 Oct 2026", read in Manila. */
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+
+/** "1 Oct – 31 Oct 2026": the period's own calendar dates, never shifted by a time zone. */
 export function describePeriod(period: { from: string; to: string }): string {
-  const format = (value: string, withYear: boolean) =>
-    new Date(`${value}T00:00:00Z`).toLocaleDateString("en-PH", {
-      day: "numeric",
-      month: "short",
-      ...(withYear ? { year: "numeric" } : {}),
-      timeZone: "UTC",
-    });
+  const format = (value: string, withYear: boolean) => {
+    const [year, month, day] = value.split("-");
+    return `${Number(day)} ${MONTHS[Number(month) - 1]}${withYear ? ` ${year}` : ""}`;
+  };
   const sameYear = period.from.slice(0, 4) === period.to.slice(0, 4);
   return `${format(period.from, !sameYear)} – ${format(period.to, true)}`;
+}
+
+/** A user id as the API issues them; anything else never reaches a request path. */
+export function isPlainId(value: string): boolean {
+  return /^[A-Za-z0-9_-]{1,128}$/.test(value);
 }
 
 export type OrganizationStanding = {

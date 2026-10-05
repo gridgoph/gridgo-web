@@ -88,7 +88,9 @@ export function OrganizationsList({ tree }: { tree: "ops" | "admin" }) {
               {row.name || "Unnamed organization"}
             </p>
             {row.school ? (
-              <p className="text-caption text-text-muted m-0 mt-0.5 truncate">{row.school}</p>
+              <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
+                {row.school}
+              </p>
             ) : null}
           </div>
         ),
@@ -111,7 +113,11 @@ export function OrganizationsList({ tree }: { tree: "ops" | "admin" }) {
         cell: (row) => {
           const standing = presentOrganizationStanding(row.approvalCase?.status);
           return (
-            <StatusChip tone={standing.tone} label={standing.label} icon={standing.icon} />
+            <StatusChip
+              tone={standing.tone}
+              label={standing.label}
+              icon={standing.icon}
+            />
           );
         },
       },

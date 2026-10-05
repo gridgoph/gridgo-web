@@ -30,6 +30,7 @@ import {
   PERIOD_CHOICES,
   STATEMENT_NOTICE,
   describePeriod,
+  isPlainId,
   manilaMonthStart,
   manilaToday,
   statementErrorMessage,
@@ -55,6 +56,19 @@ type Props = {
  * per-order official receipt process is unchanged.
  */
 export function OrganizationStatement({ clientId, tree }: Props) {
+  // The id comes from the URL. Only a plain id is ever put into a request path.
+  if (!isPlainId(clientId)) {
+    return (
+      <ErrorState
+        title="Not an organization link"
+        body="This address does not name an organization. Open the statement from the Organizations list."
+      />
+    );
+  }
+  return <StatementView clientId={clientId} tree={tree} />;
+}
+
+function StatementView({ clientId, tree }: Props) {
   const [choice, setChoice] = useState<PeriodChoice>("this_month");
   const [from, setFrom] = useState(() => manilaMonthStart());
   const [to, setTo] = useState(() => manilaToday());
@@ -250,10 +264,7 @@ export function OrganizationStatement({ clientId, tree }: Props) {
         {statement?.notice || STATEMENT_NOTICE}
       </p>
 
-      <section
-        className="gg-card flex flex-col gap-3"
-        aria-label="Period and export"
-      >
+      <section className="gg-card flex flex-col gap-3" aria-label="Period and export">
         <div className="flex flex-wrap items-end gap-3">
           <ToggleGroup
             value={[choice]}
@@ -370,8 +381,9 @@ export function OrganizationStatement({ clientId, tree }: Props) {
           )}
           <p className="text-caption text-text-muted m-0 max-w-prose">
             Paid is what the organization was charged for each closed order, after its
-            discount. Open and cancelled orders are left out. Each shop of a multi-shop order
-            is its own order here, and a refund made later does not change these figures.
+            discount. Open and cancelled orders are left out. Each shop of a multi-shop
+            order is its own order here, and a refund made later does not change these
+            figures.
           </p>
         </>
       )}
@@ -383,7 +395,13 @@ export function OrganizationStatement({ clientId, tree }: Props) {
  * The three numbers a treasurer copies into a budget, in one band: the
  * period, total spend, how many orders, and the discount earned.
  */
-function Summary({ statement, loading }: { statement: Statement | null; loading: boolean }) {
+function Summary({
+  statement,
+  loading,
+}: {
+  statement: Statement | null;
+  loading: boolean;
+}) {
   const figures = [
     {
       label: "Total spend",
@@ -414,7 +432,10 @@ function Summary({ statement, loading }: { statement: Statement | null; loading:
         {figures.map((figure, index) => (
           <div key={figure.label} className={index > 0 ? "sm:pl-4" : "sm:pr-4"}>
             <dt className="text-caption text-text-muted">{figure.label}</dt>
-            <dd className="text-h2 text-text-primary m-0 mt-1 tabular-nums" data-testid={figure.testId}>
+            <dd
+              className="text-h2 text-text-primary m-0 mt-1 tabular-nums"
+              data-testid={figure.testId}
+            >
               {loading || !statement ? (
                 <Skeleton className="h-6 w-24" aria-hidden />
               ) : (
