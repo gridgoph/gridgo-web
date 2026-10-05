@@ -14,6 +14,11 @@ import { withRequestDeadline } from "@/lib/api/requestDeadline";
 
 import type {
   Announcement,
+  Basket,
+  BasketInvoice,
+  OrganizationStatement,
+  OrganizationSummary,
+  StatementPeriod,
   AuthMe,
   AuditEntry,
   CatalogItem,
@@ -516,6 +521,143 @@ export async function rejectPayment(
     { method: "POST", body: JSON.stringify(input) },
   );
   return normalizeOrder(result.order);
+}
+
+// ---------------------------------------------------------------------------
+// Multi-shop baskets (gridgo-api docs/MULTI_SHOP_CHECKOUT_API.md)
+// ---------------------------------------------------------------------------
+
+function normalizeBasket(basket: Basket): Basket {
+  return {
+    ...basket,
+    groups: (basket.groups ?? []).map((group) => ({
+      ...group,
+      order: normalizeOrder(group.order),
+    })),
+  };
+}
+
+/** Ops / Super Admin: every basket, each with its live groups. */
+export async function listBaskets(): Promise<Basket[]> {
+  const result = await request<{ baskets: Basket[] }>("/baskets");
+  return (result.baskets ?? []).map(normalizeBasket);
+}
+
+/** One basket: the single payment and every shop group's own order. */
+export async function getBasket(basketId: string): Promise<Basket> {
+  const result = await request<{ basket: Basket }>(
+    `/baskets/${encodeURIComponent(basketId)}`,
+  );
+  return normalizeBasket(result.basket);
+}
+
+/** The basket's one immutable receipt (the same one every group's invoice route returns). */
+export async function getBasketInvoice(basketId: string): Promise<BasketInvoice> {
+  const result = await request<{ invoice: BasketInvoice }>(
+    `/baskets/${encodeURIComponent(basketId)}/invoice`,
+  );
+  return result.invoice;
+}
+
+/**
+ * Ops / Super Admin. Confirms the one transfer for every group at once. A
+ * group's own `/orders/:id/payments/...` routes answer `409
+ * basket_payment_required`; this is the only way.
+ */
+export async function confirmBasketPayment(basketId: string): Promise<Basket> {
+  const result = await request<{ basket: Basket }>(
+    `/baskets/${encodeURIComponent(basketId)}/payment/confirm`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+  return normalizeBasket(result.basket);
+}
+
+/** Ops / Super Admin. Sends the one transfer back for every group; the reason is the client's to read. */
+export async function rejectBasketPayment(
+  basketId: string,
+  input: { reason: string },
+): Promise<Basket> {
+  const result = await request<{ basket: Basket }>(
+    `/baskets/${encodeURIComponent(basketId)}/payment/reject`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return normalizeBasket(result.basket);
+}
+
+// ---------------------------------------------------------------------------
+// Organizations and statements (gridgo-api docs/ORGANIZATION_MONEY_API.md)
+// ---------------------------------------------------------------------------
+
+/** Ops / Super Admin. Up to 50 organizations per page, keyset by user id. */
+export async function listOrganizations(
+  after?: string,
+): Promise<{ organizations: OrganizationSummary[]; nextCursor: string | null }> {
+  const result = await request<{
+    organizations: (OrganizationSummary | null)[];
+    nextCursor: string | null;
+  }>(`/ops/organizations${buildQuery({ after })}`);
+  return {
+    organizations: (result.organizations ?? []).filter(
+      (row): row is OrganizationSummary => row !== null,
+    ),
+    nextCursor: result.nextCursor ?? null,
+  };
+}
+
+function statementQuery(period: StatementPeriod, format: "json" | "pdf" | "csv"): string {
+  return buildQuery(
+    period.period === "custom"
+      ? { period: "custom", from: period.from, to: period.to, format }
+      : { period: period.period, format },
+  );
+}
+
+/** Ops / Super Admin. The same statement the organization exports, for one period. */
+export async function getOrganizationStatement(
+  clientId: string,
+  period: StatementPeriod,
+): Promise<OrganizationStatement> {
+  const result = await request<{ statement: OrganizationStatement }>(
+    `/ops/organizations/${encodeURIComponent(clientId)}/statements${statementQuery(period, "json")}`,
+  );
+  return result.statement;
+}
+
+/**
+ * Ops / Super Admin. The statement as the PDF or CSV file the organization
+ * downloads. Generated on demand by the API and never stored.
+ */
+export async function downloadOrganizationStatement(
+  clientId: string,
+  period: StatementPeriod,
+  format: "pdf" | "csv",
+): Promise<Blob> {
+  return withRequestDeadline(undefined, async (signal) => {
+    const role = getWorkspaceRole();
+    const headers: Record<string, string> = {
+      Accept: format === "pdf" ? "application/pdf" : "text/csv",
+      ...(role ? { "X-GRIDGO-Role": role } : {}),
+    };
+    const token = await tokenProvider();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(
+      `${getApiBase()}/ops/organizations/${encodeURIComponent(clientId)}/statements${statementQuery(period, format)}`,
+      { headers, signal },
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      let data: unknown = text;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        /* keep the text */
+      }
+      const error = new ApiError(res.status, data);
+      if (error.kind === "forbidden") notifyForbidden(error);
+      throw error;
+    }
+    return res.blob();
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1785,6 +1927,85 @@ export async function restoreStaffCatalogItem(itemId: string): Promise<unknown> 
     method: "POST",
     body: JSON.stringify({}),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Listing review (gridgo-api#154). Contract: gridgo-api
+// docs/SUPPLIER_CATALOG_API.md#listing-review-and-product-type-picker
+// ---------------------------------------------------------------------------
+
+export type ReviewQueueStatus = "pending" | "approved" | "needs_revision";
+
+/** Up to 50 listings in one review state; `after` is the last item id read. */
+export async function listCatalogReviews(
+  status: ReviewQueueStatus = "pending",
+  after?: string | null,
+): Promise<unknown> {
+  const params = new URLSearchParams({ status });
+  if (after) params.set("after", after);
+  return request<unknown>(`/ops/catalog-reviews?${params.toString()}`);
+}
+
+export type CatalogReviewDecision =
+  | { status: "approved"; photosUnbranded: true }
+  | { status: "needs_revision"; reason: string };
+
+export async function decideCatalogReview(
+  itemId: string,
+  expectedVersion: number,
+  decision: CatalogReviewDecision,
+): Promise<unknown> {
+  return request<unknown>(`/ops/catalog-reviews/${encodeURIComponent(itemId)}/decision`, {
+    method: "POST",
+    body: JSON.stringify({ expectedVersion, ...decision }),
+  });
+}
+
+/** The approved version clients see now, for comparing a pending change. */
+export async function getStaffPublicCatalogItem(itemId: string): Promise<unknown> {
+  return request<unknown>(`/ops/catalog/items/${encodeURIComponent(itemId)}`);
+}
+
+export async function listProductTypeRequests(
+  status?: ReviewQueueStatus | null,
+  after?: string | null,
+): Promise<unknown> {
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (after) params.set("after", after);
+  const search = params.toString();
+  return request<unknown>(`/ops/product-type-requests${search ? `?${search}` : ""}`);
+}
+
+export type ProductTypeDecision =
+  | { status: "approved"; code: string }
+  | { status: "needs_revision"; reason: string };
+
+export async function decideProductTypeRequest(
+  requestId: string,
+  expectedVersion: number,
+  decision: ProductTypeDecision,
+): Promise<unknown> {
+  return request<unknown>(
+    `/ops/product-type-requests/${encodeURIComponent(requestId)}/decision`,
+    { method: "POST", body: JSON.stringify({ expectedVersion, ...decision }) },
+  );
+}
+
+/** Send a listing (back) to Operations. Fails `409 listing_incomplete` with `blockers`. */
+export async function submitCatalogItemForReview(
+  itemId: string,
+  version: number | null,
+): Promise<unknown> {
+  return request<unknown>(`/me/catalog-items/${encodeURIComponent(itemId)}/submit`, {
+    method: "POST",
+    ...versioned(version, {}),
+  });
+}
+
+/** Whether matching can use each of this shop's listings, and the missing steps. */
+export async function getSupplierReadiness(): Promise<unknown> {
+  return request<unknown>("/me/supplier-readiness");
 }
 
 export async function listMySupplierServices(): Promise<unknown> {

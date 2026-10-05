@@ -9,6 +9,8 @@ import {
   ExternalLink,
   GitMerge,
   GitPullRequest,
+  Split,
+  Store,
   SquarePen,
   TriangleAlert,
   type LucideIcon,
@@ -29,6 +31,8 @@ export const STATUS_ICONS: Record<StatusIconName, LucideIcon> = {
   "circle-help": CircleHelp,
   ban: Ban,
   "circle-dot": CircleDot,
+  store: Store,
+  split: Split,
 };
 
 const TONE: Record<
