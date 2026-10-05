@@ -927,7 +927,7 @@ export const CHANGES_IN_REVIEW_NOTE =
  * calls ready reads Live. Without it (an older API, or the read failed) the
  * standing falls back to the board's own checklist and the review fields.
  * Precedence: a take-down, then Live (with any edit under review or sent back
- * as a second state), then a send-back, then what is missing, then review,
+ * as a second state), then a send-back, then review, then what is missing,
  * then the shop's own switch.
  */
 export function boardStanding(
@@ -951,16 +951,20 @@ export function boardStanding(
   }
   if (sentBack) return standing("needs_changes", reason);
   const blockers = boardBlockers(listing, context);
-  if (blockers.length) {
-    return standing("not_ready", blockers[0], { steps: blockers });
-  }
+  // The API accepted this listing for review, so it sits in Operations' queue
+  // whatever the board's own checklist (which asks for more, such as a
+  // description) still lists. Those gaps stay as steps, never the chip.
   if (pending) {
     return standing(
       "pending_review",
       listing.hasApprovedVersion
         ? CHANGES_IN_REVIEW_NOTE
         : "Operations checks every new listing before clients see it.",
+      { steps: blockers },
     );
+  }
+  if (blockers.length) {
+    return standing("not_ready", blockers[0], { steps: blockers });
   }
   if (!listing.onTheBoard) {
     return standing("hidden", "Ready to go up. Clients cannot see it while it is hidden.");

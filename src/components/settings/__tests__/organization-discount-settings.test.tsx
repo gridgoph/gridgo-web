@@ -96,6 +96,12 @@ it("refuses a service fee below the discount, the other way round", async () => 
   expect(screen.getByTestId("fee-below-discount")).toHaveTextContent(
     "This fee is below the 5% organization discount",
   );
+  expect(screen.getByTestId("fee-below-discount")).toHaveTextContent(
+    "Raise the fee to at least 5%",
+  );
+  const fee = screen.getByLabelText("Rate on the shop price");
+  expect(fee).toHaveAttribute("aria-invalid", "true");
+  expect(fee).toHaveAccessibleDescription(/This fee is below the 5% organization discount/);
   expect(screen.getByRole("button", { name: "Save settings" })).toBeDisabled();
 });
 

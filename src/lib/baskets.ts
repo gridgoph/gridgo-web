@@ -11,6 +11,7 @@
  */
 
 import type { Basket, BasketGroup, Order } from "@/lib/api/types";
+import { formatPhp } from "@/lib/format";
 
 export type ShopMode = { kind: "single" } | { kind: "multi"; shops: number };
 
@@ -138,4 +139,56 @@ export function groupRefundState(
 /** States where the group's job is waiting for a rider to be sent. */
 export function groupAwaitsDispatch(order: Pick<Order, "state">): boolean {
   return order.state === "ready_for_dispatch";
+}
+
+/** The group was cancelled; its money is still inside the one basket payment. */
+export function groupIsCancelled(group: Pick<BasketGroup, "state" | "order">): boolean {
+  return (group.order.state ?? group.state) === "cancelled";
+}
+
+export type CancelledShare = {
+  label: string;
+  orderId: string;
+  amountMinor: number;
+  /** The basket payment is confirmed, so this money is held and owed back now. */
+  paid: boolean;
+  /** One sentence for Operations: how much, for whom, and where it is refunded. */
+  sentence: string;
+};
+
+/**
+ * What a cancelled group's part of the one payment means for Operations
+ * (MULTI_SHOP_CHECKOUT_API.md, "Fulfillment, payouts, and refunds"). The
+ * basket is confirmed whole, so confirming takes the cancelled group's money
+ * too; the client gets it back through that group's own refund request. Null
+ * for a live group, once its refund is under way or settled, and while no
+ * payment is waiting or confirmed.
+ */
+export function cancelledShare(
+  basket: Pick<Basket, "payment">,
+  group: BasketGroup,
+): CancelledShare | null {
+  if (!groupIsCancelled(group)) return null;
+  if (groupRefundState(group.order).label !== "No refund") return null;
+  const status = basket.payment?.status;
+  const paid = status === "confirmed" || status === "legacy_confirmed";
+  if (!paid && status !== "pending_confirmation") return null;
+  const amount = formatPhp(group.totalMinor);
+  return {
+    label: group.label,
+    orderId: group.orderId,
+    amountMinor: group.totalMinor,
+    paid,
+    sentence: paid
+      ? `${amount} of the client's payment is for ${group.label}, which was cancelled. Refund it from ${group.label}'s order.`
+      : `${amount} of this payment is for ${group.label}, which was cancelled. After confirming, refund it from ${group.label}'s order.`,
+  };
+}
+
+/** Every cancelled group whose money is still owed back, in group order. */
+export function cancelledShares(basket: Pick<Basket, "payment" | "groups">): CancelledShare[] {
+  return basket.groups.flatMap((group) => {
+    const share = cancelledShare(basket, group);
+    return share ? [share] : [];
+  });
 }

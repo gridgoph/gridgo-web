@@ -29,6 +29,7 @@ import { asDeduction } from "@/lib/organization-discount";
 import {
   PERIOD_CHOICES,
   STATEMENT_NOTICE,
+  describeCalendarDate,
   describePeriod,
   isPlainId,
   manilaMonthStart,
@@ -163,7 +164,7 @@ function StatementView({ clientId, tree }: Props) {
         sortValue: (row) => row.closedAt,
         cell: (row) => (
           <span className="text-body text-text-secondary whitespace-nowrap tabular-nums">
-            {row.date}
+            {describeCalendarDate(row.date)}
           </span>
         ),
       },

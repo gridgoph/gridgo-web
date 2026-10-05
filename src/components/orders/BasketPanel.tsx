@@ -9,7 +9,12 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { getBasketInvoice } from "@/lib/api/client";
 import type { Basket, BasketGroup, BasketInvoice } from "@/lib/api/types";
-import { groupAwaitsDispatch, groupRefundState, reconcileBasket } from "@/lib/baskets";
+import {
+  cancelledShare,
+  groupAwaitsDispatch,
+  groupRefundState,
+  reconcileBasket,
+} from "@/lib/baskets";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { asDeduction } from "@/lib/organization-discount";
 import { presentOrderState, presentPaymentStatus } from "@/lib/order-state";
@@ -92,6 +97,7 @@ export function BasketPanel({ basket, orderId, tree, names }: Props) {
           <GroupBlock
             key={group.orderId}
             group={group}
+            payment={basket.payment}
             current={group.orderId === orderId}
             tree={tree}
             names={names}
@@ -109,12 +115,14 @@ export function BasketPanel({ basket, orderId, tree, names }: Props) {
 
 function GroupBlock({
   group,
+  payment,
   current,
   tree,
   names,
   fulfillmentMode,
 }: {
   group: BasketGroup;
+  payment: Basket["payment"];
   current: boolean;
   tree: "ops" | "admin";
   names: Record<string, string>;
@@ -123,7 +131,12 @@ function GroupBlock({
   const order = group.order;
   const state = presentOrderState(order.state ?? group.state, order);
   const payout = payoutProgress(order);
-  const refund = groupRefundState(order);
+  const owed = cancelledShare({ payment }, group);
+  const refund = owed
+    ? owed.paid
+      ? ({ label: "Refund owed", tone: "warning", icon: "clock" } as const)
+      : ({ label: "Owed after confirming", tone: "warning", icon: "clock" } as const)
+    : groupRefundState(order);
   const rider = order.riderId
     ? names[order.riderId] || "Assigned rider"
     : fulfillmentMode === "pickup"
@@ -180,13 +193,20 @@ function GroupBlock({
         </dd>
       </dl>
 
+      {owed ? (
+        <p className="text-body text-text-primary m-0" data-testid={`group-owed-${group.label}`}>
+          {owed.sentence}
+          {current && owed.paid ? " Use Client refund on this order." : null}
+        </p>
+      ) : null}
+
       {current ? null : (
         <div className="mt-auto flex flex-wrap gap-2">
           <Link
             href={href}
             className={buttonVariants({ variant: "secondary", size: "sm" })}
           >
-            Open {group.label}
+            {owed ? `Open ${group.label}'s order to refund` : `Open ${group.label}`}
           </Link>
           {tree === "ops" && groupAwaitsDispatch(order) ? (
             <Link

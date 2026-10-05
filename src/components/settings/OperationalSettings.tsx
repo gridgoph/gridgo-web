@@ -588,7 +588,7 @@ export function OperationalSettings() {
                 aria-label="Show on client checkout"
               />
             </Field>
-            <Field data-invalid={rateInvalid || undefined}>
+            <Field data-invalid={rateInvalid || discountProblem ? true : undefined}>
               <FieldLabel htmlFor="service-fee-rate">Rate on the shop price</FieldLabel>
               <div className="relative max-w-40">
                 <Input
@@ -596,8 +596,10 @@ export function OperationalSettings() {
                   inputMode="decimal"
                   className="pr-9"
                   value={rate}
-                  aria-invalid={rateInvalid || undefined}
-                  aria-describedby="service-fee-help"
+                  aria-invalid={rateInvalid || discountProblem ? true : undefined}
+                  aria-describedby={
+                    discountProblem ? "service-fee-help fee-below-discount" : "service-fee-help"
+                  }
                   onChange={(e) => setRate(e.target.value)}
                 />
                 <span
@@ -608,6 +610,18 @@ export function OperationalSettings() {
                 </span>
               </div>
               <FieldDescription id="service-fee-help">{RATE_HELP}</FieldDescription>
+              {discountProblem ? (
+                <p
+                  id="fee-below-discount"
+                  className="text-body text-error m-0 max-w-prose"
+                  data-testid="fee-below-discount"
+                >
+                  This fee is below the {formatRatePercent(draftDiscountBps)} organization
+                  discount, which is paid out of it. Raise the fee to at least{" "}
+                  {formatRatePercent(draftDiscountBps)}, or lower the discount under
+                  Organization discount below.
+                </p>
+              ) : null}
             </Field>
             <p className="text-body text-text-secondary m-0" data-testid="rate-in-force">
               In force right now:{" "}
@@ -634,12 +648,6 @@ export function OperationalSettings() {
 
           <WorkedReceipts rateBps={draftRateBps} feeVisible={feeVisible} />
         </div>
-        {discountProblem ? (
-          <p className="text-body text-error m-0 mt-3 max-w-prose" data-testid="fee-below-discount">
-            This fee is below the {formatRatePercent(draftDiscountBps)} organization discount,
-            which is paid out of it. See Organization discount below.
-          </p>
-        ) : null}
       </section>
 
       <OrganizationDiscount
