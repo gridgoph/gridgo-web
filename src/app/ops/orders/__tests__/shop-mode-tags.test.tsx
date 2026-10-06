@@ -33,10 +33,12 @@ it("tags every order in the queue Single-Shop or Multi-Shop with its shop count"
   const table = within(await screen.findByRole("table", { name: "Orders at Payment" }));
   const row = (title: string) => table.getByText(title).closest("tr")!;
   expect(within(row("Stickers")).getByText("Single-Shop")).toBeInTheDocument();
-  expect(within(row("Flyers")).getByText("Multi-Shop, 2 shops")).toBeInTheDocument();
-  expect(within(row("Flyers")).getByText(/Shop A of 2/)).toBeInTheDocument();
+  expect(within(row("Flyers")).getByText("Grouped order, 2 groups")).toBeInTheDocument();
+  expect(within(row("Flyers")).getByText(/Shop A · 2 groups/)).toBeInTheDocument();
   expect(
-    within(row("Custom apparel")).getByText("Multi-Shop, 2 shops"),
+    within(row("Custom apparel")).getByText("Grouped order, 2 groups"),
   ).toBeInTheDocument();
-  expect(within(row("Custom apparel")).getByText(/Shop B of 2/)).toBeInTheDocument();
+  expect(
+    within(row("Custom apparel")).getByText(/Shop B · 2 groups/),
+  ).toBeInTheDocument();
 });

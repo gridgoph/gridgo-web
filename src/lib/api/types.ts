@@ -2345,6 +2345,7 @@ export type BasketPayment = {
 
 /** One shop group of a basket. `order` is that group's ordinary order. */
 export type BasketGroup = {
+  deadline?: string | null;
   orderId: string;
   label: string;
   state: string;
@@ -2389,6 +2390,7 @@ export type InvoiceLine = {
 };
 
 export type BasketInvoiceGroup = {
+  deadline?: string | null;
   orderId: string;
   label: string;
   lines: InvoiceLine[];

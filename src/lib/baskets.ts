@@ -40,12 +40,12 @@ export function shopModeOf(
   return { kind: "multi", shops: Math.max(2, counts?.get(order.basketId) ?? 2) };
 }
 
-/** "Single-Shop" or "Multi-Shop, 3 shops" — the queue tag's words. */
+/** A group count includes separate dates at the same shop. */
 export function shopModeLabel(mode: ShopMode): string {
-  return mode.kind === "single" ? "Single-Shop" : `Multi-Shop, ${mode.shops} shops`;
+  return mode.kind === "single" ? "Single-Shop" : `Grouped order, ${mode.shops} groups`;
 }
 
-/** "Shop B of 3": which group this order is, for a row that names it. */
+/** The anonymous shop label and number of independently fulfilled groups. */
 export function groupPositionLabel(
   order: Pick<Order, "groupLabel" | "basketId">,
   counts?: ReadonlyMap<string, number>,
@@ -53,7 +53,7 @@ export function groupPositionLabel(
   if (!order.basketId || !order.groupLabel) return null;
   const mode = shopModeOf(order, counts);
   return mode.kind === "multi"
-    ? `${order.groupLabel} of ${mode.shops}`
+    ? `${order.groupLabel} · ${mode.shops} groups`
     : order.groupLabel;
 }
 
@@ -186,7 +186,9 @@ export function cancelledShare(
 }
 
 /** Every cancelled group whose money is still owed back, in group order. */
-export function cancelledShares(basket: Pick<Basket, "payment" | "groups">): CancelledShare[] {
+export function cancelledShares(
+  basket: Pick<Basket, "payment" | "groups">,
+): CancelledShare[] {
   return basket.groups.flatMap((group) => {
     const share = cancelledShare(basket, group);
     return share ? [share] : [];

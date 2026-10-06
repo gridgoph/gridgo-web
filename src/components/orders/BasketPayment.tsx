@@ -49,8 +49,8 @@ export function BasketPayment({
         className="text-body text-text-secondary m-0"
         role={basketError ? "alert" : "status"}
       >
-        {order.groupLabel ?? "This shop"} is one shop of a multi-shop order, paid with one
-        transfer for every shop. {basketError ?? "Loading that payment…"}
+        {order.groupLabel ?? "This shop"} is part of a grouped order, paid with one
+        transfer for every group. {basketError ?? "Loading that payment…"}
       </p>
     );
   }
@@ -65,7 +65,7 @@ export function BasketPayment({
           className="text-body text-text-primary m-0"
           style={{ fontFamily: "var(--font-medium)" }}
         >
-          One payment for {basket.groups.length} shops
+          One payment for {basket.groups.length} groups
         </p>
         <p
           className="text-body text-text-primary m-0 tabular-nums"
@@ -136,13 +136,13 @@ export function BasketPayment({
           <p className="text-caption text-text-secondary m-0">
             Check the transfer against{" "}
             {formatPhp(payment.amountMinor ?? basket.totalMinor)} before confirming.
-            Confirming pays for all {basket.groups.length} shops at once; each
+            Confirming pays for all {basket.groups.length} groups at once; each
             shop&rsquo;s file check still happens on its own order.
           </p>
           <CancelledShareNotes shares={owed} orderId={order.id} tree={tree} />
           <div className="flex flex-wrap gap-2">
             <Button variant="primary" disabled={busy} onClick={onConfirm}>
-              Confirm payment for all {basket.groups.length} shops
+              Confirm payment for all {basket.groups.length} groups
             </Button>
             <Button
               variant="secondary"
@@ -191,7 +191,10 @@ export function CancelledShareNotes({
 }) {
   if (!shares.length) return null;
   return (
-    <ul className="m-0 flex list-none flex-col gap-2 p-0" aria-label="Cancelled shops to refund">
+    <ul
+      className="m-0 flex list-none flex-col gap-2 p-0"
+      aria-label="Cancelled shops to refund"
+    >
       {shares.map((share) => (
         <li
           key={share.orderId}
