@@ -96,6 +96,7 @@ const PURPOSE_LABELS: Record<string, string> = {
   payment_qr: "Checkout QR",
   announcement_image: "Announcement image",
   tracker_decision: "Tracker decision attachment",
+  support_chat_image: "Chat photo",
 };
 
 /** Plain words for a file `purpose`; an unknown one reads as words, never snake_case. */

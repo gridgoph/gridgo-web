@@ -18,6 +18,7 @@ const {
   openSupportChatThread,
   sendSupportChatMessage,
   markSupportChatRead,
+  deleteSupportChatThread,
   streamHandlers,
 } = vi.hoisted(() => ({
   getSupportChatMe: vi.fn(),
@@ -25,6 +26,7 @@ const {
   openSupportChatThread: vi.fn(),
   sendSupportChatMessage: vi.fn(),
   markSupportChatRead: vi.fn(),
+  deleteSupportChatThread: vi.fn(),
   streamHandlers: {
     current: null as null | { onEvent: (event: SupportChatEvent) => void },
   },
@@ -36,6 +38,7 @@ vi.mock("@/lib/api/support-chat-party", () => ({
   openSupportChatThread,
   sendSupportChatMessage,
   markSupportChatRead,
+  deleteSupportChatThread,
 }));
 
 vi.mock("@/lib/api/support-chat", () => ({
@@ -80,6 +83,8 @@ beforeEach(() => {
   openSupportChatThread.mockReset();
   sendSupportChatMessage.mockReset();
   markSupportChatRead.mockReset();
+  deleteSupportChatThread.mockReset();
+  deleteSupportChatThread.mockResolvedValue(undefined);
   getSupportChatMe.mockResolvedValue({
     thread,
     threads: [thread],
