@@ -54,11 +54,11 @@ export function BasketPanel({ basket, orderId, tree, names }: Props) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <h2 id="basket-heading" className="text-h3 text-text-primary m-0">
-            One payment, {basket.groups.length} shops
+            One payment, {basket.groups.length} groups
           </h2>
           <p className="text-body text-text-secondary m-0 max-w-prose">
-            The client paid once for every shop below. Each shop is its own order with its
-            own job, rider, payout and refund.
+            The client paid once for every shop and date below. Each group has its own
+            job, rider, payout and refund.
           </p>
         </div>
       </div>
@@ -91,7 +91,7 @@ export function BasketPanel({ basket, orderId, tree, names }: Props) {
 
       <ol
         className="m-0 grid list-none grid-cols-1 gap-3 p-0 md:grid-cols-2 xl:grid-cols-3"
-        aria-label="Shop groups"
+        aria-label="Shop and date groups"
       >
         {basket.groups.map((group) => (
           <GroupBlock
@@ -129,6 +129,7 @@ function GroupBlock({
   fulfillmentMode: string;
 }) {
   const order = group.order;
+  const deadline = group.deadline ?? order.deadline;
   const state = presentOrderState(order.state ?? group.state, order);
   const payout = payoutProgress(order);
   const owed = cancelledShare({ payment }, group);
@@ -166,6 +167,14 @@ function GroupBlock({
       </div>
 
       <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
+        {deadline ? (
+          <>
+            <dt className="text-caption text-text-muted">Needed by</dt>
+            <dd className="text-body text-text-secondary m-0">
+              {formatDateTime(deadline)}
+            </dd>
+          </>
+        ) : null}
         <dt className="text-caption text-text-muted">Job</dt>
         <dd className="text-body text-text-secondary m-0 min-w-0 truncate">
           {order.title || "Untitled order"}
@@ -194,7 +203,10 @@ function GroupBlock({
       </dl>
 
       {owed ? (
-        <p className="text-body text-text-primary m-0" data-testid={`group-owed-${group.label}`}>
+        <p
+          className="text-body text-text-primary m-0"
+          data-testid={`group-owed-${group.label}`}
+        >
           {owed.sentence}
           {current && owed.paid ? " Use Client refund on this order." : null}
         </p>
@@ -244,7 +256,7 @@ function Reconciliation({ basket }: { basket: Basket }) {
       />
       <span className="tabular-nums">
         {parts.map((part, index) => (
-          <span key={part.label}>
+          <span key={basket.groups[index].orderId}>
             {index > 0 ? " + " : ""}
             {part.label} {formatPhp(part.totalMinor)}
           </span>
@@ -340,6 +352,11 @@ function ReceiptBody({ invoice }: { invoice: BasketInvoice }) {
           <h4 className="text-body text-text-primary m-0 mb-1" style={medium}>
             {group.label}
           </h4>
+          {group.deadline ? (
+            <p className="text-caption text-text-secondary m-0 mb-2">
+              Needed by {formatDateTime(group.deadline)}
+            </p>
+          ) : null}
           <dl className="m-0 grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1">
             {group.lines.map((line) => (
               <div key={line.id} className="contents">
