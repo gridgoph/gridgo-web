@@ -23,8 +23,8 @@ describe("shop mode", () => {
   });
 
   it("tags a basket group Multi-Shop with the number of shops", () => {
-    expect(shopModeLabel(shopModeOf(shopA, counts))).toBe("Multi-Shop, 2 shops");
-    expect(groupPositionLabel(shopB, counts)).toBe("Shop B of 2");
+    expect(shopModeLabel(shopModeOf(shopA, counts))).toBe("Grouped order, 2 groups");
+    expect(groupPositionLabel(shopB, counts)).toBe("Shop B · 2 groups");
   });
 
   it("counts every group of a basket, wherever each one has got to", () => {
