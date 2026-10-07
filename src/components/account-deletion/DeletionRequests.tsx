@@ -32,7 +32,8 @@ export function DeletionRequests() {
     } catch { if (sequence.current === current) setError('Could not load deletion requests. Try again.'); }
     finally { if (sequence.current === current) setLoading(false); }
   }, [status, offset]);
-  useEffect(() => { void load(); return () => { sequence.current++; }; }, [load]);
+  const invalidateLoad = useCallback(() => { sequence.current++; }, []);
+  useEffect(() => { void load(); return invalidateLoad; }, [load, invalidateLoad]);
   useLiveReload('account-deletion-requests', load);
   async function complete() {
     if (!selected || saving) return;

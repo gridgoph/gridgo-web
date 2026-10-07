@@ -108,6 +108,7 @@ describe("ROLE_NAV", () => {
       .map((n) => n.href)
       .sort();
     expect(ready).toEqual([
+      "/admin/account-deletion",
       "/admin/audit",
       "/admin/broadcast",
       "/admin/catalogue",
@@ -115,7 +116,6 @@ describe("ROLE_NAV", () => {
       "/admin/file-retention",
       "/admin/finance",
       "/admin/hub",
-      "/admin/account-deletion",
       "/admin/issue-reports",
       "/admin/late-production",
       "/admin/listing-reviews",
@@ -133,13 +133,13 @@ describe("ROLE_NAV", () => {
       "/admin/tracker",
       "/admin/verification",
       "/admin/zones",
+      "/ops/account-deletion",
       "/ops/approvals",
       "/ops/chat",
       "/ops/claims",
       "/ops/dispatch",
       "/ops/escalations",
       "/ops/hub",
-      "/ops/account-deletion",
       "/ops/issue-reports",
       "/ops/late-production",
       "/ops/listing-reviews",
