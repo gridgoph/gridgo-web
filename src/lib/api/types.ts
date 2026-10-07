@@ -1001,6 +1001,7 @@ export type InvalidateResource =
   | "settings"
   | "location"
   | "credits"
+  | "account-deletion-requests"
   | "issue-reports"
   | "chat";
 
@@ -2495,3 +2496,9 @@ export type OrganizationStatement = {
 export type StatementPeriod =
   | { period: "this_month" | "this_quarter" }
   | { period: "custom"; from: string; to: string };
+
+export type AccountDeletionRequest = {
+  id: string; userId: string | null; contactEmail: string | null;
+  source: 'app' | 'web'; status: 'pending' | 'done';
+  requestedAt: string; dueAt: string; completedAt: string | null; completedBy: string | null;
+};

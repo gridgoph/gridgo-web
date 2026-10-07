@@ -113,6 +113,10 @@ export function notificationHref(role: Role, notification: Notification): string
     return "/admin/overview";
   }
 
+  if (type === "account_deletion_requested" || type === "account_deletion_request_completed") {
+    return role === "super_admin" ? "/admin/account-deletion" : role === "ops_admin" ? "/ops/account-deletion" : null;
+  }
+
   if (type === "ops_issue_report_filed") {
     if (role === "super_admin") return "/admin/issue-reports";
     if (role === "ops_admin") return "/ops/issue-reports";
