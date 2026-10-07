@@ -1549,6 +1549,7 @@ export type SupplierService = {
   qtyMax: number | null;
   pricingBasis: string;
   referenceRateMinor: number;
+  turnaroundDays?: number | null;
   turnaroundHours: number;
   capacityDaily: number | null;
   capacityWeekly: number | null;
@@ -2375,6 +2376,7 @@ export type BasketPayment = {
 
 /** One shop group of a basket. `order` is that group's ordinary order. */
 export type BasketGroup = {
+  deadline?: string | null;
   orderId: string;
   label: string;
   state: string;
@@ -2419,6 +2421,7 @@ export type InvoiceLine = {
 };
 
 export type BasketInvoiceGroup = {
+  deadline?: string | null;
   orderId: string;
   label: string;
   lines: InvoiceLine[];

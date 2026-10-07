@@ -96,6 +96,9 @@ function item(overrides: Record<string, unknown> = {}) {
     description: "Vinyl, cut to shape.",
     basePriceMinor: 2500,
     pricingUnit: "per_unit",
+    turnaroundMode: "override",
+    turnaroundDays: 2,
+    turnaroundHours: 20,
     reviewStatus: "pending",
     hasApprovedVersion: false,
     version: 7,
@@ -178,6 +181,8 @@ describe("Listing reviews desk", () => {
   it("lists waiting listings oldest first with their shop and opens the oldest", async () => {
     render(<ListingReviewsDesk tree="ops" />);
     const list = await screen.findByRole("list", { name: "Listings" });
+    expect(await screen.findByText("Ready in 2 working days")).toBeInTheDocument();
+    expect(screen.queryByText("Ready in 20 hours")).not.toBeInTheDocument();
     const rows = within(list).getAllByRole("listitem");
     expect(rows.map((row) => row.textContent)).toEqual([
       expect.stringContaining("Die-cut stickers"),

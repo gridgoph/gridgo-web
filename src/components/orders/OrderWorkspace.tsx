@@ -1113,7 +1113,9 @@ function StepRow({
       id={step.id as SectionId}
       heading={definition?.label ?? step.label}
       summary={
-        step.id === "payment" && basket ? basketPaymentSummary(basket) : stepSummary(order, step)
+        step.id === "payment" && basket
+          ? basketPaymentSummary(basket)
+          : stepSummary(order, step)
       }
       marker={STEP_MARKER[step.status]}
       trailing={trailing}
@@ -1235,7 +1237,7 @@ function StepRow({
 /** The Payment row of a basket group speaks for the one payment, not the group's part. */
 function basketPaymentSummary(basket: Basket): string {
   const amount = formatPhp(basket.payment?.amountMinor ?? basket.totalMinor);
-  const shops = `${basket.groups.length} shops`;
+  const shops = `${basket.groups.length} groups`;
   switch (basket.payment?.status) {
     case "pending_confirmation":
       return `One payment of ${amount} for ${shops} is waiting on you.`;
@@ -1739,7 +1741,7 @@ function SpecRail({
               <dt className="text-caption text-text-muted">Whole order, one payment</dt>
               <dd className="text-body text-text-secondary m-0 tabular-nums">
                 {formatPhp(basket.payment?.amountMinor ?? basket.totalMinor)} for{" "}
-                {basket.groups.length} shops
+                {basket.groups.length} groups
               </dd>
             </>
           ) : null}

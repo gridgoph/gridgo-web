@@ -66,6 +66,19 @@ beforeEach(() => {
         });
         return json({ basket });
       }
+      if (path === "/baskets/bsk_1/invoice")
+        return json({
+          invoice: {
+            invoiceNumber: "TEST-DATES",
+            issuedAt: "2026-10-06T01:00:00Z",
+            totalMinor: basket.totalMinor,
+            groups: basket.groups.map((group) => ({
+              ...group,
+              deadline: group.order.deadline,
+              lines: [],
+            })),
+          },
+        });
       if (path === "/baskets/bsk_1") return json({ basket });
       if (path.startsWith("/orders/") && path.includes("/payments/")) {
         return json({ error: "basket_payment_required", basketId: "bsk_1" }, 409);
@@ -87,7 +100,7 @@ it("shows one payment over every shop group, each with its own money", async () 
   render(<OrderWorkspace queueHref="/ops/orders" payoutsHref="/ops/payouts" />);
 
   expect(await screen.findByTestId("basket-total")).toHaveTextContent("₱688.00");
-  expect(screen.getAllByText("Multi-Shop, 2 shops").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Grouped order, 2 groups").length).toBeGreaterThan(0);
   expect(screen.getByText("This is Shop A")).toBeInTheDocument();
 
   const a = screen.getByTestId("group-Shop A");
@@ -117,7 +130,7 @@ it("shows one payment over every shop group, each with its own money", async () 
   const rail = screen.getByRole("complementary", { name: "Order details" });
   expect(money(rail, "Shop A total")).toHaveTextContent("₱465.00");
   expect(money(rail, "Whole order, one payment")).toHaveTextContent(
-    "₱688.00 for 2 shops",
+    "₱688.00 for 2 groups",
   );
 });
 
@@ -125,11 +138,11 @@ it("confirms the one transfer for every shop through the basket, never the group
   render(<OrderWorkspace queueHref="/ops/orders" />);
 
   const confirm = await screen.findByRole("button", {
-    name: "Confirm payment for all 2 shops",
+    name: "Confirm payment for all 2 groups",
   });
   expect(screen.getByTestId("basket-payment-amount")).toHaveTextContent("₱688.00");
   expect(
-    screen.getByText("One payment of ₱688.00 for 2 shops is waiting on you."),
+    screen.getByText("One payment of ₱688.00 for 2 groups is waiting on you."),
   ).toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Confirm this payment" })).toBeNull();
   await userEvent.click(confirm);
@@ -146,7 +159,7 @@ it("says how much of the payment is a cancelled shop's, and where to refund it",
   basket = basketOf([shopA, { ...shopB, state: "cancelled" }]);
   render(<OrderWorkspace queueHref="/admin/orders" />);
 
-  await screen.findByRole("button", { name: "Confirm payment for all 2 shops" });
+  await screen.findByRole("button", { name: "Confirm payment for all 2 groups" });
   const note = screen.getAllByTestId("cancelled-share-Shop B")[0];
   expect(note).toHaveTextContent(
     "₱223.00 of this payment is for Shop B, which was cancelled. After confirming, refund it from Shop B's order.",
@@ -162,10 +175,9 @@ it("says how much of the payment is a cancelled shop's, and where to refund it",
   expect(screen.getByTestId("group-owed-Shop B")).toHaveTextContent(
     "₱223.00 of this payment is for Shop B, which was cancelled.",
   );
-  expect(within(b).getByRole("link", { name: "Open Shop B's order to refund" })).toHaveAttribute(
-    "href",
-    "/admin/orders/ord_b",
-  );
+  expect(
+    within(b).getByRole("link", { name: "Open Shop B's order to refund" }),
+  ).toHaveAttribute("href", "/admin/orders/ord_b");
 });
 
 it("offers no payment action when the basket could not be read", async () => {
@@ -193,7 +205,7 @@ it("keeps a single-shop order's money card and asks for no basket", async () => 
     await within(rail).findByText("Client total", { selector: "dt" }),
   ).toBeInTheDocument();
   expect(money(rail, "Client total")).toHaveTextContent("₱465.00");
-  expect(screen.queryByText(/Multi-Shop/)).toBeNull();
+  expect(screen.queryByText(/Grouped order/)).toBeNull();
   expect(screen.queryByTestId("basket-total")).toBeNull();
   expect(
     screen.getByRole("button", { name: "Confirm this payment" }),
@@ -222,4 +234,37 @@ it("shows an organization discount coming out of GRIDGO's fee, never the shop's 
   expect(money(rail, "Fee GRIDGO keeps")).toHaveTextContent("₱20.00");
   expect(money(rail, "Rider payout (85%)")).toHaveTextContent("₱21.25");
   expect(money(rail, "Client total")).toHaveTextContent("₱445.00");
+});
+
+it("shows the deadline on each same-shop group without claiming two shops", async () => {
+  basket = basketOf(
+    [
+      { ...shopA, deadline: "2026-11-10T08:00:00.000Z" },
+      { ...shopA, id: "ord_b", deadline: "2026-11-12T08:00:00.000Z" },
+    ],
+    { deadline: null },
+  );
+  basket.groups.forEach((group) => {
+    group.label = "Shop A";
+  });
+  render(<OrderWorkspace queueHref="/ops/orders" />);
+  await screen.findByTestId("basket-total");
+  const groups = screen.getAllByTestId("group-Shop A");
+  expect(groups).toHaveLength(2);
+  expect(within(groups[0]).getByText("Needed by").nextElementSibling).toHaveTextContent(
+    "Nov 10",
+  );
+  expect(within(groups[1]).getByText("Needed by").nextElementSibling).toHaveTextContent(
+    "Nov 12",
+  );
+  expect(screen.queryByText("One payment, 2 shops")).toBeNull();
+  expect(screen.getByText("One payment, 2 groups")).toBeInTheDocument();
+  await userEvent.click(
+    screen.getByRole("button", { name: "Show the combined receipt" }),
+  );
+  await screen.findByText("Receipt TEST-DATES");
+  const sections = screen.getAllByRole("region", { name: "Shop A on the receipt" });
+  expect(sections).toHaveLength(2);
+  expect(sections[0]).toHaveTextContent("Needed by Nov 10");
+  expect(sections[1]).toHaveTextContent("Needed by Nov 12");
 });
