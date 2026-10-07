@@ -116,7 +116,6 @@ export function OrganizationDetail({ tree, userId }: { tree: Tree; userId: strin
 
   const standing = organizationStanding(organization);
   const name = organization.name || "Organization";
-  const reviewHref = tree === "ops" ? "/ops/approvals" : "/admin/verification";
 
   return (
     <div className="flex w-full flex-col gap-3">
@@ -144,11 +143,11 @@ export function OrganizationDetail({ tree, userId }: { tree: Tree; userId: strin
             <FileText className="size-4" aria-hidden />
             Statement
           </Button>
-          {organization.approvalCase?.status === "pending" ? (
+          {tree === "admin" && organization.approvalCase?.status === "pending" ? (
             <Button
               variant="secondary"
               nativeButton={false}
-              render={<Link href={reviewHref} />}
+              render={<Link href="/admin/verification" />}
             >
               Review the waiting application
             </Button>

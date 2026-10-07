@@ -65,6 +65,7 @@ vi.mock("@/lib/api/client", async () => ({
 
 afterEach(() => {
   cleanup();
+  getOrganization.mockResolvedValue(organization);
   sendOrganizationNotice.mockReset();
   sendOrganizationNotice.mockResolvedValue({ notificationId: "ntf_1" });
 });
@@ -129,4 +130,16 @@ it("sends a notice once, after confirming the recipient, with one key per wordin
   });
   expect(second[2]).toBe(first[2]);
   expect(screen.getByLabelText("Title")).toHaveValue("");
+});
+
+it.each(["ops", "admin"] as const)("%s organization detail preserves notices but offers application review only to Super Admin", async (tree) => {
+  getOrganization.mockResolvedValue({
+    ...organization,
+    approvalCase: { ...organization.approvalCase!, status: "pending" },
+  });
+  render(<OrganizationDetail tree={tree} userId="user_org" />);
+  expect(await screen.findByRole("button", { name: "Send notice" })).toBeEnabled();
+  const review = screen.queryByRole("button", { name: "Review the waiting application" });
+  if (tree === "admin") expect(review).toHaveAttribute("href", "/admin/verification");
+  else expect(review).not.toBeInTheDocument();
 });

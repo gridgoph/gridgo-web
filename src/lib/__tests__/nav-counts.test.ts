@@ -84,7 +84,6 @@ describe("rail counts", () => {
         "ops-chat:chat-unread",
         "ops-issue-reports:issue-reports-new",
         "ops-orders:orders-waiting",
-        "ops-approvals:signups-waiting",
         "ops-listing-reviews:listing-reviews-waiting",
         "ops-shop-changes:shop-changes-needs-ops",
         "ops-escalations:escalations-open",
@@ -105,27 +104,33 @@ describe("rail counts", () => {
 
   it("sums a group's pages and marks it yellow only for order-blocking work", () => {
     const queue = group("ops_admin", "ops-queue");
-    const counts: NavCounts = { "orders-waiting": 3, "signups-waiting": 2 };
+    const counts: NavCounts = { "orders-waiting": 3, "listing-reviews-waiting": 2 };
     expect(groupCount(queue, counts)).toBe(5);
     expect(groupNeedsAttention(queue, counts)).toBe(true);
     expect(groupCountPhrase(queue, counts)).toBe("5 need action");
 
-    expect(groupNeedsAttention(queue, { "signups-waiting": 2 })).toBe(false);
-    expect(groupCount(group("ops_admin", "ops-field"), { "escalations-open": 1 })).toBe(1);
+    expect(groupNeedsAttention(queue, { "listing-reviews-waiting": 2 })).toBe(false);
+    expect(groupCount(group("ops_admin", "ops-field"), { "escalations-open": 1 })).toBe(
+      1,
+    );
     expect(groupCount(group("super_admin", "admin-system"), counts)).toBe(0);
   });
 
   it("keeps an open group's total only when it sums more than one row", () => {
     const queue = group("ops_admin", "ops-queue");
-    expect(showOpenGroupTotal(queue, { "orders-waiting": 3, "signups-waiting": 2 })).toBe(true);
+    expect(
+      showOpenGroupTotal(queue, { "orders-waiting": 3, "listing-reviews-waiting": 2 }),
+    ).toBe(true);
     expect(showOpenGroupTotal(queue, { "orders-waiting": 3 })).toBe(false);
-    expect(showOpenGroupTotal(queue, { "orders-waiting": 3, "signups-waiting": 0 })).toBe(false);
+    expect(
+      showOpenGroupTotal(queue, { "orders-waiting": 3, "listing-reviews-waiting": 0 }),
+    ).toBe(false);
   });
 
   it("hides zero: no count, no phrase, the bare label", () => {
     const queue = group("ops_admin", "ops-queue");
     const orders = queue.items[0]!;
-    const zero: NavCounts = { "orders-waiting": 0, "signups-waiting": 0 };
+    const zero: NavCounts = { "orders-waiting": 0, "listing-reviews-waiting": 0 };
     expect(itemCount(orders, zero)).toBe(0);
     expect(itemCountPhrase(orders, zero)).toBeNull();
     expect(groupCountPhrase(queue, zero)).toBeNull();
@@ -137,22 +142,28 @@ describe("rail counts", () => {
   it("caps the figure at 99+ and names the count after the label", () => {
     expect(compactCount(99)).toBe("99");
     expect(compactCount(100)).toBe("99+");
-    const [orders, approvals] = group("ops_admin", "ops-queue").items;
+    const items = group("ops_admin", "ops-queue").items;
+    const orders = items.find((item) => item.id === "ops-orders");
+    const approvals = items.find((item) => item.id === "ops-listing-reviews");
     expect(countedName("Orders", itemCountPhrase(orders!, { "orders-waiting": 3 }))).toBe(
       "Orders, 3 need action",
     );
     expect(itemCountPhrase(orders!, { "orders-waiting": 1 })).toBe("1 needs action");
     expect(itemCountPhrase(orders!, { "orders-waiting": 250 })).toBe("99+ need action");
-    expect(itemCountPhrase(approvals!, { "signups-waiting": 4 })).toBe("4 waiting for review");
+    expect(itemCountPhrase(approvals!, { "listing-reviews-waiting": 4 })).toBe(
+      "4 waiting for review",
+    );
   });
 
   it("counts the Tracker's decisions as quiet, not order-blocking, work", () => {
     const system = group("super_admin", "admin-system");
     const tracker = system.items.find((item) => item.id === "admin-tracker")!;
-    expect(countedName("Tracker", itemCountPhrase(tracker, { "tracker-needs-decision": 13 }))).toBe(
-      "Tracker, 13 need a decision",
+    expect(
+      countedName("Tracker", itemCountPhrase(tracker, { "tracker-needs-decision": 13 })),
+    ).toBe("Tracker, 13 need a decision");
+    expect(itemCountPhrase(tracker, { "tracker-needs-decision": 1 })).toBe(
+      "1 needs a decision",
     );
-    expect(itemCountPhrase(tracker, { "tracker-needs-decision": 1 })).toBe("1 needs a decision");
     expect(groupCount(system, { "tracker-needs-decision": 13 })).toBe(13);
     expect(groupNeedsAttention(system, { "tracker-needs-decision": 13 })).toBe(false);
   });

@@ -256,6 +256,19 @@ function zonesFrom(bands: DeliveryFeeBand[]): ZoneDraft | null {
   return isZonedTable(bands) ? zoneDraft(bands) : null;
 }
 
+function revealDistanceInput(settings: PlatformSettings): string {
+  return settings.clientRiderLocationRevealDistanceMeters === undefined
+    ? ""
+    : String(settings.clientRiderLocationRevealDistanceMeters);
+}
+
+function parseRevealDistance(value: string): number | null {
+  const meters = Number(value);
+  return /^\d+$/.test(value.trim()) && Number.isSafeInteger(meters) && meters > 0
+    ? meters
+    : null;
+}
+
 export function OperationalSettings() {
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
   const settingsRef = useRef(settings);
@@ -268,6 +281,7 @@ export function OperationalSettings() {
 
   const [rate, setRate] = useState("");
   const [riderShare, setRiderShare] = useState("");
+  const [revealDistance, setRevealDistance] = useState("");
   /** Empty while the API holds no organization discount; nothing is sent for it then. */
   const [orgDiscount, setOrgDiscount] = useState("");
   /** Undefined while the API holds no checkout split; nothing is sent for it then. */
@@ -299,6 +313,11 @@ export function OperationalSettings() {
           preserveDraft && previous && current !== riderShareInput(previous.riderCommissionBps)
             ? current
             : riderShareInput(next.riderCommissionBps),
+        );
+        setRevealDistance((current) =>
+          preserveDraft && previous && current !== revealDistanceInput(previous)
+            ? current
+            : revealDistanceInput(next),
         );
         setOrgDiscount((current) =>
           preserveDraft &&
@@ -391,6 +410,12 @@ export function OperationalSettings() {
       setSaveError(RIDER_SHARE_INVALID);
       return;
     }
+    const revealSupported = settings.clientRiderLocationRevealDistanceMeters !== undefined;
+    const parsedRevealDistance = revealSupported ? parseRevealDistance(revealDistance) : null;
+    if (revealSupported && parsedRevealDistance === null) {
+      setSaveError("Enter a positive whole number of meters for the rider reveal distance.");
+      return;
+    }
     // An API without organization discounts holds no rate; nothing is sent for it.
     const discountSupported = settings.organizationDiscountRateBps !== undefined;
     const parsedDiscount = discountSupported ? percentInputToBps(orgDiscount) : null;
@@ -436,6 +461,9 @@ export function OperationalSettings() {
         serviceFeeRateBps: parsedRate,
         serviceFeeVisibleToClient: feeVisible,
         physicalInvoiceRequestsEnabled: physicalInvoiceRequests,
+        ...(parsedRevealDistance !== null
+          ? { clientRiderLocationRevealDistanceMeters: parsedRevealDistance }
+          : {}),
         ...(parsedRiderShare !== null ? { riderCommissionBps: parsedRiderShare } : {}),
         ...(parsedDiscount !== null ? { organizationDiscountRateBps: parsedDiscount } : {}),
         // An API without the setting holds no checkout split; nothing is sent for it.
@@ -460,6 +488,7 @@ export function OperationalSettings() {
       setFeeVisible(feeVisibleOf(next));
       setPhysicalInvoiceRequests(physicalInvoiceRequestsOf(next));
       setRiderShare(riderShareInput(next.riderCommissionBps));
+      setRevealDistance(revealDistanceInput(next));
       setOrgDiscount(discountInput(next.organizationDiscountRateBps));
       setCheckoutPercent(next.downpaymentPercent);
       setHours(String(next.issueWindowHours));
@@ -477,8 +506,11 @@ export function OperationalSettings() {
         next.downpaymentPercent !== undefined
           ? ` Checkout: ${checkoutPaymentLabel(next.downpaymentPercent)}.`
           : "";
+      const trackingPart = next.clientRiderLocationRevealDistanceMeters !== undefined
+        ? ` Client rider tracking now reveals within ${next.clientRiderLocationRevealDistanceMeters} meters, including active deliveries.`
+        : "";
       setSaveOk(
-        `Saved. Orders placed from now on carry a ${formatRatePercent(next.serviceFeeRateBps)} service fee${riderPart} and price delivery from these zones, and issue windows opened from now use the new length.${discountPart}${checkoutPart} Orders already placed keep the figures they were given.`,
+        `Saved. Orders placed from now on carry a ${formatRatePercent(next.serviceFeeRateBps)} service fee${riderPart} and price delivery from these zones, and issue windows opened from now use the new length.${discountPart}${checkoutPart} Orders already placed keep the figures they were given.${trackingPart}`,
       );
     } catch (err) {
       if (err instanceof ApiError && err.code === "settings_version_conflict") {
@@ -564,6 +596,7 @@ export function OperationalSettings() {
     feeVisible !== feeVisibleOf(settings) ||
     physicalInvoiceRequests !== physicalInvoiceRequestsOf(settings) ||
     riderShare !== riderShareInput(settings.riderCommissionBps) ||
+    revealDistance !== revealDistanceInput(settings) ||
     orgDiscount !== discountInput(settings.organizationDiscountRateBps) ||
     checkoutPercent !== settings.downpaymentPercent ||
     hours !== String(settings.issueWindowHours) ||
@@ -696,6 +729,39 @@ export function OperationalSettings() {
         draftBps={draftRiderBps}
         invalid={riderShareInvalid}
       />
+
+      {settings.clientRiderLocationRevealDistanceMeters !== undefined ? (
+        <section className="gg-card p-3" aria-labelledby="rider-reveal-heading">
+          <h2 id="rider-reveal-heading" className="text-h3 text-text-primary m-0">
+            Client rider tracking
+          </h2>
+          <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
+            Clients see the rider&rsquo;s location only within this distance of their drop-off.
+            Before then, they see delivery progress. Applies immediately to active deliveries.
+            Operations and Super Admin tracking stay available throughout the trip.
+          </p>
+          <FieldGroup>
+            <Field data-invalid={parseRevealDistance(revealDistance) === null || undefined}>
+              <FieldLabel htmlFor="rider-reveal-distance">Reveal distance (meters)</FieldLabel>
+              <Input
+                id="rider-reveal-distance"
+                inputMode="numeric"
+                className="max-w-40"
+                value={revealDistance}
+                disabled={busy}
+                onChange={(event) => setRevealDistance(event.target.value)}
+                aria-invalid={parseRevealDistance(revealDistance) === null || undefined}
+                aria-describedby="rider-reveal-help"
+              />
+              <FieldDescription id="rider-reveal-help">
+                {parseRevealDistance(revealDistance) === null
+                  ? "Enter a positive whole number of meters."
+                  : `1,000 meters = 1 km. In force right now: ${settings.clientRiderLocationRevealDistanceMeters.toLocaleString()} meters.`}
+              </FieldDescription>
+            </Field>
+          </FieldGroup>
+        </section>
+      ) : null}
 
       <CheckoutPayment
         value={checkoutPercent ?? settings.downpaymentPercent ?? 100}
@@ -919,6 +985,7 @@ export function OperationalSettings() {
             setFeeVisible(feeVisibleOf(settings));
             setPhysicalInvoiceRequests(physicalInvoiceRequestsOf(settings));
             setRiderShare(riderShareInput(settings.riderCommissionBps));
+            setRevealDistance(revealDistanceInput(settings));
             setOrgDiscount(discountInput(settings.organizationDiscountRateBps));
             setCheckoutPercent(settings.downpaymentPercent);
             setHours(String(settings.issueWindowHours));

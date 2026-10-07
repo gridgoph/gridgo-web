@@ -14,7 +14,6 @@ import {
   Siren,
   Timer,
   Truck,
-  UserRoundCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -36,7 +35,6 @@ import {
   listEscalations,
   listIssues,
   listOrders,
-  listUsers,
 } from "@/lib/api/client";
 import type { Claim, Issue, Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
@@ -45,8 +43,6 @@ type LoadState = {
   orders: Order[];
   claims: Claim[];
   issues: Issue[];
-  /** Suppliers and riders who cannot be given work until someone decides. */
-  pendingSignups: number;
   openEscalations: number;
 };
 
@@ -60,22 +56,16 @@ export default function OpsOverviewPage() {
       setLoading(true);
       setError(null);
       try {
-        const [orders, claims, issues, escalations, suppliers, riders] =
-          await Promise.all([
-            listOrders(),
-            listClaims(),
-            listIssues(),
-            listEscalations({ status: "open" }),
-            listUsers("supplier"),
-            listUsers("rider"),
-          ]);
+        const [orders, claims, issues, escalations] = await Promise.all([
+          listOrders(),
+          listClaims(),
+          listIssues(),
+          listEscalations({ status: "open" }),
+        ]);
         setData({
           orders,
           claims,
           issues,
-          pendingSignups: [...suppliers, ...riders].filter(
-            (u) => u.verificationStatus === "pending",
-          ).length,
           openEscalations: escalations.length,
         });
       } catch (err) {
@@ -93,7 +83,7 @@ export default function OpsOverviewPage() {
     }, []),
   );
 
-  useLiveReload(["orders", "claims", "escalations", "approvals"], load);
+  useLiveReload(["orders", "claims", "escalations"], load);
 
   useEffect(() => {
     void load();
@@ -111,7 +101,6 @@ export default function OpsOverviewPage() {
         data?.issues ?? [],
         Date.now(),
         {
-          pendingSignups: data?.pendingSignups ?? 0,
           openEscalations: data?.openEscalations ?? 0,
         },
       ),
@@ -238,7 +227,6 @@ const BUCKET_ICONS: Record<OverviewBucketId, LucideIcon> = {
   needs_qa: ClipboardList,
   payment_confirmation: QrCode,
   awaiting_matching: Search,
-  signup_approvals: UserRoundCheck,
   in_production: Factory,
   out_for_delivery: Truck,
   escalated: Siren,

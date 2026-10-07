@@ -35,6 +35,7 @@ import { cn } from "@/lib/utils";
 type GalleryProps = {
   /** Oldest first; `progressPhotos(order)` sorts them. */
   photos: ProductionPhoto[];
+  label?: string;
   /** Staff-only note under a photo ("Also the start-of-production proof"). */
   noteFor?: (photo: ProductionPhoto) => string | null;
   /** Shown as the last tile: the shop's optional extra photo. */
@@ -48,6 +49,7 @@ type Loaded = Record<string, string>;
 /** Numbered because the photos are a sequence: the job, in the order it was shot. */
 export function ProgressGallery({
   photos,
+  label = "Progress photo",
   noteFor,
   onAdd,
   addLabel = "Add another photo",
@@ -74,6 +76,7 @@ export function ProgressGallery({
             <PhotoTile
               photo={photo}
               number={index + 1}
+              label={label}
               note={noteFor?.(photo) ?? null}
               onLoaded={remember}
               onOpen={() => setOpenIndex(index)}
@@ -117,8 +120,8 @@ export function ProgressGallery({
             <>
               <DialogTitle className="text-white">
                 {photos.length > 1
-                  ? `Progress photo ${openIndex + 1} of ${photos.length}`
-                  : "Progress photo"}
+                  ? `${label} ${openIndex + 1} of ${photos.length}`
+                  : label}
               </DialogTitle>
               <DialogDescription className="text-white/70">
                 Sent {formatDateTime(open.at)}
@@ -127,7 +130,7 @@ export function ProgressGallery({
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={urls[open.fileId]}
-                  alt={`Progress photo ${openIndex + 1}, sent ${formatDateTime(open.at)}`}
+                  alt={`${label} ${openIndex + 1}, sent ${formatDateTime(open.at)}`}
                   className="mt-2 max-h-[70vh] w-full rounded-md object-contain"
                 />
               ) : (
@@ -171,12 +174,14 @@ type TileState =
 function PhotoTile({
   photo,
   number,
+  label,
   note,
   onLoaded,
   onOpen,
 }: {
   photo: ProductionPhoto;
   number: number;
+  label: string;
   note: string | null;
   onLoaded: (fileId: string, url: string) => void;
   onOpen: () => void;
@@ -233,7 +238,7 @@ function PhotoTile({
             type="button"
             onClick={onOpen}
             className="block w-full text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-yellow"
-            aria-label={`Open progress photo ${number}, sent ${sent}`}
+            aria-label={`Open ${label.toLowerCase()} ${number}, sent ${sent}`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -275,7 +280,7 @@ function PhotoTile({
           {/* Super Admin only (context-gated). The order reloads and drops the tile. */}
           <EarlyDeleteFileButton
             fileId={photo.fileId}
-            label={`Progress photo ${number}`}
+            label={`${label} ${number}`}
             previewUrl={state.url}
             onDeleted={() => {}}
           />

@@ -294,13 +294,12 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
         },
         {
           id: "ops-approvals",
-          href: "/ops/approvals",
-          label: "Sign-up approvals",
-          title: "Sign-up approvals",
+          href: "/ops/service-lines",
+          label: "Service lines",
+          title: "Service lines",
           icon: "approvals",
           ready: true,
           placeholderBody: "",
-          count: "signups-waiting",
         },
         {
           // New listings and changes to live ones wait here until approved.

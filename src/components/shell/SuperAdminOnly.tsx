@@ -11,7 +11,7 @@ type Props = {
   /** What Operations reached, in a sentence: "Operational settings are changed by Super Admin." */
   body: string;
   /** The same page in the Super Admin tree. */
-  adminHref: "/admin/settings" | "/admin/audit";
+  adminHref: "/admin/settings" | "/admin/audit" | "/admin/verification";
   /** Button text for a person who also holds Super Admin: "Open settings as Super Admin". */
   adminLabel: string;
 };

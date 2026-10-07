@@ -246,7 +246,7 @@ export function ServiceLines() {
       ) : !hasAnyLines ? (
         <EmptyState
           title="No service lines"
-          body="Lines appear when a supplier declares what it can make. Approve their account first so they can submit one."
+          body="Lines appear when a supplier declares what it can make. Super Admin must approve their account before they can submit one."
         />
       ) : (
         <>
