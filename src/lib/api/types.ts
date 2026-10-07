@@ -1126,6 +1126,8 @@ export type PlatformSettings = {
    * nothing.
    */
   riderCommissionBps?: number;
+  /** Live client tracking radius in whole meters; Super Admin writes it. */
+  clientRiderLocationRevealDistanceMeters?: number;
   /**
    * How much of a new checkout the client pays up front: 100 (the default
    * since 2026-09-25, gridgo-api#66) or 75 (75% now, 25% before delivery).
@@ -1159,6 +1161,8 @@ export type UpdateSettingsInput = {
   physicalInvoiceRequestsEnabled?: boolean;
   organizationDiscountRateBps?: number;
   riderCommissionBps?: number;
+  /** Live client tracking radius in whole meters; Super Admin writes it. */
+  clientRiderLocationRevealDistanceMeters?: number;
   downpaymentPercent?: number;
   deliveryFeeBands?: DeliveryFeeBand[];
   productionNudge?: ProductionNudge;
