@@ -214,3 +214,9 @@ it('opens deletion requests only in the matching staff workspace', () => {
     expect(notificationHref('rider', note({ type }))).toBeNull();
   }
 });
+
+it("opens packing-photo notifications in the staff member's own order workspace", () => {
+  const row = note({ type: "order_packing_photo_received", orderId: "packed_job" });
+  expect(notificationHref("ops_admin", row)).toBe("/ops/orders/packed_job");
+  expect(notificationHref("super_admin", row)).toBe("/admin/orders/packed_job");
+});
