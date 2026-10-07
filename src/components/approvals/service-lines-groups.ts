@@ -1,3 +1,4 @@
+import { productionDaysLine } from "@/lib/listings";
 /**
  * Pure grouping, ordering, and filtering for the service-lines approval queue.
  * One shop block, three sections: waiting, live, suspended/withdrawn.
@@ -200,9 +201,7 @@ export function presentLineFacts(
   if (line.qtyMin != null || line.qtyMax != null) {
     facts.push(`${line.qtyMin ?? "—"}–${line.qtyMax ?? "—"}`);
   }
-  if (Number.isFinite(line.turnaroundHours)) {
-    facts.push(`${line.turnaroundHours}h`);
-  }
+  facts.push(productionDaysLine(line.turnaroundDays));
   if (line.zones.length) {
     facts.push(line.zones.map(presentZone).join(", "));
   }
