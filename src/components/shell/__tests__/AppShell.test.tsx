@@ -117,6 +117,11 @@ const { ordersRef, listOrdersMock, countMocks } = vi.hoisted(() => {
         approvalCases: [] as unknown[],
         nextCursor: null,
       })),
+      listCatalogReviews: vi.fn(async () => ({
+        items: [] as Array<{ id: string }>,
+        nextCursor: null,
+      })),
+      listProductTypeRequests: vi.fn(async () => ({ requests: [] })),
       listEscalations: vi.fn(async () => [] as unknown[]),
       listClaims: vi.fn(async () => [] as Array<{ status: string }>),
       listIssueReports: vi.fn(async () => ({
@@ -137,6 +142,8 @@ vi.mock("@/lib/api/client", () => ({
   listOrders: listOrdersMock,
   listUsers: countMocks.listUsers,
   listApprovalCases: countMocks.listApprovalCases,
+  listCatalogReviews: countMocks.listCatalogReviews,
+  listProductTypeRequests: countMocks.listProductTypeRequests,
   listEscalations: countMocks.listEscalations,
   listClaims: countMocks.listClaims,
   listIssueReports: countMocks.listIssueReports,
@@ -541,7 +548,11 @@ describe("AppShell chrome", () => {
     expect(orders).toHaveAttribute("aria-current", "page");
     expect(orders.className).toMatch(/action-yellow/);
     expect(orders.closest('[data-slot="sidebar-menu-sub"]')).not.toBeNull();
-    expect(within(nav).getByRole("link", { name: "Sign-up approvals" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Sign-up approvals" })).toBeNull();
+    expect(within(nav).getByRole("link", { name: "Service lines" })).toHaveAttribute(
+      "href",
+      "/ops/service-lines",
+    );
     expect(within(nav).getByRole("button", { name: "Field" })).toHaveAttribute(
       "aria-expanded",
       "false",
@@ -799,19 +810,16 @@ describe("AppShell chrome", () => {
       { id: "ord_with_shop", state: "production" },
     ];
 
-    function withSignups(count: number) {
-      countMocks.listUsers.mockImplementation(async (role?: string) =>
-        role === "supplier"
-          ? Array.from({ length: count }, (_, i) => ({
-              id: `sup_${i}`,
-              verificationStatus: "pending",
-            }))
-          : [{ id: "rider_ok", verificationStatus: "approved" }],
-      );
+    function withListings(count: number) {
+      countMocks.listCatalogReviews.mockResolvedValue({
+        items: Array.from({ length: count }, (_, i) => ({ id: `listing_${i}` })),
+        nextCursor: null,
+      });
     }
 
     afterEach(() => {
       countMocks.listUsers.mockImplementation(async () => []);
+      countMocks.listCatalogReviews.mockResolvedValue({ items: [], nextCursor: null });
       countMocks.listSupportChatThreads.mockImplementation(async () => []);
     });
 
@@ -832,11 +840,11 @@ describe("AppShell chrome", () => {
     });
 
     it("gives every other count a quiet monochrome pill", async () => {
-      withSignups(2);
-      renderShell("/ops/approvals");
+      withListings(2);
+      renderShell("/ops/listing-reviews");
 
       const approvals = await screen.findByRole("link", {
-        name: "Sign-up approvals, 2 waiting for review",
+        name: "Listing reviews, 2 waiting for review",
       });
       const badge = approvals.querySelector('[data-slot="nav-count"]') as HTMLElement;
       expect(badge).toHaveAttribute("data-tone", "quiet");
@@ -845,7 +853,7 @@ describe("AppShell chrome", () => {
 
     it("puts the sum beside a folded group's name", async () => {
       ordersRef.current = waiting;
-      withSignups(3);
+      withListings(3);
       renderShell("/ops/overview");
 
       const queue = await screen.findByRole("button", { name: "Queue, 5 need action" });
@@ -860,7 +868,7 @@ describe("AppShell chrome", () => {
 
     it("outlines an open group's total so it reads as the sum of the rows below", async () => {
       ordersRef.current = waiting;
-      withSignups(3);
+      withListings(3);
       const user = userEvent.setup();
       renderShell("/ops/overview");
 
@@ -875,7 +883,7 @@ describe("AppShell chrome", () => {
         await screen.findByRole("link", { name: "Orders, 2 need action" }),
       ).toBeInTheDocument();
       expect(
-        screen.getByRole("link", { name: "Sign-up approvals, 3 waiting for review" }),
+        screen.getByRole("link", { name: "Listing reviews, 3 waiting for review" }),
       ).toBeInTheDocument();
     });
 
@@ -945,7 +953,7 @@ describe("AppShell chrome", () => {
     it("marks the group icon on the icon rail and lists each count in the flyout", async () => {
       window.localStorage.setItem(RAIL_OPEN_STORAGE_KEY, "false");
       ordersRef.current = waiting;
-      withSignups(1);
+      withListings(1);
       const user = userEvent.setup();
       renderShell("/ops/overview");
 
@@ -959,8 +967,18 @@ describe("AppShell chrome", () => {
         await screen.findByRole("menuitem", { name: "Orders, 2 need action" }),
       ).toHaveAttribute("href", "/ops/orders");
       expect(
-        screen.getByRole("menuitem", { name: "Sign-up approvals, 1 waiting for review" }),
-      ).toHaveAttribute("href", "/ops/approvals");
+        screen.getByRole("menuitem", { name: "Listing reviews, 1 waiting for review" }),
+      ).toHaveAttribute("href", "/ops/listing-reviews");
+    });
+
+    it("never reads sign-up approvals for Operations but keeps the Super Admin count", async () => {
+      countMocks.listApprovalCases.mockClear();
+      renderShell("/ops/service-lines");
+      await vi.waitFor(() => expect(listOrdersMock).toHaveBeenCalled());
+      expect(countMocks.listApprovalCases).not.toHaveBeenCalled();
+      cleanup();
+      renderShell("/admin/verification");
+      await vi.waitFor(() => expect(countMocks.listApprovalCases).toHaveBeenCalled());
     });
 
     it("reads only the counts a rail shows", async () => {

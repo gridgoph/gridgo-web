@@ -14,7 +14,6 @@ export type OverviewBucketId =
   | "needs_qa"
   | "payment_confirmation"
   | "awaiting_matching"
-  | "signup_approvals"
   | "in_production"
   | "out_for_delivery"
   | "escalated"
@@ -127,7 +126,6 @@ export function buildOverviewBuckets(
   issues: Issue[] = [],
   nowMs: number = Date.now(),
   extras: {
-    pendingSignups?: number;
     openEscalations?: number;
   } = {},
 ): OverviewBucket[] {
@@ -140,7 +138,6 @@ export function buildOverviewBuckets(
   const delivery = active.filter((o) => DELIVERY_STATES.has(o.state));
   const blocked = active.filter((o) => orderIsBlocked(o, claims, issues));
   const slaRisk = active.filter((o) => isSlaAtRisk(o, nowMs) || isSlaBreached(o, nowMs));
-  const pendingSignups = extras.pendingSignups ?? 0;
   const openEscalations = extras.openEscalations ?? 0;
 
   const buckets: OverviewBucket[] = [
@@ -177,15 +174,6 @@ export function buildOverviewBuckets(
       count: matching.length,
       href: "/ops/orders?stage=qa",
       urgent: matching.length > 0,
-    },
-    {
-      id: "signup_approvals",
-      label: "Sign-ups waiting",
-      description:
-        "Suppliers and riders who cannot be given work until they are approved.",
-      count: pendingSignups,
-      href: "/ops/approvals",
-      urgent: pendingSignups > 0,
     },
     {
       id: "in_production",

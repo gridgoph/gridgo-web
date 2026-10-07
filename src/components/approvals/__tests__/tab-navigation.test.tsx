@@ -9,6 +9,7 @@ import AdminVerification from "@/app/admin/verification/page";
 
 vi.stubGlobal("React", React);
 const navigation = vi.hoisted(() => ({ url: "", replace: vi.fn() }));
+const identity = vi.hoisted(() => ({ memberships: [{ role: "ops_admin" }] }));
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(navigation.url.split("?")[1] ?? ""),
   useRouter: () => ({ replace: navigation.replace }),
@@ -19,15 +20,17 @@ vi.mock("@/components/approvals/SignupApprovals", () => ({
 vi.mock("@/components/approvals/ServiceLines", () => ({
   ServiceLines: () => <p>Service queue</p>,
 }));
+vi.mock("@/lib/auth/AuthProvider", () => ({
+  useAuth: () => identity,
+}));
+
 afterEach(() => {
   cleanup();
   navigation.replace.mockReset();
+  identity.memberships = [{ role: "ops_admin" }];
 });
 
-it.each([
-  ["/ops/approvals", OpsApprovals],
-  ["/admin/verification", AdminVerification],
-] as const)(
+it.each([["/admin/verification", AdminVerification]] as const)(
   "keeps %s tabs synchronized with manual and inbox navigation",
   (path, Page) => {
     navigation.url = path;
@@ -68,3 +71,28 @@ it.each([
     );
   },
 );
+
+it.each(["", "?tab=signups", "?show=suspended", "?tab=unknown"])(
+  "blocks Operations sign-up access at %s",
+  (query) => {
+    navigation.url = "/ops/approvals" + query;
+    render(<OpsApprovals />);
+    expect(screen.getByText("Super Admin only")).toBeInTheDocument();
+    expect(screen.queryByText("Signup queue")).not.toBeInTheDocument();
+    expect(screen.queryByText("Service queue")).not.toBeInTheDocument();
+  },
+);
+it("keeps old Operations service-review links working", () => {
+  navigation.url = "/ops/approvals?tab=services";
+  render(<OpsApprovals />);
+  expect(screen.getByText("Service queue")).toBeInTheDocument();
+  expect(screen.queryByText("Signup queue")).not.toBeInTheDocument();
+});
+
+it("offers a separate admin workspace to an identity with both memberships", () => {
+  identity.memberships.push({ role: "super_admin" });
+  navigation.url = "/ops/approvals";
+  render(<OpsApprovals />);
+  expect(screen.queryByText("Signup queue")).not.toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Open sign-up approvals as Super Admin" })).toHaveAttribute("href", "/admin/verification");
+});

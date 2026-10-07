@@ -241,9 +241,9 @@ it.each([
     ).toHaveAttribute("href", home);
     if (role === "ops_admin")
       // The Queue group opens itself around an order page.
-      expect(screen.getByRole("link", { name: "Sign-up approvals" })).toHaveAttribute(
+      expect(screen.getByRole("link", { name: "Service lines" })).toHaveAttribute(
         "href",
-        "/ops/approvals",
+        "/ops/service-lines",
       );
     expect(row.read).toBe(true);
     expect(requests).toContainEqual({

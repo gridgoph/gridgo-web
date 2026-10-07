@@ -100,14 +100,14 @@ describe("notificationHref", () => {
 
   it("sends signup rows to the role's approval surface", () => {
     const row = note({ type: "ops_signup_submitted", approvalCaseId: "case_1" });
-    expect(notificationHref("ops_admin", row)).toBe("/ops/approvals");
+    expect(notificationHref("ops_admin", row)).toBeNull();
     expect(notificationHref("super_admin", row)).toBe("/admin/verification");
     expect(notificationHref("supplier", row)).toBeNull();
   });
 
   it("opens the authorized service review queue from its action alert", () => {
     const submitted = note({ type: "ops_service_submitted" });
-    expect(notificationHref("ops_admin", submitted)).toBe("/ops/approvals?tab=services");
+    expect(notificationHref("ops_admin", submitted)).toBe("/ops/service-lines");
     expect(notificationHref("super_admin", submitted)).toBe(
       "/admin/verification?tab=services",
     );
@@ -200,17 +200,22 @@ describe("notificationHref", () => {
 
   it("sends a business permit request to the approval queue", () => {
     const permit = note({ type: "client_application_document_requested" });
-    expect(notificationHref("ops_admin", permit)).toBe("/ops/approvals");
+    expect(notificationHref("ops_admin", permit)).toBeNull();
     expect(notificationHref("super_admin", permit)).toBe("/admin/verification");
   });
 });
 
-it('opens deletion requests only in the matching staff workspace', () => {
-  for (const type of ['account_deletion_requested', 'account_deletion_request_completed']) {
-    expect(notificationHref('ops_admin', note({ type }))).toBe('/ops/account-deletion');
-    expect(notificationHref('super_admin', note({ type }))).toBe('/admin/account-deletion');
-    expect(notificationHref('supplier', note({ type }))).toBeNull();
-    expect(notificationHref('client', note({ type }))).toBeNull();
-    expect(notificationHref('rider', note({ type }))).toBeNull();
+it("opens deletion requests only in the matching staff workspace", () => {
+  for (const type of [
+    "account_deletion_requested",
+    "account_deletion_request_completed",
+  ]) {
+    expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/account-deletion");
+    expect(notificationHref("super_admin", note({ type }))).toBe(
+      "/admin/account-deletion",
+    );
+    expect(notificationHref("supplier", note({ type }))).toBeNull();
+    expect(notificationHref("client", note({ type }))).toBeNull();
+    expect(notificationHref("rider", note({ type }))).toBeNull();
   }
 });
