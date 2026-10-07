@@ -1137,6 +1137,8 @@ export type PlatformSettings = {
    * Absent on an API that predates penalties; the screen then says so.
    */
   productionPenalty?: ProductionPenaltyPolicy;
+  /** Super Admin availability switch for new orders; missing means off. */
+  hubPickupEnabled?: boolean;
   /**
    * The hub's pick-up hours and flat fee. Every role reads it; only Super
    * Admin writes it. Absent on an API that predates hub pick-up.
@@ -1159,6 +1161,8 @@ export type UpdateSettingsInput = {
   productionNudge?: ProductionNudge;
   /** Super Admin only, always the complete object (`403` for anyone else). */
   productionPenalty?: ProductionPenaltyPolicy;
+  /** Super Admin only; does not affect already placed orders. */
+  hubPickupEnabled?: boolean;
   /** Super Admin only, always `{schedule, feeMinor}`; the point is read-only. */
   hubPickup?: Pick<HubPickup, "schedule" | "feeMinor">;
   reason?: string;

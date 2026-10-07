@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -70,7 +77,9 @@ it("lets Super Admin set the hours from unset and saves the whole object through
   expect(save).toBeDisabled();
 
   fireEvent.click(within(card).getByRole("button", { name: "Add hours on Monday" }));
-  fireEvent.change(within(card).getByLabelText("Monday closes"), { target: { value: "18:00" } });
+  fireEvent.change(within(card).getByLabelText("Monday closes"), {
+    target: { value: "18:00" },
+  });
   expect(save).toBeEnabled();
   fireEvent.click(save);
 
@@ -87,21 +96,31 @@ it("lets Super Admin set the hours from unset and saves the whole object through
     },
     reason: "Hub pick-up: opening hours updated",
   });
-  expect(await within(card).findByText(/Saved. New pick-up orders use these hours/)).toBeInTheDocument();
+  expect(
+    await within(card).findByText(/Saved. New pick-up orders use these hours/),
+  ).toBeInTheDocument();
 });
 
 it("warns before a first pick-up charge and reloads on a version conflict", async () => {
   getSettings.mockResolvedValue(unset);
-  updateSettings.mockRejectedValue(new ApiError(409, { error: "settings_version_conflict" }));
+  updateSettings.mockRejectedValue(
+    new ApiError(409, { error: "settings_version_conflict" }),
+  );
   render(<OperationalSettings />);
   await screen.findByRole("heading", { name: "Hub pick-up" });
   const card = hubCard();
 
-  fireEvent.change(within(card).getByLabelText("Pick-up fee (₱)"), { target: { value: "25" } });
-  expect(within(card).getByTestId("hub-new-charge")).toHaveTextContent(/starts charging clients/);
+  fireEvent.change(within(card).getByLabelText("Pick-up fee (₱)"), {
+    target: { value: "25" },
+  });
+  expect(within(card).getByTestId("hub-new-charge")).toHaveTextContent(
+    /starts charging clients/,
+  );
   fireEvent.click(within(card).getByRole("button", { name: "Save hub pick-up" }));
 
-  expect(await within(card).findByText(/Someone else saved settings/)).toBeInTheDocument();
+  expect(
+    await within(card).findByText(/Someone else saved settings/),
+  ).toBeInTheDocument();
   expect(updateSettings.mock.calls[0][0]).toMatchObject({
     hubPickup: { feeMinor: 2500, schedule: null },
     reason: "Hub pick-up: fee ₱0.00 to ₱25.00",
@@ -133,4 +152,45 @@ it("says so when the API has no hub settings", async () => {
   getSettings.mockResolvedValue(older);
   render(<OperationalSettings />);
   expect(await screen.findByTestId("hub-unavailable")).toBeInTheDocument();
+});
+
+it.each([false, true])(
+  "saves pickup availability from %s with version and audited reason",
+  async (enabled) => {
+    getSettings.mockResolvedValue({ ...unset, hubPickupEnabled: enabled });
+    updateSettings.mockImplementation(async (input) => ({
+      ...unset,
+      ...input,
+      version: 5,
+    }));
+    render(<OperationalSettings />);
+    const toggle = await screen.findByRole("switch", {
+      name: "Allow hub pick-up for new orders",
+    });
+    expect(toggle).toHaveAttribute("aria-checked", String(enabled));
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: "Save hub pick-up" }));
+    await waitFor(() =>
+      expect(updateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expectedVersion: 4,
+          hubPickupEnabled: !enabled,
+          reason: expect.stringContaining(enabled ? "disabled" : "enabled"),
+        }),
+      ),
+    );
+  },
+);
+
+it("defaults missing pickup availability to off and discards an unsaved toggle", async () => {
+  getSettings.mockResolvedValue(unset);
+  render(<OperationalSettings />);
+  const toggle = await screen.findByRole("switch", {
+    name: "Allow hub pick-up for new orders",
+  });
+  expect(toggle).toHaveAttribute("aria-checked", "false");
+  fireEvent.click(toggle);
+  fireEvent.click(within(hubCard()).getByRole("button", { name: "Discard" }));
+  expect(toggle).toHaveAttribute("aria-checked", "false");
+  expect(updateSettings).not.toHaveBeenCalled();
 });
