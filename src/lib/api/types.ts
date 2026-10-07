@@ -771,6 +771,8 @@ export type Order = {
    * predates it; read it through `src/lib/production-progress.ts`.
    */
   productionProgress?: ProductionProgress;
+  /** Separate packed-work evidence; supplier, client and staff only. */
+  packingProgress?: ProductionProgress;
   /** Wallet receipts Operations bound to released shares. Never sent to clients. */
   payoutReceiptFileIds?: string[];
 

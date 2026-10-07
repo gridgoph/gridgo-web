@@ -1,5 +1,6 @@
 "use client";
 
+import { PackingPhotos } from "@/components/orders/PackingPhotos";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1487,7 +1488,7 @@ function ProductionStep({
     }))
     .filter((entry) => entry.proofs.length > 0);
 
-  if (!showProgress && filed.length === 0 && corrections.length === 0 && !correctable) {
+  if (!showProgress && !order.packingProgress && filed.length === 0 && corrections.length === 0 && !correctable) {
     return <p className="text-body text-text-secondary m-0">{hint}</p>;
   }
 
@@ -1527,6 +1528,8 @@ function ProductionStep({
         </div>
       ) : null}
 
+      <PackingPhotos order={order} />
+
       {corrections.map((correction) => (
         <CorrectionNote key={correction.id} correction={correction} names={names} />
       ))}
@@ -1560,7 +1563,7 @@ function ProductionStep({
           <p className="text-caption text-text-muted m-0 max-w-prose">
             {photoMissing
               ? "If you have seen the finished job yourself, you can move it on without the photo. You will be asked why."
-              : "The shop has not packed this job yet. You can move it on for them. You will be asked why."}
+              : "The shop has not marked this job ready for dispatch yet. You can move it on for them. You will be asked why."}
           </p>
           <Button variant="secondary" disabled={busy} onClick={onCorrect}>
             Move to ready for dispatch

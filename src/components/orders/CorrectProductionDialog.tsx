@@ -58,7 +58,7 @@ export function CorrectProductionDialog({
           <AlertDialogDescription>
             {photoMissing
               ? "The shop has not sent a progress photo. Riders are offered the job straight away, and the client's order keeps saying it is waiting for a progress photo."
-              : "The shop has sent a progress photo but has not packed the job. Riders are offered it straight away."}
+              : "The shop has sent a progress photo but has not marked the job ready for dispatch. Riders are offered it straight away."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <FieldGroup>
