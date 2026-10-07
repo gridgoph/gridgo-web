@@ -37,8 +37,8 @@ actually pick up fails the run rather than reporting success.
 
 | Event                                | Verify                                           | Build | Publish                | Deploy                  |
 | ------------------------------------ | ------------------------------------------------ | ----- | ---------------------- | ----------------------- |
-| `pull_request` (from a fork)         | yes                                              | yes   | **no**                 | **no**                  |
-| `pull_request` (branch in this repo) | — covered by the `push` run on the same commit — |       |                        |                         |
+| `pull_request` to `main` / `dev` (fork, or same-repo head other than `main` / `fm/**`) | yes | yes | **no** | **no** |
+| `pull_request` (same-repo `main` / `fm/**` head) | — covered by the `push` run on the same commit — | | | |
 | `push` to `fm/**`                    | yes                                              | yes   | `sha-…` + `branch-…`   | **no**                  |
 | `push` to `main`                     | yes                                              | yes   | `sha-…` + **`latest`** | yes                     |
 | `workflow_dispatch`                  | yes                                              | yes   | yes                    | only if run from `main` |

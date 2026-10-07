@@ -1,22 +1,41 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus } from "lucide-react";
+import { Info, Plus } from "lucide-react";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Textarea } from "@/components/ui/textarea";
-import { ApiError } from "@/lib/api/client";
+import { ChatAttachButton } from "@/components/chat/ChatAttachButton";
+import { ConversationDetails } from "@/components/chat/ConversationDetails";
+import { InboxPager, sliceInboxPage } from "@/components/chat/InboxPager";
+import { ApiError, uploadSupportChatImage } from "@/lib/api/client";
 import { openSupportChatStream } from "@/lib/api/support-chat";
 import {
+  deleteSupportChatThread,
   getSupportChatMe,
   getSupportChatThread,
   markSupportChatRead,
   openSupportChatThread,
   sendSupportChatMessage,
 } from "@/lib/api/support-chat-party";
-import type { SupportChatMessage, SupportChatThread } from "@/lib/api/types";
+import {
+  SUPPORT_CHAT_IMAGE_MAX_COUNT,
+  validateSupportChatImage,
+} from "@/lib/chatImages";
+import type { SupportChatAttachment, SupportChatMessage, SupportChatThread } from "@/lib/api/types";
+import { ChatMessage } from "@/components/chat/ChatMessage";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -64,6 +83,15 @@ export default function SupplierChatPage() {
   const [error, setError] = useState<string | null>(null);
   const [inboxNonce, setInboxNonce] = useState(0);
   const [threadNonce, setThreadNonce] = useState(0);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [inboxPage, setInboxPage] = useState(0);
+  const [messageQuery, setMessageQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SupportChatMessage[]>([]);
+  const [photos, setPhotos] = useState<SupportChatAttachment[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const endRef = useRef<HTMLDivElement | null>(null);
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
@@ -126,6 +154,58 @@ export default function SupplierChatPage() {
   }, [selectedId, threadNonce]);
 
   useEffect(() => {
+    if (!selectedId) {
+      setPhotos([]);
+      return;
+    }
+    let cancelled = false;
+    void getSupportChatThread(selectedId, { media: true })
+      .then((detail) => {
+        if (!cancelled) {
+          setPhotos(detail.messages.flatMap((message) => message.attachments ?? []));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPhotos([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, threadNonce]);
+
+  useEffect(() => {
+    if (!selectedId || !searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    let cancelled = false;
+    void getSupportChatThread(selectedId, { q: searchQuery })
+      .then((detail) => {
+        if (!cancelled) setSearchResults(detail.messages);
+      })
+      .catch(() => {
+        if (!cancelled) setSearchResults([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [searchQuery, selectedId]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchQuery(messageQuery), 250);
+    return () => clearTimeout(timer);
+  }, [messageQuery]);
+
+  useEffect(() => {
+    setMessageQuery("");
+    setSearchQuery("");
+    setSearchResults([]);
+    setPhotos([]);
+    setPendingFiles([]);
+    setConfirmDelete(false);
+  }, [selectedId]);
+
+  useEffect(() => {
     const stream = openSupportChatStream({
       onEvent: (event) => {
         setThreads((current) => prependThread(current, event.thread));
@@ -160,6 +240,7 @@ export default function SupplierChatPage() {
       const opened = await openSupportChatThread();
       setThreads((current) => replaceThread(current, opened.thread));
       setSelectedId(opened.thread.id);
+      setInboxPage(0);
     } catch (err) {
       setError(errorCopy(err, "start a new chat"));
     } finally {
@@ -169,12 +250,21 @@ export default function SupplierChatPage() {
 
   async function send() {
     const body = draft.trim();
-    if (!selectedId || !body || sending) return;
+    if (!selectedId || sending) return;
+    if (!body && !pendingFiles.length) return;
     setSending(true);
     setError(null);
     try {
-      const posted = await sendSupportChatMessage(body, selectedId);
+      const uploadedIds: string[] = [];
+      for (const file of pendingFiles) {
+        const stored = await uploadSupportChatImage(file);
+        uploadedIds.push(stored.fileId);
+      }
+      const posted = uploadedIds.length
+        ? await sendSupportChatMessage(body, selectedId, uploadedIds)
+        : await sendSupportChatMessage(body, selectedId);
       setDraft("");
+      setPendingFiles([]);
       setSelectedId(posted.thread.id);
       setMessages((current) =>
         current.some((row) => row.id === posted.message.id)
@@ -186,6 +276,42 @@ export default function SupplierChatPage() {
       setError(errorCopy(err, "send that message"));
     } finally {
       setSending(false);
+    }
+  }
+
+  function addFiles(list: FileList | null) {
+    if (!list?.length) return;
+    const next = [...pendingFiles];
+    for (const file of Array.from(list)) {
+      const problem = validateSupportChatImage(file);
+      if (problem) {
+        setError(problem);
+        return;
+      }
+      if (next.length >= SUPPORT_CHAT_IMAGE_MAX_COUNT) {
+        setError(`A message can include up to ${SUPPORT_CHAT_IMAGE_MAX_COUNT} photos.`);
+        return;
+      }
+      next.push(file);
+    }
+    setError(null);
+    setPendingFiles(next);
+  }
+
+  async function removeChat() {
+    if (!selectedId || deleting) return;
+    setDeleting(true);
+    try {
+      const id = selectedId;
+      await deleteSupportChatThread(id);
+      setConfirmDelete(false);
+      setThreads((current) => (current ?? []).filter((row) => row.id !== id));
+      setSelectedId((current) => (current === id ? null : current));
+      setMessages([]);
+    } catch (err) {
+      setError(errorCopy(err, "delete this chat"));
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -230,8 +356,14 @@ export default function SupplierChatPage() {
           </Button>
         </div>
       ) : null}
-      <div className="grid min-h-[36rem] gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
-        <aside className="gg-card flex flex-col gap-3">
+      <div
+        className={`grid min-h-[36rem] gap-4 ${
+          detailsOpen
+            ? "grid-cols-1 xl:grid-cols-[18rem_minmax(0,1fr)_20rem]"
+            : "lg:grid-cols-[18rem_minmax(0,1fr)]"
+        }`}
+      >
+        <aside className={`gg-card flex-col gap-3 ${detailsOpen ? "hidden xl:flex" : "flex"}`}>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 className="text-h3 text-text-primary m-0">Operations</h2>
@@ -271,7 +403,7 @@ export default function SupplierChatPage() {
                 }
               />
             ) : (
-              threads.map((thread) => {
+              sliceInboxPage(threads, inboxPage).map((thread) => {
                 const preview = thread.lastMessagePreview?.trim() || "No messages yet";
                 const active = thread.id === selectedId;
                 return (
@@ -315,9 +447,12 @@ export default function SupplierChatPage() {
               })
             )}
           </div>
+          {threads?.length ? (
+            <InboxPager page={inboxPage} total={threads.length} onPageChange={setInboxPage} />
+          ) : null}
         </aside>
 
-        <section className="gg-card flex min-h-[28rem] min-w-0 flex-col gap-3">
+        <section className={`gg-card min-h-[28rem] min-w-0 flex-col gap-3 ${detailsOpen ? "hidden xl:flex" : "flex"}`}>
           {!selectedId ? (
             <EmptyState
               title="Pick a conversation"
@@ -325,14 +460,30 @@ export default function SupplierChatPage() {
             />
           ) : (
             <>
-              <div>
-                <h2 className="text-h3 text-text-primary m-0">Operations</h2>
-                <p className="text-caption text-text-muted m-0 mt-1">
-                  GRIDGO operations
-                  {selected?.lastMessageAt
-                    ? ` · ${formatDateTime(selected.lastMessageAt)}`
-                    : ""}
-                </p>
+              <div className="flex items-start justify-between gap-3">
+                <button
+                  type="button"
+                  className="min-w-0 rounded-[var(--radius-field)] text-left hover:bg-overlay-hover"
+                  onClick={() => setDetailsOpen(true)}
+                >
+                  <h2 className="text-h3 text-text-primary m-0">Operations</h2>
+                  <p className="text-caption text-text-muted m-0 mt-1">
+                    GRIDGO operations
+                    {selected?.lastMessageAt
+                      ? ` · ${formatDateTime(selected.lastMessageAt)}`
+                      : ""}
+                  </p>
+                </button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  aria-label="Conversation details"
+                  aria-expanded={detailsOpen}
+                  onClick={() => setDetailsOpen((open) => !open)}
+                >
+                  <Info />
+                </Button>
               </div>
               <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
                 {threadLoading && messages.length === 0 ? (
@@ -344,46 +495,38 @@ export default function SupplierChatPage() {
                   />
                 ) : (
                   messages.map((message) => (
-                    <div
+                    <ChatMessage
                       key={message.id}
-                      className={cn(
-                        "flex",
-                        message.mine ? "justify-end" : "justify-start",
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "max-w-[80%] rounded-[var(--radius-field)] border border-border px-3 py-2",
-                          message.mine ? "bg-muted" : "bg-card",
-                        )}
-                      >
-                        <p className="text-body text-text-primary m-0 whitespace-pre-wrap">
-                          {message.body}
-                        </p>
-                        <p className="text-caption text-text-muted m-0 mt-1">
-                          {message.mine ? "You" : "Operations"}
-                          {` · ${formatDateTime(message.createdAt)}`}
-                        </p>
-                      </div>
-                    </div>
+                      message={message}
+                      counterpartLabel="Operations"
+                    />
                   ))
                 )}
                 <div ref={endRef} />
               </div>
               <div className="flex flex-col gap-2">
-                <Textarea
-                  value={draft}
-                  onChange={(event) => setDraft(event.target.value)}
-                  placeholder="Write to Operations"
-                  aria-label="Message Operations"
-                  rows={3}
-                  maxLength={4000}
-                  disabled={sending}
-                />
-                <div className="flex justify-end">
+                {pendingFiles.length ? (
+                  <p className="text-caption text-text-muted m-0">
+                    {pendingFiles.length === 1
+                      ? pendingFiles[0].name
+                      : `${pendingFiles.length} photos ready to send`}
+                  </p>
+                ) : null}
+                <div className="flex items-end gap-2">
+                  <ChatAttachButton disabled={sending} onFiles={addFiles} />
+                  <Textarea
+                    value={draft}
+                    onChange={(event) => setDraft(event.target.value)}
+                    placeholder="Write to Operations"
+                    aria-label="Message Operations"
+                    rows={2}
+                    maxLength={4000}
+                    disabled={sending}
+                    className="min-w-0 flex-1"
+                  />
                   <Button
                     variant="primary"
-                    disabled={sending || !draft.trim()}
+                    disabled={sending || (!draft.trim() && !pendingFiles.length)}
                     aria-busy={sending}
                     onClick={() => void send()}
                   >
@@ -394,7 +537,47 @@ export default function SupplierChatPage() {
             </>
           )}
         </section>
+
+        {selectedId ? (
+          <aside
+            className={`gg-card min-h-[28rem] min-w-0 w-full flex-col gap-3 ${
+              detailsOpen ? "flex" : "hidden"
+            }`}
+          >
+            <ConversationDetails
+              name="Operations"
+              subtitle="GRIDGO operations"
+              imageUrl={messages.find((message) => !message.mine)?.senderImageUrl}
+              searchValue={messageQuery}
+              onSearchValueChange={setMessageQuery}
+              searchResults={searchResults}
+              photos={photos}
+              onDelete={() => setConfirmDelete(true)}
+              onClose={() => setDetailsOpen(false)}
+            />
+          </aside>
+        ) : null}
       </div>
+        <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure you want to delete this chat?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This conversation and its photos are removed for everyone in it.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                disabled={deleting}
+                onClick={() => void removeChat()}
+              >
+                Delete chat
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
     </div>
   );
 }

@@ -113,6 +113,15 @@ const ISSUE_WINDOW_COPY = (
   </>
 );
 
+const PHYSICAL_INVOICE_COPY = (
+  <>
+    Clients can ask GRIDGO to send a printed invoice to an office. Off until you turn it
+    on. While it is off, no screen offers a new request and the API refuses one. A request
+    already on file stays visible, and Operations can still promise a delivery time on that
+    order.
+  </>
+);
+
 const QR_COPY = (
   <>
     The GCash InstaPay plate clients scan at checkout. One receiving wallet for the
@@ -160,6 +169,13 @@ function discountInput(bps: number | undefined): string {
 
 function feeVisibleOf(settings: Pick<PlatformSettings, "serviceFeeVisibleToClient">): boolean {
   return settings.serviceFeeVisibleToClient !== false;
+}
+
+/** Absent on an older settings row. New requests stay off until Super Admin turns them on. */
+function physicalInvoiceRequestsOf(
+  settings: Pick<PlatformSettings, "physicalInvoiceRequestsEnabled">,
+): boolean {
+  return settings.physicalInvoiceRequestsEnabled === true;
 }
 
 function toNudgeDraft(settings: PlatformSettings): NudgeDraft {
@@ -260,6 +276,7 @@ export function OperationalSettings() {
   const [zones, setZones] = useState<ZoneDraft | null>(null);
   const [nudge, setNudge] = useState<NudgeDraft>(toNudgeDraft({ version: 0, issueWindowHours: 24, serviceFeeRateBps: 1000, deliveryFeeBands: [] }));
   const [feeVisible, setFeeVisible] = useState(true);
+  const [physicalInvoiceRequests, setPhysicalInvoiceRequests] = useState(false);
   const [qrBusy, setQrBusy] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
   const [qrOk, setQrOk] = useState<string | null>(null);
@@ -320,6 +337,11 @@ export function OperationalSettings() {
           preserveDraft && previous && current !== feeVisibleOf(previous)
             ? current
             : feeVisibleOf(next),
+        );
+        setPhysicalInvoiceRequests((current) =>
+          preserveDraft && previous && current !== physicalInvoiceRequestsOf(previous)
+            ? current
+            : physicalInvoiceRequestsOf(next),
         );
         settingsRef.current = next;
         setSettings(next);
@@ -413,6 +435,7 @@ export function OperationalSettings() {
         expectedVersion: settings.version,
         serviceFeeRateBps: parsedRate,
         serviceFeeVisibleToClient: feeVisible,
+        physicalInvoiceRequestsEnabled: physicalInvoiceRequests,
         ...(parsedRiderShare !== null ? { riderCommissionBps: parsedRiderShare } : {}),
         ...(parsedDiscount !== null ? { organizationDiscountRateBps: parsedDiscount } : {}),
         // An API without the setting holds no checkout split; nothing is sent for it.
@@ -426,11 +449,16 @@ export function OperationalSettings() {
           { from: settings.downpaymentPercent, to: checkoutPercent },
           { from: settings.deliveryFeeBands, to: parsedBands.bands },
           { from: settings.organizationDiscountRateBps, to: parsedDiscount ?? undefined },
+          {
+            from: physicalInvoiceRequestsOf(settings),
+            to: physicalInvoiceRequests,
+          },
         ),
       });
       setSettings(next);
       setRate(bpsToPercentInput(next.serviceFeeRateBps));
       setFeeVisible(feeVisibleOf(next));
+      setPhysicalInvoiceRequests(physicalInvoiceRequestsOf(next));
       setRiderShare(riderShareInput(next.riderCommissionBps));
       setOrgDiscount(discountInput(next.organizationDiscountRateBps));
       setCheckoutPercent(next.downpaymentPercent);
@@ -534,6 +562,7 @@ export function OperationalSettings() {
   const dirty =
     rate !== bpsToPercentInput(settings.serviceFeeRateBps) ||
     feeVisible !== feeVisibleOf(settings) ||
+    physicalInvoiceRequests !== physicalInvoiceRequestsOf(settings) ||
     riderShare !== riderShareInput(settings.riderCommissionBps) ||
     orgDiscount !== discountInput(settings.organizationDiscountRateBps) ||
     checkoutPercent !== settings.downpaymentPercent ||
@@ -695,6 +724,24 @@ export function OperationalSettings() {
             <FieldDescription>{HOURS_HELP}</FieldDescription>
           </Field>
         </FieldGroup>
+      </section>
+
+      <section className="gg-card p-3" aria-labelledby="physical-invoice-heading">
+        <h2 id="physical-invoice-heading" className="text-h3 text-text-primary m-0">
+          Physical invoices
+        </h2>
+        <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
+          {PHYSICAL_INVOICE_COPY}
+        </p>
+        <Field orientation="horizontal">
+          <FieldLabel htmlFor="physical-invoice-requests">Accept physical invoice requests</FieldLabel>
+          <Switch
+            id="physical-invoice-requests"
+            checked={physicalInvoiceRequests}
+            onCheckedChange={(checked) => setPhysicalInvoiceRequests(Boolean(checked))}
+            aria-label="Accept physical invoice requests"
+          />
+        </Field>
       </section>
 
       <DeliveryZones
@@ -870,6 +917,7 @@ export function OperationalSettings() {
           onClick={() => {
             setRate(bpsToPercentInput(settings.serviceFeeRateBps));
             setFeeVisible(feeVisibleOf(settings));
+            setPhysicalInvoiceRequests(physicalInvoiceRequestsOf(settings));
             setRiderShare(riderShareInput(settings.riderCommissionBps));
             setOrgDiscount(discountInput(settings.organizationDiscountRateBps));
             setCheckoutPercent(settings.downpaymentPercent);
@@ -904,6 +952,7 @@ export function settingsChangeReason(
     from: undefined,
     to: undefined,
   },
+  physicalInvoices: { from: boolean; to: boolean } = { from: false, to: false },
 ): string {
   const changes: string[] = [];
   if (previousRiderBps !== undefined && nextRiderBps !== null && previousRiderBps !== nextRiderBps) {
@@ -921,6 +970,11 @@ export function settingsChangeReason(
   if (discount.from !== undefined && discount.to !== undefined && discount.from !== discount.to) {
     changes.push(
       `organization discount ${formatRatePercent(discount.from)} to ${formatRatePercent(discount.to)}`,
+    );
+  }
+  if (physicalInvoices.from !== physicalInvoices.to) {
+    changes.push(
+      `physical invoice requests ${physicalInvoices.from ? "on" : "off"} to ${physicalInvoices.to ? "on" : "off"}`,
     );
   }
   return changes.length

@@ -51,11 +51,20 @@ export async function getSupportChatMe(): Promise<{
   return partyRequest("/support-chat/me");
 }
 
-export async function getSupportChatThread(threadId: string): Promise<{
+export async function getSupportChatThread(
+  threadId: string,
+  filters?: { q?: string; media?: boolean },
+): Promise<{
   thread: SupportChatThread;
   messages: SupportChatMessage[];
 }> {
-  return partyRequest(`/support-chat/threads/${encodeURIComponent(threadId)}`);
+  const params = new URLSearchParams();
+  if (filters?.q?.trim()) params.set("q", filters.q.trim());
+  if (filters?.media) params.set("media", "1");
+  const query = params.toString();
+  return partyRequest(
+    `/support-chat/threads/${encodeURIComponent(threadId)}${query ? `?${query}` : ""}`,
+  );
 }
 
 export async function openSupportChatThread(): Promise<{ thread: SupportChatThread }> {
@@ -68,13 +77,24 @@ export async function openSupportChatThread(): Promise<{ thread: SupportChatThre
 export async function sendSupportChatMessage(
   body: string,
   threadId?: string,
+  attachmentFileIds?: string[],
 ): Promise<{
   thread: SupportChatThread;
   message: SupportChatMessage;
 }> {
   return partyRequest("/support-chat/me/messages", {
     method: "POST",
-    body: JSON.stringify({ body, ...(threadId ? { threadId } : {}) }),
+    body: JSON.stringify({
+      body,
+      ...(threadId ? { threadId } : {}),
+      ...(attachmentFileIds?.length ? { attachmentFileIds } : {}),
+    }),
+  });
+}
+
+export async function deleteSupportChatThread(threadId: string): Promise<void> {
+  await partyRequest(`/support-chat/threads/${encodeURIComponent(threadId)}`, {
+    method: "DELETE",
   });
 }
 

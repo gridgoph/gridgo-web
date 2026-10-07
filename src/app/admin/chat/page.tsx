@@ -6,8 +6,8 @@ export default function AdminChatPage() {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-body text-text-secondary m-0 max-w-prose">
-        The same Operations inbox Super Admin can work. One thread per client,
-        shop or rider — never the unused supplier/rider/Gridbot placeholders.
+        The same desk Operations uses. Look someone up to start a chat, including
+        another Operations or admin account.
       </p>
       <SupportChatDesk />
     </div>
