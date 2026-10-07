@@ -1541,6 +1541,7 @@ export type SupplierService = {
   qtyMax: number | null;
   pricingBasis: string;
   referenceRateMinor: number;
+  turnaroundDays?: number | null;
   turnaroundHours: number;
   capacityDaily: number | null;
   capacityWeekly: number | null;

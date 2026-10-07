@@ -113,6 +113,7 @@ export type Listing = {
   priceTiers: PriceTier[];
   speedTiers: SpeedTier[];
   turnaroundMode: TurnaroundMode;
+  turnaroundDays?: number | null;
   turnaroundHours: number | null;
   fileFormatMode: FileFormatMode;
   formatCodes: string[];
@@ -381,6 +382,7 @@ export function normalizeListing(body: unknown, index = 0): Listing | null {
     speedTiers: readSpeedTiers(pick(raw, "speedTiers", "speed_tiers")),
     turnaroundMode:
       str(pick(raw, "turnaroundMode", "turnaround_mode")) === "override" ? "override" : "inherit",
+    turnaroundDays: num(pick(raw, "turnaroundDays", "turnaround_days")),
     turnaroundHours: num(pick(raw, "turnaroundHours", "turnaround_hours")),
     fileFormatMode:
       str(pick(raw, "fileFormatMode", "file_format_mode")) === "override" ? "override" : "inherit",
@@ -643,6 +645,12 @@ export function effectiveTurnaroundHours(
   inheritedHours: number | null,
 ): number | null {
   return listing.turnaroundMode === "override" ? listing.turnaroundHours : inheritedHours;
+}
+
+/** Server-owned working days; never reinterpret compatibility hours as calendar days. */
+export function productionDaysLine(days: number | null | undefined): string {
+  if (days == null || !Number.isSafeInteger(days) || days < 1) return "Production days unavailable";
+  return `${days} working ${days === 1 ? "day" : "days"}`;
 }
 
 export function readyInLine(hours: number | null): string {

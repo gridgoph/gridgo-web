@@ -25,7 +25,7 @@ import {
   pickLine,
   priceLine,
   printerCapLine,
-  readyInLine,
+  productionDaysLine,
   type Listing,
 } from "@/lib/listings";
 
@@ -373,7 +373,9 @@ function ListingFacts({
         <dt className="text-caption text-text-muted">Ready in</dt>
         <dd className="text-body text-text-primary m-0">
           {listing.turnaroundMode === "override"
-            ? readyInLine(listing.turnaroundHours)
+            ? listing.turnaroundDays
+              ? `Ready in ${productionDaysLine(listing.turnaroundDays)}`
+              : productionDaysLine(null)
             : "The shop's usual time"}
         </dd>
         {cap ? (

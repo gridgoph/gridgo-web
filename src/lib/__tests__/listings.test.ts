@@ -11,6 +11,7 @@ import {
   printerCapLine,
   printerMaxWidthFeetWrite,
   priceSuffix,
+  productionDaysLine,
   unitChoiceLabel,
 } from "@/lib/listings";
 
@@ -228,4 +229,20 @@ describe("listings", () => {
       note: "Blurry sample",
     });
   });
+});
+
+it("keeps server production days for Operations instead of deriving calendar days", () => {
+  const result = normalizeListing({
+    id: "duration",
+    turnaroundMode: "override",
+    turnaroundDays: 2,
+    turnaroundHours: 20,
+  });
+  expect(result?.turnaroundDays).toBe(2);
+});
+
+it("labels working days without guessing a missing server duration", () => {
+  expect(productionDaysLine(2)).toBe("2 working days");
+  expect(productionDaysLine(1)).toBe("1 working day");
+  expect(productionDaysLine(null)).toBe("Production days unavailable");
 });
