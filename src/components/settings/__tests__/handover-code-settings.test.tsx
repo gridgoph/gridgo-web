@@ -80,7 +80,9 @@ it.each([false, true])(
 
 it("warns about unset hours and rider builds, and discards without writing", () => {
   render(<HandoverCodeSettings {...props} />);
-  expect(card().getByRole("alert")).toHaveTextContent("Hub hours are not set");
+  expect(card().getByRole("note", { name: "Hub hours" })).toHaveTextContent(
+    "Hub hours are not set",
+  );
   expect(card().getByText(/recent rider app/)).toBeInTheDocument();
   expect(
     card().getByText(/Turning this off does not remove codes already issued/),
@@ -137,7 +139,7 @@ it("follows refreshed values while clean and shows no warning for configured hou
   );
   expect(toggle()).toHaveAttribute("aria-checked", "true");
   expect(save()).toBeDisabled();
-  expect(card().queryByRole("alert")).not.toBeInTheDocument();
+  expect(card().queryByRole("note", { name: "Hub hours" })).not.toBeInTheDocument();
 });
 
 it("does not offer controls to a read-only caller or an older API", () => {

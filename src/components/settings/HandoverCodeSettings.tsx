@@ -82,7 +82,7 @@ export function HandoverCodeSettings({
       </p>
 
       {!settings.hubPickup?.schedule ? (
-        <Alert className="mt-3">
+        <Alert className="mt-3" role="note" aria-label="Hub hours">
           <TriangleAlert aria-hidden />
           <AlertTitle>Hub hours are not set</AlertTitle>
           <AlertDescription>
