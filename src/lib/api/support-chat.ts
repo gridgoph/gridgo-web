@@ -4,7 +4,9 @@ import type {
   SupportChatEvent,
   SupportChatMessage,
   SupportChatPartyRole,
+  SupportChatPerson,
   SupportChatThread,
+  SupportChatThreadRole,
 } from "@/lib/api/types";
 import { parseSseChunk, reconnectDelayMs, type SseEvent } from "@/lib/eventStream";
 
@@ -39,7 +41,7 @@ async function chatRequest<T>(path: string, init: RequestInit = {}): Promise<T> 
 }
 
 export async function listSupportChatThreads(filters?: {
-  role?: SupportChatPartyRole | "all";
+  role?: SupportChatPartyRole | "staff" | "all";
   q?: string;
 }): Promise<SupportChatThread[]> {
   const params = new URLSearchParams();
@@ -52,20 +54,65 @@ export async function listSupportChatThreads(filters?: {
   return result.threads ?? [];
 }
 
-export async function getSupportChatThread(threadId: string): Promise<{
+export async function searchSupportChatPeople(filters?: {
+  q?: string;
+  role?: SupportChatThreadRole | "staff";
+  limit?: number;
+}): Promise<SupportChatPerson[]> {
+  const params = new URLSearchParams();
+  if (filters?.q?.trim()) params.set("q", filters.q.trim());
+  if (filters?.role) params.set("role", filters.role);
+  if (filters?.limit) params.set("limit", String(filters.limit));
+  const query = params.toString();
+  const result = await chatRequest<{ people: SupportChatPerson[] }>(
+    `/support-chat/people${query ? `?${query}` : ""}`,
+  );
+  return result.people ?? [];
+}
+
+export async function openSupportChatThread(input: {
+  userId: string;
+  role: SupportChatThreadRole;
+}): Promise<{ thread: SupportChatThread }> {
+  return chatRequest("/support-chat/threads", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getSupportChatThread(
+  threadId: string,
+  filters?: { q?: string; media?: boolean },
+): Promise<{
   thread: SupportChatThread;
   messages: SupportChatMessage[];
 }> {
-  return chatRequest(`/support-chat/threads/${encodeURIComponent(threadId)}`);
+  const params = new URLSearchParams();
+  if (filters?.q?.trim()) params.set("q", filters.q.trim());
+  if (filters?.media) params.set("media", "1");
+  const query = params.toString();
+  return chatRequest(
+    `/support-chat/threads/${encodeURIComponent(threadId)}${query ? `?${query}` : ""}`,
+  );
 }
 
 export async function replySupportChat(
   threadId: string,
   body: string,
+  attachmentFileIds?: string[],
 ): Promise<{ thread: SupportChatThread; message: SupportChatMessage }> {
   return chatRequest(`/support-chat/threads/${encodeURIComponent(threadId)}/messages`, {
     method: "POST",
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({
+      body,
+      ...(attachmentFileIds?.length ? { attachmentFileIds } : {}),
+    }),
+  });
+}
+
+export async function deleteSupportChatThread(threadId: string): Promise<void> {
+  await chatRequest(`/support-chat/threads/${encodeURIComponent(threadId)}`, {
+    method: "DELETE",
   });
 }
 

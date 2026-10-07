@@ -6,9 +6,8 @@ name: Build and deploy portal
 #                    A proposal is not a decision: the registry the server pulls
 #                    from must only ever contain reviewed code, and a fork PR
 #                    gets a read-only token precisely so it cannot publish.
-#                    Only fork PRs run here — for branches in this repository the
-#                    `push` event below already covers the same commit, and two
-#                    identical builds per commit is waste, not safety.
+#                    Targets main and dev. Only same-repo main/fm/** heads skip
+#                    these jobs: the push event already covers those commits.
 #
 #   push: fm/**   -> verify + build + publish an immutable `sha-` / `branch-`
 #                    tag. Does NOT move `latest` and does NOT deploy. This is how
@@ -27,7 +26,7 @@ on:
       - main
       - "fm/**"
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 # The API URL is compiled into the browser bundle, so it belongs to the build,
@@ -54,13 +53,12 @@ jobs:
     runs-on: ubuntu-latest
     env:
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${{ github.event_name == 'pull_request' && 'pk_test_dGVzdC5jbGVyay5hY2NvdW50cy5kZXYk' || secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY }}
-    # A pull request whose branch lives in this repository has already been run
-    # by the `push` event on the very same commit, and its result is attached to
-    # that commit. Running it twice buys nothing. A fork PR has no such run —
-    # `push` never fires here for it — so that is the case this event exists for.
+    # Skip duplicate checks only for same-repo heads covered by push triggers.
+    # Other heads (including ven and dev) need the pull-request checks.
     if: >-
       github.event_name != 'pull_request' ||
-      github.event.pull_request.head.repo.full_name != github.repository
+      github.event.pull_request.head.repo.full_name != github.repository ||
+      (github.head_ref != 'main' && !startsWith(github.head_ref, 'fm/'))
     steps:
       - uses: actions/checkout@v4
 
@@ -84,8 +82,7 @@ jobs:
 
   image:
     name: Build image
-    # Skipped whenever `verify` is skipped, which is what keeps a same-repo pull
-    # request from rebuilding a commit the push run already built.
+    # Follow verify, including its duplicate-push check above.
     needs: verify
     runs-on: ubuntu-latest
     env:

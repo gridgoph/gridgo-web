@@ -1102,6 +1102,12 @@ export type PlatformSettings = {
    */
   serviceFeeVisibleToClient?: boolean;
   /**
+   * Whether clients may file a new printed-invoice request. Super Admin
+   * writes it. Absent on an older settings row; treat as off. A request
+   * already on file stays visible either way.
+   */
+  physicalInvoiceRequestsEnabled?: boolean;
+  /**
    * The organization discount, in basis points of the same shop price the
    * service fee is charged on (500 = 5%), 0–10,000. Paid out of GRIDGO's fee,
    * so it may never exceed `serviceFeeRateBps` (`400
@@ -1144,6 +1150,8 @@ export type UpdateSettingsInput = {
   issueWindowHours?: number;
   serviceFeeRateBps?: number;
   serviceFeeVisibleToClient?: boolean;
+  /** Super Admin only. Off unless sent as `true`. */
+  physicalInvoiceRequestsEnabled?: boolean;
   organizationDiscountRateBps?: number;
   riderCommissionBps?: number;
   downpaymentPercent?: number;
@@ -1541,6 +1549,7 @@ export type SupplierService = {
   qtyMax: number | null;
   pricingBasis: string;
   referenceRateMinor: number;
+  turnaroundDays?: number | null;
   turnaroundHours: number;
   capacityDaily: number | null;
   capacityWeekly: number | null;
@@ -1943,11 +1952,20 @@ export type ApiErrorBody = {
 
 export type SupportChatPartyRole = "client" | "supplier" | "rider";
 export type SupportChatSenderRole = SupportChatPartyRole | "ops_admin" | "super_admin";
+export type SupportChatThreadRole = SupportChatSenderRole;
+
+export type SupportChatPerson = {
+  userId: string;
+  name: string;
+  email?: string | null;
+  role: SupportChatThreadRole;
+  imageUrl?: string | null;
+};
 
 export type SupportChatThread = {
   id: string;
   partyUserId: string;
-  partyRole: SupportChatPartyRole;
+  partyRole: SupportChatThreadRole;
   partyName?: string | null;
   partyEmail?: string | null;
   lastMessageAt?: string | null;
@@ -1956,6 +1974,17 @@ export type SupportChatThread = {
   unreadCount: number;
   createdAt: string;
   updatedAt: string;
+  viewerUserId?: string | null;
+  staffPeerUserId?: string | null;
+  staffPeerName?: string | null;
+  staffPeerEmail?: string | null;
+  staffPeerRole?: SupportChatThreadRole | null;
+};
+
+export type SupportChatAttachment = {
+  fileId: string;
+  contentType?: string | null;
+  originalFilename?: string | null;
 };
 
 export type SupportChatMessage = {
@@ -1964,7 +1993,9 @@ export type SupportChatMessage = {
   senderUserId: string;
   senderRole: SupportChatSenderRole;
   senderName?: string | null;
+  senderImageUrl?: string | null;
   body: string;
+  attachments?: SupportChatAttachment[];
   createdAt: string;
   mine: boolean;
 };

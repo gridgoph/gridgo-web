@@ -2616,6 +2616,10 @@ export async function uploadRefundReceipt(file: File): Promise<StoredFile> {
   return uploadPurpose("refund_receipt", file);
 }
 
+export async function uploadSupportChatImage(file: File): Promise<StoredFile> {
+  return uploadPurpose("support_chat_image", file);
+}
+
 async function uploadPurpose(purpose: string, file: File): Promise<StoredFile> {
   const body = new FormData();
   body.append("purpose", purpose);

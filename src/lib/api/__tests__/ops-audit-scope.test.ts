@@ -61,7 +61,7 @@ describe("audit reads outside the Super Admin tree", () => {
     .filter((file) => !file.endsWith(join("lib/api/client.ts")))
     .flatMap((file) =>
       auditCalls(readFileSync(file, "utf8")).map((args) => ({
-        file: relative(process.cwd(), file),
+        file: relative(process.cwd(), file).replaceAll("\\", "/"),
         args,
       })),
     );
