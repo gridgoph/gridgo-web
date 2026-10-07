@@ -41,7 +41,7 @@ export function notificationHref(role: Role, notification: Notification): string
 
   if (isServiceReview(type)) {
     if (role === "super_admin") return "/admin/verification?tab=services";
-    if (role === "ops_admin") return "/ops/approvals?tab=services";
+    if (role === "ops_admin") return "/ops/service-lines";
   }
 
   // Organization reminders and Operations' own notices name the account.
@@ -56,7 +56,6 @@ export function notificationHref(role: Role, notification: Notification): string
   // A permit request is a decision on the business application.
   if (type === "client_application_document_requested") {
     if (role === "super_admin") return "/admin/verification";
-    if (role === "ops_admin") return "/ops/approvals";
     return null;
   }
 
@@ -75,7 +74,6 @@ export function notificationHref(role: Role, notification: Notification): string
 
   if (isSignup(notification)) {
     if (role === "super_admin") return "/admin/verification";
-    if (role === "ops_admin") return "/ops/approvals";
     return null;
   }
 

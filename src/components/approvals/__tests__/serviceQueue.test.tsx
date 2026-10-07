@@ -5,7 +5,7 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { LiveContext, type LiveContextValue } from "@/lib/live/LiveProvider";
 import type { InvalidatePing, SupplierService } from "@/lib/api/types";
-import OpsApprovals from "@/app/ops/approvals/page";
+import OpsApprovals from "@/app/ops/service-lines/page";
 vi.stubGlobal("React", React);
 const list = vi.hoisted(() => vi.fn<() => Promise<SupplierService[]>>(async () => []));
 const listUsers = vi.hoisted(() => vi.fn(async () => []));
@@ -38,10 +38,7 @@ afterEach(() => {
 it("opens the real service review queue within the Operations route", async () => {
   render(<OpsApprovals />);
   expect(await screen.findByText("No service lines")).toBeInTheDocument();
-  expect(screen.getByRole("tab", { name: "Service lines" })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
+  expect(screen.queryByRole("tab", { name: "Sign-ups" })).not.toBeInTheDocument();
   expect(list).toHaveBeenCalledTimes(1);
 });
 

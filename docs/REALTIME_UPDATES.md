@@ -131,7 +131,8 @@ carries `catalogItemId`. The arrival is the live alert (chime, toast, desktop al
 desk re-reads on the `catalog` invalidation, marks newly arrived listings and product-type
 requests **New** and announces them politely.
 
-Operations approvals and Super Admin verification mount the same sign-up and service-line
-queues. Service-review links select `?tab=services`; sign-up links select the default tab.
-Tab selection follows the URL so an inbox link can switch an already-open queue. Both route
-components wrap their search-parameter consumers in Suspense for production rendering.
+Sign-up links open Super Admin verification only; Operations has no sign-up destination.
+Operations service-review links open `/ops/service-lines`; legacy `/ops/approvals?tab=services`
+links still work. Other `/ops/approvals` links show the Super Admin only notice. Super Admin
+verification keeps both tabs, with service-review links selecting `?tab=services`.
+Search-parameter consumers are wrapped in Suspense for production rendering.

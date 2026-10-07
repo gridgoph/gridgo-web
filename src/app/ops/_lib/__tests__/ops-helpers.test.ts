@@ -309,3 +309,9 @@ describe("schedule", () => {
     expect(filtered.every((e) => e.orderId === "in")).toBe(true);
   });
 });
+
+it("keeps sign-up approvals out of Operations overview destinations", () => {
+  const buckets = buildOverviewBuckets([]);
+  expect(buckets.some((bucket) => bucket.href.includes("approvals"))).toBe(false);
+  expect(buckets.some((bucket) => bucket.label.includes("Sign-up"))).toBe(false);
+});

@@ -46,7 +46,7 @@ describe("ROLE_NAV", () => {
       "/ops/account-deletion",
       "/ops/issue-reports",
       "/ops/orders",
-      "/ops/approvals",
+      "/ops/service-lines",
       "/ops/listing-reviews",
       "/ops/dispatch",
       "/ops/riders",
@@ -134,7 +134,6 @@ describe("ROLE_NAV", () => {
       "/admin/verification",
       "/admin/zones",
       "/ops/account-deletion",
-      "/ops/approvals",
       "/ops/chat",
       "/ops/claims",
       "/ops/dispatch",
@@ -152,6 +151,7 @@ describe("ROLE_NAV", () => {
       "/ops/refunds",
       "/ops/riders",
       "/ops/schedule",
+      "/ops/service-lines",
       "/ops/shop-changes",
       "/supplier/capacity",
       "/supplier/catalogue",
@@ -215,7 +215,7 @@ describe("ROLE_NAV", () => {
       ROLE_NAV_GROUPS.ops_admin
         .find((g) => g.id === "ops-queue")
         ?.items.map((n) => n.href),
-    ).toEqual(["/ops/orders", "/ops/approvals", "/ops/listing-reviews"]);
+    ).toEqual(["/ops/orders", "/ops/service-lines", "/ops/listing-reviews"]);
     expect(
       ROLE_NAV_GROUPS.ops_admin
         .find((g) => g.id === "ops-field")
