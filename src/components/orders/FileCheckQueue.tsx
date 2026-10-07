@@ -54,12 +54,14 @@ import {
   fileCheckOf,
   formatWait,
   qaChecksFor,
+  qaChecklistPayload,
   sendBackReasonProblem,
   waitLevel,
   type FileCheckRow,
 } from "@/lib/file-check";
 import { formatDateTime } from "@/lib/format";
 import { basketShopCounts, groupPositionLabel, shopModeOf } from "@/lib/baskets";
+import { QaChecklistFields } from "./QaChecklist";
 import { ShopModeChip } from "@/components/orders/ShopModeChip";
 import { describeQuantity } from "@/lib/quantity";
 
@@ -442,7 +444,9 @@ function PassDialog({
     setBusy(true);
     setError(null);
     try {
-      await transitionOrder(order.id, "supplier_assigned", {});
+      await transitionOrder(order.id, "supplier_assigned", {
+        qaChecklist: qaChecklistPayload(checked),
+      });
       await onPassed(order);
     } catch (err) {
       setError(
@@ -468,30 +472,12 @@ function PassDialog({
         </DialogHeader>
         <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto">
           <OrderArtwork order={order} />
-          <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
-            <legend className="text-body text-text-primary mb-2" style={medium}>
-              Before you pass it
-            </legend>
-            {checks.map((check) => (
-              <label
-                key={check.id}
-                className="flex min-h-11 cursor-pointer items-start gap-2 text-body text-text-secondary"
-              >
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={Boolean(checked[check.id])}
-                  onChange={(event) =>
-                    setChecked((current) => ({
-                      ...current,
-                      [check.id]: event.target.checked,
-                    }))
-                  }
-                />
-                {check.label}
-              </label>
-            ))}
-          </fieldset>
+          <QaChecklistFields
+            order={order}
+            checked={checked}
+            onCheck={setChecked}
+            disabled={busy}
+          />
           {error ? (
             <p className="text-body text-error m-0" role="alert">
               {error}
@@ -521,12 +507,14 @@ function SendBackDialog({
   onSent: (order: Order) => Promise<void> | void;
 }) {
   const [reason, setReason] = useState("");
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [touched, setTouched] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const id = order?.id;
   useEffect(() => {
     setReason("");
+    setChecked({});
     setTouched(false);
     setError(null);
   }, [id]);
@@ -540,7 +528,10 @@ function SendBackDialog({
     setBusy(true);
     setError(null);
     try {
-      await transitionOrder(order.id, "client_correction", { note: reason.trim() });
+      await transitionOrder(order.id, "client_correction", {
+        note: reason.trim(),
+        qaChecklist: qaChecklistPayload(checked),
+      });
       await onSent(order);
     } catch (err) {
       setError(
@@ -564,19 +555,29 @@ function SendBackDialog({
             kept, and the shop hears nothing until you pass the new file.
           </DialogDescription>
         </DialogHeader>
-        <Field data-invalid={touched && problem ? true : undefined}>
-          <FieldLabel htmlFor="send-back-reason">What the client needs to fix</FieldLabel>
-          <Textarea
-            id="send-back-reason"
-            rows={4}
-            maxLength={SEND_BACK_REASON_MAX}
-            value={reason}
-            aria-invalid={touched && problem ? true : undefined}
-            onChange={(event) => setReason(event.target.value)}
-            placeholder="For example: the link asks for a sign-in. Share it so anyone with the link can view, or upload the file."
+        <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto">
+          <QaChecklistFields
+            order={order}
+            checked={checked}
+            onCheck={setChecked}
+            disabled={busy}
           />
-          <FieldDescription>The client reads exactly what you write.</FieldDescription>
-        </Field>
+          <Field data-invalid={touched && problem ? true : undefined}>
+            <FieldLabel htmlFor="send-back-reason">
+              What the client needs to fix
+            </FieldLabel>
+            <Textarea
+              id="send-back-reason"
+              rows={4}
+              maxLength={SEND_BACK_REASON_MAX}
+              value={reason}
+              aria-invalid={touched && problem ? true : undefined}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder="For example: the link asks for a sign-in. Share it so anyone with the link can view, or upload the file."
+            />
+            <FieldDescription>The client reads exactly what you write.</FieldDescription>
+          </Field>
+        </div>
         {touched && problem ? (
           <p className="text-body text-error m-0" role="alert">
             {problem}

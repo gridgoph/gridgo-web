@@ -1,7 +1,14 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, expect, it, vi } from "vitest";
 
@@ -24,7 +31,13 @@ afterEach(() => {
 const MIN = 60_000;
 const ago = (minutes: number) => new Date(Date.now() - minutes * MIN).toISOString();
 
-function order(id: string, title: string, state: string, waitedMinutes: number | null, extra: Partial<Order> = {}): Order {
+function order(
+  id: string,
+  title: string,
+  state: string,
+  waitedMinutes: number | null,
+  extra: Partial<Order> = {},
+): Order {
   return {
     id,
     title,
@@ -52,7 +65,13 @@ function order(id: string, title: string, state: string, waitedMinutes: number |
     fileCheck:
       waitedMinutes === null
         ? null
-        : { status: "pending", requestedAt: ago(waitedMinutes), reviewedAt: null, reason: null, waitingSeconds: 0 },
+        : {
+            status: "pending",
+            requestedAt: ago(waitedMinutes),
+            reviewedAt: null,
+            reason: null,
+            waitingSeconds: 0,
+          },
     ...extra,
   } as Order;
 }
@@ -79,7 +98,9 @@ function rowNames() {
 }
 
 it("lists paid files oldest first with the wait, and marks a long one in words", () => {
-  render(<FileCheckQueue orders={[fresh, overdue, unpaid, sentBack]} onChanged={() => {}} />);
+  render(
+    <FileCheckQueue orders={[fresh, overdue, unpaid, sentBack]} onChanged={() => {}} />,
+  );
 
   const names = rowNames();
   expect(names[0]).toContain("Overnight banner");
@@ -89,11 +110,15 @@ it("lists paid files oldest first with the wait, and marks a long one in words",
   expect(screen.getAllByRole("link", { name: /Canva link/ }).length).toBeGreaterThan(0);
 
   // Still in payment review: listed apart, with its wait, and no Pass.
-  const payment = screen.getByRole("heading", { name: "Payment first (1)" }).closest("section")!;
+  const payment = screen
+    .getByRole("heading", { name: "Payment first (1)" })
+    .closest("section")!;
   expect(within(payment).getByText("Unpaid stickers")).toBeInTheDocument();
   expect(within(payment).getByText("40 min, waiting long")).toBeInTheDocument();
 
-  const back = screen.getByRole("heading", { name: "Sent back to the client (1)" }).closest("section")!;
+  const back = screen
+    .getByRole("heading", { name: "Sent back to the client (1)" })
+    .closest("section")!;
   expect(within(back).getByText("“The link asks for a sign-in.”")).toBeInTheDocument();
 });
 
@@ -111,8 +136,12 @@ it("passes a file only after the four checks, then re-reads the queue", async ()
   fireEvent.click(pass);
 
   await waitFor(() => expect(onChanged).toHaveBeenCalled());
-  expect(transitionOrder).toHaveBeenCalledWith("o-old", "supplier_assigned", {});
-  expect(screen.getByText(/Passed. The shop can now see "Overnight banner"/)).toBeInTheDocument();
+  expect(transitionOrder).toHaveBeenCalledWith("o-old", "supplier_assigned", {
+    qaChecklist: { artwork: true, spec: true, quantity: true, address: true },
+  });
+  expect(
+    screen.getByText(/Passed. The shop can now see "Overnight banner"/),
+  ).toBeInTheDocument();
 });
 
 it("sends a file back only with a reason the client reads", async () => {
@@ -122,17 +151,29 @@ it("sends a file back only with a reason the client reads", async () => {
 
   fireEvent.click(screen.getAllByRole("button", { name: "Send back" })[0]);
   const dialog = await screen.findByRole("dialog");
-  fireEvent.click(within(dialog).getByRole("button", { name: "Send back to the client" }));
-  expect(within(dialog).getByRole("alert")).toHaveTextContent(/Say what the client needs to fix/);
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Send back to the client" }),
+  );
+  expect(within(dialog).getByRole("alert")).toHaveTextContent(
+    /Say what the client needs to fix/,
+  );
   expect(transitionOrder).not.toHaveBeenCalled();
 
+  fireEvent.click(
+    within(dialog).getByRole("checkbox", {
+      name: "Specification matches what the client ordered",
+    }),
+  );
   fireEvent.change(within(dialog).getByLabelText("What the client needs to fix"), {
     target: { value: "  Share the link so anyone can view it.  " },
   });
-  fireEvent.click(within(dialog).getByRole("button", { name: "Send back to the client" }));
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Send back to the client" }),
+  );
   await waitFor(() => expect(onChanged).toHaveBeenCalled());
   expect(transitionOrder).toHaveBeenCalledWith("o-fresh", "client_correction", {
     note: "Share the link so anyone can view it.",
+    qaChecklist: { artwork: false, spec: true, quantity: false, address: false },
   });
 });
 
@@ -146,8 +187,12 @@ it("explains an API refusal inside the dialog", async () => {
   fireEvent.change(within(dialog).getByLabelText("What the client needs to fix"), {
     target: { value: "x" },
   });
-  fireEvent.click(within(dialog).getByRole("button", { name: "Send back to the client" }));
-  expect(await within(dialog).findByText(/cannot be sent back without a reason/)).toBeInTheDocument();
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "Send back to the client" }),
+  );
+  expect(
+    await within(dialog).findByText(/cannot be sent back without a reason/),
+  ).toBeInTheDocument();
 });
 
 it("marks and announces a file that arrives while the queue is open", () => {
