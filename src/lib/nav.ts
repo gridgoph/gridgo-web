@@ -52,6 +52,7 @@ export type NavIconKey =
   | "seasons"
   | "broadcast"
   | "chat"
+  | "account-deletion"
   | "reports"
   | "tracker"
   | "refunds"
@@ -260,6 +261,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
           count: "chat-unread",
         },
+        { id: "ops-account-deletion", href: "/ops/account-deletion", label: "Account deletion", title: "Account deletion", icon: "account-deletion", ready: true, placeholderBody: "" },
         {
           id: "ops-issue-reports",
           href: "/ops/issue-reports",
@@ -476,6 +478,7 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
           count: "chat-unread",
         },
+        { id: "admin-account-deletion", href: "/admin/account-deletion", label: "Account deletion", title: "Account deletion", icon: "account-deletion", ready: true, placeholderBody: "" },
         {
           id: "admin-issue-reports",
           href: "/admin/issue-reports",
