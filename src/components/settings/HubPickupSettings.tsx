@@ -18,7 +18,8 @@ import { Plus, X } from "lucide-react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, updateSettings } from "@/lib/api/client";
@@ -59,6 +60,11 @@ export function HubPickupSettings({
   disabled,
 }: Props) {
   const stored = settings.hubPickup;
+  const enabled = settings.hubPickupEnabled === true;
+  const [pickupEnabled, setPickupEnabled] = useState(enabled);
+  useEffect(() => {
+    setPickupEnabled(enabled);
+  }, [enabled]);
   const [draft, setDraft] = useState<HubDraft | null>(stored ? hubDraft(stored) : null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,7 +98,9 @@ export function HubPickupSettings({
   }
 
   const parsed = parseHubDraft(draft);
-  const dirty = JSON.stringify(draft) !== JSON.stringify(hubDraft(stored));
+  const dirty =
+    pickupEnabled !== enabled ||
+    JSON.stringify(draft) !== JSON.stringify(hubDraft(stored));
   const locked = busy || Boolean(disabled);
   const typedFee = readHubFee(draft.fee);
   const newCharge = stored.feeMinor === 0 && typedFee !== null && typedFee > 0;
@@ -108,9 +116,14 @@ export function HubPickupSettings({
       const saved = await updateSettings({
         expectedVersion: settings.version,
         hubPickup: next,
-        reason: hubChangeReason(stored, next),
+        ...(pickupEnabled !== enabled ? { hubPickupEnabled: pickupEnabled } : {}),
+        reason:
+          pickupEnabled !== enabled
+            ? `Hub pick-up: new orders ${pickupEnabled ? "enabled" : "disabled"}; ${hubChangeReason(stored, next)}`
+            : hubChangeReason(stored, next),
       });
       onSaved(saved);
+      setPickupEnabled(saved.hubPickupEnabled === true);
       if (saved.hubPickup) setDraft(hubDraft(saved.hubPickup));
       setOk(
         "Saved. New pick-up orders use these hours and this fee. Orders already placed keep the ones they were checked out with.",
@@ -166,6 +179,33 @@ export function HubPickupSettings({
           </span>
         </p>
       ) : null}
+
+      <FieldGroup className="mt-4">
+        <Field orientation="horizontal">
+          {canEdit ? (
+            <Switch
+              id="hub-pickup-enabled"
+              aria-label="Allow hub pick-up for new orders"
+              checked={pickupEnabled}
+              disabled={locked}
+              onCheckedChange={(value) => {
+                setPickupEnabled(value);
+                setOk(null);
+              }}
+            />
+          ) : null}
+          <FieldLabel htmlFor="hub-pickup-enabled" className="min-h-11">
+            Allow hub pick-up for new orders
+          </FieldLabel>
+          <span className="text-caption text-text-secondary">
+            {pickupEnabled ? "On" : "Off"}
+          </span>
+        </Field>
+        <FieldDescription>
+          When off, clients can only choose delivery. Orders already placed for pick-up
+          can still be collected. Changes take effect when you save below.
+        </FieldDescription>
+      </FieldGroup>
 
       {/* The fee */}
       <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-start md:gap-6">
@@ -477,6 +517,7 @@ export function HubPickupSettings({
             disabled={locked || !dirty}
             onClick={() => {
               setDraft(hubDraft(stored));
+              setPickupEnabled(enabled);
               setError(null);
               setOk(null);
             }}
