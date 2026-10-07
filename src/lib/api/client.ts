@@ -13,6 +13,7 @@ import { withRequestDeadline } from "@/lib/api/requestDeadline";
  */
 
 import type {
+  AccountDeletionRequest,
   Announcement,
   HubCodeMismatch,
   HubHandoutLog,
@@ -2747,4 +2748,11 @@ export async function recordSupplierSettlementPayout(
     expectedVersion: refund.version,
     ...input,
   });
+}
+
+export function listAccountDeletionRequests(status: 'pending' | 'done', offset = 0) {
+  return request<{ requests: AccountDeletionRequest[]; nextOffset: number | null }>(`/ops/account-deletion-requests${buildQuery({ status, offset })}`);
+}
+export function completeAccountDeletionRequest(id: string) {
+  return request<{ request: AccountDeletionRequest }>(`/ops/account-deletion-requests/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ status: 'done', confirmed: true }) });
 }

@@ -204,3 +204,13 @@ describe("notificationHref", () => {
     expect(notificationHref("super_admin", permit)).toBe("/admin/verification");
   });
 });
+
+it('opens deletion requests only in the matching staff workspace', () => {
+  for (const type of ['account_deletion_requested', 'account_deletion_request_completed']) {
+    expect(notificationHref('ops_admin', note({ type }))).toBe('/ops/account-deletion');
+    expect(notificationHref('super_admin', note({ type }))).toBe('/admin/account-deletion');
+    expect(notificationHref('supplier', note({ type }))).toBeNull();
+    expect(notificationHref('client', note({ type }))).toBeNull();
+    expect(notificationHref('rider', note({ type }))).toBeNull();
+  }
+});

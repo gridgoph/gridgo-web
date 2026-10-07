@@ -1,4 +1,5 @@
 "use client";
+import { UserRoundMinus } from "lucide-react";
 
 import { useCallback, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
@@ -185,6 +186,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   broadcast: Megaphone,
   chat: MessageSquare,
   reports: MessageSquareWarning,
+  "account-deletion": UserRoundMinus,
   tracker: ListChecks,
   refunds: BanknoteArrowDown,
   organizations: Building2,
