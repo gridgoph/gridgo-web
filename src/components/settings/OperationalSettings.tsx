@@ -40,6 +40,7 @@ import {
 } from "@/components/settings/RiderDeliveryShare";
 import { CheckoutPayment, checkoutPaymentLabel } from "@/components/settings/CheckoutPayment";
 import { DeliveryZones, DeliveryZonesSkeleton } from "@/components/settings/DeliveryZones";
+import { HandoverCodeSettings } from "@/components/settings/HandoverCodeSettings";
 import { HubPickupSettings } from "@/components/settings/HubPickupSettings";
 import {
   ORGANIZATION_DISCOUNT_INVALID,
@@ -821,6 +822,17 @@ export function OperationalSettings() {
 
       {/* Next to the delivery zones: the other way a client gets their order. */}
       <HubPickupSettings
+        settings={settings}
+        canEdit
+        disabled={busy}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={() => load(true)}
+      />
+
+      <HandoverCodeSettings
         settings={settings}
         canEdit
         disabled={busy}

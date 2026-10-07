@@ -16,6 +16,7 @@ vi.mock("@/lib/api/client", () => ({
   getFileDownloadUrl: (...args: unknown[]) => getFileDownloadUrl(...args),
 }));
 
+import { JobFilesDialog } from "@/components/orders/JobFilesDialog";
 import { OrderMeta } from "@/components/orders/OrderMeta";
 import type { ArtworkLink, Order, ProductionItem, StoredFile } from "@/lib/api/types";
 
@@ -24,7 +25,9 @@ const CANVA: ArtworkLink = {
   url: "https://www.canva.com/design/DAGflyer123/view",
 };
 
-function stored(partial: Partial<StoredFile> & Pick<StoredFile, "fileId" | "originalFilename">): StoredFile {
+function stored(
+  partial: Partial<StoredFile> & Pick<StoredFile, "fileId" | "originalFilename">,
+): StoredFile {
   return {
     purpose: "artwork",
     declaredContentType: "image/jpeg",
@@ -84,7 +87,10 @@ const FILES: Record<string, StoredFile> = {
     declaredContentType: "image/png",
     detectedContentType: "image/png",
   }),
-  file_other_art: stored({ fileId: "file_other_art", originalFilename: "other-shop-poster.jpg" }),
+  file_other_art: stored({
+    fileId: "file_other_art",
+    originalFilename: "other-shop-poster.jpg",
+  }),
   file_other_mock: stored({
     fileId: "file_other_mock",
     originalFilename: "other-shop-mock.png",
@@ -94,7 +100,9 @@ const FILES: Record<string, StoredFile> = {
   }),
 };
 
-function line(partial: Partial<ProductionItem> & Pick<ProductionItem, "id" | "itemName">): ProductionItem {
+function line(
+  partial: Partial<ProductionItem> & Pick<ProductionItem, "id" | "itemName">,
+): ProductionItem {
   return { quantity: 100, measurement: null, artworkLinks: [], ...partial };
 }
 
@@ -142,6 +150,93 @@ describe("supplier spec file download", () => {
     getFileDownloadUrl.mockReset();
   });
 
+  it("opens a selected-file panel with a large yellow download, image and PDF previews", async () => {
+    const user = userEvent.setup();
+    render(
+      <JobFilesDialog
+        order={order({
+          artworkFileIds: ["file_front", "file_back"],
+          mockupFileIds: ["file_mock"],
+        })}
+      />,
+    );
+    expect(getFile).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Download files" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      await within(dialog).findByRole("img", { name: "front.jpg" }),
+    ).toBeInTheDocument();
+    const download = within(dialog).getByRole("button", { name: "Download front.jpg" });
+    expect(download).toHaveClass("h-12", "w-full", "bg-[var(--color-action-yellow)]");
+    expect(within(dialog).getAllByRole("button", { name: /^Download / })).toHaveLength(1);
+    await user.click(within(dialog).getByRole("button", { name: "Artwork 2" }));
+    expect(await within(dialog).findByTitle("Preview back.pdf")).toHaveAttribute(
+      "src",
+      expect.stringContaining("file_back"),
+    );
+    expect(within(dialog).getByRole("link", { name: "back.pdf" })).toHaveAttribute(
+      "target",
+      "_blank",
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Download back.pdf" }));
+    await waitFor(() =>
+      expect(saved).toEqual([{ name: "back.pdf", href: "blob:saved-print" }]),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Mockup" }));
+    expect(
+      await within(dialog).findByRole("img", { name: "mock.png" }),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the file picker scoped to this shop's lines", async () => {
+    const user = userEvent.setup();
+    render(
+      <JobFilesDialog
+        order={order({
+          artworkFileIds: ["file_other_art"],
+          mockupFileIds: ["file_other_mock"],
+          productionItems: [
+            line({ id: "line1", itemName: "Flyers", artworkFileId: "file_front" }),
+          ],
+        })}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Download files" }));
+    expect(await screen.findByRole("img", { name: "front.jpg" })).toBeInTheDocument();
+    expect(getFile.mock.calls.map((call) => call[0])).toEqual(["file_front"]);
+    expect(screen.queryByRole("button", { name: /Mockup/ })).not.toBeInTheDocument();
+  });
+
+  it("offers design links without inventing a downloadable file", async () => {
+    const user = userEvent.setup();
+    render(
+      <JobFilesDialog
+        order={order({
+          productionItems: [
+            line({ id: "line1", itemName: "Flyers", artworkLinks: [CANVA] }),
+          ],
+        })}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Download files" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("link", { name: /Canva/ })).toHaveAttribute(
+      "href",
+      CANVA.url,
+    );
+    expect(
+      within(dialog).queryByRole("button", { name: /^Download / }),
+    ).not.toBeInTheDocument();
+    expect(getFile).not.toHaveBeenCalled();
+  });
+
+  it("does not offer a file panel when no files or links exist", () => {
+    render(<JobFilesDialog order={order()} />);
+    expect(
+      screen.queryByRole("button", { name: "Download files" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("saves one artwork file under its original name", async () => {
     const user = userEvent.setup();
     render(
@@ -156,7 +251,9 @@ describe("supplier spec file download", () => {
     const fetched = String(fetchMock.mock.calls[0][0]);
     expect(fetched).toContain("file_front");
     expect(fetched).not.toBe(preview);
-    expect(saved).toEqual([{ name: "front.jpg", href: expect.stringContaining("blob:saved-print") }]);
+    expect(saved).toEqual([
+      { name: "front.jpg", href: expect.stringContaining("blob:saved-print") },
+    ]);
     expect(img).toHaveAttribute("src", preview);
     expect(document.querySelector("a[download]")).toBeNull();
   });
@@ -188,7 +285,9 @@ describe("supplier spec file download", () => {
     }
 
     const preview = pdf.getAttribute("href");
-    await user.click(within(plate("Artwork 2")).getByRole("button", { name: "Download back.pdf" }));
+    await user.click(
+      within(plate("Artwork 2")).getByRole("button", { name: "Download back.pdf" }),
+    );
 
     await waitFor(() => expect(saved).toHaveLength(1));
     expect(saved[0].name).toBe("back.pdf");
@@ -214,7 +313,10 @@ describe("supplier spec file download", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Could not download this file. Try again.",
     );
-    expect(screen.getByRole("img", { name: "front.jpg" })).toHaveAttribute("src", preview);
+    expect(screen.getByRole("img", { name: "front.jpg" })).toHaveAttribute(
+      "src",
+      preview,
+    );
     expect(screen.getByRole("button", { name: "Download front.jpg" })).toBeEnabled();
     expect(saved).toEqual([]);
     const fetched = String(fetchMock.mock.calls[0][0]);
@@ -253,7 +355,9 @@ describe("supplier spec file download", () => {
     expect(screen.getByText("Mockup · Flyers A5")).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /^Download / })).toHaveLength(2);
     expect(screen.queryByText(/other-shop/)).not.toBeInTheDocument();
-    const asked = [...getFile.mock.calls, ...getFileDownloadUrl.mock.calls].map((call) => call[0]);
+    const asked = [...getFile.mock.calls, ...getFileDownloadUrl.mock.calls].map(
+      (call) => call[0],
+    );
     expect(asked).not.toContain("file_other_art");
     expect(asked).not.toContain("file_other_mock");
   });
@@ -265,7 +369,12 @@ describe("supplier spec file download", () => {
           artworkFileIds: ["file_front", "file_back"],
           mockupFileIds: ["file_mock"],
           productionItems: [
-            line({ id: "line_a", itemName: "Flyers A5", artworkFileId: "file_front", mockupFileId: "file_mock" }),
+            line({
+              id: "line_a",
+              itemName: "Flyers A5",
+              artworkFileId: "file_front",
+              mockupFileId: "file_mock",
+            }),
             line({ id: "line_b", itemName: "Posters A3", artworkFileId: "file_back" }),
           ],
         })}
@@ -278,7 +387,9 @@ describe("supplier spec file download", () => {
     expect(screen.getByText("Artwork · Posters A3")).toBeInTheDocument();
     expect(screen.getByText("Mockup · Flyers A5")).toBeInTheDocument();
     expect(
-      within(plate("Artwork · Posters A3")).getByRole("button", { name: "Download back.pdf" }),
+      within(plate("Artwork · Posters A3")).getByRole("button", {
+        name: "Download back.pdf",
+      }),
     ).toBeInTheDocument();
   });
 
@@ -371,7 +482,10 @@ describe("supplier spec file download", () => {
       />,
     );
 
-    expect(screen.getByRole("link", { name: /Canva/ })).toHaveAttribute("href", CANVA.url);
+    expect(screen.getByRole("link", { name: /Canva/ })).toHaveAttribute(
+      "href",
+      CANVA.url,
+    );
     expect(screen.queryByRole("button", { name: /Download/ })).not.toBeInTheDocument();
     expect(screen.queryByText("None on file")).not.toBeInTheDocument();
   });

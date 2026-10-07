@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -23,9 +23,8 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/api/client", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api/client")>(
-    "@/lib/api/client",
-  );
+  const actual =
+    await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
   return { ...actual, getOrder: getOrderMock, transitionOrder: transitionOrderMock };
 });
 
@@ -72,6 +71,15 @@ describe("supplier assigned job accept", () => {
     render(<SupplierJobDetailPage />);
 
     const accept = await screen.findByRole("button", { name: "Accept job" });
+    expect(accept).toHaveClass("h-12", "w-full", "bg-[var(--color-action-yellow)]");
+    const actionButtons = within(
+      screen.getByRole("group", { name: "Job actions" }),
+    ).getAllByRole("button");
+    expect(actionButtons.map((button) => button.textContent)).toEqual([
+      "Accept job",
+      "Decline",
+    ]);
+    expect(actionButtons[1]).toHaveClass("h-12", "w-full");
     expect(screen.queryByText("Your price (₱)")).not.toBeInTheDocument();
     expect(screen.queryByText(/Promise it by/)).not.toBeInTheDocument();
     expect(screen.queryByText("Accept and set price")).not.toBeInTheDocument();
@@ -106,7 +114,9 @@ describe("supplier assigned job accept", () => {
 
     await user.click(await screen.findByRole("button", { name: "Decline" }));
 
-    expect(await screen.findByRole("heading", { name: "Decline this job?" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "Decline this job?" }),
+    ).toBeInTheDocument();
     expect(transitionOrderMock).not.toHaveBeenCalled();
     expect(screen.queryByText("Your price (₱)")).not.toBeInTheDocument();
   });

@@ -1,12 +1,12 @@
 /**
  * Print-desk plate for an order file. Operations should see the picture, not
- * only the filename. Yellow tick on the dark plate is the GRIDGO signature.
+ * only the filename. Supplier downloads can focus one selected file.
  */
 
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download } from "lucide-react";
+import { Download, FileText } from "lucide-react";
 
 import { DeletedFilePlate } from "@/components/files/DeletedFile";
 import { EarlyDeleteFileButton } from "@/components/files/EarlyDeleteFileDialog";
@@ -29,6 +29,7 @@ import {
   fileLooksLikeImage,
 } from "@/lib/evidence";
 import { fileIsGone } from "@/lib/file-retention";
+import { cn } from "@/lib/utils";
 
 type PlateProps = {
   fileId: string | null | undefined;
@@ -45,6 +46,8 @@ type PlateProps = {
    * delivery photos, pickup evidence — leave this off.
    */
   downloadable?: boolean;
+  /** A selected file in the supplier download panel owns its one yellow CTA. */
+  featuredDownload?: boolean;
   /**
    * An order file Super Admin may delete before its retention period ends.
    * Only shows the action inside a tree that grants `deleteEarly`
@@ -68,6 +71,7 @@ export function EvidencePlate({
   productSize,
   productMeasurement,
   downloadable = false,
+  featuredDownload = false,
   deletable = false,
 }: PlateProps) {
   const access = useFileDeletionAccess();
@@ -126,6 +130,7 @@ export function EvidencePlate({
 
   const filename = loaded?.file.originalFilename || caption || label;
   const isImage = loaded ? fileLooksLikeImage(loaded.file) : true;
+  const isPdf = loaded?.file.detectedContentType === "application/pdf";
   const canDelete = deletable && access.deleteEarly && loaded?.file.state === "ready";
 
   return (
@@ -145,14 +150,22 @@ export function EvidencePlate({
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="mt-1.5 block w-full max-w-sm overflow-hidden rounded-card border border-outline-subtle bg-black text-left shadow-[inset_3px_0_0_#ffde58] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-yellow"
+            className={cn(
+              "mt-1.5 block w-full overflow-hidden rounded-card border border-outline-subtle bg-black text-left",
+              !featuredDownload && "max-w-sm",
+            )}
             aria-label={`Open ${label}: ${filename}`}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={loaded.url}
               alt={filename}
-              className="aspect-[4/3] h-36 w-full object-cover object-center"
+              className={cn(
+                "w-full object-center",
+                featuredDownload
+                  ? "h-64 object-contain"
+                  : "aspect-[4/3] h-36 object-cover",
+              )}
             />
             <span className="block truncate px-3 py-1.5 text-caption text-white/80">
               {filename}
@@ -191,7 +204,21 @@ export function EvidencePlate({
         </>
       ) : loaded ? (
         <>
-          <p className="text-body text-text-primary m-0 mt-1">
+          {featuredDownload ? (
+            isPdf ? (
+              <iframe
+                title={`Preview ${filename}`}
+                src={`${loaded.url}#toolbar=0&navpanes=0&view=FitH`}
+                className="mt-2 h-64 w-full rounded-field border border-outline-subtle bg-surface-variant"
+              />
+            ) : (
+              <div className="mt-2 flex h-36 items-center justify-center gap-2 rounded-field px-4 text-center border border-outline-subtle bg-surface-variant text-text-secondary">
+                <FileText aria-hidden />
+                <span>Preview unavailable · download to view</span>
+              </div>
+            )
+          ) : null}
+          <p className="text-body text-text-primary m-0 mt-1 break-words">
             <a
               href={loaded.url}
               target="_blank"
@@ -212,7 +239,11 @@ export function EvidencePlate({
         </>
       ) : null}
       {downloadable && loaded && fileId ? (
-        <FileDownload fileId={fileId} filename={loaded.file.originalFilename} />
+        <FileDownload
+          fileId={fileId}
+          filename={loaded.file.originalFilename}
+          featured={featuredDownload}
+        />
       ) : null}
       {canDelete && loaded && fileId ? (
         <div className="mt-1 max-w-sm">
@@ -244,7 +275,15 @@ export function EvidencePlate({
 /** Long enough for any browser to have started the save from the blob. */
 const REVOKE_AFTER_MS = 10_000;
 
-function FileDownload({ fileId, filename }: { fileId: string; filename: string }) {
+function FileDownload({
+  fileId,
+  filename,
+  featured,
+}: {
+  fileId: string;
+  filename: string;
+  featured: boolean;
+}) {
   const [failed, setFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const live = useRef(true);
@@ -285,16 +324,17 @@ function FileDownload({ fileId, filename }: { fileId: string; filename: string }
   }
 
   return (
-    <div className="mt-2 max-w-sm">
+    <div className={cn("mt-2", !featured && "max-w-sm")}>
       <Button
         type="button"
-        variant="secondary"
-        size="sm"
+        variant={featured ? "primary" : "secondary"}
+        size="lg"
+        fullWidth
         onClick={() => void onDownload()}
         disabled={saving}
         aria-label={saving ? `Downloading ${filename}` : `Download ${filename}`}
       >
-        <Download size={16} strokeWidth={1.75} aria-hidden />
+        <Download data-icon="inline-start" strokeWidth={1.75} aria-hidden />
         {saving ? "Downloading…" : "Download"}
       </Button>
       {failed ? (

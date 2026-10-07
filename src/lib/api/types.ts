@@ -818,7 +818,12 @@ export type Order = {
 
 export type FileCheckStatus = "pending" | "passed" | "failed" | "cancelled";
 
+export type QaCheckId = "artwork" | "spec" | "quantity" | "address";
+export type QaChecklist = Record<QaCheckId, boolean>;
+
 export type FileCheck = {
+  /** Staff-only explicit ticks. Missing/null means no per-item record. */
+  checklist?: { version: 1; checks: QaChecklist } | null;
   status: FileCheckStatus;
   /** When the wait began: checkout, or the client's resubmission. */
   requestedAt: string;
@@ -1144,6 +1149,8 @@ export type PlatformSettings = {
   productionPenalty?: ProductionPenaltyPolicy;
   /** Super Admin availability switch for new orders; missing means off. */
   hubPickupEnabled?: boolean;
+  /** Super Admin handover codes gate; issued codes survive disabling it. */
+  handoverOtpEnabled?: boolean;
   /**
    * The hub's pick-up hours and flat fee. Every role reads it; only Super
    * Admin writes it. Absent on an API that predates hub pick-up.
@@ -1170,6 +1177,8 @@ export type UpdateSettingsInput = {
   productionPenalty?: ProductionPenaltyPolicy;
   /** Super Admin only; does not affect already placed orders. */
   hubPickupEnabled?: boolean;
+  /** Super Admin handover codes gate; issued codes survive disabling it. */
+  handoverOtpEnabled?: boolean;
   /** Super Admin only, always `{schedule, feeMinor}`; the point is read-only. */
   hubPickup?: Pick<HubPickup, "schedule" | "feeMinor">;
   reason?: string;

@@ -75,7 +75,14 @@ import { installmentsAwaitingConfirmation } from "@/lib/api/constraints";
 import { counterRow, counterStep } from "@/lib/counter-check";
 import { deliveryEvidenceItems } from "@/lib/evidence";
 import { artworkSource, orderDesignLinks } from "@/lib/design-links";
-import { fileCheckOf, fileCheckWaitLine, qaChecksFor } from "@/lib/file-check";
+import { QaChecklistRecord, QaChecklistFields } from "./QaChecklist";
+import {
+  fileCheckOf,
+  fileCheckWaitLine,
+  qaChecksFor,
+  qaChecklistPayload,
+  canDecideFileCheck,
+} from "@/lib/file-check";
 import {
   confirmBasketPayment,
   confirmPayment,
@@ -327,6 +334,7 @@ export function OrderWorkspace({
   // reads "the rider", never a raw id.
   const people = useMemo(() => {
     const ids = new Set<string>();
+    if (order?.fileCheck?.reviewedBy) ids.add(order.fileCheck.reviewedBy);
     if (order?.pickupChecklist?.completedBy) ids.add(order.pickupChecklist.completedBy);
     for (const escalation of escalations) {
       if (escalation.riderId) ids.add(escalation.riderId);
@@ -617,12 +625,18 @@ export function OrderWorkspace({
                   }
                   onApprove={() =>
                     run("approve", () =>
-                      transitionOrder(order.id, "supplier_assigned", { note }),
+                      transitionOrder(order.id, "supplier_assigned", {
+                        note,
+                        qaChecklist: qaChecklistPayload(checked),
+                      }),
                     )
                   }
                   onCorrection={() =>
                     run("correction", () =>
-                      transitionOrder(order.id, "client_correction", { note }),
+                      transitionOrder(order.id, "client_correction", {
+                        note,
+                        qaChecklist: qaChecklistPayload(checked),
+                      }),
                     )
                   }
                   onCancel={() =>
@@ -1144,7 +1158,7 @@ function StepRow({
       ) : null}
 
       {step.id === "qa" ? (
-        current ? (
+        canDecideFileCheck(order) ? (
           <div className="flex flex-col gap-3">
             {/*
               A design link is the one piece of artwork the rail cannot show:
@@ -1156,23 +1170,12 @@ function StepRow({
                 <DesignLinkList links={designLinks} />
               </div>
             ) : null}
-            <ul className="flex flex-col gap-2 m-0 p-0 list-none">
-              {qaChecks.map((check) => (
-                <li key={check.id}>
-                  <label className="flex items-start gap-2 text-body text-text-secondary cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="mt-0.5"
-                      checked={Boolean(checked[check.id])}
-                      onChange={(event) =>
-                        onCheck({ ...checked, [check.id]: event.target.checked })
-                      }
-                    />
-                    {check.label}
-                  </label>
-                </li>
-              ))}
-            </ul>
+            <QaChecklistFields
+              order={order}
+              checked={checked}
+              onCheck={onCheck}
+              disabled={busy}
+            />
             <Textarea
               value={note}
               onChange={(event) => onNote(event.target.value)}
@@ -1208,6 +1211,8 @@ function StepRow({
               cancellation need a reason — the client is told what you write.
             </p>
           </div>
+        ) : step.status === "done" || order.fileCheck?.reviewedAt ? (
+          <QaChecklistRecord order={order} names={names} />
         ) : (
           <p className="text-body text-text-secondary m-0">{definition?.hint}</p>
         )
