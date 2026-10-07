@@ -142,7 +142,9 @@ describe("rail counts", () => {
   it("caps the figure at 99+ and names the count after the label", () => {
     expect(compactCount(99)).toBe("99");
     expect(compactCount(100)).toBe("99+");
-    const [orders, approvals] = group("ops_admin", "ops-queue").items;
+    const items = group("ops_admin", "ops-queue").items;
+    const orders = items.find((item) => item.id === "ops-orders");
+    const approvals = items.find((item) => item.id === "ops-listing-reviews");
     expect(countedName("Orders", itemCountPhrase(orders!, { "orders-waiting": 3 }))).toBe(
       "Orders, 3 need action",
     );

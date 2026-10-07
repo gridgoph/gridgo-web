@@ -7,8 +7,7 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
  *
  * Suppliers and riders cannot work until someone says yes. A personal client
  * who asks to become a business or organization stays personal until this
- * queue converts them. Operations mounts it at /ops/approvals and Super Admin
- * inside /admin/verification.
+ * queue converts them. Super Admin mounts it inside /admin/verification.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
