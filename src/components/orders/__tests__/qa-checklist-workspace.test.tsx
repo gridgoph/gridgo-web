@@ -209,7 +209,7 @@ it.each(["approve", "send back"])(
     expect(approve).toBeDisabled();
     for (const box of action === "approve" ? boxes : boxes.slice(1)) fireEvent.click(box);
     capture(`review-form-${action.replace(" ", "-")}`);
-  if (action === "approve") fireEvent.click(approve);
+    if (action === "approve") fireEvent.click(approve);
     else {
       fireEvent.change(qa.getByRole("textbox", { name: "Note to the client" }), {
         target: { value: "Upload a sharper artwork file." },
