@@ -4,8 +4,9 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Camera, History, ListChecks, Scale, Wallet } from "lucide-react";
+import { Camera, Check, History, ListChecks, Scale, Wallet, X } from "lucide-react";
 
+import { JobFilesDialog } from "@/components/orders/JobFilesDialog";
 import { MilestoneList } from "@/components/orders/MilestoneList";
 import { OrderMeta } from "@/components/orders/OrderMeta";
 import { ProgressGallery, WaitingForPhoto } from "@/components/orders/ProductionProgress";
@@ -367,41 +368,53 @@ export default function SupplierJobDetailPage() {
         ) : null}
 
         <div className="flex flex-col gap-2 border-t border-outline-subtle pt-3">
-          {primary || secondary.length ? (
-            <div className="flex flex-wrap gap-2">
-              {primary ? (
-                <Button
-                  variant="primary"
-                  disabled={acting !== null || Boolean(primary.blockedReason)}
-                  aria-describedby={
-                    primary.blockedReason ? "primary-blocked-reason" : undefined
-                  }
-                  onClick={() => void runAction(primary)}
-                >
-                  {acting === primary.kind
-                    ? primary.kind === "accept"
-                      ? "Accepting…"
-                      : "Working…"
-                    : primary.label}
-                </Button>
-              ) : null}
-              {secondary.map((action) => (
-                <Button
-                  key={action.kind}
-                  variant={action.destructive ? "danger" : "secondary"}
-                  disabled={acting !== null}
-                  onClick={() => void runAction(action)}
-                >
-                  {action.label}
-                </Button>
-              ))}
-            </div>
-          ) : (
+          <div
+            className="flex flex-col gap-3 sm:flex-row sm:flex-wrap"
+            role="group"
+            aria-label="Job actions"
+          >
+            {primary ? (
+              <Button
+                variant="primary"
+                size="lg"
+                className="w-full sm:w-auto sm:min-w-40"
+                disabled={acting !== null || Boolean(primary.blockedReason)}
+                aria-describedby={
+                  primary.blockedReason ? "primary-blocked-reason" : undefined
+                }
+                onClick={() => void runAction(primary)}
+              >
+                {primary.kind === "accept" ? (
+                  <Check data-icon="inline-start" aria-hidden />
+                ) : null}
+                {acting === primary.kind
+                  ? primary.kind === "accept"
+                    ? "Accepting…"
+                    : "Working…"
+                  : primary.label}
+              </Button>
+            ) : null}
+            {secondary.map((action) => (
+              <Button
+                key={action.kind}
+                variant={action.destructive ? "danger" : "secondary"}
+                size="lg"
+                className="w-full sm:w-auto sm:min-w-40"
+                disabled={acting !== null}
+                onClick={() => void runAction(action)}
+              >
+                {action.destructive ? <X data-icon="inline-start" aria-hidden /> : null}
+                {action.label}
+              </Button>
+            ))}
+            <JobFilesDialog order={job} />
+          </div>
+          {!primary && !secondary.length ? (
             <p className="text-body text-text-secondary m-0">
               {waiting ??
                 "Nothing for you to do on this job right now. The timeline below shows where it has got to."}
             </p>
-          )}
+          ) : null}
           {primary?.blockedReason ? (
             <p
               id="primary-blocked-reason"
