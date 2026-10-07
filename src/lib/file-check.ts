@@ -15,7 +15,7 @@
  * Pure: no React, no fetch.
  */
 
-import type { FileCheck, Order } from "@/lib/api/types";
+import type { FileCheck, Order, QaCheckId, QaChecklist } from "@/lib/api/types";
 import { stageOf } from "@/app/ops/_lib/pipeline";
 import { artworkQaCheckLabel, artworkSource } from "@/lib/design-links";
 
@@ -152,14 +152,7 @@ export function fileCheckWaitLine(
     : `File waiting ${wait}, behind the payment check.`;
 }
 
-/**
- * What Operations must have looked at before approving artwork.
- *
- * These are not stored anywhere and are not a record: they are a hand on the
- * arm. Approving sends the job to a shop that will print exactly what is on the
- * screen, and four deliberate ticks is the cheapest way to stop that being one
- * reflexive click.
- */
+/** Version 1 of the four Operations checks, persisted with the review. */
 export const QA_CHECKS = [
   { id: "artwork", label: "Artwork opens and is high enough resolution" },
   { id: "spec", label: "Specification matches what the client ordered" },
@@ -170,7 +163,7 @@ export const QA_CHECKS = [
 /** The four checks in this order's own words: its artwork, and pick-up or delivery. */
 export function qaChecksFor(
   order: Pick<Order, "artworkFileIds" | "productionItems" | "requestFulfillment">,
-): { id: string; label: string }[] {
+): { id: QaCheckId; label: string }[] {
   const pickup = order.requestFulfillment?.fulfillmentMode === "pickup";
   return QA_CHECKS.map((check) => {
     if (check.id === "artwork") {
@@ -181,4 +174,14 @@ export function qaChecksFor(
     }
     return { ...check };
   });
+}
+
+/** Send every tick explicitly; an unticked box does not attest to a failed check. */
+export function qaChecklistPayload(checked: Record<string, boolean>): QaChecklist {
+  return {
+    artwork: checked.artwork === true,
+    spec: checked.spec === true,
+    quantity: checked.quantity === true,
+    address: checked.address === true,
+  };
 }

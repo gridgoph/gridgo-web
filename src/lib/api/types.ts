@@ -818,7 +818,12 @@ export type Order = {
 
 export type FileCheckStatus = "pending" | "passed" | "failed" | "cancelled";
 
+export type QaCheckId = "artwork" | "spec" | "quantity" | "address";
+export type QaChecklist = Record<QaCheckId, boolean>;
+
 export type FileCheck = {
+  /** Staff-only explicit ticks. Missing/null means no per-item record. */
+  checklist?: { version: 1; checks: QaChecklist } | null;
   status: FileCheckStatus;
   /** When the wait began: checkout, or the client's resubmission. */
   requestedAt: string;
