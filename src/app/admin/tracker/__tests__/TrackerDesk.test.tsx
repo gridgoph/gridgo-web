@@ -13,6 +13,7 @@ import {
   liveItem,
   openItem,
   trackerBoard,
+  trackerItem,
 } from "@/app/admin/tracker/__tests__/fixtures";
 import { TrackerDesk } from "@/app/admin/tracker/_components/TrackerDesk";
 import { ApiError } from "@/lib/api/client";
@@ -76,6 +77,37 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe("Tracker sheet", () => {
+  it.each([null, undefined])("renders and searches an issue with %s sheet metadata", async (missing) => {
+    const incomplete = trackerItem({
+      key: "gridgo-supplier#143",
+      section: missing,
+      ref: missing,
+      requirement: missing,
+      module: missing,
+      developer: missing,
+      category: missing,
+    });
+    api.getTracker.mockResolvedValue(trackerBoard([liveItem, incomplete]));
+    const user = userEvent.setup();
+    render(<TrackerDesk />);
+
+    const unsorted = await screen.findByRole("region", { name: "Unsorted" });
+    expect(screen.getByRole("heading", { name: "GENERAL & ADMIN / SYSTEM-WIDE" })).toBeInTheDocument();
+    expect(within(unsorted).getByText("No description")).toBeInTheDocument();
+    expect(
+      within(unsorted).getByRole("link", { name: "Open gridgo-supplier#143 on GitHub" }),
+    ).toHaveAttribute("href", incomplete.url);
+    expect(
+      within(unsorted).getByRole("combobox", {
+        name: "Status of gridgo-supplier#143 No description, Open",
+      }),
+    ).toBeInTheDocument();
+
+    await user.type(screen.getByRole("searchbox"), "gridgo-supplier#143");
+    expect(screen.getByRole("region", { name: "Unsorted" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "GENERAL & ADMIN / SYSTEM-WIDE" })).toBeNull();
+  });
+
   it("groups items under the sheet's section titles, in report order", async () => {
     render(<TrackerDesk />);
     await screen.findByRole("heading", { name: "1 of 4 live on production" });
@@ -161,22 +193,22 @@ describe("Tracker sheet", () => {
 
     await user.click(screen.getByRole("button", { name: "Needs decision, 1" }));
     expect(screen.getAllByRole("table")).toHaveLength(1);
-    expect(screen.getByText(decisionItem.requirement)).toBeInTheDocument();
-    expect(screen.queryByText(liveItem.requirement)).toBeNull();
+    expect(screen.getByText(decisionItem.requirement!)).toBeInTheDocument();
+    expect(screen.queryByText(liveItem.requirement!)).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "All statuses, 4" }));
     await user.click(screen.getByRole("combobox", { name: "Filter by developer" }));
     await user.click(await screen.findByRole("option", { name: "Ven" }));
-    expect(screen.getByText(decisionItem.requirement)).toBeInTheDocument();
-    expect(screen.getByText(blockedItem.requirement)).toBeInTheDocument();
-    expect(screen.queryByText(openItem.requirement)).toBeNull();
+    expect(screen.getByText(decisionItem.requirement!)).toBeInTheDocument();
+    expect(screen.getByText(blockedItem.requirement!)).toBeInTheDocument();
+    expect(screen.queryByText(openItem.requirement!)).toBeNull();
     // Counts follow the developer filter.
     expect(screen.getByRole("button", { name: "Live (prod), 0" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Blocked, 1" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Clear filters" }));
     await user.type(screen.getByRole("searchbox", { name: "Search the tracker" }), "payouts");
-    expect(screen.getByText(openItem.requirement)).toBeInTheDocument();
+    expect(screen.getByText(openItem.requirement!)).toBeInTheDocument();
     expect(screen.getAllByRole("table")).toHaveLength(1);
 
     await user.clear(screen.getByRole("searchbox", { name: "Search the tracker" }));

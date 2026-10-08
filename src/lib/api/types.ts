@@ -1901,17 +1901,17 @@ export type TrackerItem = {
   repo: string;
   number: number;
   url: string;
-  /** Sheet section key: `general`, `supplier`, `step-01` … `step-08`. */
-  section: string;
+  /** Sheet metadata can be absent on issues labelled tracker without a tracker block. */
+  section?: string | null;
   order: number;
   /** The sheet's ID column, e.g. `1.0`. */
-  ref: string;
+  ref?: string | null;
   /** Sheet "Module / Step". */
-  module: string;
-  developer: string;
+  module?: string | null;
+  developer?: string | null;
   /** Sheet "Requirement / Issue Description". */
-  requirement: string;
-  category: string;
+  requirement?: string | null;
+  category?: string | null;
   status: TrackerStatus;
   /** `explicit` when a Super Admin set it; `derived` from the issue's state. */
   statusSource: "explicit" | "derived";
