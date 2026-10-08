@@ -50,6 +50,17 @@ describe("tracker statuses", () => {
 describe("sections and filters", () => {
   const items = [openItem, liveItem, decisionItem, blockedItem];
 
+  it("keeps null, missing and blank sections together in Unsorted", () => {
+    const unsorted = [null, undefined, "", "   "].map((section, index) =>
+      trackerItem({ key: `gridgo-supplier#${143 + index}`, section, order: index }),
+    );
+    expect(groupBySection([liveItem, ...unsorted]).at(-1)).toEqual({
+      key: "unsorted",
+      title: "Unsorted",
+      items: unsorted,
+    });
+  });
+
   it("orders sections as the report does and items by sheet order, unknown sections last", () => {
     const stray = trackerItem({ key: "gridgo-rider#3", section: "extras", ref: "99.0" });
     const second = trackerItem({ key: "gridgo-api#90", section: "general", order: 0, ref: "0.5" });

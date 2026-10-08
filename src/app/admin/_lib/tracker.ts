@@ -97,8 +97,8 @@ export function trackerStatusMeta(status: TrackerStatus): TrackerStatusMeta {
  * The sheet's ID repeats across sections (each step restarts its numbering),
  * so a control's accessible name carries the requirement too.
  */
-export function trackerItemName(item: Pick<TrackerItem, "ref" | "requirement">): string {
-  return `${item.ref} ${item.requirement}`;
+export function trackerItemName(item: Pick<TrackerItem, "key" | "ref" | "requirement">): string {
+  return [item.ref || item.key, item.requirement].filter(Boolean).join(" ");
 }
 
 export function isTrackerStatus(value: unknown): value is TrackerStatus {
@@ -130,14 +130,15 @@ export type TrackerSectionGroup = {
 
 /**
  * Items under their sheet section, sections in report order, items in sheet
- * order. A section the page does not know yet still shows, last, under its key.
+ * order. Unknown sections still show under their keys; missing sections go in Unsorted.
  */
 export function groupBySection(items: readonly TrackerItem[]): TrackerSectionGroup[] {
   const buckets = new Map<string, TrackerItem[]>();
   for (const item of items) {
-    const bucket = buckets.get(item.section);
+    const section = item.section?.trim() || "unsorted";
+    const bucket = buckets.get(section);
     if (bucket) bucket.push(item);
-    else buckets.set(item.section, [item]);
+    else buckets.set(section, [item]);
   }
   const known = TRACKER_SECTIONS.filter((section) => buckets.has(section.key)).map(
     (section) => ({ key: section.key, title: section.title, items: buckets.get(section.key)! }),
@@ -146,7 +147,11 @@ export function groupBySection(items: readonly TrackerItem[]): TrackerSectionGro
   const unknown = [...buckets.keys()]
     .filter((key) => !knownKeys.has(key))
     .sort()
-    .map((key) => ({ key, title: key.toUpperCase(), items: buckets.get(key)! }));
+    .map((key) => ({
+      key,
+      title: key === "unsorted" ? "Unsorted" : key.toUpperCase(),
+      items: buckets.get(key)!,
+    }));
   return [...known, ...unknown].map((group) => ({
     ...group,
     items: [...group.items].sort((a, b) => a.order - b.order || a.key.localeCompare(b.key)),
@@ -206,7 +211,9 @@ export function needsDecisionCount(items: readonly TrackerItem[]): number {
 
 /** Developers present on the sheet, in a stable order. */
 export function trackerDevelopers(items: readonly TrackerItem[]): string[] {
-  return [...new Set(items.map((item) => item.developer).filter(Boolean))].sort();
+  return [
+    ...new Set(items.map((item) => item.developer).filter((name): name is string => !!name)),
+  ].sort();
 }
 
 // ---- Decisions ----
