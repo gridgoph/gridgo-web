@@ -118,7 +118,19 @@ export function TrackerDesk() {
     );
   }, []);
 
-  const items = useMemo(() => board?.items ?? [], [board]);
+  // Issues without a tracker block still need readable rows and control names.
+  const items = useMemo(
+    () =>
+      (board?.items ?? []).map((item) => ({
+        ...item,
+        ref: item.ref || item.key,
+        requirement: item.requirement || "No description",
+        module: item.module || "—",
+        developer: item.developer || "",
+        category: item.category || "—",
+      })),
+    [board],
+  );
   const narrowed = useMemo(() => filterByDeveloperAndQuery(items, filters), [items, filters]);
   const counts = useMemo(() => statusCounts(narrowed), [narrowed]);
   const totals = useMemo(() => statusCounts(items), [items]);
