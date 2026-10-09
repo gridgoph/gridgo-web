@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { presentAuditAction, presentAuditDetail } from "@/app/admin/_lib/present";
-import { useLegalInboxReload } from "@/components/legal/useLegalInboxReload";
+import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
 import { Button } from "@/components/ui/button";
 import { listAudit, listUsers } from "@/lib/api/client";
 import type { AuditEntry } from "@/lib/api/types";

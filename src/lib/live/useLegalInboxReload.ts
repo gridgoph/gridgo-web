@@ -9,9 +9,10 @@ import { useLiveOptional } from "@/lib/live/LiveProvider";
  * arrives (`legal.*`, `privacy.*`). The API writes one for every create,
  * edit, publish and request change; it sends no live resource ping for them,
  * so the notice is the signal. Notices already in the inbox on mount do not
- * trigger a read; Refresh stays for everything else.
+ * trigger a read; Refresh stays for everything else. A `null` prefix does
+ * nothing, for callers that only sometimes listen.
  */
-export function useLegalInboxReload(prefix: "legal." | "privacy.", load: () => unknown): void {
+export function useLegalInboxReload(prefix: "legal." | "privacy." | null, load: () => unknown): void {
   const live = useLiveOptional();
   const notifications = live?.notifications;
   const seen = useRef<Set<string> | null>(null);
@@ -19,7 +20,7 @@ export function useLegalInboxReload(prefix: "legal." | "privacy.", load: () => u
   loadRef.current = load;
 
   useEffect(() => {
-    if (!notifications) return;
+    if (!notifications || !prefix) return;
     const matching = notifications.filter((row) => row.type?.startsWith(prefix));
     if (seen.current === null) {
       seen.current = new Set(matching.map((row) => row.id));

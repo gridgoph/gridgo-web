@@ -7,7 +7,7 @@ import { FileText, Paperclip, Trash2, X } from "lucide-react";
 
 import { AudiencePicker } from "@/components/legal/AudiencePicker";
 import { PublishLegalDialog } from "@/components/legal/PublishLegalDialog";
-import { useLegalInboxReload } from "@/components/legal/useLegalInboxReload";
+import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
 import { LegalReader, VersionLedger } from "@/components/legal/VersionLedger";
 import {
   AlertDialog,
@@ -99,6 +99,9 @@ export function LegalDocumentView({ documentId, tree, canEdit, history }: Props)
 
   const adopt = useCallback((next: LegalDocument) => {
     const at = Date.now();
+    // Before the next render: a reload that lands first must not read the
+    // pre-write copy and report this person's own save or publish as remote.
+    formRef.current = { doc: next, dirty: false };
     setDoc(next);
     setNow(at);
     setForm(next.draft);

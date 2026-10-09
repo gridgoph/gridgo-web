@@ -78,7 +78,8 @@ export function VersionLedger({ doc, now, selectedId, onSelect }: Props) {
                 <span className="text-body text-text-primary" style={{ fontFamily: "var(--font-bold)" }}>
                   Version {version.version}
                 </span>
-                <StatusChip {...versionStatusChip(version)} />
+                {/* A published version that has not started yet is not live yet. */}
+                {place === "scheduled" ? null : <StatusChip {...versionStatusChip(version)} />}
                 {place === "current" ? (
                   <StatusChip tone="success" icon="circle-dot" label={PLACE_LABEL.current} />
                 ) : place === "scheduled" ? (

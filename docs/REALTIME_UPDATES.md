@@ -136,7 +136,8 @@ Legal library and privacy notices (`legal.created|edited|published|deleted`,
 request. Staff land on `/…/legal`, `/…/acceptance-log` or `/…/privacy-requests` in their
 own tree. The API queues `legal` and `privacy-requests` invalidations that its stream does not
 carry, so those screens re-read when one of these inbox notices arrives
-(`useLegalInboxReload`), and keep their Refresh button.
+(`useLegalInboxReload`), and keep their Refresh button. The rail's open privacy
+request count re-reads on the same `privacy.*` notices.
 
 Sign-up links open Super Admin verification only; Operations has no sign-up destination.
 Operations service-review links open `/ops/service-lines`; legacy `/ops/approvals?tab=services`

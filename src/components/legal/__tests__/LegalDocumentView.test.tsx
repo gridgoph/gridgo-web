@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -143,6 +143,22 @@ describe("LegalDocumentView", () => {
     await user.click(screen.getByRole("button", { name: "Save draft" }));
     expect(screen.getByText(/Say what changed/)).toBeInTheDocument();
     expect(api.updateLegalDraft).not.toHaveBeenCalled();
+  });
+
+  it("marks a published version that has not started as Scheduled, not Live", async () => {
+    const doc = supplierAgreement();
+    const live = { ...doc.versions[0], ...placeholderDraft, placeholder: false, status: "live" as const };
+    doc.versions = [
+      { ...live, id: "supplier-agreement-1", version: 1, effectiveAt: "2026-01-01T00:00:00.000Z" },
+      { ...live, id: "supplier-agreement-2", version: 2, effectiveAt: "2999-01-01T01:00:00.000Z" },
+    ];
+    api.getLegalDocument.mockResolvedValue(doc);
+    render(<LegalDocumentView tree="ops" canEdit={false} documentId="supplier-agreement" />);
+    const ledger = await screen.findByRole("list", { name: "Published versions" });
+    const [second, first] = within(ledger).getAllByRole("listitem");
+    expect(within(second).getByText("Scheduled")).toBeInTheDocument();
+    expect(within(second).queryByText("Live")).not.toBeInTheDocument();
+    expect(within(first).getByText("Live")).toBeInTheDocument();
   });
 
   it("gives Operations the versions and no editor", async () => {

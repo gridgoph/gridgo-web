@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { PanelRightOpen } from "lucide-react";
 
-import { useLegalInboxReload } from "@/components/legal/useLegalInboxReload";
+import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
 import { PrivacyRequestSheet } from "@/components/privacy-requests/PrivacyRequestSheet";
 import { Button } from "@/components/ui/button";
 import { DataTable, DataTableRowAction, type DataTableColumn } from "@/components/ui/data-table";

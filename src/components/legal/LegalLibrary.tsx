@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowUpRight, FilePlus2 } from "lucide-react";
 
 import { NewLegalDocumentDialog } from "@/components/legal/NewLegalDocumentDialog";
-import { useLegalInboxReload } from "@/components/legal/useLegalInboxReload";
+import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
 import { Button } from "@/components/ui/button";
 import { DataTable, DataTableRowAction, type DataTableColumn } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
