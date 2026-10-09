@@ -96,6 +96,15 @@ export function notificationHref(role: Role, notification: Notification): string
     return null;
   }
 
+  // Voucher activity and expiry reminders (gridgo-api#204) name no account
+  // or order for staff: Super Admin lands on the activity log, Operations on
+  // its read-only lookup.
+  if (type.startsWith("voucher_")) {
+    if (role === "super_admin") return "/admin/vouchers?tab=activity";
+    if (role === "ops_admin") return "/ops/vouchers";
+    return null;
+  }
+
   // Client refund notices name the order, not the request, so staff land on
   // the refund inbox with that order and it opens the request. The shop's copy
   // falls through to its job, where the settled payout shows. A shop

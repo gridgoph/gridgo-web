@@ -59,6 +59,7 @@ describe("ROLE_NAV", () => {
       "/ops/payouts",
       "/ops/refunds",
       "/ops/organizations",
+      "/ops/vouchers",
       "/ops/claims",
       "/ops/recovery",
     ]);
@@ -81,6 +82,7 @@ describe("ROLE_NAV", () => {
       "/admin/listing-reviews",
       "/admin/zones",
       "/admin/finance",
+      "/admin/vouchers",
       "/admin/refunds",
       "/admin/organizations",
       "/admin/late-production",
@@ -132,6 +134,7 @@ describe("ROLE_NAV", () => {
       "/admin/supplier-products",
       "/admin/tracker",
       "/admin/verification",
+      "/admin/vouchers",
       "/admin/zones",
       "/ops/account-deletion",
       "/ops/chat",
@@ -153,6 +156,7 @@ describe("ROLE_NAV", () => {
       "/ops/schedule",
       "/ops/service-lines",
       "/ops/shop-changes",
+      "/ops/vouchers",
       "/supplier/capacity",
       "/supplier/catalogue",
       "/supplier/chat",
@@ -238,6 +242,7 @@ describe("ROLE_NAV", () => {
       "/ops/payouts",
       "/ops/refunds",
       "/ops/organizations",
+      "/ops/vouchers",
       "/ops/claims",
       "/ops/recovery",
     ]);
@@ -275,6 +280,7 @@ describe("ROLE_NAV", () => {
         ?.items.map((n) => n.href),
     ).toEqual([
       "/admin/finance",
+      "/admin/vouchers",
       "/admin/refunds",
       "/admin/organizations",
       "/admin/late-production",

@@ -643,6 +643,27 @@ export type Order = {
   /** Ops / Super Admin. GRIDGO's revenue on this order, gross and net of the discount. */
   platformRevenue?: PlatformRevenue;
   /**
+   * A GRIDGO-funded voucher on this order (gridgo-api#204, VOUCHERS_API.md).
+   * Ops / Super Admin and the owning client only; the API strips it, and the
+   * five figures below, from shops and riders. On a basket group the line is
+   * that group's share of the one voucher. It replaces the organization
+   * discount (only one applies) and comes out of GRIDGO's service fee first,
+   * then delivery; the shop price, payout stages and rider pay never move.
+   * `totalMinor` is already after it. Read through `src/lib/vouchers.ts`.
+   */
+  voucher?: OrderVoucherLine | null;
+  voucherDiscountMinor?: number;
+  /** Of the voucher, the part taken off GRIDGO's service fee. */
+  voucherServiceFeeMinor?: number;
+  /** Of the voucher, the part taken off delivery (only once the fee is used up). */
+  voucherDeliveryMinor?: number;
+  /** The service fee the client actually pays after the voucher. */
+  clientServiceFeeMinor?: number;
+  /** The delivery the client actually pays after the voucher. */
+  clientDeliveryFeeMinor?: number;
+  /** Ops / Super Admin money reporting: the voucher line with its funding split. */
+  voucherFunding?: OrderVoucherLine;
+  /**
    * Multi-shop checkout (gridgo-api#150, MULTI_SHOP_CHECKOUT_API.md). A basket
    * is one payment over several shop groups; each group is an ordinary order
    * with its own job. Absent on a single-shop order. Read through
@@ -2147,6 +2168,11 @@ export type RefundAmounts = RefundComponents & {
   availablePrincipalMinor: number;
   directStoreDueMinor?: number;
   directStoreCollectedMinor?: number;
+  /**
+   * Voucher orders only: whether staff found the refund the client's fault.
+   * `false` gives the client the voucher back if it has not expired.
+   */
+  clientCaused?: boolean;
 };
 
 export type RefundPreview = {
@@ -2366,6 +2392,8 @@ export type HubCodeMismatch = HubWaitingOrder & {
 
 /** Ops / Super Admin. One order's platform revenue, as the API reports it. */
 export type PlatformRevenue = {
+  /** Present on a voucher order: GRIDGO's funding, off the fee and delivery. */
+  voucherDiscountMinor?: number;
   grossServiceFeeMinor: number;
   organizationDiscountMinor: number;
   netServiceFeeMinor: number;
@@ -2520,4 +2548,127 @@ export type AccountDeletionRequest = {
   id: string; userId: string | null; contactEmail: string | null;
   source: 'app' | 'web'; status: 'pending' | 'done';
   requestedAt: string; dueAt: string; completedAt: string | null; completedBy: string | null;
+};
+
+// ---- GRIDGO-funded vouchers (gridgo-api#204, docs/VOUCHERS_API.md) ----
+
+/** The voucher line an order snapshots at checkout. */
+export type OrderVoucherLine = {
+  id: string;
+  campaignId: string;
+  label: string;
+  fundedBy: "GRIDGO";
+  amountMinor: number;
+  serviceFeeMinor: number;
+  deliveryMinor: number;
+};
+
+export type VoucherCampaignMode = "assigned" | "shared";
+export type VoucherCampaignStatus = "draft" | "active" | "paused" | "ended";
+
+/** Super Admin only. `code` is never shown to a client. */
+export type VoucherCampaign = {
+  id: string;
+  name: string;
+  code: string;
+  mode: VoucherCampaignMode;
+  valueMinor: number;
+  /** A count of accounts that can be issued one, not a budget in pesos. */
+  totalLimit: number;
+  perAccountLimit: 1;
+  /** Exactly one of `endsAt` (a fixed end) and `validityDays` (from each issue) is set. */
+  endsAt: string | null;
+  validityDays: number | null;
+  status: VoucherCampaignStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type VoucherCampaignInput = {
+  name: string;
+  valueMinor: number;
+  mode: VoucherCampaignMode;
+  code?: string | null;
+  endsAt?: string | null;
+  validityDays?: number | null;
+  totalLimit: number;
+  perAccountLimit: 1;
+};
+
+export type VoucherStatus = "available" | "used" | "expired" | "void";
+
+/** One wallet item, as the client and the staff lookup read it. */
+export type Voucher = {
+  id: string;
+  campaignId: string;
+  name?: string;
+  valueMinor: number;
+  status: VoucherStatus;
+  issuedAt: string;
+  expiresAt: string;
+  secondsRemaining: number;
+  redeemable: boolean;
+  reservation: { id: string; cartId: string; expiresAt: string } | null;
+  fundedBy: "GRIDGO";
+  transferable: false;
+  cashValue: false;
+};
+
+export type VoucherTab = "available" | "used" | "expired" | "all";
+
+export type VoucherIssueRecipient = { email: string; adultConfirmed: boolean };
+
+export type VoucherIssueReport = {
+  matched: { email: string; clientId: string; voucherId: string; issued: boolean }[];
+  unmatched: {
+    email: string;
+    reason: "no_client_account" | "invalid_email" | "ambiguous_email";
+  }[];
+};
+
+export type VoucherLedgerKind =
+  | "issued"
+  | "reserved"
+  | "released"
+  | "redeemed"
+  | "restored"
+  | "client_fault"
+  | "no_fault"
+  | "void"
+  | "reissue";
+
+/** One append-only activity row. `amountMinor` is negative on a restore. */
+export type VoucherLedgerEntry = {
+  id: string;
+  voucherId: string;
+  campaignId: string;
+  clientId: string;
+  kind: VoucherLedgerKind | string;
+  amountMinor: number;
+  at: string;
+  data: {
+    actorId?: string | null;
+    reason?: string | null;
+    orderId?: string;
+    orderIds?: string[];
+    [key: string]: unknown;
+  };
+};
+
+export type VoucherLedgerPage = {
+  entries: VoucherLedgerEntry[];
+  total: number;
+  /** A decimal integer string: the sum can pass JavaScript's safe range. */
+  budgetUsedMinor: string;
+  budgetUsedScope: string;
+  serverTime: string;
+};
+
+export type VoucherLedgerFilter = {
+  campaignId?: string;
+  clientId?: string;
+  kind?: string;
+  /** Inclusive ISO instants. */
+  from?: string;
+  to?: string;
 };

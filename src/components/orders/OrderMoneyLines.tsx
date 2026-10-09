@@ -3,6 +3,7 @@ import type { Order } from "@/lib/api/types";
 import { orderDeliverySplit, platformShareBps } from "@/lib/delivery-split";
 import { formatPhp } from "@/lib/format";
 import { asDeduction, discountLabel, orderFeeSplit } from "@/lib/organization-discount";
+import { orderVoucher, VOUCHER_LINE_LABEL } from "@/lib/vouchers";
 
 type Props = {
   order: Order;
@@ -23,10 +24,16 @@ type Props = {
  * order's rate, the organization discount taken out of it, and what GRIDGO
  * keeps. The shop price and the delivery split above and below it never
  * move — the discount is GRIDGO's alone.
+ *
+ * A GRIDGO-funded voucher (gridgo-api#204) sits last, just above the total it
+ * was taken off, with where it came from: GRIDGO's fee first, then delivery.
+ * The shop price, the rider payout and the delivery split stay at their gross
+ * figures above it, because the voucher never moves them.
  */
 export function OrderMoneyLines({ order, totalLabel = "Client total" }: Props) {
   const deliverySplit = orderDeliverySplit(order);
   const fee = orderFeeSplit(order);
+  const voucher = orderVoucher(order);
   const rate =
     order.serviceFeeRateBps != null
       ? ` (${formatRatePercent(order.serviceFeeRateBps)})`
@@ -78,6 +85,29 @@ export function OrderMoneyLines({ order, totalLabel = "Client total" }: Props) {
             value={formatPhp(deliverySplit.platformDeliveryShareMinor)}
             indent
           />
+        </>
+      ) : null}
+      {voucher ? (
+        <>
+          <Line
+            label={VOUCHER_LINE_LABEL}
+            value={asDeduction(formatPhp(voucher.amountMinor))}
+            testId="voucher-discount"
+          />
+          {voucher.serviceFeeMinor > 0 ? (
+            <Line
+              label="Off GRIDGO's service fee"
+              value={formatPhp(voucher.serviceFeeMinor)}
+              indent
+            />
+          ) : null}
+          {voucher.deliveryMinor > 0 ? (
+            <Line
+              label="Off delivery, paid by GRIDGO"
+              value={formatPhp(voucher.deliveryMinor)}
+              indent
+            />
+          ) : null}
         </>
       ) : null}
       <Line

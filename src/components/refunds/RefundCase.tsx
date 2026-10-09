@@ -116,6 +116,7 @@ import {
   type RefundViewer,
 } from "@/lib/refunds";
 import { cn } from "@/lib/utils";
+import { orderVoucher } from "@/lib/vouchers";
 
 type Tree = "ops" | "admin";
 
@@ -1099,10 +1100,14 @@ function SettlementForm({
       workStopped: true;
       shopAgreement: string;
       deliveryEvidence: string;
+      clientCaused?: boolean;
     },
   ) => Promise<boolean>;
 }) {
   const early = refund.beforeProduction;
+  // A GRIDGO-funded voucher on the order: staff decide whose fault the refund
+  // is, because a no-fault refund gives the client the voucher back.
+  const hasVoucher = Boolean(order && orderVoucher(order));
   const released = refund.releasedShopMinor ?? 0;
   const directStore =
     (order as (Order & { directStoreDueMinor?: number }) | null)?.directStoreDueMinor ??
@@ -1124,6 +1129,7 @@ function SettlementForm({
   const [reason, setReason] = useState("");
   const [stopped, setStopped] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [fault, setFault] = useState<"client" | "not_client" | null>(null);
 
   const shopMinor = early ? 0 : pesosToMinor(shop);
   const riderMinor = early ? 0 : pesosToMinor(rider);
@@ -1164,7 +1170,8 @@ function SettlementForm({
     stopped &&
     agreement.trim().length > 0 &&
     deliveryNote.trim().length > 0 &&
-    reason.trim().length > 0;
+    reason.trim().length > 0 &&
+    (!hasVoucher || fault !== null);
 
   return (
     <div className="flex flex-col gap-4">
@@ -1344,6 +1351,9 @@ function SettlementForm({
                   {CLIENT_READS_THIS} Explain what comes back and what does not.
                 </FieldDescription>
               </Field>
+              {hasVoucher ? (
+                <VoucherFaultField value={fault} onChange={setFault} disabled={busy} />
+              ) : null}
               <Confirmation
                 id="work-stopped"
                 checked={stopped}
@@ -1383,11 +1393,73 @@ function SettlementForm({
             workStopped: true,
             shopAgreement: agreement.trim(),
             deliveryEvidence: deliveryNote.trim(),
+            ...(hasVoucher ? { clientCaused: fault === "client" } : {}),
           });
           if (ok) setConfirming(false);
         }}
       />
     </div>
+  );
+}
+
+/**
+ * Whose fault the refund is, asked only on a voucher order. The API needs the
+ * answer (`400 voucher_refund_fault_required`); the client cannot give it.
+ */
+function VoucherFaultField({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: "client" | "not_client" | null;
+  onChange: (value: "client" | "not_client") => void;
+  disabled: boolean;
+}) {
+  const options = [
+    {
+      value: "not_client" as const,
+      label: "Not the client's fault",
+      body: "The client gets the voucher back once the refund is sent, if it has not expired.",
+    },
+    {
+      value: "client" as const,
+      label: "The client's fault",
+      body: "The voucher stays used. It is never paid out as cash either way.",
+    },
+  ];
+  return (
+    <Field>
+      <FieldLabel id="voucher-fault-label">This order used a GRIDGO voucher</FieldLabel>
+      <FieldDescription>
+        Whose fault is this refund? Staff only; the client does not see this answer.
+      </FieldDescription>
+      <RadioGroup
+        aria-labelledby="voucher-fault-label"
+        value={value ?? ""}
+        onValueChange={(next) => onChange(next as "client" | "not_client")}
+        disabled={disabled}
+        className="gap-1"
+      >
+        {options.map((option) => (
+          <label key={option.value} className="flex min-h-11 cursor-pointer items-start gap-2 py-1">
+            <RadioGroupItem
+              value={option.value}
+              aria-labelledby={`voucher-fault-${option.value}`}
+              aria-describedby={`voucher-fault-${option.value}-body`}
+              className="mt-1"
+            />
+            <span className="flex flex-col">
+              <span id={`voucher-fault-${option.value}`} className="text-body text-text-primary">
+                {option.label}
+              </span>
+              <span id={`voucher-fault-${option.value}-body`} className="text-caption text-text-muted">
+                {option.body}
+              </span>
+            </span>
+          </label>
+        ))}
+      </RadioGroup>
+    </Field>
   );
 }
 
@@ -1437,6 +1509,16 @@ function SettlementRecord({
             </dt>
             <dd className="m-0 text-body text-text-secondary">
               {settlement.shopAgreement}
+            </dd>
+          </>
+        ) : null}
+        {typeof settlement.snapshot?.clientCaused === "boolean" ? (
+          <>
+            <dt className="text-caption text-text-muted">Voucher (staff only)</dt>
+            <dd className="m-0 text-body text-text-secondary">
+              {settlement.snapshot.clientCaused
+                ? "Recorded as the client's fault: the voucher stays used."
+                : "Recorded as not the client's fault: the voucher goes back to the client once the refund is sent, if it has not expired."}
             </dd>
           </>
         ) : null}
