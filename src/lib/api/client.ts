@@ -23,6 +23,12 @@ import type {
   VoucherLedgerFilter,
   VoucherLedgerPage,
   VoucherTab,
+  LegalAcceptance,
+  LegalDocument,
+  LegalDraft,
+  LegalVersion,
+  PrivacyRequest,
+  PrivacyRequestStatus,
   Announcement,
   HubCodeMismatch,
   HubHandoutLog,
@@ -2884,5 +2890,132 @@ export async function downloadVoucherLedger(filter: VoucherLedgerFilter = {}): P
   return requestBlob(
     `/admin/voucher-redemptions${buildQuery({ ...filter, format: "csv" })}`,
     { headers: { Accept: "text/csv" } },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Legal documents, acceptance evidence and privacy requests (LEGAL_API.md)
+// ---------------------------------------------------------------------------
+
+/** Ops / Super Admin. Every document with its draft and published versions. */
+export async function listLegalDocuments(): Promise<LegalDocument[]> {
+  const result = await request<{ documents: LegalDocument[] }>("/admin/legal/documents");
+  return result.documents;
+}
+
+/** Ops / Super Admin. One document; `null` when it does not exist. */
+export async function getLegalDocument(documentId: string): Promise<LegalDocument | null> {
+  const result = await request<{ documents: LegalDocument[] }>(
+    `/admin/legal/documents/${encodeURIComponent(documentId)}`,
+  );
+  return result.documents[0] ?? null;
+}
+
+/** Super Admin. `409 document_exists` when the ID is taken. */
+export function createLegalDocument(id: string, draft: LegalDraft) {
+  return request<{ id: string; revision: number; draft: LegalDraft }>("/admin/legal/documents", {
+    method: "POST",
+    body: JSON.stringify({ id, draft }),
+  });
+}
+
+/**
+ * Super Admin. Merges the changed fields into the draft; the published
+ * versions never change. A stale revision is `409 legal_document_changed`.
+ */
+export function updateLegalDraft(
+  documentId: string,
+  expectedRevision: number,
+  draft: Partial<LegalDraft>,
+) {
+  return request<{ id: string; revision: number; draft: LegalDraft }>(
+    `/admin/legal/documents/${encodeURIComponent(documentId)}`,
+    { method: "PATCH", body: JSON.stringify({ expectedRevision, draft }) },
+  );
+}
+
+/** Super Admin. Publishes the stored draft as the next immutable version. */
+export function publishLegalDocument(documentId: string, expectedRevision: number) {
+  return request<{ document: LegalVersion; revision: number }>(
+    `/admin/legal/documents/${encodeURIComponent(documentId)}/publish`,
+    { method: "POST", body: JSON.stringify({ expectedRevision }) },
+  );
+}
+
+/** Super Admin. Only an unpublished, non-launch document (`409 published_document_retained`). */
+export function deleteLegalDocument(documentId: string, expectedRevision: number) {
+  return request<{ ok: true }>(`/admin/legal/documents/${encodeURIComponent(documentId)}`, {
+    method: "DELETE",
+    body: JSON.stringify({ expectedRevision }),
+  });
+}
+
+/** Super Admin. A PDF (20 MiB at most) for a draft; kept as legal evidence once published. */
+export async function uploadLegalPdf(file: File): Promise<StoredFile> {
+  const body = new FormData();
+  body.append("purpose", "legal_document");
+  body.append("file", file);
+  const uploaded = await request<{ file: StoredFile }>("/files", { method: "POST", body });
+  return uploaded.file;
+}
+
+/** Ops / Super Admin. One person's acceptance evidence, 1,000 rows a page, oldest first. */
+export function listLegalAcceptances(userId: string, offset = 0) {
+  return request<{ acceptances: LegalAcceptance[]; nextOffset: number | null }>(
+    `/admin/legal/acceptances${buildQuery({ userId, offset })}`,
+  );
+}
+
+/**
+ * Ops / Super Admin. The person's whole acceptance log as the API's CSV
+ * (its quoting and formula escaping). Pages follow `X-Next-Offset`; each page
+ * repeats the header, so later headers are dropped.
+ */
+export async function downloadLegalAcceptancesCsv(userId: string): Promise<Blob> {
+  const parts: string[] = [];
+  let offset: number | null = 0;
+  while (offset !== null) {
+    const path = `/admin/legal/acceptances${buildQuery({ userId, offset, format: "csv" })}`;
+    const page: { text: string; next: number | null } = await withRequestDeadline(
+      undefined,
+      async (signal) => {
+        const res = await send(path, {}, signal, "text/csv");
+        const text = await res.text();
+        if (!res.ok) throw failed(path, res.status, parseBody(text));
+        const header = res.headers.get("X-Next-Offset");
+        const next = header === null || header === "" ? null : Number(header);
+        return { text, next: Number.isSafeInteger(next) ? next : null };
+      },
+    );
+    parts.push(parts.length === 0 ? page.text : page.text.replace(/^[^\n]*\n/, ""));
+    offset = page.next !== null && page.next > offset ? page.next : null;
+  }
+  return new Blob(parts, { type: "text/csv;charset=utf-8" });
+}
+
+/** Ops / Super Admin. 100 a page, earliest due first. Omit status for every request. */
+export function listPrivacyRequests(status?: PrivacyRequestStatus, offset = 0) {
+  return request<{ requests: PrivacyRequest[]; nextOffset: number | null }>(
+    `/admin/privacy-requests${buildQuery({ status, offset })}`,
+  );
+}
+
+/**
+ * Ops / Super Admin. Completed or rejected needs a resolution
+ * (`400 resolution_required`); a stale revision is `409 privacy_request_changed`.
+ */
+export function updatePrivacyRequest(
+  id: string,
+  input: {
+    expectedRevision: number;
+    status?: PrivacyRequestStatus;
+    dueAt?: string;
+    handlerId?: string | null;
+    resolution?: string;
+  },
+) {
+  return request<{ request: PrivacyRequest }>(
+    `/admin/privacy-requests/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
   );
 }

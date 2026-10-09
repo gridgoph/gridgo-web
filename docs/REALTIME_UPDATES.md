@@ -131,6 +131,14 @@ carries `catalogItemId`. The arrival is the live alert (chime, toast, desktop al
 desk re-reads on the `catalog` invalidation, marks newly arrived listings and product-type
 requests **New** and announces them politely.
 
+Legal library and privacy notices (`legal.created|edited|published|deleted`,
+`legal.accepted`, `privacy.requested|updated`; gridgo-api#202) name no document, person or
+request. Staff land on `/…/legal`, `/…/acceptance-log` or `/…/privacy-requests` in their
+own tree. The API queues `legal` and `privacy-requests` invalidations that its stream does not
+carry, so those screens re-read when one of these inbox notices arrives
+(`useLegalInboxReload`), and keep their Refresh button. The rail's open privacy
+request count re-reads on the same `privacy.*` notices.
+
 Sign-up links open Super Admin verification only; Operations has no sign-up destination.
 Operations service-review links open `/ops/service-lines`; legacy `/ops/approvals?tab=services`
 links still work. Other `/ops/approvals` links show the Super Admin only notice. Super Admin

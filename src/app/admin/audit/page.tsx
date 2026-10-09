@@ -10,6 +10,7 @@ import { adminErrorMessage } from "@/app/admin/_lib/errors";
 import {
   presentActorRole,
   presentAuditAction,
+  presentAuditDetail,
   presentAuditEntityType,
 } from "@/app/admin/_lib/present";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,8 @@ const ENTITY_FILTERS = [
   { value: "issue", label: "Issue" },
   { value: "order", label: "Order" },
   { value: "supplier_service", label: "Supplier service" },
+  { value: "legal_document", label: "Legal document" },
+  { value: "privacy_request", label: "Privacy request" },
 ] as const;
 
 export default function AdminAuditPage() {
@@ -118,7 +121,7 @@ export default function AdminAuditPage() {
         className: "max-w-[26rem] whitespace-normal",
         sortValue: (e) => presentAuditAction(e.action),
         filterValue: (e) =>
-          `${presentAuditAction(e.action)} ${e.reason ?? ""} ${e.entityId ?? ""}`,
+          `${presentAuditAction(e.action)} ${presentAuditDetail(e) ?? ""} ${e.reason ?? ""} ${e.entityId ?? ""}`,
         cell: (e) => (
           <div>
             <p
@@ -127,6 +130,11 @@ export default function AdminAuditPage() {
             >
               {presentAuditAction(e.action)}
             </p>
+            {presentAuditDetail(e) ? (
+              <p className="text-caption text-text-secondary m-0 mt-0.5">
+                {presentAuditDetail(e)}
+              </p>
+            ) : null}
             {e.reason ? (
               <p className="text-caption text-text-muted m-0 mt-0.5">{e.reason}</p>
             ) : null}
