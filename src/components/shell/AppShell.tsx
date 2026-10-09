@@ -9,6 +9,10 @@ import {
   AlertTriangle,
   ArrowLeftRight,
   BadgeCheck,
+  BookText,
+  Landmark,
+  Signature,
+  UserLock,
   Banknote,
   BanknoteArrowDown,
   Building2,
@@ -197,6 +201,9 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   staff: IdCard,
   "listing-reviews": BadgeCheck,
   vouchers: TicketPercent,
+  legal: BookText,
+  acceptances: Signature,
+  privacy: UserLock,
   "group-shop": Store,
   "group-money": HandCoins,
   "group-queue": Inbox,
@@ -204,6 +211,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   "group-system": SlidersHorizontal,
   "group-people": Contact,
   "group-catalog": Library,
+  "group-legal": Landmark,
 };
 
 /** Each count source this rail shows, once — read once for the whole rail. */

@@ -27,6 +27,7 @@ import {
   listRescheduleRequests,
   listShopFailures,
   listUsers,
+  listPrivacyRequests,
   isApiError,
 } from "@/lib/api/client";
 import { claimBlocksPayout } from "@/lib/api/constraints";
@@ -147,6 +148,20 @@ const NAV_COUNT_SOURCES: Record<NavCountKey, CountSource> = {
         listProductTypeRequests("pending").then(normalizeProductTypeRequests),
       ]);
       return listings.entries.length + requests.requests.length;
+    },
+  },
+  // New and in-progress privacy requests, one page of each (100): past that
+  // the badge is a floor and the queue has the rest. The API's live stream
+  // carries no privacy resource, so it is re-read on each page move.
+  "privacy-requests-open": {
+    resources: [],
+    refreshOnNavigate: true,
+    load: async () => {
+      const [waiting, working] = await Promise.all([
+        listPrivacyRequests("pending"),
+        listPrivacyRequests("in_progress"),
+      ]);
+      return waiting.requests.length + working.requests.length;
     },
   },
   // GitHub is the source, so no stream covers it. The API caches its GitHub

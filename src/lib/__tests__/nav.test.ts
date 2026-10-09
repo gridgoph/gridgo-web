@@ -62,6 +62,9 @@ describe("ROLE_NAV", () => {
       "/ops/vouchers",
       "/ops/claims",
       "/ops/recovery",
+      "/ops/legal",
+      "/ops/acceptance-log",
+      "/ops/privacy-requests",
     ]);
   });
 
@@ -87,6 +90,9 @@ describe("ROLE_NAV", () => {
       "/admin/organizations",
       "/admin/late-production",
       "/admin/shop-changes",
+      "/admin/legal",
+      "/admin/acceptance-log",
+      "/admin/privacy-requests",
       "/admin/settings",
       "/admin/audit",
       "/admin/planning",
@@ -110,6 +116,7 @@ describe("ROLE_NAV", () => {
       .map((n) => n.href)
       .sort();
     expect(ready).toEqual([
+      "/admin/acceptance-log",
       "/admin/account-deletion",
       "/admin/audit",
       "/admin/broadcast",
@@ -120,10 +127,12 @@ describe("ROLE_NAV", () => {
       "/admin/hub",
       "/admin/issue-reports",
       "/admin/late-production",
+      "/admin/legal",
       "/admin/listing-reviews",
       "/admin/organizations",
       "/admin/overview",
       "/admin/planning",
+      "/admin/privacy-requests",
       "/admin/refunds",
       "/admin/riders",
       "/admin/roles",
@@ -136,6 +145,7 @@ describe("ROLE_NAV", () => {
       "/admin/verification",
       "/admin/vouchers",
       "/admin/zones",
+      "/ops/acceptance-log",
       "/ops/account-deletion",
       "/ops/chat",
       "/ops/claims",
@@ -144,11 +154,13 @@ describe("ROLE_NAV", () => {
       "/ops/hub",
       "/ops/issue-reports",
       "/ops/late-production",
+      "/ops/legal",
       "/ops/listing-reviews",
       "/ops/orders",
       "/ops/organizations",
       "/ops/overview",
       "/ops/payouts",
+      "/ops/privacy-requests",
       "/ops/rankings",
       "/ops/recovery",
       "/ops/refunds",
@@ -194,12 +206,14 @@ describe("ROLE_NAV", () => {
       "Queue",
       "Field",
       "Money",
+      "Legal & privacy",
     ]);
     expect(ROLE_NAV_GROUPS.super_admin.map((g) => g.label ?? g.id)).toEqual([
       "admin-top",
       "People",
       "Catalog",
       "Money",
+      "Legal & privacy",
       "System",
     ]);
     expect(ROLE_NAV_GROUPS.supplier.map((g) => g.label ?? g.id)).toEqual([
@@ -286,6 +300,12 @@ describe("ROLE_NAV", () => {
       "/admin/late-production",
       "/admin/shop-changes",
     ]);
+    for (const tree of ["ops", "admin"] as const) {
+      const role = tree === "ops" ? "ops_admin" : "super_admin";
+      expect(
+        ROLE_NAV_GROUPS[role].find((g) => g.id === `${tree}-legal`)?.items.map((n) => n.href),
+      ).toEqual([`/${tree}/legal`, `/${tree}/acceptance-log`, `/${tree}/privacy-requests`]);
+    }
     expect(
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-system")

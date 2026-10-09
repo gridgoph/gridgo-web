@@ -2671,4 +2671,102 @@ export type VoucherLedgerFilter = {
   /** Inclusive ISO instants. */
   from?: string;
   to?: string;
+// ---- Legal documents, consent evidence and privacy requests ----
+// Contract: gridgo-api `docs/LEGAL_API.md` (gridgo-api#202). Rules live in
+// `src/lib/legal.ts` and `src/lib/privacy-requests.ts`.
+
+/** Who a document binds. `all` is every signed-in identity. */
+export type LegalAudience = "all" | "client" | "supplier" | "rider" | "staff";
+
+/**
+ * The editable draft of one document. Editing it never changes a published
+ * version; publishing snapshots it as the next version.
+ */
+export type LegalDraft = {
+  title: string;
+  audience: LegalAudience;
+  /** Plain text, never HTML. "" when a PDF carries the document. */
+  text: string;
+  pdfFileId: string | null;
+  placeholder: boolean;
+  /** The editor's choice; the API forces it on in some cases (see `publishMateriality`). */
+  material: boolean;
+  /** Only a real Supplier Agreement may carry money penalties. */
+  penalties: boolean;
+  changeSummary: string;
+  effectiveAt: string;
+};
+
+/** One immutable published version. */
+export type LegalVersion = {
+  /** Opaque version ID (launch placeholders read `terms-of-service-1`). */
+  id: string;
+  documentId: string;
+  version: number;
+  title: string;
+  audience: LegalAudience;
+  text: string;
+  pdfFileId: string | null;
+  /** Public route that answers a signed link once the version is effective. */
+  pdfUrl: string | null;
+  effectiveAt: string;
+  publishedAt: string;
+  placeholder: boolean;
+  /** The enforced flag: true means everyone it applies to must accept again. */
+  material: boolean;
+  penalties: boolean;
+  changeSummary: string;
+  status: "placeholder" | "live";
+};
+
+/** `GET /admin/legal`: the library row with every version, newest first. */
+export type LegalDocument = {
+  id: string;
+  /** Optimistic editor token. Both edit and publish move it. */
+  revision: number;
+  draft: LegalDraft;
+  /** One of the eight reserved slots: never deleted, audience fixed. */
+  launchSlot: boolean;
+  versions: LegalVersion[];
+};
+
+export type LegalAcceptancePurpose = "document" | "enrollment" | "artwork";
+
+/** One append-only acceptance row, in the API's database field names. */
+export type LegalAcceptance = {
+  id: string;
+  user_id: string;
+  version_id: string;
+  document_id: string;
+  version: number;
+  accepted_at: string;
+  method: "checkbox" | "blocking_screen";
+  /** Caller-reported, never verified. */
+  app: string;
+  device: string;
+  purpose: LegalAcceptancePurpose;
+  order_id: string | null;
+  /** Sign-up evidence only; null otherwise. */
+  marketing: boolean | null;
+  junior: boolean | null;
+  guardian: boolean | null;
+};
+
+export type PrivacyRequestKind = "access" | "correction" | "deletion";
+export type PrivacyRequestStatus = "pending" | "in_progress" | "completed" | "rejected";
+
+export type PrivacyRequest = {
+  id: string;
+  userId: string;
+  kind: PrivacyRequestKind;
+  status: PrivacyRequestStatus;
+  /** The requester's own words; "" when they wrote none. */
+  details: string;
+  /** Staff's answer. The requester can read it in their app. */
+  resolution: string;
+  requestedAt: string;
+  dueAt: string;
+  handlerId: string | null;
+  updatedAt: string;
+  revision: number;
 };

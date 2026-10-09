@@ -64,6 +64,9 @@ export type NavIconKey =
   | "staff"
   | "listing-reviews"
   | "vouchers"
+  | "legal"
+  | "acceptances"
+  | "privacy"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -71,7 +74,8 @@ export type NavIconKey =
   | "group-field"
   | "group-system"
   | "group-people"
-  | "group-catalog";
+  | "group-catalog"
+  | "group-legal";
 
 export type NavItem = {
   /** Stable id for tests / analytics. */
@@ -112,7 +116,8 @@ export type NavCountKey =
   | "tracker-needs-decision"
   | "refunds-waiting"
   | "shop-changes-needs-ops"
-  | "listing-reviews-waiting";
+  | "listing-reviews-waiting"
+  | "privacy-requests-open";
 
 /**
  * One rail section. A missing `label` is a top-level cluster (Overview / Jobs)
@@ -461,6 +466,45 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
         },
       ],
     },
+    {
+      // Legal library, consent evidence and the manual privacy queue
+      // (gridgo-api#202, LEGAL_API.md). Operations reads the library;
+      // only Super Admin edits and publishes.
+      id: "ops-legal",
+      section: "Work",
+      label: "Legal & privacy",
+      icon: "group-legal",
+      items: [
+        {
+          id: "ops-legal-documents",
+          href: "/ops/legal",
+          label: "Legal documents",
+          title: "Legal documents",
+          icon: "legal",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "ops-legal-acceptances",
+          href: "/ops/acceptance-log",
+          label: "Acceptance log",
+          title: "Acceptance log",
+          icon: "acceptances",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "ops-privacy-requests",
+          href: "/ops/privacy-requests",
+          label: "Privacy requests",
+          title: "Privacy requests",
+          icon: "privacy",
+          ready: true,
+          placeholderBody: "",
+          count: "privacy-requests-open",
+        },
+      ],
+    },
   ],
 
   super_admin: [
@@ -664,6 +708,45 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
       ],
     },
     {
+      // Legal library, consent evidence and the manual privacy queue
+      // (gridgo-api#202, LEGAL_API.md). Operations reads the library;
+      // only Super Admin edits and publishes.
+      id: "admin-legal",
+      section: "Manage",
+      label: "Legal & privacy",
+      icon: "group-legal",
+      items: [
+        {
+          id: "admin-legal-documents",
+          href: "/admin/legal",
+          label: "Legal documents",
+          title: "Legal documents",
+          icon: "legal",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-legal-acceptances",
+          href: "/admin/acceptance-log",
+          label: "Acceptance log",
+          title: "Acceptance log",
+          icon: "acceptances",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-privacy-requests",
+          href: "/admin/privacy-requests",
+          label: "Privacy requests",
+          title: "Privacy requests",
+          icon: "privacy",
+          ready: true,
+          placeholderBody: "",
+          count: "privacy-requests-open",
+        },
+      ],
+    },
+    {
       id: "admin-system",
       section: "Platform",
       label: "System",
@@ -821,6 +904,7 @@ export function contextTitleForPath(
   }
   if (pathname.startsWith("/admin/supplier-products/")) return "Supplier product";
   if (pathname.startsWith("/admin/vouchers/")) return "Voucher campaign";
+  if (/^\/(ops|admin)\/legal\/[^/]+/.test(pathname)) return "Legal document";
   if (/^\/(ops|admin)\/organizations\/[^/]+\/statement$/.test(pathname)) {
     return "Organization statement";
   }

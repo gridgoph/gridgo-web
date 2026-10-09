@@ -289,6 +289,13 @@ export function presentAuditAction(action: string): string {
     "claim.release": "Released payout hold",
     "tracker.status": "Changed tracker status",
     "tracker.decision": "Recorded tracker decision",
+    "legal.created": "Created legal document",
+    "legal.edited": "Edited legal document draft",
+    "legal.published": "Published legal document",
+    "legal.deleted": "Deleted legal document",
+    "legal.accepted": "Accepted legal documents",
+    "privacy.requested": "Privacy request received",
+    "privacy.updated": "Updated privacy request",
   };
   if (map[action]) return map[action];
 
@@ -298,6 +305,38 @@ export function presentAuditAction(action: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .replace(/^\w/, (c) => c.toUpperCase());
+}
+
+/**
+ * One line of what a legal or privacy audit row recorded (LEGAL_API.md):
+ * which version a publish created and whether it makes people accept again.
+ */
+export function presentAuditDetail(entry: {
+  action: string;
+  detail: Record<string, unknown> | null;
+}): string | null {
+  const detail = entry.detail ?? {};
+  if (entry.action === "legal.published" && typeof detail.version === "number") {
+    return detail.material === true
+      ? `Version ${detail.version}, material change: everyone it applies to accepts again`
+      : `Version ${detail.version}, no new acceptance needed`;
+  }
+  if (
+    (entry.action === "legal.edited" || entry.action === "legal.created") &&
+    typeof detail.revision === "number"
+  ) {
+    return `Draft revision ${detail.revision}`;
+  }
+  if (entry.action === "privacy.updated" && typeof detail.status === "string") {
+    const status: Record<string, string> = {
+      pending: "New",
+      in_progress: "In progress",
+      completed: "Completed",
+      rejected: "Declined",
+    };
+    return `Status: ${status[detail.status] ?? "Updated"}`;
+  }
+  return null;
 }
 
 export function presentAuditEntityType(
@@ -315,6 +354,8 @@ export function presentAuditEntityType(
     claim: "Claim",
     issue: "Issue",
     order: "Order",
+    legal_document: "Legal document",
+    privacy_request: "Privacy request",
   };
   if (map[entityType]) return map[entityType];
   return entityType

@@ -124,6 +124,24 @@ export function notificationHref(role: Role, notification: Notification): string
     return role === "super_admin" ? "/admin/account-deletion" : role === "ops_admin" ? "/ops/account-deletion" : null;
   }
 
+  // Legal library and privacy queue (LEGAL_API.md). The notice names no
+  // document or person, so staff land on the screen that lists them.
+  if (type === "legal.accepted") {
+    if (role === "super_admin") return "/admin/acceptance-log";
+    if (role === "ops_admin") return "/ops/acceptance-log";
+    return null;
+  }
+  if (type.startsWith("legal.")) {
+    if (role === "super_admin") return "/admin/legal";
+    if (role === "ops_admin") return "/ops/legal";
+    return null;
+  }
+  if (type.startsWith("privacy.")) {
+    if (role === "super_admin") return "/admin/privacy-requests";
+    if (role === "ops_admin") return "/ops/privacy-requests";
+    return null;
+  }
+
   if (type === "ops_issue_report_filed") {
     if (role === "super_admin") return "/admin/issue-reports";
     if (role === "ops_admin") return "/ops/issue-reports";
