@@ -2890,6 +2890,10 @@ export async function downloadVoucherLedger(filter: VoucherLedgerFilter = {}): P
   return requestBlob(
     `/admin/voucher-redemptions${buildQuery({ ...filter, format: "csv" })}`,
     { headers: { Accept: "text/csv" } },
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Legal documents, acceptance evidence and privacy requests (LEGAL_API.md)
 // ---------------------------------------------------------------------------
 

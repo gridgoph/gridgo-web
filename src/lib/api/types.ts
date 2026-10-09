@@ -2671,6 +2671,8 @@ export type VoucherLedgerFilter = {
   /** Inclusive ISO instants. */
   from?: string;
   to?: string;
+};
+
 // ---- Legal documents, consent evidence and privacy requests ----
 // Contract: gridgo-api `docs/LEGAL_API.md` (gridgo-api#202). Rules live in
 // `src/lib/legal.ts` and `src/lib/privacy-requests.ts`.
