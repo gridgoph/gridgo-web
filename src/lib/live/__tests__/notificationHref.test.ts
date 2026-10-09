@@ -16,6 +16,19 @@ function note(partial: Partial<Notification>): Notification {
 }
 
 describe("notificationHref", () => {
+  it("lands legal and privacy notices on each staff tree's own screen", () => {
+    for (const type of ["legal.created", "legal.edited", "legal.published", "legal.deleted"]) {
+      expect(notificationHref("super_admin", note({ type }))).toBe("/admin/legal");
+      expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/legal");
+    }
+    expect(notificationHref("ops_admin", note({ type: "legal.accepted" }))).toBe("/ops/acceptance-log");
+    for (const type of ["privacy.requested", "privacy.updated"]) {
+      expect(notificationHref("super_admin", note({ type }))).toBe("/admin/privacy-requests");
+      expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/privacy-requests");
+      expect(notificationHref("supplier", note({ type }))).toBeNull();
+    }
+  });
+
   it("opens the taken-down listing for the shop", () => {
     expect(
       notificationHref(

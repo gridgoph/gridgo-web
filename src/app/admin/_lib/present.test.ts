@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   presentAuditAction,
+  presentAuditDetail,
   presentLedgerType,
   presentRole,
   presentVerification,
@@ -63,5 +64,20 @@ describe("presentRole / audit", () => {
     expect(presentLedgerType("grant")).toBe("Administrative grant");
     expect(presentAuditAction("credits.grant")).toBe("Granted Pilot Credits");
     expect(presentAuditAction("user.role_update")).not.toMatch(/_/);
+  });
+
+  it("says what a legal publish did and whether people accept again", () => {
+    expect(presentAuditAction("legal.published")).toBe("Published legal document");
+    expect(presentAuditAction("privacy.updated")).toBe("Updated privacy request");
+    expect(
+      presentAuditDetail({ action: "legal.published", detail: { version: 2, material: true } }),
+    ).toMatch(/Version 2, material change/);
+    expect(
+      presentAuditDetail({ action: "legal.published", detail: { version: 3, material: false } }),
+    ).toBe("Version 3, no new acceptance needed");
+    expect(presentAuditDetail({ action: "privacy.updated", detail: { status: "rejected" } })).toBe(
+      "Status: Declined",
+    );
+    expect(presentAuditDetail({ action: "credits.grant", detail: null })).toBeNull();
   });
 });
