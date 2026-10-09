@@ -18,7 +18,8 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Info } from "lucide-react";
+import { ChevronLeft, Info } from "lucide-react";
+import { ChatAvatar } from "@/components/chat/ChatAvatar";
 import { InboxPager, sliceInboxPage } from "@/components/chat/InboxPager";
 import {
   deleteSupportChatThread,
@@ -42,10 +43,19 @@ import type {
   SupportChatThread,
 } from "@/lib/api/types";
 import { ChatAttachButton } from "@/components/chat/ChatAttachButton";
-import { ChatMessage } from "@/components/chat/ChatMessage";
+import { ChatTranscript } from "@/components/chat/ChatTranscript";
 import { ConversationDetails } from "@/components/chat/ConversationDetails";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
+
+/** Two panes from the desktop breakpoint; below it the conversation covers the inbox. */
+const SIDE_BY_SIDE_QUERY = "(min-width: 1024px)";
+
+function sideBySide(): boolean {
+  return typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia(SIDE_BY_SIDE_QUERY).matches
+    : true;
+}
 
 const ROLE_FILTERS = [
   { value: "all", label: "All roles" },
@@ -67,19 +77,30 @@ export function supportChatCounterpart(thread: SupportChatThread): {
   name: string;
   email: string | null;
   role: SupportChatSenderRole;
+  imageUrl: string | null;
 } {
   if (thread.staffPeerUserId && thread.viewerUserId && thread.partyUserId === thread.viewerUserId) {
     return {
       name: thread.staffPeerName || thread.staffPeerEmail || "Desk",
       email: thread.staffPeerEmail ?? null,
       role: thread.staffPeerRole || "ops_admin",
+      imageUrl: thread.staffPeerImageUrl ?? null,
     };
   }
   return {
     name: thread.partyName || thread.partyEmail || "Account",
     email: thread.partyEmail ?? null,
     role: thread.partyRole,
+    imageUrl: thread.partyImageUrl ?? null,
   };
+}
+
+/** User id of the person on the other side of this thread. Staff-to-staff flips to the peer. */
+export function supportChatCounterpartUserId(thread: SupportChatThread): string {
+  if (thread.staffPeerUserId && thread.viewerUserId && thread.partyUserId === thread.viewerUserId) {
+    return thread.staffPeerUserId;
+  }
+  return thread.partyUserId;
 }
 
 function errorCopy(error: unknown): string {
@@ -93,6 +114,7 @@ export function SupportChatDesk() {
   const [threads, setThreads] = useState<SupportChatThread[] | null>(null);
   const [messages, setMessages] = useState<SupportChatMessage[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [threadOpen, setThreadOpen] = useState(false);
   const [role, setRole] = useState<(typeof ROLE_FILTERS)[number]["value"]>("all");
   const [query, setQuery] = useState("");
   const [finding, setFinding] = useState(false);
@@ -326,6 +348,7 @@ export function SupportChatDesk() {
       setConfirmDelete(false);
       setThreads((current) => (current ?? []).filter((row) => row.id !== id));
       setSelectedId((current) => (current === id ? null : current));
+      setThreadOpen(false);
       setMessages([]);
     } catch (err) {
       setError(errorCopy(err));
@@ -348,6 +371,7 @@ export function SupportChatDesk() {
         return [opened.thread, ...rows];
       });
       setSelectedId(opened.thread.id);
+      if (!sideBySide()) setThreadOpen(true);
       setInboxPage(0);
       setFinding(false);
       setPeopleQuery("");
@@ -379,20 +403,28 @@ export function SupportChatDesk() {
           : "lg:grid-cols-[18rem_minmax(0,1fr)]"
       }`}
     >
-      <aside className={`gg-card flex-col gap-3 ${detailsOpen ? "hidden xl:flex" : "flex"}`}>
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <h2 className="text-h3 text-text-primary m-0">Inbox</h2>
-            <p className="text-caption text-text-muted m-0 mt-1">
-              Find a client, shop, rider, or another desk account and write to them.
-            </p>
-          </div>
+      <aside
+        className={`gg-card min-w-0 flex-col gap-3 ${
+          detailsOpen ? "hidden xl:flex" : threadOpen ? "hidden lg:flex" : "flex"
+        }`}
+      >
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-h3 text-text-primary m-0">Inbox</h2>
           <Button
             variant="secondary"
             type="button"
             aria-expanded={finding}
             onClick={() => {
-              setFinding((open) => !open);
+              setFinding((open) => {
+                const next = !open;
+                if (next) {
+                  setDetailsOpen(false);
+                  if (!sideBySide()) setThreadOpen(true);
+                } else if (!sideBySide()) {
+                  setThreadOpen(false);
+                }
+                return next;
+              });
               setPeople(null);
               setPeopleQuery("");
             }}
@@ -400,6 +432,13 @@ export function SupportChatDesk() {
             New conversation
           </Button>
         </div>
+        <Input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search name, email or preview"
+          aria-label="Search conversations"
+        />
+        <div className="min-w-0 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         <ToggleGroup
           value={[role]}
           onValueChange={(values) => {
@@ -409,7 +448,7 @@ export function SupportChatDesk() {
           variant="outline"
           spacing={0}
           aria-label="Filter conversations by role"
-          className="flex flex-wrap gap-1"
+          className="w-max flex-nowrap"
         >
           {ROLE_FILTERS.map((filter) => (
             <ToggleGroupItem key={filter.value} value={filter.value}>
@@ -417,61 +456,8 @@ export function SupportChatDesk() {
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
-        {finding ? (
-          <>
-            <Input
-              value={peopleQuery}
-              onChange={(event) => setPeopleQuery(event.target.value)}
-              placeholder="Search name or email"
-              aria-label="Find a person"
-              autoFocus
-            />
-            <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="People">
-              {peopleLoading && !people ? (
-                <p className="text-body text-text-muted m-0 px-1 py-3">Looking up people…</p>
-              ) : !people?.length ? (
-                <EmptyState
-                  title="No matching accounts"
-                  body="Try a name or email. Operations and admin can write to each other from here too."
-                />
-              ) : (
-                sliceInboxPage(people, peoplePage).map((person) => (
-                  <button
-                    key={`${person.role}:${person.userId}`}
-                    type="button"
-                    aria-label={`${person.name}, ${roleLabel(person.role)}`}
-                    onClick={() => void startWith(person)}
-                    className="mb-1 flex w-full flex-col items-start gap-0.5 rounded-[var(--radius-field)] px-3 py-2 text-left hover:bg-overlay-hover"
-                  >
-                    <span className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
-                      {person.name}
-                    </span>
-                    <span className="text-caption text-text-muted">
-                      {roleLabel(person.role)}
-                      {person.email ? ` · ${person.email}` : ""}
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-            {people?.length ? (
-              <InboxPager
-                page={peoplePage}
-                total={people.length}
-                onPageChange={setPeoplePage}
-                label="People pages"
-              />
-            ) : null}
-          </>
-        ) : (
-          <>
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search name, email or preview"
-              aria-label="Search conversations"
-            />
-            <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="Conversations">
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="Conversations">
               {loading && !threads ? (
                 <p className="text-body text-text-muted m-0 px-1 py-3">Loading conversations…</p>
               ) : !threads?.length ? (
@@ -488,61 +474,163 @@ export function SupportChatDesk() {
                       key={thread.id}
                       type="button"
                       role="listitem"
-                      onClick={() => setSelectedId(thread.id)}
+                      onClick={() => {
+                        setSelectedId(thread.id);
+                        setFinding(false);
+                        setPeople(null);
+                        setPeopleQuery("");
+                        if (!sideBySide()) setThreadOpen(true);
+                      }}
                       className={cn(
-                        "mb-1 flex w-full flex-col items-start gap-0.5 rounded-[var(--radius-field)] px-3 py-2 text-left",
+                        "mb-1 flex w-full items-center gap-2 rounded-[var(--radius-field)] px-3 py-2 text-left",
                         active ? "bg-muted" : "hover:bg-overlay-hover",
                       )}
                     >
-                      <span className="flex w-full items-center justify-between gap-2">
-                        <span className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
-                          {person.name}
+                      <span data-testid="inbox-avatar">
+                        <ChatAvatar name={person.name} imageUrl={person.imageUrl} />
+                      </span>
+                      <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+                        <span className="flex w-full items-center justify-between gap-2">
+                          <span className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+                            {person.name}
+                          </span>
+                          {thread.unreadCount > 0 ? (
+                            <span className="text-caption text-text-primary">{thread.unreadCount}</span>
+                          ) : null}
                         </span>
-                        {thread.unreadCount > 0 ? (
-                          <span className="text-caption text-text-primary">{thread.unreadCount}</span>
+                        <span className="text-caption text-text-muted">
+                          {roleLabel(person.role)}
+                          {thread.lastMessageAt ? ` · ${formatDateTime(thread.lastMessageAt)}` : ""}
+                        </span>
+                        {thread.lastMessagePreview ? (
+                          <span className="text-caption text-text-secondary line-clamp-2">
+                            {thread.lastMessagePreview}
+                          </span>
                         ) : null}
                       </span>
-                      <span className="text-caption text-text-muted">
-                        {roleLabel(person.role)}
-                        {thread.lastMessageAt ? ` · ${formatDateTime(thread.lastMessageAt)}` : ""}
-                      </span>
-                      {thread.lastMessagePreview ? (
-                        <span className="text-caption text-text-secondary line-clamp-2">
-                          {thread.lastMessagePreview}
-                        </span>
-                      ) : null}
                     </button>
                   );
                 })
               )}
             </div>
-            {threads?.length ? (
-              <InboxPager page={inboxPage} total={threads.length} onPageChange={setInboxPage} />
-            ) : null}
-          </>
-        )}
+        {threads?.length ? (
+          <InboxPager page={inboxPage} total={threads.length} onPageChange={setInboxPage} />
+        ) : null}
       </aside>
 
-      <section className={`gg-card flex min-h-[28rem] min-w-0 flex-col gap-3 ${detailsOpen ? "hidden xl:flex" : "flex"}`}>
-        {!selected || !selectedPerson ? (
+      <section
+        className={`gg-card min-h-[28rem] min-w-0 flex-col gap-3 ${
+          detailsOpen ? "hidden xl:flex" : threadOpen ? "flex" : "hidden lg:flex"
+        }`}
+      >
+        {finding ? (
+          <div className="flex min-h-0 flex-1 flex-col gap-3">
+            <div className="flex items-center gap-2 border-b border-border pb-3">
+              {threadOpen ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="icon"
+                  className="lg:hidden"
+                  aria-label="Back to inbox"
+                  onClick={() => {
+                    setFinding(false);
+                    setPeople(null);
+                    setPeopleQuery("");
+                    setThreadOpen(false);
+                  }}
+                >
+                  <ChevronLeft />
+                </Button>
+              ) : null}
+              <span className="text-body text-text-muted shrink-0">To:</span>
+              <Input
+                value={peopleQuery}
+                onChange={(event) => setPeopleQuery(event.target.value)}
+                aria-label="Find a person"
+                autoFocus
+                className="h-11 border-0 bg-transparent px-0"
+              />
+            </div>
+            <h3 className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+              Your contacts
+            </h3>
+            <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="People">
+              {peopleLoading && !people ? (
+                <p className="text-body text-text-muted m-0 px-1 py-3">Looking up people…</p>
+              ) : !people?.length ? (
+                <EmptyState
+                  title="No matching accounts"
+                  body="Try a name or email. Operations and admin can write to each other from here too."
+                />
+              ) : (
+                sliceInboxPage(people, peoplePage).map((person) => (
+                  <button
+                    key={`${person.role}:${person.userId}`}
+                    type="button"
+                    aria-label={`${person.name}, ${roleLabel(person.role)}`}
+                    onClick={() => void startWith(person)}
+                    className="mb-1 flex w-full items-center gap-2 rounded-[var(--radius-field)] px-3 py-2 text-left hover:bg-overlay-hover"
+                  >
+                    <ChatAvatar name={person.name} imageUrl={person.imageUrl} />
+                    <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+                      <span className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+                        {person.name}
+                      </span>
+                      <span className="text-caption text-text-muted">
+                        {roleLabel(person.role)}
+                        {person.email ? ` · ${person.email}` : ""}
+                      </span>
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+            {people?.length ? (
+              <InboxPager
+                page={peoplePage}
+                total={people.length}
+                onPageChange={setPeoplePage}
+                label="People pages"
+              />
+            ) : null}
+          </div>
+        ) : !selected || !selectedPerson ? (
           <EmptyState
             title="Pick a conversation"
             body="Find someone in New conversation, or open a thread that already has messages."
           />
         ) : (
           <>
-            <div className="flex items-start justify-between gap-3">
-              <button
-                type="button"
-                className="min-w-0 rounded-[var(--radius-field)] text-left hover:bg-overlay-hover"
-                onClick={() => setDetailsOpen(true)}
-              >
-                <h2 className="text-h3 text-text-primary m-0">{selectedPerson.name}</h2>
-                <p className="text-caption text-text-muted m-0 mt-1">
-                  {roleLabel(selectedPerson.role)}
-                  {selectedPerson.email ? ` · ${selectedPerson.email}` : ""}
-                </p>
-              </button>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                {threadOpen ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="icon"
+                    className="lg:hidden"
+                    aria-label="Back to inbox"
+                    onClick={() => setThreadOpen(false)}
+                  >
+                    <ChevronLeft />
+                  </Button>
+                ) : null}
+                <button
+                  type="button"
+                  className="flex min-w-0 items-center gap-2 rounded-[var(--radius-field)] text-left hover:bg-overlay-hover"
+                  onClick={() => setDetailsOpen(true)}
+                >
+                  <ChatAvatar name={selectedPerson.name} imageUrl={selectedPerson.imageUrl} />
+                  <span className="min-w-0">
+                    <h2 className="text-h3 text-text-primary m-0">{selectedPerson.name}</h2>
+                    <p className="text-caption text-text-muted m-0 mt-1">
+                      {roleLabel(selectedPerson.role)}
+                      {selectedPerson.email ? ` · ${selectedPerson.email}` : ""}
+                    </p>
+                  </span>
+                </button>
+              </div>
               <Button
                 type="button"
                 variant="secondary"
@@ -558,13 +646,11 @@ export function SupportChatDesk() {
               {messages.length === 0 ? (
                 <p className="text-body text-text-muted m-0">No messages in this thread yet.</p>
               ) : (
-                messages.map((message) => (
-                  <ChatMessage
-                    key={message.id}
-                    message={message}
-                    counterpartLabel={message.senderName || roleLabel(selectedPerson.role)}
-                  />
-                ))
+                <ChatTranscript
+                  messages={messages}
+                  party={{ kind: "person", userId: supportChatCounterpartUserId(selected) }}
+                  otherName={(message) => message.senderName || roleLabel(selectedPerson.role)}
+                />
               )}
               <div ref={endRef} />
             </div>

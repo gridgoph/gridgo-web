@@ -8,6 +8,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   BellRing,
+  ChevronDown,
   ChevronLeft,
   CircleCheck,
   CircleDot,
@@ -66,6 +67,11 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonDetail } from "@/components/ui/loading";
@@ -189,7 +195,9 @@ type SectionId =
  *
  * On the right, the whole specification, always visible and never behind a
  * tab, because the one thing a quality check needs is to read the spec and
- * tick the boxes at the same time.
+ * tick the boxes at the same time. Below that desktop width the same
+ * specification is the order file: collapsed, and above Payment, so a phone
+ * opens on the steps.
  *
  * Operations and Super Admin mount the same workspace so an inbox slip opens
  * a screen that account is allowed to use.
@@ -231,6 +239,8 @@ export function OrderWorkspace({
   const fileKey = useRef<{ signature: string; key: string } | null>(null);
   // The mount point says which tree this is; links stay inside it.
   const tree = queueHref.startsWith("/admin") ? "admin" : "ops";
+  // Below the two-column breakpoint the order file stacks above the steps.
+  const phone = usePhoneLayout();
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -580,11 +590,13 @@ export function OrderWorkspace({
 
       {/*
         Steps take the width they need and the rail is fixed, because the rail's
-        job is to be read at a glance while the left side is being worked. Below
-        the breakpoint they stack, spec first -- on a narrow screen you read
-        before you act.
+        job is to be read at a glance while the left side is being worked.
+        On a phone the same rail is one collapsed order file above Payment.
       */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+        {phone ? (
+          <OrderFile order={order} basket={basket} payoutsHref={payoutsHref} />
+        ) : null}
         <div className="flex flex-col gap-3">
           <Accordion
             multiple
@@ -816,7 +828,9 @@ export function OrderWorkspace({
           ) : null}
         </div>
 
-        <SpecRail order={order} basket={basket} payoutsHref={payoutsHref} />
+        {phone ? null : (
+          <SpecRail order={order} basket={basket} payoutsHref={payoutsHref} />
+        )}
       </div>
 
       <ResolveEscalationDialog
@@ -1670,6 +1684,71 @@ function DeliveryStep({ order, hint }: { order: Order; hint?: string }) {
 // ---------------------------------------------------------------------------
 // The rail
 // ---------------------------------------------------------------------------
+
+/** The workspace is two columns from here up; below it, one column. */
+const PHONE_LAYOUT_QUERY = "(max-width: 1023px)";
+
+function usePhoneLayout(): boolean {
+  const [phone, setPhone] = useState(false);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia(PHONE_LAYOUT_QUERY);
+    const apply = () => setPhone(media.matches);
+    apply();
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, []);
+  return phone;
+}
+
+/** Closed line for the phone's order file: what is being made, without the plates. */
+function orderFileSummary(order: Order): string {
+  const made = [describeQuantity(order.quantity, order.unit), order.size, order.material]
+    .filter((part) => part && part !== "—")
+    .join(", ");
+  return made || "Specification, artwork, and delivery";
+}
+
+/**
+ * The specification, collapsed, for a phone. Opening it is the same rail the
+ * desktop keeps beside the steps.
+ */
+function OrderFile({
+  order,
+  basket,
+  payoutsHref,
+}: {
+  order: Order;
+  basket: Basket | null;
+  payoutsHref?: string;
+}) {
+  return (
+    <Collapsible defaultOpen={false} className="gg-card-flush">
+      <CollapsibleTrigger
+        className={cn(
+          "group flex min-h-11 w-full items-start justify-between gap-3 px-4 py-3 text-left",
+          "hover:bg-overlay-hover focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-action-yellow",
+        )}
+      >
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="text-h3 text-text-primary">Order file</span>
+          <span className="text-body text-text-secondary">{orderFileSummary(order)}</span>
+        </span>
+        <ChevronDown
+          size={16}
+          strokeWidth={2}
+          aria-hidden
+          className="mt-1 shrink-0 text-text-muted transition-transform duration-200 motion-reduce:transition-none group-data-[panel-open]:rotate-180"
+        />
+      </CollapsibleTrigger>
+      <CollapsibleContent className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
+        <div className="px-4 pb-4">
+          <SpecRail order={order} basket={basket} payoutsHref={payoutsHref} />
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 
 function SpecRail({
   order,

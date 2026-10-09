@@ -38,6 +38,8 @@ import {
   isHunting,
   kindsWithListings,
   matchesStanding,
+  orderByAttention,
+  standingChoices,
   standingCounts,
   toListQuery,
   type BoardQuery,
@@ -151,7 +153,25 @@ export default function SupplierCataloguesPage() {
     [listings, services, shopApproved, readiness],
   );
   const counts = standingCounts(standings);
-  const shown = listings.filter((_, index) => matchesStanding(standings[index], query.standing));
+  const shown = orderByAttention(
+    listings
+      .map((listing, index) => ({ listing, standing: standings[index]! }))
+      .filter((row) => matchesStanding(row.standing, query.standing)),
+    (row) => row.standing,
+  ).map((row) => row.listing);
+
+  const onListingSaved = useCallback(async (saved: Listing) => {
+    setListings((current) => current.map((row) => (row.id === saved.id ? saved : row)));
+    setKindSource((current) => current.map((row) => (row.id === saved.id ? saved : row)));
+    // Hiding a matchable listing does not change `boardStanding` until readiness
+    // agrees it is off the board. Flip that locally, then read the server.
+    setReadiness((current) => reflectHidden(current, saved));
+    try {
+      setReadiness(normalizeListingReadiness(await getSupplierReadiness()));
+    } catch {
+      /* The saved listing stays; the next load rereads readiness. */
+    }
+  }, []);
   const cut = query.standing !== "all" || query.kind !== "all";
   const empty = !loading && shown.length === 0;
 
@@ -334,6 +354,7 @@ export default function SupplierCataloguesPage() {
               services={services}
               shopApproved={shopApproved}
               readiness={readiness?.get(listing.id) ?? null}
+              onSaved={onListingSaved}
             />
           ))}
         </div>
@@ -348,6 +369,7 @@ export default function SupplierCataloguesPage() {
                 shopApproved={shopApproved}
                 readiness={readiness?.get(listing.id) ?? null}
                 layout="row"
+                onSaved={onListingSaved}
               />
             </li>
           ))}
@@ -387,8 +409,9 @@ async function readWholeBoard(
 }
 
 /**
- * The six standings with how many listings each holds. Toggles from tablet up;
- * a phone gets one select so the filter never fills the first screen.
+ * Standings that currently have listings, plus All and the one selected.
+ * A zero count is left out of the row and the phone select. Toggles from
+ * tablet up; a phone gets one select so the filter never fills the first screen.
  */
 function StandingFilterBar({
   value,
@@ -399,8 +422,10 @@ function StandingFilterBar({
   counts: Record<StandingFilter, number> | null;
   onChange: (value: StandingFilter) => void;
 }) {
+  const options = standingChoices(counts, value);
   const label = (option: (typeof STANDING_OPTIONS)[number]) =>
     counts ? `${option.label} · ${counts[option.value]}` : option.label;
+  const selected = options.find((option) => option.value === value) ?? options[0];
   return (
     <>
       <ToggleGroup
@@ -414,7 +439,7 @@ function StandingFilterBar({
         aria-label="Show listings by status"
         className="hidden flex-wrap gap-1 md:flex"
       >
-        {STANDING_OPTIONS.map((option) => (
+        {options.map((option) => (
           <ToggleGroupItem key={option.value} value={option.value}>
             {label(option)}
           </ToggleGroupItem>
@@ -429,12 +454,12 @@ function StandingFilterBar({
         >
           <SelectTrigger className="w-full" aria-label="Show listings by status">
             <SelectValue>
-              Status: {label(STANDING_OPTIONS.find((option) => option.value === value)!)}
+              Status: {selected ? label(selected) : "All"}
             </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              {STANDING_OPTIONS.map((option) => (
+              {options.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   {label(option)}
                 </SelectItem>
@@ -445,4 +470,35 @@ function StandingFilterBar({
       </div>
     </>
   );
+}
+
+/**
+ * A shop hide is not a review. Until readiness is reread, a listing just taken
+ * off the board must not keep reading as Live because matching last saw it ready.
+ * Putting one back waits for that reread. A take-down is left untouched.
+ */
+function reflectHidden(
+  readiness: Map<string, ListingReadiness> | null,
+  saved: Listing,
+): Map<string, ListingReadiness> | null {
+  if (!readiness || saved.onTheBoard || saved.suspendReason) return readiness;
+  const next = new Map(readiness);
+  const prev = next.get(saved.id);
+  const missing = prev?.missing ?? [];
+  if (missing.some((step) => step.code === "item_inactive")) {
+    next.set(saved.id, { ready: false, missing });
+    return next;
+  }
+  next.set(saved.id, {
+    ready: false,
+    missing: [
+      {
+        code: "item_inactive",
+        message: "This listing is hidden.",
+        action: "activate_listing",
+      },
+      ...missing,
+    ],
+  });
+  return next;
 }

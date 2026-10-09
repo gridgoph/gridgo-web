@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import type { Claim, Issue, Order } from "@/lib/api/types";
 
-import { filterDispatchOrders, presentLocation, LOCATION_STALE_MS } from "../dispatch";
+import {
+  filterDispatchOrders,
+  presentLocation,
+  presentRouteAction,
+  LOCATION_STALE_MS,
+} from "../dispatch";
 import {
   buildOverviewBuckets,
   isSlaAtRisk,
@@ -221,6 +226,57 @@ describe("dispatch location freshness", () => {
       order({ id: "c", state: "production" }),
     ]);
     expect(list.map((o) => o.id)).toEqual(["b", "a"]);
+  });
+
+  it("enables Show route when coordinates exist and disables it with the location label when they do not", () => {
+    const ping = {
+      id: "p",
+      orderId: "o",
+      riderId: "rider_1",
+      lat: 7.07,
+      lng: 125.61,
+      accuracy: 12,
+      at: new Date(now - LOCATION_STALE_MS - 1000).toISOString(),
+    };
+    const stale = presentLocation(ping, "out_for_delivery", now);
+    expect(stale.freshness).toBe("stale");
+    expect(presentRouteAction(stale, "rider_1")).toEqual({
+      enabled: true,
+      href: "/ops/riders?rider=rider_1",
+      reason: null,
+    });
+
+    const live = presentLocation(
+      { ...ping, at: new Date(now - 30_000).toISOString() },
+      "picked_up",
+      now,
+    );
+    expect(presentRouteAction(live, "rider_1").enabled).toBe(true);
+
+    expect(presentRouteAction(presentLocation(null, "ready_for_dispatch", now), null)).toEqual({
+      enabled: false,
+      href: null,
+      reason: "No rider yet",
+    });
+    expect(
+      presentRouteAction(presentLocation(null, "rider_assigned", now), "rider_1"),
+    ).toEqual({
+      enabled: false,
+      href: null,
+      reason: "Tracking starts at pickup",
+    });
+    expect(presentRouteAction(presentLocation(null, "picked_up", now), "rider_1")).toEqual({
+      enabled: false,
+      href: null,
+      reason: "No location yet",
+    });
+    expect(
+      presentRouteAction(presentLocation(null, "awaiting_collection", now), null),
+    ).toEqual({
+      enabled: false,
+      href: null,
+      reason: "No location",
+    });
   });
 
   it("keeps a collected order on the board until the counter releases it", () => {

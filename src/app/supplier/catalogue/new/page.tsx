@@ -169,6 +169,14 @@ export default function NewListingPage() {
     );
   }
 
+  const missingField = firstMissingField({
+    severalCategories: targets.length > 1,
+    categoryCode,
+    subcategoryCode,
+    name,
+    printerMaxWidthFeet,
+  });
+
   return (
     <div className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-10">
       <div className="flex flex-col gap-5">
@@ -333,20 +341,83 @@ export default function NewListingPage() {
 
         {saveError ? <p className="text-body text-destructive m-0">{saveError}</p> : null}
 
-        <Button
-          variant="primary"
-          disabled={
-            !subcategoryCode ||
-            !name.trim() ||
-            saving ||
-            (needsPrinterMaxWidth(subcategoryCode) &&
-              parsePrinterMaxWidthFeet(printerMaxWidthFeet) == null)
-          }
-          onClick={() => void create()}
-        >
-          {saving ? "Opening…" : "Open this listing"}
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant="primary"
+            disabled={missingField != null || saving}
+            aria-describedby={missingField ? "open-listing-missing" : undefined}
+            onClick={() => void create()}
+          >
+            {saving ? "Opening…" : "Open this listing"}
+          </Button>
+          {missingField ? (
+            <p id="open-listing-missing" className="text-caption text-text-secondary m-0">
+              Missing: {missingField}
+            </p>
+          ) : null}
+        </div>
       </div>
+
+      <section className="border-outline flex flex-col gap-3 border-t pt-6 lg:col-span-2">
+        <div className="flex flex-col gap-1">
+          <p className="text-overline text-text-muted m-0 uppercase">03</p>
+          <h3
+            className="text-body-lg text-text-primary m-0"
+            style={{ fontFamily: "var(--font-bold)" }}
+          >
+            After this listing opens
+          </h3>
+          <p className="text-body text-text-secondary m-0 max-w-prose">
+            Photos, price, and review come on the editor. This page only opens the listing.
+          </p>
+        </div>
+        <ul className="m-0 grid list-none gap-3 p-0 sm:grid-cols-3">
+          <li className="rounded-card border border-outline bg-surface p-4">
+            <p className="text-body m-0" style={{ fontFamily: "var(--font-medium)" }}>
+              Photos
+            </p>
+            <p className="text-caption text-text-secondary m-0 mt-1">
+              The samples clients see. You add them on the editor.
+            </p>
+          </li>
+          <li className="rounded-card border border-outline bg-surface p-4">
+            <p className="text-body m-0" style={{ fontFamily: "var(--font-medium)" }}>
+              Price
+            </p>
+            <p className="text-caption text-text-secondary m-0 mt-1">
+              What you charge. You set it on the editor.
+            </p>
+          </li>
+          <li className="rounded-card border border-outline bg-surface p-4">
+            <p className="text-body m-0" style={{ fontFamily: "var(--font-medium)" }}>
+              Review
+            </p>
+            <p className="text-caption text-text-secondary m-0 mt-1">
+              You check the listing there, on the editor.
+            </p>
+          </li>
+        </ul>
+      </section>
     </div>
   );
+}
+
+/** The first empty field that keeps Open this listing disabled, in form order. */
+function firstMissingField(input: {
+  severalCategories: boolean;
+  categoryCode: string | null;
+  subcategoryCode: string | null;
+  name: string;
+  printerMaxWidthFeet: number | null;
+}): string | null {
+  if (input.severalCategories && !input.categoryCode) return "Category";
+  if (!input.subcategoryCode) return "Kind of work";
+  if (
+    needsPrinterMaxWidth(input.subcategoryCode) &&
+    parsePrinterMaxWidthFeet(input.printerMaxWidthFeet) == null
+  ) {
+    return "Max printer width";
+  }
+  if (!input.name.trim()) return "What clients will call it";
+  return null;
 }

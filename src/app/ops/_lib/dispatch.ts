@@ -150,3 +150,38 @@ export function locationTone(
 export function formatCoords(lat: number, lng: number): string {
   return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 }
+
+export type RouteAction = {
+  /** Opens the rider on the map. A stale ping still counts — it has coordinates. */
+  enabled: boolean;
+  href: string | null;
+  /**
+   * Shown under a disabled control and used as its accessible description.
+   * Same wording as the location label: "No rider yet", "Tracking starts at pickup",
+   * "No location yet", or "No location".
+   */
+  reason: string | null;
+};
+
+/**
+ * Route control for one dispatch row.
+ * Coordinates enable it, including a stale ping. Missing coordinates leave it
+ * disabled and keep the location label as the reason.
+ */
+export function presentRouteAction(
+  location: Pick<LocationView, "lat" | "lng" | "label">,
+  riderId: string | null | undefined,
+): RouteAction {
+  if (location.lat != null && location.lng != null && riderId) {
+    return {
+      enabled: true,
+      href: `/ops/riders?rider=${encodeURIComponent(riderId)}`,
+      reason: null,
+    };
+  }
+  return {
+    enabled: false,
+    href: null,
+    reason: location.label,
+  };
+}

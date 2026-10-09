@@ -2,12 +2,13 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SupportChatDesk } from "@/components/chat/SupportChatDesk";
-import { formatDateTime } from "@/lib/format";
+import * as apiClient from "@/lib/api/client";
+import { formatDate, formatDateTime } from "@/lib/format";
 
 vi.stubGlobal("React", React);
 
@@ -60,6 +61,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  vi.spyOn(apiClient, "getFileDownloadUrl").mockResolvedValue("https://files.test/photo.jpg");
   listSupportChatThreads.mockReset();
   getSupportChatThread.mockReset();
   replySupportChat.mockReset();
@@ -119,6 +121,38 @@ describe("SupportChatDesk", () => {
     expect((await screen.findAllByText("The colours look off.")).length).toBeGreaterThan(0);
     expect(screen.getByLabelText("Inbox pages")).toBeTruthy();
     expect(screen.getByText("Page 1 of 1")).toBeTruthy();
+    expect(screen.queryByText(/Find a client, shop, rider/)).toBeNull();
+    expect(screen.getAllByTestId("inbox-avatar").length).toBeGreaterThan(0);
+    const search = screen.getByLabelText("Search conversations");
+    const filters = screen.getByRole("group", { name: "Filter conversations by role" });
+    expect(search.compareDocumentPosition(filters) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(filters.parentElement).toHaveClass("overflow-x-auto", "[scrollbar-width:none]");
+    expect(filters).toHaveClass("flex-nowrap");
+  });
+
+  it("opens the conversation over the inbox on a narrow screen", async () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    })) as typeof window.matchMedia;
+    try {
+      render(<SupportChatDesk />);
+      const row = await screen.findByRole("listitem");
+      expect(screen.queryByRole("button", { name: "Back to inbox" })).toBeNull();
+      fireEvent.click(row);
+      expect(await screen.findByRole("button", { name: "Back to inbox" })).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Back to inbox" }));
+      expect(screen.queryByRole("button", { name: "Back to inbox" })).toBeNull();
+    } finally {
+      window.matchMedia = original;
+    }
   });
 
   it("sends a reply", async () => {
@@ -210,6 +244,9 @@ describe("SupportChatDesk", () => {
     expect(screen.getByRole("button", { name: "Staff" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "New conversation" }));
     expect(await screen.findByLabelText("Find a person")).toBeTruthy();
+    expect(screen.getByText("To:")).toBeTruthy();
+    expect(screen.getByText("Your contacts")).toBeTruthy();
+    expect(screen.getByLabelText("Search conversations")).toBeTruthy();
     await waitFor(() => expect(searchSupportChatPeople).toHaveBeenCalled());
     fireEvent.click(await screen.findByRole("button", { name: /Super Desk, Admin/ }));
     await waitFor(() => {
@@ -237,7 +274,7 @@ describe("SupportChatDesk", () => {
     expect(screen.getByLabelText("People pages")).toBeTruthy();
     expect(screen.getByText("Page 1 of 2")).toBeTruthy();
     expect(screen.queryByText("Person 8")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    fireEvent.click(within(screen.getByLabelText("People pages")).getByRole("button", { name: "Next page" }));
     expect(await screen.findByText("Person 8")).toBeTruthy();
     expect(screen.queryByText("Person 0")).toBeNull();
   });
@@ -298,4 +335,129 @@ describe("SupportChatDesk", () => {
       expect(deleteSupportChatThread).toHaveBeenCalledWith("thread-1");
     });
   });
+
+  it("places the incoming bubble on the left and the outgoing bubble on the right", async () => {
+    getSupportChatThread.mockResolvedValue({
+      thread: { ...thread, unreadCount: 0 },
+      messages: [
+        deskLine({ id: "in", body: "The colours look off.", createdAt: "2026-09-20T03:00:00.000Z" }),
+        deskLine({
+          id: "out",
+          body: "Send a daylight photo.",
+          mine: true,
+          createdAt: "2026-09-20T03:05:00.000Z",
+        }),
+      ],
+    });
+    render(<SupportChatDesk />);
+    const runs = await screen.findAllByTestId("chat-run");
+    expect(runs).toHaveLength(2);
+    expect(runs[0]).toHaveAttribute("data-side", "incoming");
+    expect(runs[0]).toHaveClass("justify-start");
+    expect(runs[0]).toHaveTextContent("The colours look off.");
+    expect(runs[1]).toHaveAttribute("data-side", "outgoing");
+    expect(runs[1]).toHaveClass("justify-end");
+    expect(within(runs[1]!).getByTestId("chat-bubble")).toHaveClass("bg-[var(--color-action-yellow)]");
+    expect(runs[1]).toHaveTextContent("Send a daylight photo.");
+    expect(within(runs[1]!).queryByTestId("chat-avatar")).toBeNull();
+  });
+
+  it("shows one avatar and one time for two incoming messages in a row", async () => {
+    getSupportChatThread.mockResolvedValue({
+      thread: { ...thread, unreadCount: 0 },
+      messages: [
+        deskLine({
+          id: "a",
+          body: "The colours look off.",
+          createdAt: "2026-09-20T03:00:00.000Z",
+          senderImageUrl: "https://img.clerk.com/ana.jpg",
+        }),
+        deskLine({
+          id: "b",
+          body: "Can you reprint it?",
+          createdAt: "2026-09-20T03:05:00.000Z",
+          senderImageUrl: "https://img.clerk.com/ana.jpg",
+        }),
+      ],
+    });
+    render(<SupportChatDesk />);
+    const run = await screen.findByTestId("chat-run");
+    expect(run).toHaveAttribute("data-side", "incoming");
+    expect(within(run).getAllByTestId("chat-avatar")).toHaveLength(1);
+    expect(within(run).getAllByTestId("chat-run-time")).toHaveLength(1);
+    expect(within(run).getAllByTestId("chat-bubble")).toHaveLength(2);
+    expect(within(run).getByText("The colours look off.")).toBeTruthy();
+    expect(within(run).getByText("Can you reprint it?")).toBeTruthy();
+  });
+
+  it("renders a photo in the bubble", async () => {
+    getSupportChatThread.mockResolvedValue({
+      thread: { ...thread, unreadCount: 0 },
+      messages: [
+        deskLine({
+          id: "photo",
+          body: "",
+          createdAt: "2026-09-20T03:00:00.000Z",
+          attachments: [{ fileId: "file_photo", originalFilename: "proof.jpg" }],
+        }),
+      ],
+    });
+    render(<SupportChatDesk />);
+    const run = await screen.findByTestId("chat-run");
+    expect(await within(run).findByRole("img", { name: "proof.jpg" })).toBeTruthy();
+  });
+
+  it("shows a date chip when a new day starts", async () => {
+    const today = new Date();
+    today.setHours(15, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    getSupportChatThread.mockResolvedValue({
+      thread: { ...thread, unreadCount: 0 },
+      messages: [
+        deskLine({ id: "y", body: "Noted yesterday.", createdAt: yesterday.toISOString() }),
+        deskLine({
+          id: "t",
+          body: "Noted today.",
+          mine: true,
+          createdAt: today.toISOString(),
+        }),
+      ],
+    });
+    render(<SupportChatDesk />);
+    const chips = await screen.findAllByTestId("chat-day");
+    expect(chips.map((chip) => chip.textContent)).toEqual([
+      formatDate(yesterday.toISOString()),
+      "Today",
+    ]);
+  });
 });
+
+function deskLine({
+  id,
+  body = "",
+  mine = false,
+  createdAt,
+  senderImageUrl,
+  attachments,
+}: {
+  id: string;
+  body?: string;
+  mine?: boolean;
+  createdAt: string;
+  senderImageUrl?: string;
+  attachments?: { fileId: string; originalFilename?: string }[];
+}) {
+  return {
+    id,
+    threadId: thread.id,
+    senderUserId: mine ? "user_ops" : "user_client",
+    senderRole: mine ? ("ops_admin" as const) : ("client" as const),
+    senderName: mine ? "Ops" : "Ana Client",
+    senderImageUrl,
+    body,
+    createdAt,
+    mine,
+    attachments,
+  };
+}
