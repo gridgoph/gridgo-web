@@ -63,6 +63,7 @@ export type NavIconKey =
   | "hub"
   | "staff"
   | "listing-reviews"
+  | "vouchers"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -431,6 +432,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          id: "ops-vouchers",
+          href: "/ops/vouchers",
+          label: "Vouchers",
+          title: "Vouchers",
+          icon: "vouchers",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "ops-claims",
           href: "/ops/claims",
           label: "Claims & holds",
@@ -601,6 +611,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Finance",
           title: "Finance",
           icon: "finance",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-vouchers",
+          href: "/admin/vouchers",
+          label: "Vouchers",
+          title: "Vouchers",
+          icon: "vouchers",
           ready: true,
           placeholderBody: "",
         },
@@ -801,6 +820,7 @@ export function contextTitleForPath(
     return "Refund case";
   }
   if (pathname.startsWith("/admin/supplier-products/")) return "Supplier product";
+  if (pathname.startsWith("/admin/vouchers/")) return "Voucher campaign";
   if (/^\/(ops|admin)\/organizations\/[^/]+\/statement$/.test(pathname)) {
     return "Organization statement";
   }

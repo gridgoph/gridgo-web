@@ -225,3 +225,11 @@ it("opens packing-photo notifications in the staff member's own order workspace"
   expect(notificationHref("ops_admin", row)).toBe("/ops/orders/packed_job");
   expect(notificationHref("super_admin", row)).toBe("/admin/orders/packed_job");
 });
+
+it("opens voucher activity on the Super Admin log and the Operations lookup", () => {
+  for (const type of ["voucher_issued", "voucher_redeemed", "voucher_expiry_24h"]) {
+    expect(notificationHref("super_admin", note({ type }))).toBe("/admin/vouchers?tab=activity");
+    expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/vouchers");
+    expect(notificationHref("supplier", note({ type }))).toBeNull();
+  }
+});

@@ -14,6 +14,15 @@ import { withRequestDeadline } from "@/lib/api/requestDeadline";
 
 import type {
   AccountDeletionRequest,
+  Voucher,
+  VoucherCampaign,
+  VoucherCampaignInput,
+  VoucherCampaignStatus,
+  VoucherIssueRecipient,
+  VoucherIssueReport,
+  VoucherLedgerFilter,
+  VoucherLedgerPage,
+  VoucherTab,
   Announcement,
   HubCodeMismatch,
   HubHandoutLog,
@@ -2662,6 +2671,8 @@ export async function settleRefund(
     workStopped: true;
     shopAgreement: string;
     deliveryEvidence: string;
+    /** Required on a voucher order: `false` gives the client the voucher back. */
+    clientCaused?: boolean;
   },
   key: string,
 ): Promise<RefundRequest> {
@@ -2755,4 +2766,123 @@ export function listAccountDeletionRequests(status: 'pending' | 'done', offset =
 }
 export function completeAccountDeletionRequest(id: string) {
   return request<{ request: AccountDeletionRequest }>(`/ops/account-deletion-requests/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ status: 'done', confirmed: true }) });
+}
+
+// ---------------------------------------------------------------------------
+// GRIDGO-funded vouchers (gridgo-api#204, docs/VOUCHERS_API.md)
+// ---------------------------------------------------------------------------
+
+/** Super Admin. Every campaign, newest last (the API's order). */
+export async function listVoucherCampaigns(): Promise<VoucherCampaign[]> {
+  const result = await request<{ campaigns: VoucherCampaign[] }>("/admin/voucher-campaigns");
+  return result.campaigns ?? [];
+}
+
+export async function getVoucherCampaign(id: string): Promise<VoucherCampaign> {
+  const result = await request<{ campaign: VoucherCampaign }>(
+    `/admin/voucher-campaigns/${encodeURIComponent(id)}`,
+  );
+  return result.campaign;
+}
+
+/** Super Admin. Always starts as a draft. `409 voucher_code_exists`. */
+export async function createVoucherCampaign(
+  input: VoucherCampaignInput,
+): Promise<VoucherCampaign> {
+  const result = await request<{ campaign: VoucherCampaign }>("/admin/voucher-campaigns", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.campaign;
+}
+
+/** Super Admin. Draft terms only: `409 voucher_campaign_immutable` once launched or issued. */
+export async function updateVoucherCampaign(
+  id: string,
+  input: Partial<VoucherCampaignInput>,
+): Promise<VoucherCampaign> {
+  const result = await request<{ campaign: VoucherCampaign }>(
+    `/admin/voucher-campaigns/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return result.campaign;
+}
+
+/** Super Admin. An unissued draft only. */
+export async function deleteVoucherCampaign(id: string): Promise<void> {
+  await request<{ ok: true }>(`/admin/voucher-campaigns/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+/** Super Admin. draft → active/ended; active → paused/ended; paused → active/ended. */
+export async function setVoucherCampaignStatus(
+  id: string,
+  status: Exclude<VoucherCampaignStatus, "draft">,
+): Promise<VoucherCampaign> {
+  const result = await request<{ campaign: VoucherCampaign }>(
+    `/admin/voucher-campaigns/${encodeURIComponent(id)}/status`,
+    { method: "POST", body: JSON.stringify({ status }) },
+  );
+  return result.campaign;
+}
+
+/**
+ * Super Admin. Issue an assigned campaign to 1–1,000 addresses. The report
+ * carries personal information: keep it on screen, never store it.
+ */
+export async function issueVoucherCampaign(
+  id: string,
+  recipients: VoucherIssueRecipient[],
+): Promise<VoucherIssueReport> {
+  return request<VoucherIssueReport>(
+    `/admin/voucher-campaigns/${encodeURIComponent(id)}/issue`,
+    { method: "POST", body: JSON.stringify({ recipients }) },
+  );
+}
+
+/** Super Admin. Available vouchers only; the reason is required (≤ 1,000). */
+export async function voidVoucher(id: string, reason: string): Promise<Voucher> {
+  const result = await request<{ voucher: Voucher }>(
+    `/admin/vouchers/${encodeURIComponent(id)}/void`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
+  return result.voucher;
+}
+
+/** Super Admin. A void, unexpired voucher goes back to available, same expiry. */
+export async function reissueVoucher(id: string, reason: string): Promise<Voucher> {
+  const result = await request<{ voucher: Voucher }>(
+    `/admin/vouchers/${encodeURIComponent(id)}/reissue`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
+  return result.voucher;
+}
+
+/** Operations and Super Admin: one client's wallet, read-only. */
+export async function lookupClientVouchers(
+  clientId: string,
+  tab: VoucherTab = "all",
+): Promise<{ serverTime: string; vouchers: Voucher[] }> {
+  return request<{ serverTime: string; vouchers: Voucher[] }>(
+    `/ops/vouchers${buildQuery({ clientId, tab })}`,
+  );
+}
+
+/** Super Admin. Newest first; `limit` 1–500. */
+export async function listVoucherLedger(
+  filter: VoucherLedgerFilter = {},
+  page: { offset?: number; limit?: number } = {},
+): Promise<VoucherLedgerPage> {
+  return request<VoucherLedgerPage>(
+    `/admin/voucher-redemptions${buildQuery({ ...filter, offset: page.offset, limit: page.limit })}`,
+  );
+}
+
+/** Super Admin. Every matching row as `voucher-ledger.csv` (no paging). */
+export async function downloadVoucherLedger(filter: VoucherLedgerFilter = {}): Promise<Blob> {
+  return requestBlob(
+    `/admin/voucher-redemptions${buildQuery({ ...filter, format: "csv" })}`,
+    { headers: { Accept: "text/csv" } },
+  );
 }

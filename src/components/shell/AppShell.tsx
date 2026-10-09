@@ -1,5 +1,5 @@
 "use client";
-import { UserRoundMinus } from "lucide-react";
+import { TicketPercent, UserRoundMinus } from "lucide-react";
 
 import { useCallback, useState, type CSSProperties, type ReactNode } from "react";
 import Link from "next/link";
@@ -196,6 +196,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   hub: Warehouse,
   staff: IdCard,
   "listing-reviews": BadgeCheck,
+  vouchers: TicketPercent,
   "group-shop": Store,
   "group-money": HandCoins,
   "group-queue": Inbox,
