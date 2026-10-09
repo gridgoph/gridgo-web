@@ -402,8 +402,8 @@ If a screen still needs a capability the GRIDGO API does not expose, show an hon
 | Role        | Surface (hrefs)                                                                                                                                |
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | supplier    | `/supplier/dashboard`, `jobs`, `catalogue`, `schedule`, `capacity`, `payouts`, `payout-account`                                                |
-| ops_admin   | `/ops/overview`, `orders`, `service-lines`, `listing-reviews`, `dispatch`, `riders`, `late-production`, `shop-changes`, `hub`, `escalations`, `schedule`, `payouts`, `refunds`, `organizations`, `vouchers`, `claims`, `recovery` (`/ops/settings` and `/ops/audit` stay as the "Super Admin only" screen, off the rail) |
-| super_admin | `/admin/overview`, `riders`, `hub`, `verification`, `roles`, `staff`, `supplier-products`, `catalogue`, `listing-reviews`, `zones`, `credits`, `finance`, `vouchers`, `refunds`, `organizations`, `late-production`, `shop-changes`, `settings`, `audit`, `planning`, `season-windows`, `tracker`, `file-retention`, `broadcast` |
+| ops_admin   | `/ops/overview`, `orders`, `service-lines`, `listing-reviews`, `dispatch`, `riders`, `late-production`, `shop-changes`, `hub`, `escalations`, `schedule`, `payouts`, `refunds`, `organizations`, `vouchers`, `claims`, `recovery`, `legal`, `acceptance-log`, `privacy-requests` (`/ops/settings` and `/ops/audit` stay as the "Super Admin only" screen, off the rail) |
+| super_admin | `/admin/overview`, `riders`, `hub`, `verification`, `roles`, `staff`, `supplier-products`, `catalogue`, `listing-reviews`, `zones`, `credits`, `finance`, `vouchers`, `refunds`, `organizations`, `late-production`, `shop-changes`, `legal`, `acceptance-log`, `privacy-requests`, `settings`, `audit`, `planning`, `season-windows`, `tracker`, `file-retention`, `broadcast` |
 
 For inbox destinations outside the rail and their role boundaries, see [Live resource updates](docs/REALTIME_UPDATES.md#inbox-destinations).
 

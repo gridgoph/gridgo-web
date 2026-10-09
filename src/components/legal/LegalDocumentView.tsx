@@ -410,7 +410,7 @@ export function LegalDocumentView({ documentId, tree, canEdit, history }: Props)
         <p className="text-caption text-text-muted m-0 max-w-prose">
           Only Super Admin can edit and publish legal documents.
         </p>
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           {versionsPanel}
           <section className="gg-card flex min-w-0 flex-col gap-3" aria-labelledby="legal-draft">
             <div className="flex flex-wrap items-center gap-2">
@@ -458,7 +458,7 @@ export function LegalDocumentView({ documentId, tree, canEdit, history }: Props)
         </div>
       ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
         <section className="gg-card flex min-w-0 flex-col gap-4" aria-labelledby="legal-editor">
           <div className="flex flex-wrap items-center gap-2">
             <h3 id="legal-editor" className="text-h3 text-text-primary m-0">
