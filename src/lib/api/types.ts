@@ -1988,6 +1988,7 @@ export type SupportChatThread = {
   partyRole: SupportChatThreadRole;
   partyName?: string | null;
   partyEmail?: string | null;
+  partyImageUrl?: string | null;
   lastMessageAt?: string | null;
   lastMessagePreview?: string | null;
   lastMessageSenderRole?: SupportChatSenderRole | null;
@@ -1999,6 +2000,7 @@ export type SupportChatThread = {
   staffPeerName?: string | null;
   staffPeerEmail?: string | null;
   staffPeerRole?: SupportChatThreadRole | null;
+  staffPeerImageUrl?: string | null;
 };
 
 export type SupportChatAttachment = {

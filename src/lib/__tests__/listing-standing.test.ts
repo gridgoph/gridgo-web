@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   STANDING_OPTIONS,
+  attentionRank,
   matchesStanding,
+  orderByAttention,
+  standingChoices,
   standingCounts,
   toListQuery,
   DEFAULT_BOARD_QUERY,
@@ -330,5 +333,46 @@ describe("listing standing (gridgo-web#111)", () => {
     expect(
       toListQuery({ ...DEFAULT_BOARD_QUERY, standing: "hidden" }),
     ).not.toHaveProperty("active");
+  });
+
+  it("hides an empty status and keeps All and the selected filter", () => {
+    const empty = standingCounts([]);
+    expect(standingChoices(empty, "all").map((option) => option.value)).toEqual(["all"]);
+    expect(standingChoices(empty, "hidden").map((option) => option.value)).toEqual([
+      "all",
+      "hidden",
+    ]);
+    const live = standingCounts([{ kind: "live", secondary: "pending_review" }]);
+    expect(standingChoices(live, "all").map((option) => option.value)).toEqual([
+      "all",
+      "live",
+      "pending_review",
+    ]);
+    expect(standingChoices(null, "all").map((option) => option.value)).toEqual(
+      STANDING_OPTIONS.map((option) => option.value),
+    );
+  });
+
+  it("sorts what the shop must handle ahead of Live, without a new standing", () => {
+    const rows = [
+      { id: "live", kind: "live" as const, secondary: null },
+      { id: "pending", kind: "pending_review" as const, secondary: null },
+      { id: "back", kind: "needs_changes" as const, secondary: null },
+      { id: "revised", kind: "live" as const, secondary: "pending_review" as const },
+      { id: "hidden", kind: "hidden" as const, secondary: null },
+      { id: "taken", kind: "taken_down" as const, secondary: null },
+      { id: "unready", kind: "not_ready" as const, secondary: null },
+    ];
+    expect(attentionRank(rows[3]!)).toBeLessThan(attentionRank(rows[0]!));
+    expect(attentionRank(rows[2]!)).toBeLessThan(attentionRank(rows[1]!));
+    expect(orderByAttention(rows, (row) => row).map((row) => row.id)).toEqual([
+      "back",
+      "pending",
+      "revised",
+      "live",
+      "hidden",
+      "taken",
+      "unready",
+    ]);
   });
 });

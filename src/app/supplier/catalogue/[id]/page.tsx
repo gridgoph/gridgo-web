@@ -811,7 +811,7 @@ export default function ListingEditorPage() {
       <div className="lg:grid lg:grid-cols-[minmax(18rem,28rem)_minmax(0,1fr)] lg:items-start lg:gap-8 xl:gap-10">
         <aside
           aria-label="What clients see"
-          className="flex flex-col gap-4 lg:sticky lg:top-[4.75rem] lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto"
+          className="flex flex-col gap-4 lg:sticky lg:top-[4.75rem] lg:self-start"
         >
           <div className="flex flex-col gap-1">
             <p className="text-overline text-text-muted m-0 uppercase">
@@ -829,31 +829,7 @@ export default function ListingEditorPage() {
         </aside>
 
         <div className="mt-10 flex flex-col gap-6 lg:mt-0">
-          <div role="tablist" aria-label="Listing steps" className="flex flex-wrap gap-1">
-            {EDITOR_STEPS.map((entry) => {
-              const selected = step === entry.id;
-              return (
-                <button
-                  key={entry.id}
-                  type="button"
-                  role="tab"
-                  id={`listing-step-${entry.id}`}
-                  aria-selected={selected}
-                  aria-controls="listing-step-panel"
-                  tabIndex={selected ? 0 : -1}
-                  onClick={() => setStep(entry.id)}
-                  className={cn(
-                    "text-button min-h-11 rounded-[var(--radius-field)] border px-3",
-                    selected
-                      ? "border-transparent bg-primary text-primary-foreground"
-                      : "border-border bg-card text-foreground hover:bg-overlay-hover",
-                  )}
-                >
-                  {entry.label}
-                </button>
-              );
-            })}
-          </div>
+          <ListingStepNav step={step} onSelect={setStep} />
 
           <div
             id="listing-step-panel"
@@ -918,7 +894,7 @@ export default function ListingEditorPage() {
                 </Section>
                 <Section
                   id="section-what"
-                  step="02"
+                  step="03"
                   title="Describe your product"
                   help="Name it the way a client would ask for it."
                 >
@@ -955,7 +931,7 @@ export default function ListingEditorPage() {
             {step === "price" ? (
               <Section
                 id="section-price"
-                step="03"
+                step="04"
                 title="Set your product price"
                 help="Your own asking price. What GRIDGO charges the client on top is not yours to set."
               >
@@ -1001,7 +977,7 @@ export default function ListingEditorPage() {
             {step === "speed" ? (
               <Section
                 id="section-ready-in"
-                step="04"
+                step="05"
                 title="Set your capacity & speed"
                 help="How many you will take, and how long a client waits from paying to pickup."
               >
@@ -1084,7 +1060,7 @@ export default function ListingEditorPage() {
               <>
                 <Section
                   id="section-picks"
-                  step="05"
+                  step="06"
                   title="How will the client choose?"
                   help="In this order, the way they will see it. Each one saves as you add it."
                 >
@@ -1111,7 +1087,7 @@ export default function ListingEditorPage() {
                 </Section>
                 <Section
                   id="section-addons"
-                  step="05"
+                  step="07"
                   title="Add-ons"
                   help="Priced extras a client can add. Rush, grommets, lamination."
                 >
@@ -1142,7 +1118,7 @@ export default function ListingEditorPage() {
               <>
                 <Section
                   id="section-prep"
-                  step="06"
+                  step="08"
                   title="How can the client help you?"
                   help="What a client should do before sending work. Numbered — they read it in order."
                 >
@@ -1192,7 +1168,7 @@ export default function ListingEditorPage() {
                 </Section>
                 <Section
                   id="section-artwork"
-                  step="06"
+                  step="09"
                   title="Artwork you accept"
                   help="What a client may send you for this listing."
                 >
@@ -1211,27 +1187,31 @@ export default function ListingEditorPage() {
                       }}
                     />
                     {listing.fileFormatMode === "override" ? (
-                      <div
-                        role="group"
-                        aria-label="File formats you accept"
-                        className="flex flex-wrap gap-2"
-                      >
-                        {formats.map((format) => {
-                          const on = listing.formatCodes.includes(format.code);
-                          return (
-                            <FormatChip
-                              key={format.code}
-                              label={format.displayName}
-                              on={on}
-                              onToggle={() => {
-                                const next = on
-                                  ? listing.formatCodes.filter((code) => code !== format.code)
-                                  : [...listing.formatCodes, format.code];
-                                void saveFormats("override", next);
-                              }}
-                            />
-                          );
-                        })}
+                      <div className="flex flex-col gap-5">
+                        <FormatGroup
+                          title="Files"
+                          hint="A file is an upload."
+                          formats={formats.filter((format) => format.inputKind === "file")}
+                          selected={listing.formatCodes}
+                          onToggle={(code, on) => {
+                            const next = on
+                              ? listing.formatCodes.filter((entry) => entry !== code)
+                              : [...listing.formatCodes, code];
+                            void saveFormats("override", next);
+                          }}
+                        />
+                        <FormatGroup
+                          title="Links"
+                          hint="A link is a Canva, Drive, or Dropbox address."
+                          formats={formats.filter((format) => format.inputKind === "url")}
+                          selected={listing.formatCodes}
+                          onToggle={(code, on) => {
+                            const next = on
+                              ? listing.formatCodes.filter((entry) => entry !== code)
+                              : [...listing.formatCodes, code];
+                            void saveFormats("override", next);
+                          }}
+                        />
                       </div>
                     ) : (
                       <p className="text-caption text-text-secondary m-0">
@@ -1248,7 +1228,7 @@ export default function ListingEditorPage() {
             {step === "review" ? (
               <Section
                 id="section-review"
-                step="07"
+                step="10"
                 title="Finalize your product"
                 help="The reading beside this is what a client sees, including a price or sample you have not saved yet. It goes on the board only when the list below is clear."
               >
@@ -1340,6 +1320,92 @@ export default function ListingEditorPage() {
 }
 
 /**
+ * Where the shop is in the seven steps, and what is still ahead.
+ *
+ * The current step is marked. Steps before it can be opened again. Later
+ * steps stay in the row and read as not done yet. This is a desktop track,
+ * not the phone rail.
+ */
+function ListingStepNav({
+  step,
+  onSelect,
+}: {
+  step: EditorStepId;
+  onSelect: (id: EditorStepId) => void;
+}) {
+  const currentIndex = EDITOR_STEPS.findIndex((entry) => entry.id === step);
+  return (
+    <>
+      <p id="listing-step-done" className="sr-only">
+        Done. You can open it again.
+      </p>
+      <p id="listing-step-ahead" className="sr-only">
+        Not done yet.
+      </p>
+      <div role="tablist" aria-label="Listing steps" className="grid grid-cols-7">
+        {EDITOR_STEPS.map((entry, index) => {
+          const selected = index === currentIndex;
+          const done = index < currentIndex;
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              role="tab"
+              id={`listing-step-${entry.id}`}
+              aria-label={entry.label}
+              aria-selected={selected}
+              aria-controls="listing-step-panel"
+              aria-describedby={
+                selected ? undefined : done ? "listing-step-done" : "listing-step-ahead"
+              }
+              tabIndex={selected ? 0 : -1}
+              onClick={() => onSelect(entry.id)}
+              className="relative flex min-h-11 flex-col items-center gap-1.5 bg-transparent px-0.5 pt-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-yellow"
+            >
+              {index > 0 ? (
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute top-4 right-1/2 left-0 h-px",
+                    index <= currentIndex ? "bg-foreground" : "bg-border",
+                  )}
+                />
+              ) : null}
+              <span
+                aria-hidden
+                className={cn(
+                  "relative z-10 flex size-6 items-center justify-center rounded-full text-caption",
+                  selected && "bg-foreground text-background",
+                  done && "border border-foreground bg-card text-foreground",
+                  !selected && !done && "border border-border bg-card text-text-muted",
+                )}
+              >
+                {done ? <Check className="size-3.5" /> : index + 1}
+              </span>
+              <span
+                className={cn(
+                  "text-caption",
+                  selected && "text-text-primary",
+                  done && "text-text-secondary",
+                  !selected && !done && "text-text-muted",
+                )}
+                style={selected ? { fontFamily: "var(--font-medium)" } : undefined}
+              >
+                {entry.label}
+              </span>
+              <span
+                aria-hidden
+                className={cn("h-0.5 w-6 rounded-full", selected ? "bg-foreground" : "bg-transparent")}
+              />
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+/**
  * One editing section: fill-order eyebrow, sentence-case title, one line of
  * help, then the fields. Sections sit 32px apart; fields inside sit 16px apart.
  */
@@ -1371,6 +1437,46 @@ function Section({
       </div>
       {children}
     </section>
+  );
+}
+
+/** Files in one wrap, links in another. An empty kind is omitted. */
+function FormatGroup({
+  title,
+  hint,
+  formats,
+  selected,
+  onToggle,
+}: {
+  title: string;
+  hint: string;
+  formats: ReadonlyArray<{ code: string; displayName: string }>;
+  selected: readonly string[];
+  onToggle: (code: string, on: boolean) => void;
+}) {
+  if (!formats.length) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-0.5">
+        <p className="text-caption text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+          {title}
+        </p>
+        <p className="text-caption text-text-muted m-0">{hint}</p>
+      </div>
+      <div role="group" aria-label={title} className="flex flex-wrap gap-2">
+        {formats.map((format) => {
+          const on = selected.includes(format.code);
+          return (
+            <FormatChip
+              key={format.code}
+              label={format.displayName}
+              on={on}
+              onToggle={() => onToggle(format.code, on)}
+            />
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

@@ -48,6 +48,8 @@ function moneyRow(label: string) { const term = screen.getByText(label, { select
 it("keeps the submitted final installment actionable while delivery is in progress", async () => {
   renderWorkspace();
   expect(await screen.findByRole("button", { name: "Confirm balance payment" })).toBeEnabled();
+  expect(screen.getByRole("complementary", { name: "Order details" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Order file/ })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Reject balance" })).toBeEnabled();
   expect(screen.getByText("Needs review")).toBeInTheDocument();
   expect(screen.getByText("Receipt final-receipt")).toBeInTheDocument();
@@ -72,6 +74,33 @@ it("rejects the final installment with a client-visible reason", async () => {
   expect(screen.queryByRole("button", { name: "Confirm balance payment" })).not.toBeInTheDocument();
   expect(moneyRow("Paid")).toHaveTextContent("₱412.65");
 });
+it("opens on a phone with the order file collapsed above Payment", async () => {
+  vi.stubGlobal(
+    "matchMedia",
+    (query: string) => ({
+      matches: query === "(max-width: 1023px)",
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  );
+  renderWorkspace();
+
+  const file = await screen.findByRole("button", { name: /Order file/ });
+  const payment = screen.getByRole("button", { name: /^Payment\b/ });
+  expect(file).toHaveAttribute("aria-expanded", "false");
+  expect(screen.queryByRole("complementary", { name: "Order details" })).not.toBeInTheDocument();
+  expect(file.compareDocumentPosition(payment) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+  await userEvent.click(file);
+  expect(await screen.findByRole("complementary", { name: "Order details" })).toBeInTheDocument();
+  expect(file).toHaveAttribute("aria-expanded", "true");
+});
+
 it("counts neither unconfirmed initial nor pending final as Paid", async () => {
   order = fixture("pending_confirmation");
   renderWorkspace();

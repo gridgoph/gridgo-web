@@ -53,6 +53,61 @@ export function standingCounts(
   return counts;
 }
 
+/**
+ * Filters worth showing. All always stays. A status with nothing in it leaves
+ * the row, unless it is the one already selected — clearing the selection out
+ * from under the shop would hide where they are. `null` counts (still loading)
+ * keep every status, with no zero to shout.
+ */
+export function standingChoices(
+  counts: StandingCounts | null,
+  selected: StandingFilter,
+): readonly { value: StandingFilter; label: string }[] {
+  return STANDING_OPTIONS.filter((option) => {
+    if (option.value === "all" || option.value === selected || counts == null) return true;
+    return counts[option.value] > 0;
+  });
+}
+
+/**
+ * Board order for scanning. What the shop still has to deal with (a send-back,
+ * then something in review) comes before Live, Hidden, Taken down, and Not
+ * ready yet. A live listing with an edit in review or sent back sorts with
+ * that attention, and stays Live in `boardStanding`. Ties keep the order the
+ * board was read in.
+ */
+const ATTENTION_RANK: readonly ListingStandingKind[] = [
+  "needs_changes",
+  "pending_review",
+  "live",
+  "hidden",
+  "taken_down",
+  "not_ready",
+];
+
+export function attentionRank(
+  standing: Pick<BoardStanding, "kind" | "secondary">,
+): number {
+  const attention =
+    standing.secondary === "needs_changes" || standing.kind === "needs_changes"
+      ? "needs_changes"
+      : standing.secondary === "pending_review" || standing.kind === "pending_review"
+        ? "pending_review"
+        : standing.kind;
+  const rank = ATTENTION_RANK.indexOf(attention);
+  return rank === -1 ? ATTENTION_RANK.length : rank;
+}
+
+export function orderByAttention<T>(
+  rows: readonly T[],
+  standingOf: (row: T) => Pick<BoardStanding, "kind" | "secondary">,
+): T[] {
+  return rows
+    .map((row, index) => ({ row, index, rank: attentionRank(standingOf(row)) }))
+    .sort((left, right) => left.rank - right.rank || left.index - right.index)
+    .map((entry) => entry.row);
+}
+
 export function matchesStanding(
   standing: Pick<BoardStanding, "kind" | "secondary">,
   filter: StandingFilter,

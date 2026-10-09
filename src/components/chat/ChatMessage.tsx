@@ -1,44 +1,35 @@
-import { ChatAvatar } from "@/components/chat/ChatAvatar";
 import { ChatImage } from "@/components/chat/ChatImage";
 import type { SupportChatMessage } from "@/lib/api/types";
-import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-export function ChatMessage({
-  message,
-  counterpartLabel,
-}: {
-  message: SupportChatMessage;
-  counterpartLabel: string;
-}) {
-  const name = message.mine ? "You" : counterpartLabel;
+export function ChatMessage({ message }: { message: SupportChatMessage }) {
   return (
     <div
-      className={cn("flex items-end gap-2", message.mine ? "justify-end" : "justify-start")}
+      data-testid="chat-bubble"
+      className={cn(
+        "max-w-full rounded-[var(--radius-field)] border px-3 py-2",
+        message.mine
+          ? "border-transparent bg-[var(--color-action-yellow)] text-[var(--color-action-yellow-on)]"
+          : "border-border bg-card",
+      )}
     >
-      {message.mine ? null : <ChatAvatar name={name} imageUrl={message.senderImageUrl} />}
-      <div
-        className={cn(
-          "max-w-[80%] rounded-[var(--radius-field)] border border-border px-3 py-2",
-          message.mine ? "bg-muted" : "bg-card",
-        )}
-      >
-        {message.body ? (
-          <p className="text-body text-text-primary m-0 whitespace-pre-wrap">{message.body}</p>
-        ) : null}
-        {message.attachments?.length ? (
-          <div className={message.body ? "mt-2 flex flex-col gap-2" : "flex flex-col gap-2"}>
-            {message.attachments.map((attachment) => (
-              <ChatImage key={attachment.fileId} attachment={attachment} />
-            ))}
-          </div>
-        ) : null}
-        <p className="text-caption text-text-muted m-0 mt-1">
-          {name}
-          {` · ${formatDateTime(message.createdAt)}`}
+      {message.body ? (
+        <p
+          className={cn(
+            "text-body m-0 whitespace-pre-wrap",
+            message.mine ? "text-[var(--color-action-yellow-on)]" : "text-text-primary",
+          )}
+        >
+          {message.body}
         </p>
-      </div>
-      {message.mine ? <ChatAvatar name={name} imageUrl={message.senderImageUrl} /> : null}
+      ) : null}
+      {message.attachments?.length ? (
+        <div className={message.body ? "mt-2 flex flex-col gap-2" : "flex flex-col gap-2"}>
+          {message.attachments.map((attachment) => (
+            <ChatImage key={attachment.fileId} attachment={attachment} />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

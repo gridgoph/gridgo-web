@@ -855,8 +855,8 @@ export type BoardStanding = {
   steps: string[];
   /**
    * The review state of an edit to a Live listing: clients still see the
-   * approved version, and the edit is waiting or was sent back. Shown as a
-   * second chip, and counted under that filter too.
+   * approved version, and the edit is waiting or was sent back. Counted under
+   * that filter too. The catalogue card folds it into the one Live line.
    */
   secondary: Extract<ListingStandingKind, "pending_review" | "needs_changes"> | null;
 };

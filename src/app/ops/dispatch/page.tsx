@@ -2,7 +2,7 @@
 
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Bike, Eye, MapPin, PackageCheck, RefreshCw } from "lucide-react";
@@ -12,6 +12,7 @@ import {
   formatCoords,
   locationTone,
   presentLocation,
+  presentRouteAction,
   type LocationView,
 } from "@/app/ops/_lib/dispatch";
 import { presentZone } from "@/app/ops/_lib/present";
@@ -54,6 +55,54 @@ import { vehicleSummary } from "@/lib/vehicle";
 const DEMO_RIDER_ID = "user_rider";
 
 type LocationMap = Record<string, LocationView>;
+
+function LocationCell({ order, location }: { order: Order; location: LocationView }) {
+  const reasonId = useId();
+  const route = presentRouteAction(location, order.riderId);
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <StatusChip
+        tone={locationTone(location.freshness)}
+        label={location.label}
+        icon={
+          location.freshness === "live"
+            ? "circle-check"
+            : location.freshness === "stale"
+              ? "triangle-alert"
+              : "clock"
+        }
+      />
+      {location.lat != null && location.lng != null ? (
+        <span className="text-caption text-text-muted">
+          {formatCoords(location.lat, location.lng)}
+          {location.freshness === "stale" && location.at
+            ? ` · last ${formatDateTime(location.at)}`
+            : location.at
+              ? ` · ${formatDateTime(location.at)}`
+              : ""}
+        </span>
+      ) : null}
+      {route.enabled && route.href ? (
+        <Button
+          variant="secondary"
+          nativeButton={false}
+          render={<Link href={route.href} />}
+        >
+          Show route
+        </Button>
+      ) : (
+        <>
+          <Button variant="secondary" disabled aria-describedby={reasonId}>
+            Show route
+          </Button>
+          <span id={reasonId} className="text-caption text-text-muted">
+            {route.reason}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function OpsDispatchPage() {
   const searchParams = useSearchParams();
@@ -265,42 +314,12 @@ export default function OpsDispatchPage() {
         id: "location",
         header: "Location",
         sortValue: (o) => locations[o.id]?.label ?? "",
-        cell: (o) => {
-          const loc = locations[o.id] ?? presentLocation(null, o.state);
-          return (
-            <div className="flex flex-col gap-1">
-              <StatusChip
-                tone={locationTone(loc.freshness)}
-                label={loc.label}
-                icon={
-                  loc.freshness === "live"
-                    ? "circle-check"
-                    : loc.freshness === "stale"
-                      ? "triangle-alert"
-                      : "clock"
-                }
-              />
-              {loc.lat != null && loc.lng != null ? (
-                <span className="text-caption text-text-muted">
-                  {formatCoords(loc.lat, loc.lng)}
-                  {loc.freshness === "stale" && loc.at
-                    ? ` · last ${formatDateTime(loc.at)}`
-                    : loc.at
-                      ? ` · ${formatDateTime(loc.at)}`
-                      : ""}
-                </span>
-              ) : null}
-              {loc.lat != null && loc.lng != null && o.riderId ? (
-                <Link
-                  href={`/ops/riders?rider=${encodeURIComponent(o.riderId)}`}
-                  className="text-caption text-text-secondary hover:text-text-primary underline-offset-4 hover:underline"
-                >
-                  Show route on map
-                </Link>
-              ) : null}
-            </div>
-          );
-        },
+        cell: (o) => (
+          <LocationCell
+            order={o}
+            location={locations[o.id] ?? presentLocation(null, o.state)}
+          />
+        ),
       },
       {
         id: "promised",
