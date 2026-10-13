@@ -2434,21 +2434,23 @@ export async function reorderCatalogPhotos(
  * already shown) page the list; `counts` are always the totals per status.
  */
 export async function listIssueReports(
-  status: IssueReportStatus,
+  status: IssueReportStatus | "priorities",
   page: { limit?: number; before?: string | null } = {},
 ): Promise<{ reports: IssueReport[]; counts: IssueReportCounts }> {
   return request(
-    `/ops/issue-reports${buildQuery({ status, limit: page.limit, before: page.before })}`,
+    `/ops/issue-reports${buildQuery({ status: status === "priorities" ? undefined : status, priority: status === "priorities" ? "true" : undefined, limit: page.limit, before: page.before })}`,
   );
 }
 
 export async function updateIssueReport(
   id: string,
-  input: {
-    status: IssueReportStatus;
-    publishedIn?: string | null;
-    trackerIssueUrl?: string | null;
-  },
+  input:
+    | {
+        status: IssueReportStatus;
+        publishedIn?: string | null;
+        trackerIssueUrl?: string | null;
+      }
+    | { priority: boolean },
 ): Promise<IssueReport> {
   return request<IssueReport>(`/ops/issue-reports/${encodeURIComponent(id)}`, {
     method: "PATCH",
@@ -2478,6 +2480,19 @@ function unwrapTrackerItem(result: TrackerItem | { item: TrackerItem }): Tracker
 export async function getTracker(options?: { refresh?: boolean }): Promise<TrackerBoard> {
   return request<TrackerBoard>(
     `/admin/tracker${buildQuery({ refresh: options?.refresh ? 1 : undefined })}`,
+  );
+}
+
+/** Sets a shared priority label without changing workflow state. */
+export async function setTrackerPriority(
+  item: Pick<TrackerItem, "repo" | "number">,
+  priority: boolean,
+): Promise<TrackerItem> {
+  return unwrapTrackerItem(
+    await request<TrackerItem | { item: TrackerItem }>(
+      `${trackerItemPath(item)}/priority`,
+      { method: "PATCH", body: JSON.stringify({ priority }) },
+    ),
   );
 }
 

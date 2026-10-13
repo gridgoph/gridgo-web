@@ -24,6 +24,7 @@ vi.stubGlobal("React", React);
 const api = vi.hoisted(() => ({
   getTracker: vi.fn(),
   setTrackerStatus: vi.fn(),
+  setTrackerPriority: vi.fn(),
   uploadTrackerAttachment: vi.fn(),
   recordTrackerDecision: vi.fn(),
   getTrackerAttachmentUrl: vi.fn(),
@@ -491,5 +492,47 @@ describe("Decision panel", () => {
     expect(await screen.findByText(/That file is no longer stored/)).toBeInTheDocument();
     expect(tab.close).toHaveBeenCalled();
     open.mockRestore();
+  });
+});
+
+describe("Shared tracker priorities", () => {
+  it("pins in a top section while retaining the original, filters priorities and unpins", async () => {
+    const user = userEvent.setup();
+    api.setTrackerPriority
+      .mockResolvedValueOnce({ ...openItem, priority: true })
+      .mockResolvedValueOnce({ ...openItem, priority: false });
+    render(<TrackerDesk />);
+    await user.click(
+      await screen.findByRole("button", {
+        name: `Pin ${openItem.ref} ${openItem.requirement} as priority`,
+      }),
+    );
+    const priorities = await screen.findByRole("region", { name: "Priorities" });
+    expect(within(priorities).getByText(openItem.requirement!)).toBeVisible();
+    expect(screen.getAllByText(openItem.requirement!)).toHaveLength(2);
+    expect(api.setTrackerPriority).toHaveBeenCalledWith(openItem, true);
+    await user.click(screen.getByRole("button", { name: "Priorities, 1" }));
+    expect(screen.queryByText(liveItem.requirement!)).toBeNull();
+    await user.click(
+      screen.getByRole("button", {
+        name: `Unpin ${openItem.ref} ${openItem.requirement}`,
+      }),
+    );
+    expect(await screen.findByText("Nothing matches these filters")).toBeVisible();
+    await user.click(screen.getAllByRole("button", { name: "Clear filters" })[0]);
+    expect(screen.getByText(openItem.requirement!)).toBeVisible();
+  });
+  it("keeps a failed pin unchanged and explains retry", async () => {
+    api.setTrackerPriority.mockRejectedValue(new Error("offline"));
+    render(<TrackerDesk />);
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: `Pin ${openItem.ref} ${openItem.requirement} as priority`,
+      }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not change priority",
+    );
+    expect(screen.queryByRole("region", { name: "Priorities" })).toBeNull();
   });
 });

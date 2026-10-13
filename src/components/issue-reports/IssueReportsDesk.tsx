@@ -1,7 +1,14 @@
 "use client";
 
-import { ChevronLeft } from "lucide-react";
-import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, Pin } from "lucide-react";
+import {
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   checkTrackerIssueUrl,
@@ -17,6 +24,7 @@ import {
   reloadLimit,
   showingLabel,
 } from "@/components/issue-reports/paging";
+import { PriorityButton } from "@/components/ui/PriorityButton";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -36,7 +44,10 @@ import { formatDateTime } from "@/lib/format";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { cn } from "@/lib/utils";
 
-const STATUS_TABS: { value: IssueReportStatus; label: string }[] = [
+type ReportFilter = IssueReportStatus | "priorities";
+
+const STATUS_TABS: { value: ReportFilter; label: string }[] = [
+  { value: "priorities", label: "Priorities" },
   { value: "new", label: "New" },
   { value: "tracked", label: "Tracked" },
   { value: "published", label: "Published" },
@@ -55,7 +66,8 @@ export function reportReference(id: string): string {
   return id.slice(0, 8).toUpperCase();
 }
 
-const EMPTY_BODY: Record<IssueReportStatus, string> = {
+const EMPTY_BODY: Record<ReportFilter, string> = {
+  priorities: "Pin a report to keep it here. It stays in its original status tab too.",
   new: "A report appears here as soon as someone sends one from the website.",
   tracked: "Reports linked to a GitHub tracker issue land here.",
   published: "Reports named in a dated reports page land here.",
@@ -174,7 +186,7 @@ function DetailSkeleton() {
  * list, then the report with a way back).
  */
 export function IssueReportsDesk() {
-  const [status, setStatus] = useState<IssueReportStatus>("new");
+  const [status, setStatus] = useState<ReportFilter>("new");
   const [reports, setReports] = useState<IssueReport[] | null>(null);
   const [counts, setCounts] = useState<IssueReportCounts | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -348,8 +360,9 @@ export function IssueReportsDesk() {
     setTrackerUrl(selected?.trackerIssueUrl ?? "");
   }
 
-  function changeStatus(next: IssueReportStatus) {
+  function changeStatus(next: ReportFilter) {
     if (next === status) return;
+    generationRef.current += 1;
     reportsRef.current = [];
     setReports(null);
     setHasMore(false);
@@ -411,7 +424,7 @@ export function IssueReportsDesk() {
     setTrackerError(null);
     try {
       await updateIssueReport(selected.id, input);
-      const stays = next === status;
+      const stays = next === status || status === "priorities";
       // A report that leaves this tab hands over to the one below it, so the
       // desk works down the list instead of jumping back to the top.
       const list = reports ?? [];
@@ -425,6 +438,50 @@ export function IssueReportsDesk() {
           ? "The server refused that change. Check the GitHub issue link and try again."
           : "Could not update this report. Try again.",
       );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function pinSelected() {
+    if (!selected || saving) return;
+    const generation = generationRef.current;
+    const target = selected;
+    setSaving(true);
+    setActionError(null);
+    try {
+      const updated = await updateIssueReport(target.id, { priority: !target.priority });
+      if (generation !== generationRef.current) return;
+      const next = reportsRef.current
+        .map((report) => (report.id === updated.id ? updated : report))
+        .filter((report) => status !== "priorities" || report.priority);
+      reportsRef.current = next;
+      setReports(next);
+      setCounts((current) =>
+        current
+          ? {
+              ...current,
+              priorities: Math.max(
+                0,
+                (current.priorities ?? 0) + (updated.priority ? 1 : -1),
+              ),
+            }
+          : current,
+      );
+      if (!next.some((report) => report.id === target.id))
+        setSelectedId(next[0]?.id ?? null);
+      if (status === "priorities" && !updated.priority) {
+        try {
+          await load(next[0]?.id ?? null);
+        } catch {
+          setError(
+            "Priority was removed, but the list could not refresh. Press Refresh to load the remaining reports.",
+          );
+        }
+      }
+    } catch {
+      if (generation === generationRef.current)
+        setActionError("Could not change priority. Refresh the reports and try again.");
     } finally {
       setSaving(false);
     }
@@ -465,7 +522,7 @@ export function IssueReportsDesk() {
           <ToggleGroup
             value={[status]}
             onValueChange={(values) => {
-              const next = values[0] as IssueReportStatus | undefined;
+              const next = values[0] as ReportFilter | undefined;
               if (next) changeStatus(next);
             }}
             variant="outline"
@@ -482,7 +539,16 @@ export function IssueReportsDesk() {
           </ToggleGroup>
         </div>
 
-        <div ref={listRef} onKeyDown={onListKeyDown} className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+        {error ? (
+          <p role="alert" className="text-caption text-error m-0 px-4 py-2">
+            {error}
+          </p>
+        ) : null}
+        <div
+          ref={listRef}
+          onKeyDown={onListKeyDown}
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2"
+        >
           {initialLoad ? (
             <>
               <p className="sr-only" role="status">Loading reports…</p>
@@ -521,6 +587,11 @@ export function IssueReportsDesk() {
                         onClick={() => openReport(report.id)}
                         className="flex w-full flex-col items-start gap-0.5 rounded-[var(--radius-field)] px-3 py-2 text-left"
                       >
+                        {report.priority ? (
+                          <span className="text-caption text-text-secondary inline-flex items-center gap-1">
+                            <Pin size={12} aria-hidden /> Priority
+                          </span>
+                        ) : null}
                         <span
                           className="text-body text-text-primary line-clamp-2"
                           style={{ fontFamily: "var(--font-medium)" }}
@@ -528,7 +599,8 @@ export function IssueReportsDesk() {
                           {firstLine(report.issue)}
                         </span>
                         <span className="text-caption text-text-muted">
-                          {reportReference(report.id)} · {formatDateTime(report.createdAt)}
+                          {reportReference(report.id)} ·{" "}
+                          {formatDateTime(report.createdAt)}
                           {report.category ? ` · ${categoryLabel(report.category)}` : ""}
                           {report.screenshots.length
                             ? ` · ${report.screenshots.length} screenshot${report.screenshots.length === 1 ? "" : "s"}`
@@ -603,10 +675,19 @@ export function IssueReportsDesk() {
                     Report {reportReference(selected.id)}
                   </h2>
                   <p className="text-caption text-text-muted m-0 mt-1">
-                    Received {formatDateTime(selected.createdAt)} · {categoryLabel(selected.category)}
+                    Received {formatDateTime(selected.createdAt)} ·{" "}
+                    {categoryLabel(selected.category)}
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">{statusChips(selected)}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {statusChips(selected)}
+                  <PriorityButton
+                    priority={!!selected.priority}
+                    name={`report ${reportReference(selected.id)}`}
+                    disabled={saving}
+                    onClick={() => void pinSelected()}
+                  />
+                </div>
               </div>
             </div>
 
