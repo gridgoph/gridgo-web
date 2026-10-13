@@ -4,7 +4,7 @@
  * no before the upload, not after). Pure on purpose — no React, no fetching.
  *
  * Contract: gridgo-api docs/TRACKER_API.md. GitHub issues are the source of
- * truth; only an item's status is editable here.
+ * truth; status and priority are editable here.
  */
 
 import { isApiError } from "@/lib/api/client";
@@ -159,7 +159,7 @@ export function groupBySection(items: readonly TrackerItem[]): TrackerSectionGro
 }
 
 export type TrackerFilters = {
-  status: TrackerStatus | "all";
+  status: TrackerStatus | "all" | "priorities";
   developer: string | "all";
   query: string;
 };
@@ -192,7 +192,11 @@ export function filterTrackerItems(
   filters: TrackerFilters,
 ): TrackerItem[] {
   return filterByDeveloperAndQuery(items, filters).filter(
-    (item) => filters.status === "all" || item.status === filters.status,
+    (item) =>
+      filters.status === "all" ||
+      (filters.status === "priorities"
+        ? item.priority === true
+        : item.status === filters.status),
   );
 }
 

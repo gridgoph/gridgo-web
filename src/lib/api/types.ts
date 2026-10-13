@@ -1934,6 +1934,8 @@ export type TrackerItem = {
   requirement?: string | null;
   category?: string | null;
   status: TrackerStatus;
+  /** Shared GitHub priority label; independent of status. */
+  priority?: boolean;
   /** `explicit` when a Super Admin set it; `derived` from the issue's state. */
   statusSource: "explicit" | "derived";
   decisions: TrackerDecision[];
@@ -2097,6 +2099,8 @@ export type IssueReport = {
   issue: string;
   category: IssueReportCategory | null;
   status: IssueReportStatus;
+  /** Shared implementation priority; absent on older APIs. */
+  priority?: boolean;
   publishedIn: string | null;
   /**
    * `https://github.com/gridgoph/<repo>/issues/<n>`. Kept while `tracked` or
@@ -2112,6 +2116,7 @@ export type IssueReport = {
 /** `tracked` is missing from an API that predates the tracker link. */
 export type IssueReportCounts = Record<Exclude<IssueReportStatus, "tracked">, number> & {
   tracked?: number;
+  priorities?: number;
 };
 
 // ---- Client refunds (available-funds settlement, `available_funds_v1`) ----

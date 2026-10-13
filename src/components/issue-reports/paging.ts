@@ -23,7 +23,7 @@ export function reloadLimit(loaded: number): number {
 export function hasMoreReports(
   loaded: number,
   counts: IssueReportCounts | null,
-  status: IssueReportStatus,
+  status: IssueReportStatus | "priorities",
   lastPage: { received: number; requested: number },
 ): boolean {
   const total = counts?.[status];
