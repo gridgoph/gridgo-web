@@ -97,8 +97,16 @@ describe("IssueReportsDesk", () => {
     render(<IssueReportsDesk />);
     await screen.findByRole("heading", { name: /Report 50D4F603/ });
     const group = screen.getByRole("group", { name: "Filter reports by status" });
-    const tabs = within(group).getAllByRole("button").map((tab) => tab.textContent);
-    expect(tabs).toEqual(["New · 1", "Tracked · 4", "Published · 2", "Dismissed · 0"]);
+    const tabs = within(group)
+      .getAllByRole("button")
+      .map((tab) => tab.textContent);
+    expect(tabs).toEqual([
+      "Priorities · 0",
+      "New · 1",
+      "Tracked · 4",
+      "Published · 2",
+      "Dismissed · 0",
+    ]);
 
     listIssueReports.mockResolvedValue({ reports: [], counts: { new: 1, tracked: 0, published: 2, dismissed: 0 } });
     fireEvent.click(screen.getByRole("button", { name: "Tracked · 4" }));
@@ -391,4 +399,76 @@ describe("IssueReportsDesk", () => {
       expect(screen.getByRole("button", { name: /Orders in Operations/ })).toHaveFocus();
     });
   });
+});
+
+describe("Report priorities", () => {
+  it("pins without changing status, then loads a dedicated priorities tab", async () => {
+    updateIssueReport.mockResolvedValue({ ...report, priority: true });
+    render(<IssueReportsDesk />);
+    await screen.findByRole("heading", { name: /Report 50D4F603/ });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Pin report 50D4F603 as priority" }),
+    );
+    await waitFor(() =>
+      expect(updateIssueReport).toHaveBeenCalledWith(report.id, { priority: true }),
+    );
+    expect(
+      await screen.findByRole("button", { name: "Unpin report 50D4F603" }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "New · 1" })).toBeVisible();
+    listIssueReports.mockResolvedValue({
+      reports: [{ ...report, priority: true }],
+      counts: { new: 1, priorities: 1 },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^Priorities/ }));
+    await waitFor(() =>
+      expect(listIssueReports).toHaveBeenLastCalledWith("priorities", { limit: 25 }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Unpin report 50D4F603" }));
+    await waitFor(() =>
+      expect(updateIssueReport).toHaveBeenLastCalledWith(report.id, { priority: false }),
+    );
+  });
+  it("reports a failed priority save without showing a false pin", async () => {
+    updateIssueReport.mockRejectedValue(new Error("offline"));
+    render(<IssueReportsDesk />);
+    await screen.findByRole("heading", { name: /Report 50D4F603/ });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Pin report 50D4F603 as priority" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Could not change priority",
+    );
+    expect(
+      screen.getByRole("button", { name: "Pin report 50D4F603 as priority" }),
+    ).toBeEnabled();
+  });
+});
+
+it("refills priorities after unpinning the last loaded report when another page remains", async () => {
+  listIssueReports.mockResolvedValueOnce({
+    reports: [report],
+    counts: { new: 1, priorities: 2 },
+  });
+  render(<IssueReportsDesk />);
+  await screen.findByRole("heading", { name: /Report 50D4F603/ });
+  listIssueReports.mockResolvedValueOnce({
+    reports: [{ ...report, priority: true }],
+    counts: { new: 1, priorities: 2 },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Priorities · 2" }));
+  await screen.findByRole("button", { name: "Unpin report 50D4F603" });
+  const older = {
+    ...report,
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    issue: "Older priority",
+    priority: true,
+  };
+  listIssueReports.mockResolvedValue({
+    reports: [older],
+    counts: { new: 1, priorities: 1 },
+  });
+  updateIssueReport.mockResolvedValue({ ...report, priority: false });
+  fireEvent.click(screen.getByRole("button", { name: "Unpin report 50D4F603" }));
+  expect(await screen.findByRole("heading", { name: "Report AAAAAAAA" })).toBeVisible();
 });
