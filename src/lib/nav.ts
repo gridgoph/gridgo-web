@@ -63,6 +63,7 @@ export type NavIconKey =
   | "hub"
   | "staff"
   | "listing-reviews"
+  | "featured-prints"
   | "vouchers"
   | "legal"
   | "acceptances"
@@ -319,6 +320,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "listing-reviews-waiting",
+        },
+        {
+          // The client Home row: approved products GRIDGO chooses to show.
+          id: "ops-featured-prints",
+          href: "/ops/featured-prints",
+          label: "Featured Prints",
+          title: "Featured Prints",
+          icon: "featured-prints",
+          ready: true,
+          placeholderBody: "",
         },
       ],
     },
@@ -651,6 +662,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "listing-reviews-waiting",
+        },
+        {
+          id: "admin-featured-prints",
+          href: "/admin/featured-prints",
+          label: "Featured Prints",
+          title: "Featured Prints",
+          icon: "featured-prints",
+          ready: true,
+          placeholderBody: "",
         },
         {
           id: "admin-zones",
