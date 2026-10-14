@@ -30,13 +30,24 @@ type Props = {
    * breakdown, the supplier's payouts. Set false where those cover it already.
    */
   showMoney?: boolean;
+  /**
+   * Read Material, Zone and Promised from the API's `jobDetails` (the shop's
+   * job, report 6C695C15): filled from the order's own snapshots, with
+   * "Not specified" for what it could not fill. The shop's surfaces set this;
+   * Operations keeps reading the order's own fields.
+   */
+  fromJobDetails?: boolean;
 };
+
+/** What the API says for a job detail it could not fill from the order. */
+export const NOT_SPECIFIED = "Not specified";
 
 /**
  * The specification of an order: what is being made, by when, to where.
  * `totalMinor` already includes delivery in v2 — never add the fee to it.
  */
-export function OrderMeta({ order, showMoney = true }: Props) {
+export function OrderMeta({ order, showMoney = true, fromJobDetails = false }: Props) {
+  const details = fromJobDetails ? jobDetailsOf(order) : null;
   /*
    An icon per field, so the grid can be scanned by shape instead of read
    label by label. They are distinct glyphs on purpose — a repeated icon
@@ -45,11 +56,23 @@ export function OrderMeta({ order, showMoney = true }: Props) {
   const rows: { label: string; value: string; icon: LucideIcon }[] = [
     { label: "Quantity", value: describeQuantity(order.quantity, order.unit), icon: Hash },
     { label: "Size", value: order.size || "—", icon: Ruler },
-    { label: "Material", value: order.material || "—", icon: Layers },
+    {
+      label: "Material",
+      value: details ? details.material : order.material || "—",
+      icon: Layers,
+    },
     { label: "Finish", value: order.finish || "—", icon: Sparkles },
-    { label: "Zone", value: presentZone(order.zone), icon: MapPin },
+    { label: "Zone", value: details ? details.zone : presentZone(order.zone), icon: MapPin },
     { label: "Deadline", value: formatDateTime(order.deadline), icon: CalendarClock },
-    { label: "Promised", value: formatDateTime(order.promisedDate), icon: CalendarCheck },
+    {
+      label: "Promised",
+      value: details
+        ? details.promisedDate
+          ? formatDateTime(details.promisedDate)
+          : NOT_SPECIFIED
+        : formatDateTime(order.promisedDate),
+      icon: CalendarCheck,
+    },
   ];
 
   if (showMoney) {
@@ -79,7 +102,7 @@ export function OrderMeta({ order, showMoney = true }: Props) {
       <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {rows.map((row) => {
           const Icon = row.icon;
-          const missing = row.value === "—";
+          const missing = row.value === "—" || row.value === NOT_SPECIFIED;
           return (
             <div key={row.label} className="flex min-w-0 items-start gap-2.5">
               <span
@@ -165,6 +188,30 @@ export function OrderMeta({ order, showMoney = true }: Props) {
       </div>
     </div>
   );
+}
+
+/**
+ * Material, zone and the shop's date as the API filled them, or null from an
+ * older API (the order's own fields are read then). A date the API could not
+ * fill is null here so it is never formatted.
+ */
+export function jobDetailsOf(order: Pick<Order, "jobDetails">): {
+  material: string;
+  zone: string;
+  promisedDate: string | null;
+} | null {
+  const raw = order.jobDetails;
+  if (!raw || typeof raw !== "object") return null;
+  const text = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : NOT_SPECIFIED;
+  const missing = Array.isArray(raw.missing) ? raw.missing : [];
+  const promised = text(raw.promisedDate);
+  return {
+    material: text(raw.material),
+    zone: text(raw.zone),
+    promisedDate:
+      missing.includes("promisedDate") || promised === NOT_SPECIFIED ? null : promised,
+  };
 }
 
 function formatDistance(meters: number): string {
