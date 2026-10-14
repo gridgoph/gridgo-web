@@ -25,9 +25,10 @@ import {
   pickLine,
   priceLine,
   printerCapLine,
-  productionDaysLine,
+  productionTimeLine,
   type Listing,
 } from "@/lib/listings";
+import { readyInLine } from "@/lib/production-time";
 
 type Props = {
   entry: ReviewEntry;
@@ -373,9 +374,9 @@ function ListingFacts({
         <dt className="text-caption text-text-muted">Ready in</dt>
         <dd className="text-body text-text-primary m-0">
           {listing.turnaroundMode === "override"
-            ? listing.turnaroundDays
-              ? `Ready in ${productionDaysLine(listing.turnaroundDays)}`
-              : productionDaysLine(null)
+            ? listing.turnaround
+              ? readyInLine(listing.turnaround, listing.minimumTurnaround)
+              : productionTimeLine(null)
             : "The shop's usual time"}
         </dd>
         {cap ? (

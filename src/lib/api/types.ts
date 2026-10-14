@@ -1654,8 +1654,16 @@ export type SupplierService = {
   qtyMax: number | null;
   pricingBasis: string;
   referenceRateMinor: number;
+  /**
+   * The line's usual production time. Read it through `readServiceLineTime`
+   * (`src/lib/production-time.ts`): days for day-based work, exact minutes
+   * for everything, hours kept for older apps.
+   */
   turnaroundDays?: number | null;
+  turnaroundMinutes?: number | null;
   turnaroundHours: number;
+  /** The shop's working day in minutes; a same-day time stays under it. */
+  productionDayMinutes?: number | null;
   capacityDaily: number | null;
   capacityWeekly: number | null;
   zones: string[];
@@ -1680,7 +1688,9 @@ export type CreateSupplierServiceInput = {
   qtyMax?: number | null;
   pricingBasis?: string;
   referenceRateMinor?: number;
-  turnaroundHours?: number;
+  /** Send one: whole working days, or same-day minutes under one working day. */
+  turnaroundDays?: number | null;
+  turnaroundMinutes?: number | null;
   capacityDaily?: number | null;
   capacityWeekly?: number | null;
   zones?: string[];

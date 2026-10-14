@@ -7,10 +7,11 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import {
   boardContextFor,
   boardStanding,
+  effectiveMinimumTurnaround,
+  effectiveTurnaround,
   LISTING_STANDING_LABEL,
   priceLine,
   printerCapLine,
-  readyInLine,
   subcategoryName,
   type BoardStanding,
   type Listing,
@@ -18,6 +19,7 @@ import {
   type ServiceLine,
 } from "@/lib/listings";
 import type { Taxonomy } from "@/lib/api/types";
+import { readyInLine } from "@/lib/production-time";
 
 type Props = {
   listing: Listing;
@@ -46,10 +48,10 @@ export function ListingCard({
   const context = boardContextFor(listing, services);
   const standing = boardStanding(listing, context, shopApproved, readiness);
   const first = listing.photos[0];
-  const hours =
-    listing.turnaroundMode === "override"
-      ? listing.turnaroundHours
-      : context.inheritedTurnaroundHours;
+  const readyIn = readyInLine(
+    effectiveTurnaround(listing, context.inheritedTurnaround),
+    effectiveMinimumTurnaround(listing),
+  );
   const cap = printerCapLine(listing.printerMaxWidthFeet);
 
   const photo = (
@@ -81,7 +83,7 @@ export function ListingCard({
           <div className="hidden min-w-0 md:block">
             <p className="text-body text-text-primary m-0">{priceLine(listing)}</p>
             {cap ? <p className="text-caption text-text-secondary m-0">{cap}</p> : null}
-            <p className="text-caption text-text-secondary m-0">{readyInLine(hours)}</p>
+            <p className="text-caption text-text-secondary m-0">{readyIn}</p>
           </div>
           <div className="flex flex-col items-end gap-1 pr-2">
             <p className="text-body text-text-primary m-0 md:hidden">{priceLine(listing)}</p>
@@ -103,7 +105,7 @@ export function ListingCard({
           </p>
           <p className="text-body text-text-primary m-0">{priceLine(listing)}</p>
           {cap ? <p className="text-caption text-text-secondary m-0">{cap}</p> : null}
-          <p className="text-caption text-text-secondary m-0">{readyInLine(hours)}</p>
+          <p className="text-caption text-text-secondary m-0">{readyIn}</p>
           {preview && standing.kind === "live" ? null : <StandingChips standing={standing} />}
           {standing.note && (standing.kind !== "live" || standing.secondary) ? (
             <p className="text-caption text-text-secondary m-0 line-clamp-2">{standing.note}</p>

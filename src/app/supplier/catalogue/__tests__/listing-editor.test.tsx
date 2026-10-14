@@ -390,6 +390,93 @@ describe("listing editor autosave", () => {
   });
 });
 
+/** The Speed step's own section, apart from the client preview beside it. */
+function speedSection(): HTMLElement {
+  const section = document.getElementById("section-ready-in");
+  if (!section) throw new Error("Speed step is not open");
+  return section;
+}
+
+describe("listing editor production time (report 39853344)", () => {
+  it("saves a same-day window in minutes, sending only that unit's fields", async () => {
+    stubLoad(
+      catalogItem({
+        turnaroundHours: undefined,
+        turnaroundDays: 2,
+        turnaroundMinutes: 1200,
+        productionDayMinutes: 600,
+      }),
+    );
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    expect(speedSection()).toHaveTextContent("Ready in 2 working days");
+
+    fireEvent.click(screen.getByRole("radio", { name: "Hours" }));
+    expect(screen.getByRole("spinbutton", { name: "Latest" })).toHaveAttribute(
+      "aria-valuetext",
+      "1 hour",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Longer latest production time" }));
+    fireEvent.click(screen.getByRole("button", { name: "Longer latest production time" }));
+    expect(within(speedSection()).getByText("Ready in 1–2 hours")).toBeVisible();
+    expect(within(speedSection()).getByText(/A job that starts now is ready/)).toBeVisible();
+
+    await waitFor(
+      () =>
+        expect(mocks.updateCatalogItem).toHaveBeenCalledWith(
+          "sci_1",
+          3,
+          expect.objectContaining({
+            turnaroundMode: "override",
+            minimumTurnaroundMinutes: 60,
+            turnaroundMinutes: 120,
+          }),
+        ),
+      AUTOSAVE_WAIT,
+    );
+    const body = mocks.updateCatalogItem.mock.calls[0][2];
+    expect(body).not.toHaveProperty("turnaroundDays");
+    expect(body).not.toHaveProperty("turnaroundHours");
+  });
+
+  it("switching back to working days restores the window the shop had", async () => {
+    stubLoad(catalogItem({ turnaroundHours: undefined, turnaroundDays: 3, minimumTurnaroundDays: 2 }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    expect(within(speedSection()).getByText("Ready in 2–3 working days")).toBeVisible();
+    fireEvent.click(screen.getByRole("radio", { name: "Hours" }));
+    expect(within(speedSection()).getByText("Ready in 1 hour")).toBeVisible();
+    fireEvent.click(screen.getByRole("radio", { name: "Working days" }));
+    expect(within(speedSection()).getByText("Ready in 2–3 working days")).toBeVisible();
+  });
+
+  it("steps down from one working day into hours", async () => {
+    stubLoad(catalogItem({ turnaroundHours: undefined, turnaroundDays: 1 }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    const latest = screen.getByRole("spinbutton", { name: "Latest" });
+    latest.focus();
+    fireEvent.keyDown(latest, { key: "ArrowDown" });
+    expect(latest).toHaveAttribute("aria-valuetext", "9½ hours");
+    expect(screen.getByRole("radio", { name: "Hours" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("leaves an older untouched time out of a save, so other edits are not held", async () => {
+    // An older API stored 48 hours exactly: longer than a working day, which
+    // the Hours picker cannot send back. Changing the name must still save.
+    stubLoad(catalogItem());
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers A5" } });
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled(), AUTOSAVE_WAIT);
+    const body = mocks.updateCatalogItem.mock.calls[0][2];
+    expect(body).toMatchObject({ name: "Flyers A5", turnaroundMode: "override" });
+    expect(body).not.toHaveProperty("turnaroundMinutes");
+    expect(body).not.toHaveProperty("turnaroundDays");
+    expect(body).not.toHaveProperty("turnaroundHours");
+  });
+});
+
 describe("listing editor readiness checklist", () => {
   it("lists what is missing once, and takes you to the field", async () => {
     stubLoad(catalogItem({ description: "", active: false }));

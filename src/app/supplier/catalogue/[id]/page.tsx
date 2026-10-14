@@ -12,6 +12,10 @@ import { Check, Trash2 } from "lucide-react";
 import { ListingPreviewBody } from "@/app/supplier/_components/ListingPreviewBody";
 import { PrinterMaxWidthField } from "@/app/supplier/_components/PrinterMaxWidthField";
 import {
+  PRODUCTION_TIME_HINT,
+  ProductionTimeField,
+} from "@/app/supplier/_components/ProductionTimeField";
+import {
   focusField,
   ReadinessChecklist,
   requirementRowId,
@@ -83,7 +87,8 @@ import {
   boardContextFor,
   boardStanding,
   coversFor,
-  effectiveTurnaroundHours,
+  effectiveMinimumTurnaround,
+  effectiveTurnaround,
   needsPrinterMaxWidth,
   nextFreeSlot,
   normalizeListing,
@@ -94,7 +99,6 @@ import {
   pickLine,
   priceSuffix,
   printerMaxWidthFeetWrite,
-  readyInLine,
   specs,
   subcategoryName,
   unitChoiceLabel,
@@ -107,6 +111,16 @@ import {
   type SpecGroup,
 } from "@/lib/listings";
 import { changeNotice, replacedNotice } from "@/lib/listing-photos";
+import {
+  DEFAULT_DAY_MINUTES,
+  listingTimeFields,
+  readyInLine,
+  sameTime,
+  timeLabel,
+  windowProblem,
+  workingDays,
+  type ProductionTime,
+} from "@/lib/production-time";
 import { cn } from "@/lib/utils";
 
 type Draft = {
@@ -118,7 +132,9 @@ type Draft = {
   packageQty: number;
   minimumOrderQuantity: number;
   turnaroundMode: "inherit" | "override";
-  turnaroundHours: number;
+  /** The listing's own window: hours for same-day work, else working days. */
+  turnaround: ProductionTime;
+  minimumTurnaround: ProductionTime;
   subcategoryCode: string;
   printerMaxWidthFeet: number | null;
 };
@@ -195,10 +211,36 @@ function draftFrom(listing: Listing): Draft {
     packageQty: listing.packageQty ?? 100,
     minimumOrderQuantity: listing.minimumOrderQuantity ?? 0,
     turnaroundMode: listing.turnaroundMode,
-    turnaroundHours: listing.turnaroundHours ?? 48,
+    turnaround: listing.turnaround ?? DEFAULT_LISTING_TIME,
+    minimumTurnaround: listing.minimumTurnaround ?? listing.turnaround ?? DEFAULT_LISTING_TIME,
     subcategoryCode: listing.subcategoryCode,
     printerMaxWidthFeet: listing.printerMaxWidthFeet,
   };
+}
+
+/** A listing switched to its own time starts here when it has none yet. */
+const DEFAULT_LISTING_TIME = workingDays(2);
+
+/**
+ * The production-time fields a save sends: only the chosen unit's field for
+ * each end, and no soonest when it equals the latest. Inheriting clears both.
+ */
+function timePayload(draft: Draft) {
+  if (draft.turnaroundMode !== "override") return listingTimeFields(null, null);
+  return listingTimeFields(
+    sameTime(draft.minimumTurnaround, draft.turnaround) ? null : draft.minimumTurnaround,
+    draft.turnaround,
+  );
+}
+
+/**
+ * True when the draft's production time differs from what the listing holds.
+ * An unchanged time is left out of the save, so a listing still carrying an
+ * older long time in hours can have its name or price changed without first
+ * being asked to fix a time nobody touched.
+ */
+function timeChanged(draft: Draft, listing: Listing): boolean {
+  return JSON.stringify(timePayload(draft)) !== JSON.stringify(timePayload(draftFrom(listing)));
 }
 
 /** Exactly what `updateCatalogItem` receives for a draft, minus `active`. */
@@ -213,7 +255,7 @@ function payloadOf(draft: Draft) {
       ? draft.minimumOrderQuantity || null
       : null,
     turnaroundMode: draft.turnaroundMode,
-    turnaroundHours: draft.turnaroundMode === "override" ? draft.turnaroundHours : null,
+    ...timePayload(draft),
     subcategoryCode: draft.subcategoryCode,
     ...printerMaxWidthFeetWrite(
       draft.subcategoryCode,
@@ -223,10 +265,27 @@ function payloadOf(draft: Draft) {
   };
 }
 
+/** What a save sends: the draft, with an untouched production time left out. */
+function savePayload(draft: Draft, listing: Listing) {
+  const payload: Record<string, unknown> = payloadOf(draft);
+  if (!timeChanged(draft, listing)) {
+    for (const key of Object.keys(timePayload(draft))) delete payload[key];
+  }
+  return payload;
+}
+
 /** Why a draft cannot be sent yet — the API would refuse it, so hold it here. */
-function holdReason(draft: Draft): string | null {
+function holdReason(draft: Draft, listing: Listing): string | null {
   if (pesosToMinor(draft.price) == null) {
     return "enter a price in pesos, like 400.00.";
+  }
+  if (draft.turnaroundMode === "override" && timeChanged(draft, listing)) {
+    const problem = windowProblem(
+      draft.minimumTurnaround,
+      draft.turnaround,
+      listing.productionDayMinutes ?? DEFAULT_DAY_MINUTES,
+    );
+    if (problem) return problem.charAt(0).toLowerCase() + problem.slice(1);
   }
   if (
     needsPrinterMaxWidth(draft.subcategoryCode) &&
@@ -342,7 +401,12 @@ export default function ListingEditorPage() {
             ? working.minimumOrderQuantity || null
             : null,
           turnaroundMode: working.turnaroundMode,
-          turnaroundHours: working.turnaroundHours,
+          turnaround: working.turnaroundMode === "override" ? working.turnaround : null,
+          minimumTurnaround:
+            working.turnaroundMode === "override" &&
+            !sameTime(working.minimumTurnaround, working.turnaround)
+              ? working.minimumTurnaround
+              : null,
           subcategoryCode: working.subcategoryCode,
           printerMaxWidthFeet: needsPrinterMaxWidth(working.subcategoryCode)
             ? working.printerMaxWidthFeet
@@ -361,8 +425,10 @@ export default function ListingEditorPage() {
           dirty ? null : readiness,
         )
       : null;
-  const inheritedHours = context?.inheritedTurnaroundHours ?? null;
-  const resolvedHours = merged ? effectiveTurnaroundHours(merged, inheritedHours) : null;
+  const inheritedTime = context?.inheritedTurnaround ?? null;
+  const readyIn = merged
+    ? readyInLine(effectiveTurnaround(merged, inheritedTime), effectiveMinimumTurnaround(merged))
+    : readyInLine(null);
   const covers = listing
     ? coversFor(
         taxonomy,
@@ -372,7 +438,7 @@ export default function ListingEditorPage() {
 
   async function persist(onTheBoard?: boolean) {
     if (!listing || !working) return false;
-    const held = holdReason(working);
+    const held = holdReason(working, listing);
     if (held) {
       setSaveState({ kind: "held", reason: held });
       return false;
@@ -384,7 +450,7 @@ export default function ListingEditorPage() {
     try {
       const saved = normalizeListing(
         await updateCatalogItem(listing.id, working.version, {
-          ...payloadOf(working),
+          ...savePayload(working, listing),
           ...(onTheBoard != null ? { active: onTheBoard } : {}),
         }),
       );
@@ -469,8 +535,8 @@ export default function ListingEditorPage() {
   // refuse is held, not sent, and the status line says why. A failed save waits
   // for Retry or the next edit rather than hammering the API.
   useEffect(() => {
-    if (!dirty || !working) return;
-    const held = holdReason(working);
+    if (!dirty || !working || !listing) return;
+    const held = holdReason(working, listing);
     if (held) {
       setSaveState({ kind: "held", reason: held });
       return;
@@ -486,7 +552,7 @@ export default function ListingEditorPage() {
     timer = window.setTimeout(attempt, AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
     // `working` is the draft object; a new one means the shop typed.
-  }, [dirty, working]);
+  }, [dirty, working, listing]);
 
   async function applyPhotoOrder({ action, fileId, fileIds }: PhotoReorder) {
     if (!listing || listing.version == null) {
@@ -1041,39 +1107,45 @@ export default function ListingEditorPage() {
                       <FieldDescription>0 means no minimum.</FieldDescription>
                     </Field>
                   ) : null}
+                  <div className="flex flex-col gap-1">
+                    <h3
+                      id="ready-in-heading"
+                      className="text-body text-text-primary m-0"
+                      style={{ fontFamily: "var(--font-medium)" }}
+                    >
+                      Production time
+                    </h3>
+                    <p className="text-caption text-text-secondary m-0 max-w-prose">
+                      {PRODUCTION_TIME_HINT}
+                    </p>
+                  </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                     <SegmentedControl
                       id="turnaround-mode"
-                      aria-label="Ready-in time"
+                      aria-labelledby="ready-in-heading"
                       options={TURNAROUND_CHOICES}
                       value={working.turnaroundMode}
                       onChange={(turnaroundMode) => setDraft({ ...working, turnaroundMode })}
                     />
                     <p className="text-body text-text-secondary m-0" role="status">
-                      {readyInLine(resolvedHours)}
+                      {readyIn}
                     </p>
                   </div>
                   {working.turnaroundMode === "override" ? (
-                    <Field className="max-w-48">
-                      <FieldLabel htmlFor="hours">Hours</FieldLabel>
-                      <Input
-                        id="hours"
-                        type="number"
-                        min={1}
-                        value={working.turnaroundHours}
-                        onChange={(event) =>
-                          setDraft({
-                            ...working,
-                            turnaroundHours: Number(event.target.value) || 0,
-                          })
-                        }
-                      />
-                    </Field>
+                    <ProductionTimeField
+                      idPrefix="listing-time"
+                      min={working.minimumTurnaround}
+                      max={working.turnaround}
+                      dayMinutes={listing.productionDayMinutes ?? DEFAULT_DAY_MINUTES}
+                      onChange={({ min, max }) =>
+                        setDraft({ ...working, minimumTurnaround: min, turnaround: max })
+                      }
+                    />
                   ) : (
                     <p className="text-caption text-text-secondary m-0">
-                      {inheritedHours
-                        ? `Your shop's usual time is ${inheritedHours} hours.`
-                        : "Your shop has no usual turnaround yet. Set the hours for this listing."}
+                      {inheritedTime
+                        ? `Your shop's usual time is ${timeLabel(inheritedTime)}.`
+                        : "Your shop has no usual production time yet. Set one for this listing."}
                     </p>
                   )}
                 </FieldGroup>
