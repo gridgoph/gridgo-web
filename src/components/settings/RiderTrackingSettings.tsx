@@ -173,7 +173,7 @@ export function RiderTrackingSettings({
               <FieldDescription id="rider-tracking-stale-help">
                 {stale === null
                   ? `A whole number from ${STALE_SECONDS.min} to ${STALE_SECONDS.max}.`
-                  : `No location for this long and the rider is flagged. ${STALE_SECONDS.min} to ${STALE_SECONDS.max}; in force: ${storedStale} (${formatThreshold(storedStale)}).`}
+                  : `No location for this long and the rider is flagged. ${STALE_SECONDS.min} to ${STALE_SECONDS.max}; in force: ${storedStale}${storedStale % 60 === 0 ? ` (${formatThreshold(storedStale)})` : ""}.`}
               </FieldDescription>
             </Field>
           </FieldGroup>
