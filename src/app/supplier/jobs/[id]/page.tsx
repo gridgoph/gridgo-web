@@ -390,6 +390,7 @@ export default function SupplierJobDetailPage() {
   const photoMissing = productionPhotoMissing(job);
   const photoOpenState = canAddProgressPhoto(job);
   const check = packagingCheck(job);
+  const heldByChecklist = Boolean(primary?.blockedReason && check);
   const packingPhotos = (job.packingProgress?.photos ?? []).filter(
     (photo) => photo?.fileId,
   );
@@ -451,8 +452,8 @@ export default function SupplierJobDetailPage() {
                 disabled={acting !== null || Boolean(primary.blockedReason)}
                 aria-describedby={
                   primary.blockedReason
-                    ? check
-                      ? "primary-blocked-reason packaging-checklist-heading"
+                    ? heldByChecklist
+                      ? "packaging-hold-reason"
                       : "primary-blocked-reason"
                     : undefined
                 }
@@ -489,7 +490,19 @@ export default function SupplierJobDetailPage() {
                 "Nothing for you to do on this job right now. The timeline below shows where it has got to."}
             </p>
           ) : null}
-          {primary?.blockedReason ? (
+          {/*
+            With the checklist on the page, its row carries GRIDGO's reason
+            (and the way to Operations); here it is only pointed to, so the
+            sentence is not said twice. An older API has no checklist, so the
+            reason stays under the button.
+          */}
+          {heldByChecklist && !actionError ? (
+            <p className="text-body text-text-secondary m-0 flex max-w-prose items-start gap-2">
+              <Scale className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+              Waiting on Operations. Before it can be packaged, below, says why.
+            </p>
+          ) : null}
+          {primary?.blockedReason && !heldByChecklist ? (
             <p
               id="primary-blocked-reason"
               className="text-body text-text-primary m-0 flex max-w-prose items-start gap-2"

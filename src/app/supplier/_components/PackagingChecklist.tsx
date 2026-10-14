@@ -81,7 +81,12 @@ export function PackagingChecklist({ check }: { check: PackagingCheck }) {
           );
         })}
         {others.map((item, index) => (
-          <BlockerRow key={`${item.code}:${index}`} item={item} />
+          <BlockerRow
+            key={`${item.code}:${index}`}
+            item={item}
+            // The first hold describes the disabled Package for pickup button.
+            detailId={index === 0 ? "packaging-hold-reason" : undefined}
+          />
         ))}
         <Row
           state="optional"
@@ -101,11 +106,13 @@ function Row({
   state,
   title,
   detail,
+  detailId,
   action,
 }: {
   state: RowState;
   title: string;
   detail: string;
+  detailId?: string;
   action?: ReactNode;
 }) {
   const chip = STATE_CHIP[state];
@@ -125,6 +132,7 @@ function Row({
         <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} />
       </div>
       <p
+        id={detailId}
         className={
           state === "optional"
             ? "text-caption text-text-muted m-0 max-w-prose"
@@ -139,13 +147,14 @@ function Row({
 }
 
 /** A claim, a stop or a job that moved on: named, in GRIDGO's words, with the way forward. */
-function BlockerRow({ item }: { item: Requirement }) {
+function BlockerRow({ item, detailId }: { item: Requirement; detailId?: string }) {
   const operations = needsOperations(item.kind);
   return (
     <Row
       state={operations ? "blocked" : "needed"}
       title={requirementTitle(item.kind)}
       detail={item.message}
+      detailId={detailId}
       action={
         operations ? (
           <Button

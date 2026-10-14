@@ -171,6 +171,9 @@ describe("before it can be packaged (report 6C695C15)", () => {
     const pack = await screen.findByRole("button", { name: "Package for pickup" });
     expect(pack).toBeDisabled();
     expect(pack).toHaveAccessibleDescription(expect.stringContaining(CLAIM.message));
+    // Said once, in the checklist; the line under the button points to it.
+    expect(screen.getAllByText(CLAIM.message)).toHaveLength(1);
+    expect(screen.getByText(/Waiting on Operations\. Before it can be packaged/)).toBeVisible();
     const list = within(checklist());
     expect(list.getByText("Client claim open")).toBeVisible();
     expect(list.getByText("Waiting on Operations")).toBeVisible();
