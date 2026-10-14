@@ -14,6 +14,12 @@
  * Orders whose payment is still being checked are already waiting on their
  * file too. They are listed beneath with the same clock, because a backlog
  * that builds overnight should be visible before the payments are cleared.
+ *
+ * Operating hours (OPERATING_HOURS_API.md): the strip on top says whether
+ * GRIDGO is open and reads the week back to Operations, who cannot change it.
+ * A new order's wait counts open time; while closed each row shows when it
+ * will be reviewed, and a review pushed later is tagged Review delayed. The
+ * API refuses a pass or send-back while closed, so the dialogs say so first.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -41,7 +47,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Textarea } from "@/components/ui/textarea";
 import { transitionOrder } from "@/lib/api/client";
-import type { Order } from "@/lib/api/types";
+import type { OperatingHours, Order } from "@/lib/api/types";
 import {
   artworkSource,
   orderDesignLinks,
@@ -52,13 +58,17 @@ import {
   SEND_BACK_REASON_MAX,
   buildFileCheckQueue,
   fileCheckOf,
+  fileCheckReviewSlot,
   formatWait,
   qaChecksFor,
   qaChecklistPayload,
   sendBackReasonProblem,
   waitLevel,
   type FileCheckRow,
+  type ReviewSlot,
 } from "@/lib/file-check";
+import { manilaWhen, manilaWhenFrom } from "@/lib/operating-hours";
+import { OperatingHoursStrip } from "@/components/orders/OperatingHoursStrip";
 import { formatDateTime } from "@/lib/format";
 import { basketShopCounts, groupPositionLabel, shopModeOf } from "@/lib/baskets";
 import { QaChecklistFields } from "./QaChecklist";
@@ -85,6 +95,12 @@ type Props = {
   onChanged: () => Promise<void> | void;
   /** The workspace link for an order in this tree. */
   orderHref?: (orderId: string) => string;
+  /**
+   * GRIDGO's operating hours from the settings. Absent while they load, on
+   * an older API or if the read failed: rows then use each order's own
+   * `review` projection.
+   */
+  hours?: OperatingHours | null;
 };
 
 type Decision = { kind: "pass" | "send-back"; order: Order };
@@ -93,9 +109,13 @@ export function FileCheckQueue({
   orders,
   onChanged,
   orderHref = (id) => `/ops/orders/${encodeURIComponent(id)}`,
+  hours = null,
 }: Props) {
   const now = useNow(TICK_MS);
-  const queue = useMemo(() => buildFileCheckQueue(orders, now), [orders, now]);
+  const queue = useMemo(
+    () => buildFileCheckQueue(orders, now, hours),
+    [orders, now, hours],
+  );
   const [decision, setDecision] = useState<Decision | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
@@ -173,7 +193,14 @@ export function FileCheckQueue({
         id: "waiting",
         header: "Waiting",
         sortValue: (row) => row.waitSeconds ?? -1,
-        cell: (row) => <WaitMark seconds={row.waitSeconds} />,
+        cell: (row) => (
+          <ReviewWait
+            seconds={row.waitSeconds}
+            slot={fileCheckReviewSlot(row.order, now, hours)}
+            requestedAt={fileCheckOf(row.order)?.requestedAt ?? null}
+            now={now}
+          />
+        ),
       },
       {
         id: "artwork",
@@ -182,7 +209,7 @@ export function FileCheckQueue({
         cell: (row) => <ArtworkCell order={row.order} />,
       },
     ],
-    [fresh, shopCounts],
+    [fresh, shopCounts, now, hours],
   );
 
   async function decided(message: string) {
@@ -214,6 +241,8 @@ export function FileCheckQueue({
           </p>
         ) : null}
       </div>
+
+      {hours ? <OperatingHoursStrip hours={hours} now={now} /> : null}
 
       {done ? (
         <p className="text-body text-success m-0" role="status">
@@ -282,7 +311,12 @@ export function FileCheckQueue({
                 >
                   {row.order.title || "Untitled order"}
                 </Link>
-                <WaitMark seconds={row.waitSeconds} />
+                <ReviewWait
+                  seconds={row.waitSeconds}
+                  slot={fileCheckReviewSlot(row.order, now, hours)}
+                  requestedAt={fileCheckOf(row.order)?.requestedAt ?? null}
+                  now={now}
+                />
               </li>
             ))}
           </ul>
@@ -332,6 +366,7 @@ export function FileCheckQueue({
 
       <PassDialog
         order={decision?.kind === "pass" ? decision.order : null}
+        slot={decision ? fileCheckReviewSlot(decision.order, now, hours) : null}
         onCancel={() => setDecision(null)}
         onPassed={(order) =>
           decided(
@@ -341,6 +376,7 @@ export function FileCheckQueue({
       />
       <SendBackDialog
         order={decision?.kind === "send-back" ? decision.order : null}
+        slot={decision ? fileCheckReviewSlot(decision.order, now, hours) : null}
         onCancel={() => setDecision(null)}
         onSent={(order) =>
           decided(
@@ -376,6 +412,68 @@ export function WaitMark({ seconds }: { seconds: number | null }) {
         label={level === "overdue" ? `${label}, overdue` : `${label}, waiting long`}
       />
     </span>
+  );
+}
+
+/**
+ * The wait for an order under operating hours. While GRIDGO is closed the
+ * row says when the file will be reviewed rather than how late it is; while
+ * open, the wait is open time, with the arrival shown when nights or
+ * closures make it differ from the clock. A delayed review is tagged.
+ */
+function ReviewWait({
+  seconds,
+  slot,
+  requestedAt,
+  now,
+}: {
+  seconds: number | null;
+  slot: ReviewSlot | null;
+  requestedAt: string | null;
+  now: number;
+}) {
+  if (!slot) return <WaitMark seconds={seconds} />;
+  const arrived = requestedAt ? Date.parse(requestedAt) : NaN;
+  const wallSeconds = Number.isFinite(arrived) ? Math.floor((now - arrived) / 1000) : null;
+  return (
+    <div className="flex flex-col items-start gap-1" data-testid="review-wait">
+      {slot.closed && slot.scheduledAt !== null ? (
+        <StatusChip
+          tone="info"
+          icon="clock"
+          label={`Review ${manilaWhenFrom(slot.scheduledAt, now)}`}
+        />
+      ) : (
+        <WaitMark seconds={seconds} />
+      )}
+      {slot.delayed ? (
+        <StatusChip tone="warning" icon="triangle-alert" label="Review delayed" />
+      ) : null}
+      {Number.isFinite(arrived) &&
+      wallSeconds !== null &&
+      seconds !== null &&
+      wallSeconds - seconds >= 60 * 60 ? (
+        <span className="text-caption text-text-muted">
+          Arrived {manilaWhen(arrived)}
+          {slot.closed ? "" : ", counted from opening"}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/** Said in both dialogs while GRIDGO is closed: the API refuses the decision until it opens. */
+function ClosedNotice({ slot }: { slot: ReviewSlot | null }) {
+  if (!slot?.closed || slot.scheduledAt === null) return null;
+  return (
+    <p
+      className="text-body text-text-primary m-0 rounded-card border border-outline bg-surface-variant p-3"
+      role="note"
+      data-testid="file-check-closed"
+    >
+      GRIDGO is closed. This order can be passed or sent back from{" "}
+      {manilaWhen(slot.scheduledAt)}. You can open the artwork now.
+    </p>
   );
 }
 
@@ -420,10 +518,12 @@ function ArtworkCell({ order }: { order: Order }) {
 
 function PassDialog({
   order,
+  slot,
   onCancel,
   onPassed,
 }: {
   order: Order | null;
+  slot: ReviewSlot | null;
   onCancel: () => void;
   onPassed: (order: Order) => Promise<void> | void;
 }) {
@@ -471,6 +571,7 @@ function PassDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto">
+          <ClosedNotice slot={slot} />
           <OrderArtwork order={order} />
           <QaChecklistFields
             order={order}
@@ -488,7 +589,11 @@ function PassDialog({
           <Button variant="secondary" disabled={busy} onClick={onCancel}>
             Not yet
           </Button>
-          <Button variant="primary" disabled={busy || !ready} onClick={() => void pass()}>
+          <Button
+            variant="primary"
+            disabled={busy || !ready || Boolean(slot?.closed)}
+            onClick={() => void pass()}
+          >
             {busy ? "Passing…" : "Pass and send to the shop"}
           </Button>
         </DialogFooter>
@@ -499,10 +604,12 @@ function PassDialog({
 
 function SendBackDialog({
   order,
+  slot,
   onCancel,
   onSent,
 }: {
   order: Order | null;
+  slot: ReviewSlot | null;
   onCancel: () => void;
   onSent: (order: Order) => Promise<void> | void;
 }) {
@@ -556,6 +663,7 @@ function SendBackDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="flex max-h-[60vh] flex-col gap-4 overflow-y-auto">
+          <ClosedNotice slot={slot} />
           <QaChecklistFields
             order={order}
             checked={checked}
@@ -592,7 +700,11 @@ function SendBackDialog({
           <Button variant="secondary" disabled={busy} onClick={onCancel}>
             Keep it here
           </Button>
-          <Button variant="primary" disabled={busy} onClick={() => void send()}>
+          <Button
+            variant="primary"
+            disabled={busy || Boolean(slot?.closed)}
+            onClick={() => void send()}
+          >
             {busy ? "Sending…" : "Send back to the client"}
           </Button>
         </DialogFooter>

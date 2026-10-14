@@ -42,6 +42,7 @@ import { CheckoutPayment, checkoutPaymentLabel } from "@/components/settings/Che
 import { DeliveryZones, DeliveryZonesSkeleton } from "@/components/settings/DeliveryZones";
 import { HandoverCodeSettings } from "@/components/settings/HandoverCodeSettings";
 import { HubPickupSettings } from "@/components/settings/HubPickupSettings";
+import { OperatingHoursSettings } from "@/components/settings/OperatingHoursSettings";
 import {
   ORGANIZATION_DISCOUNT_INVALID,
   OrganizationDiscount,
@@ -628,6 +629,18 @@ export function OperationalSettings() {
         Platform-wide numbers and the GCash plate checkout scans, changed here rather than
         in a release.
       </p>
+
+      {/* First: every clock on the platform counts against this week. */}
+      <OperatingHoursSettings
+        settings={settings}
+        canEdit
+        disabled={busy}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={() => load(true)}
+      />
 
       <section className="gg-card p-3" aria-labelledby="service-fee-heading">
         <h2 id="service-fee-heading" className="text-h3 text-text-primary m-0">

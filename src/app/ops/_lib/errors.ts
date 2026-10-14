@@ -6,6 +6,7 @@
 import { isApiError } from "@/lib/api/client";
 import { PLATFORM_CONSTRAINT_COPY } from "@/lib/api/constraints";
 import { RIDER_SHARE_INVALID } from "@/lib/delivery-split";
+import { manilaWhen } from "@/lib/operating-hours";
 
 /** Codes worth naming precisely, because each has a different way out. */
 const CODE_COPY: Record<string, string> = {
@@ -160,6 +161,14 @@ const CODE_COPY: Record<string, string> = {
 
 export function opsErrorMessage(err: unknown, fallback: string): string {
   if (!isApiError(err)) return fallback;
+
+  // Manual work on a new order waits for operating hours (OPERATING_HOURS_API.md).
+  if (err.code === "outside_operating_hours") {
+    const at = err.detail("scheduledReviewAt");
+    return typeof at === "string" && Number.isFinite(Date.parse(at))
+      ? `GRIDGO is closed, so this waits for operating hours. Try again from ${manilaWhen(at)}.`
+      : "GRIDGO is closed, so this waits for operating hours. Try again when it opens.";
+  }
 
   const specific = CODE_COPY[err.code];
   if (specific) return specific;
