@@ -49,7 +49,6 @@ import {
   tagLabel,
   writeFilterParams,
 } from "@/lib/survey-responses";
-import { formatManila } from "@/lib/vouchers";
 
 const PAGE = 100;
 /** The API's largest page; a live refresh re-reads what is loaded, up to this. */
@@ -237,9 +236,7 @@ export function SurveyResponsesDesk() {
         id: "submitted",
         header: "Answered",
         sortValue: (row) => Date.parse(row.submittedAt),
-        cell: (row) => (
-          <span className="text-body text-text-secondary whitespace-nowrap">{formatManila(row.submittedAt)}</span>
-        ),
+        cell: (row) => <AnsweredAt at={row.submittedAt} />,
       },
       {
         id: "order",
@@ -250,7 +247,7 @@ export function SurveyResponsesDesk() {
           <div className="flex min-w-0 flex-col items-start gap-1">
             <Link
               href={`/admin/orders/${encodeURIComponent(row.orderId)}`}
-              className="text-body text-text-primary max-w-56 truncate underline-offset-2 hover:underline"
+              className="text-body text-text-primary max-w-48 truncate underline-offset-2 hover:underline"
               style={MEDIUM}
             >
               {titleOf(row.orderId) ?? `Order ${row.orderId}`}
@@ -260,24 +257,50 @@ export function SurveyResponsesDesk() {
               {titleOf(row.orderId) ? `, order ${row.orderId}` : ""}
             </span>
             {row.needsFollowUp ? <StatusChip tone="warning" icon="triangle-alert" label="Needs follow-up" /> : null}
+            <ScoreLine row={row} />
           </div>
         ),
       },
       {
+        id: "said",
+        header: "Tags and note",
+        sortable: false,
+        className: "whitespace-normal min-w-60",
+        cell: (row) => {
+          const tags = [...row.fulfillmentTags, ...row.easeTags];
+          if (!tags.length && !row.improvementNote) {
+            return <span className="text-body text-text-muted">—</span>;
+          }
+          return (
+            <div className="flex max-w-96 flex-col gap-1.5">
+              {row.improvementNote ? (
+                <p className="text-body text-text-primary m-0 line-clamp-2 break-words">
+                  &ldquo;{row.improvementNote}&rdquo;
+                </p>
+              ) : null}
+              <TagList tags={tags} limit={3} />
+            </div>
+          );
+        },
+      },
+      {
         id: "fulfillment",
-        header: "Delivery or pick-up",
+        header: "Handover",
+        hideOnMobile: true,
         sortValue: (row) => row.fulfillmentStars,
         cell: (row) => <StarScore value={row.fulfillmentStars} />,
       },
       {
         id: "ease",
         header: "Ordering",
+        hideOnMobile: true,
         sortValue: (row) => row.easeStars,
         cell: (row) => <StarScore value={row.easeStars} />,
       },
       {
         id: "price",
         header: "Price",
+        hideOnMobile: true,
         sortValue: (row) => row.priceFeeling,
         cell: (row) => (
           <div className="flex flex-col">
@@ -292,53 +315,17 @@ export function SurveyResponsesDesk() {
       },
       {
         id: "quality",
-        header: "Print quality",
+        header: "Quality",
+        hideOnMobile: true,
         sortValue: (row) => row.qualityStars ?? -1,
         cell: (row) => <StarScore value={row.qualityStars} />,
       },
       {
         id: "recommend",
         header: "Recommend",
+        hideOnMobile: true,
         sortValue: (row) => row.recommendScore ?? -1,
         cell: (row) => <RecommendScore value={row.recommendScore} />,
-      },
-      {
-        id: "said",
-        header: "Tags and note",
-        sortable: false,
-        cell: (row) => {
-          const tags = [...row.fulfillmentTags, ...row.easeTags];
-          if (!tags.length && !row.improvementNote) {
-            return <span className="text-body text-text-muted">—</span>;
-          }
-          return (
-            <div className="flex max-w-80 min-w-48 flex-col gap-1.5">
-              {row.improvementNote ? (
-                <p className="text-body text-text-primary m-0 line-clamp-2 break-words">
-                  &ldquo;{row.improvementNote}&rdquo;
-                </p>
-              ) : null}
-              <TagList tags={tags} limit={3} />
-            </div>
-          );
-        },
-      },
-      {
-        id: "reward",
-        header: "Reward",
-        hideOnMobile: true,
-        sortValue: (row) => row.rewardStatus ?? "",
-        cell: (row) => (
-          <span
-            className={
-              row.rewardStatus === "issued"
-                ? "text-body text-text-secondary whitespace-nowrap"
-                : "text-body text-text-muted"
-            }
-          >
-            {rewardLabel(row.rewardStatus)}
-          </span>
-        ),
       },
     ],
     [titleOf],
@@ -609,7 +596,7 @@ export function SurveyResponsesDesk() {
           pageSize={Math.max(PAGE, loaded)}
           rowActions={(row) => (
             <DataTableRowAction
-              label={`Open the response for ${titleOf(row.orderId) ?? `order ${row.orderId}`}`}
+              label="Open response"
               icon={PanelRightOpen}
               onClick={() => openResponse(row.orderId)}
             />
@@ -643,6 +630,47 @@ export function SurveyResponsesDesk() {
         }}
       />
     </div>
+  );
+}
+
+function AnsweredAt({ at }: { at: string }) {
+  const date = new Date(at);
+  if (Number.isNaN(date.getTime())) return <span className="text-body text-text-secondary">{at}</span>;
+  const day = new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", year: "numeric", timeZone: "Asia/Manila" }).format(date);
+  const time = new Intl.DateTimeFormat("en-PH", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" }).format(date);
+  return (
+    <span className="flex flex-col whitespace-nowrap">
+      <span className="text-body text-text-secondary">{day}</span>
+      <span className="text-caption text-text-muted">{time}</span>
+    </span>
+  );
+}
+
+/** The five answers in one line, for the phone card only (the table has columns). */
+function ScoreLine({ row }: { row: SurveyResponse }) {
+  const group = npsGroup(row.recommendScore);
+  const parts: { label: string; value: string; low: boolean }[] = [
+    { label: "Handover", value: `${row.fulfillmentStars}★`, low: isLowStars(row.fulfillmentStars) },
+    { label: "Ordering", value: `${row.easeStars}★`, low: isLowStars(row.easeStars) },
+    { label: "Price", value: priceFeelingLabel(row.priceFeeling), low: false },
+    { label: "Quality", value: row.qualityStars == null ? "—" : `${row.qualityStars}★`, low: isLowStars(row.qualityStars) },
+    {
+      label: "Recommend",
+      value: row.recommendScore == null ? "—" : `${row.recommendScore}/10`,
+      low: group === "detractor",
+    },
+  ];
+  return (
+    <dl className="m-0 mt-1 grid grid-cols-3 gap-x-3 gap-y-1 md:hidden">
+      {parts.map((part) => (
+        <div key={part.label} className="flex min-w-0 flex-col">
+          <dt className="text-caption text-text-muted">{part.label}</dt>
+          <dd className={part.low ? "text-body text-error m-0" : "text-body text-text-primary m-0"} style={part.low ? MEDIUM : undefined}>
+            {part.value}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 

@@ -137,7 +137,7 @@ export function fulfillmentLabel(kind: SurveyFulfillmentKind): string {
 export function questionLabel(key: SurveyScoreKey, kind?: SurveyFulfillmentKind): string {
   switch (key) {
     case "fulfillmentStars":
-      return kind === "pickup" ? "How was picking it up?" : kind === "delivery" ? "How was the delivery?" : "Delivery or pick-up";
+      return kind === "pickup" ? "How was picking it up?" : kind === "delivery" ? "How was the delivery?" : "Handover";
     case "easeStars":
       return "How easy was ordering?";
     case "priceFeeling":
@@ -271,17 +271,17 @@ export const SCORE_FILTERS: readonly {
   label: string;
   options: readonly { value: string; label: string }[];
 }[] = [
-  { key: "fulfillmentStars", label: "Delivery or pick-up", options: stars() },
+  { key: "fulfillmentStars", label: "Handover", options: stars() },
   { key: "easeStars", label: "Ordering", options: stars() },
-  { key: "qualityStars", label: "Print quality", options: stars() },
+  { key: "qualityStars", label: "Quality", options: stars() },
   {
     key: "priceFeeling",
-    label: "Price feeling",
+    label: "Price",
     options: PRICE_FEELINGS.map((label, index) => ({ value: String(index + 1), label })),
   },
   {
     key: "recommendScore",
-    label: "Recommend score",
+    label: "Recommend",
     options: Array.from({ length: 11 }, (_, index) => ({
       value: String(10 - index),
       label: `${10 - index} of 10`,

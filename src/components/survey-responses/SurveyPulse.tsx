@@ -126,9 +126,10 @@ export function SurveyPulse({
         </div>
       </div>
 
-      <dl className="border-outline m-0 grid border-t sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="border-outline m-0 grid grid-cols-2 border-t lg:grid-cols-4">
         <StarFigure
-          label="Delivery or pick-up"
+          label="Handover"
+          hint="Delivery or pick-up"
           average={aggregates?.averages.fulfillmentStars ?? null}
           count={counts?.fulfillmentStars ?? 0}
           waiting={waiting}
@@ -140,7 +141,8 @@ export function SurveyPulse({
           waiting={waiting}
         />
         <StarFigure
-          label="Print quality"
+          label="Quality"
+          hint="Print quality"
           average={aggregates?.averages.qualityStars ?? null}
           count={counts?.qualityStars ?? 0}
           waiting={waiting}
@@ -156,8 +158,9 @@ export function SurveyPulse({
   );
 }
 
+// Two figures a row below desktop, four on one row from 1024px.
 const FIGURE =
-  "border-outline flex min-w-0 flex-col gap-1.5 p-4 md:px-5 border-t first:border-t-0 sm:[&:nth-child(2)]:border-t-0 sm:[&:nth-child(even)]:border-l lg:border-t-0 lg:[&:not(:first-child)]:border-l";
+  "border-outline flex min-w-0 flex-col gap-1.5 p-4 md:px-5 [&:nth-child(n+3)]:border-t [&:nth-child(even)]:border-l lg:[&:nth-child(n+3)]:border-t-0 lg:[&:not(:first-child)]:border-l";
 
 function answersLine(count: number, optional?: boolean): string {
   if (!count) return optional ? "Optional, nobody answered yet" : "No answers yet";
@@ -170,8 +173,10 @@ function StarFigure({
   count,
   waiting,
   optional,
+  hint,
 }: {
   label: string;
+  hint?: string;
   average: number | null;
   count: number;
   waiting: boolean;
@@ -179,7 +184,10 @@ function StarFigure({
 }) {
   return (
     <div className={FIGURE}>
-      <dt className="text-body text-text-secondary">{label}</dt>
+      <dt className="text-body text-text-secondary">
+        {label}
+        {hint ? <span className="text-caption text-text-muted">, {hint.toLowerCase()}</span> : null}
+      </dt>
       <dd className="m-0 flex flex-col gap-1.5">
         <span className="flex items-baseline gap-1">
           <span className="text-h2 text-text-primary tabular-nums">{waiting ? "…" : formatAverage(average)}</span>
@@ -220,7 +228,7 @@ function PriceFigure({ average, count, waiting }: { average: number | null; coun
   const position = average == null ? null : ((Math.min(5, Math.max(1, average)) - 1) / 4) * 100;
   return (
     <div className={FIGURE}>
-      <dt className="text-body text-text-secondary">Price feeling</dt>
+      <dt className="text-body text-text-secondary">Price</dt>
       <dd className="m-0 flex flex-col gap-1.5">
         <span className="flex items-baseline gap-1.5">
           <span className="text-h2 text-text-primary">{waiting ? "…" : (near ?? "—")}</span>

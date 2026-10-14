@@ -130,7 +130,6 @@ describe("SurveyResponsesDesk", () => {
     expect(screen.getAllByText("Arrived late").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Needs follow-up").length).toBeGreaterThan(1);
     expect(screen.getAllByLabelText("2 of 5, low").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("No voucher, had one this week").length).toBeGreaterThan(0);
     expect(api.listSurveyResponses).toHaveBeenCalledWith(expect.objectContaining({}), { limit: 100 });
   });
 
@@ -169,6 +168,7 @@ describe("SurveyResponsesDesk", () => {
     expect(within(sheet).getByText("Delivery rated 2 of 5")).toBeInTheDocument();
     expect(within(sheet).getByText("Recommend score 5 of 10")).toBeInTheDocument();
     expect(within(sheet).getByText("Expected to pay ₱250.00")).toBeInTheDocument();
+    expect(within(sheet).getByText("No voucher, had one this week")).toBeInTheDocument();
     expect(within(sheet).getByText("Open order").closest("a")).toHaveAttribute("href", "/admin/orders/ord_late");
   });
 
