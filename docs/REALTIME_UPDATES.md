@@ -131,6 +131,12 @@ carries `catalogItemId`. The arrival is the live alert (chime, toast, desktop al
 desk re-reads on the `catalog` invalidation, marks newly arrived listings and product-type
 requests **New** and announces them politely.
 
+A Featured Prints save (`featured_prints_updated`, gridgo-api#234) reaches every Operations
+and Super Admin membership with no push, and opens `/ops/featured-prints` or
+`/admin/featured-prints`. An open setting re-reads on the `catalog` invalidation: with no
+unsaved edits it takes the new list; with edits it shows the other person's list and asks
+which to keep before Save.
+
 Legal library and privacy notices (`legal.created|edited|published|deleted`,
 `legal.accepted`, `privacy.requested|updated`; gridgo-api#202) name no document, person or
 request. Staff land on `/…/legal`, `/…/acceptance-log` or `/…/privacy-requests` in their

@@ -2235,6 +2235,27 @@ export async function listProductTypeRequests(
   return request<unknown>(`/ops/product-type-requests${search ? `?${search}` : ""}`);
 }
 
+// ---------------------------------------------------------------------------
+// Featured Prints, the client Home row (gridgo-client#239). Contract: gridgo-api
+// docs/FEATURED_PRINTS_API.md. Operations and Super Admin read and replace it.
+// ---------------------------------------------------------------------------
+
+export async function getFeaturedPrints(): Promise<unknown> {
+  return request<unknown>("/admin/featured-prints");
+}
+
+/** Replaces the whole ordered list; a stale `expectedVersion` is `409`. */
+export async function saveFeaturedPrints(input: {
+  expectedVersion: number;
+  catalogItemIds: string[];
+  reason: string;
+}): Promise<unknown> {
+  return request<unknown>("/admin/featured-prints", {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
 export type ProductTypeDecision =
   | { status: "approved"; code: string }
   | { status: "needs_revision"; reason: string };

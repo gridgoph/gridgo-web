@@ -35,6 +35,13 @@ export function notificationHref(role: Role, notification: Notification): string
     return null;
   }
 
+  // Someone saved the client Home row; staff land on the setting.
+  if (type === "featured_prints_updated") {
+    if (role === "super_admin") return "/admin/featured-prints";
+    if (role === "ops_admin") return "/ops/featured-prints";
+    return null;
+  }
+
   if (isSupplierServiceDecision(type) && role === "supplier") {
     return "/supplier/catalogue";
   }

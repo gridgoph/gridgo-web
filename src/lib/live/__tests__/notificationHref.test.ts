@@ -38,6 +38,13 @@ describe("notificationHref", () => {
     ).toBe("/supplier/catalogue/sci_sticker");
   });
 
+  it("opens Featured Prints in each staff tree, and nowhere for others", () => {
+    const type = "featured_prints_updated";
+    expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/featured-prints");
+    expect(notificationHref("super_admin", note({ type }))).toBe("/admin/featured-prints");
+    expect(notificationHref("supplier", note({ type }))).toBeNull();
+  });
+
   it("lands a listing-review notice on each role's own desk or board", () => {
     for (const type of ["catalog_review_pending", "catalog_review_decided"]) {
       expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/listing-reviews");
