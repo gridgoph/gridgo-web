@@ -111,7 +111,7 @@ function StaleRiderRow({
   return (
     <li className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 px-4 py-3 md:grid-cols-[auto_minmax(0,1fr)_auto]">
       <span
-        className="border-warning text-text-muted flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-dashed"
+        className="border-warning text-text-muted row-span-3 flex size-10 shrink-0 items-center justify-center rounded-full border-2 border-dashed md:row-span-2"
         aria-hidden
       >
         <VehicleGlyph vehicleType={row.vehicleType} size={22} />
@@ -140,17 +140,15 @@ function StaleRiderRow({
                 view.hasPosition ? ", still shown on the map" : ""
               }.`}
         </p>
-        <div className="mt-2">
-          <RiderContact riderId={row.riderId} name={row.name} phone={phone} tree={tree} />
-        </div>
       </div>
-      <div className="col-start-2 flex flex-wrap items-center gap-2 md:col-start-3 md:row-start-1 md:flex-col md:items-end">
-        <p
-          className="text-h3 text-text-primary m-0 tabular-nums md:text-right"
-          data-testid="stale-age"
-        >
+      {/* The silence leads on a phone; on a wide screen it sits at the right edge. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 md:col-start-3 md:row-span-2 md:row-start-1 md:flex-col md:items-end">
+        <p className="text-h3 text-text-primary m-0 tabular-nums md:text-right" data-testid="stale-age">
           {silent ? "No location" : formatAge(view.ageSeconds ?? 0)}
-          <span className="text-caption text-text-muted block md:text-right" style={{ fontFamily: "var(--font-sans)" }}>
+          <span
+            className="text-caption text-text-muted block md:text-right"
+            style={{ fontFamily: "var(--font-sans)" }}
+          >
             {silent ? "since assignment" : "since last update"}
           </span>
         </p>
@@ -165,6 +163,9 @@ function StaleRiderRow({
             Last position
           </Button>
         ) : null}
+      </div>
+      <div className="md:col-start-2 md:row-start-2">
+        <RiderContact riderId={row.riderId} name={row.name} phone={phone} tree={tree} />
       </div>
     </li>
   );

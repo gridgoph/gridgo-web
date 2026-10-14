@@ -35,6 +35,8 @@ export type OrderRiderTracking = {
   tracking: TrackingSettings;
   view: RiderLocationView | null;
   rider: User | null;
+  /** Seconds since the diagnostics were read, so on-screen silences count on. */
+  elapsedSeconds: number;
 };
 
 /**
@@ -134,6 +136,7 @@ export function useOrderRiderTracking(order: Order | null): OrderRiderTracking {
     tracking,
     view,
     rider,
+    elapsedSeconds: Math.max(0, Math.floor((nowMs - fetchedAtMs) / 1000)),
   };
 }
 
@@ -219,7 +222,12 @@ export function RiderLocationPanel({
       ) : null}
 
       {summary ? (
-        <PingGaps summary={summary} staleAfterSeconds={tracking.staleAfterSeconds} active={active} />
+        <PingGaps
+          summary={summary}
+          staleAfterSeconds={tracking.staleAfterSeconds}
+          active={active}
+          elapsedSeconds={state.elapsedSeconds}
+        />
       ) : null}
     </div>
   );
@@ -229,10 +237,12 @@ function PingGaps({
   summary,
   staleAfterSeconds,
   active,
+  elapsedSeconds,
 }: {
   summary: DiagnosticsSummary;
   staleAfterSeconds: number;
   active: boolean;
+  elapsedSeconds: number;
 }) {
   const threshold = formatThreshold(staleAfterSeconds);
   return (
@@ -269,7 +279,7 @@ function PingGaps({
                 label="Since the last one"
                 value={
                   summary.secondsSinceLastReceived != null
-                    ? formatAge(summary.secondsSinceLastReceived)
+                    ? formatAge(summary.secondsSinceLastReceived + elapsedSeconds)
                     : "None"
                 }
               />
