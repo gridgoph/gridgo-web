@@ -142,6 +142,13 @@ export function notificationHref(role: Role, notification: Notification): string
     return null;
   }
 
+  // Post-order survey (SURVEY_API.md). Only Super Admin can read answers, so
+  // a submission opens that response there; Operations' copy, and the
+  // opened/skipped notices that carry no answer, fall through to the order.
+  if (type === "order_survey_submitted" && role === "super_admin" && notification.orderId) {
+    return `/admin/survey-responses?response=${encodeURIComponent(notification.orderId)}`;
+  }
+
   if (type === "ops_issue_report_filed") {
     if (role === "super_admin") return "/admin/issue-reports";
     if (role === "ops_admin") return "/ops/issue-reports";

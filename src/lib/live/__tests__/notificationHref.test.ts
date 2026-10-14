@@ -69,6 +69,16 @@ describe("notificationHref", () => {
     expect(notificationHref("super_admin", row)).toBe("/admin/orders/ord_9");
   });
 
+  it("opens a survey submission on Super Admin's responses and every other copy on the order", () => {
+    const submitted = note({ type: "order_survey_submitted", orderId: "ord_9" });
+    expect(notificationHref("super_admin", submitted)).toBe("/admin/survey-responses?response=ord_9");
+    expect(notificationHref("ops_admin", submitted)).toBe("/ops/orders/ord_9");
+    for (const type of ["order_survey_available", "order_survey_dismissed"]) {
+      expect(notificationHref("super_admin", note({ type, orderId: "ord_9" }))).toBe("/admin/orders/ord_9");
+      expect(notificationHref("ops_admin", note({ type, orderId: "ord_9" }))).toBe("/ops/orders/ord_9");
+    }
+  });
+
   it("opens the order workspace from an Operations progress ping", () => {
     const row = note({ type: "ops_order_progress", orderId: "ord_9" });
     expect(notificationHref("ops_admin", row)).toBe("/ops/orders/ord_9");

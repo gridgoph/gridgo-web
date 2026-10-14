@@ -2777,3 +2777,85 @@ export type PrivacyRequest = {
   updatedAt: string;
   revision: number;
 };
+
+// ---- Post-order survey responses ----
+// Contract: gridgo-api `docs/SURVEY_API.md` (report 81CA4493). Super Admin
+// only; rules and words live in `src/lib/survey-responses.ts`.
+
+export type SurveyFulfillmentKind = "delivery" | "pickup";
+export type SurveyRewardStatus = "issued" | "cooldown";
+
+/** One submitted survey. No email, Clerk subject, file or voucher code. */
+export type SurveyResponse = {
+  orderId: string;
+  clientId: string;
+  fulfillmentKind: SurveyFulfillmentKind;
+  /** The handover the survey followed (fixed once invited). */
+  completedAt: string | null;
+  openedAt: string | null;
+  expiresAt: string | null;
+  notifiedAt: string | null;
+  dismissedAt: string | null;
+  submittedAt: string;
+  /** 1–5. */
+  fulfillmentStars: number;
+  fulfillmentTags: string[];
+  /** 1–5. */
+  easeStars: number;
+  easeTags: string[];
+  /** 1 very cheap … 5 very expensive. Not a star rating. */
+  priceFeeling: number;
+  expectedPriceMinor: number | null;
+  /** 1–5 or null. */
+  qualityStars: number | null;
+  /** 0–10 or null. */
+  recommendScore: number | null;
+  improvementNote: string | null;
+  /** Automatic: a star score ≤ 2 or a recommend score 0–6. Not editable. */
+  needsFollowUp: boolean;
+  rewardStatus: SurveyRewardStatus | null;
+  rewardVoucherId: string | null;
+};
+
+export type SurveyScoreKey =
+  | "fulfillmentStars"
+  | "easeStars"
+  | "priceFeeling"
+  | "qualityStars"
+  | "recommendScore";
+
+/** Over every matching response, not the page. Empty averages/NPS are null. */
+export type SurveyAggregates = {
+  averages: Record<SurveyScoreKey, number | null>;
+  counts: Record<SurveyScoreKey, number>;
+  needsFollowUp: number;
+  promoters: number;
+  passives: number;
+  detractors: number;
+  nps: number | null;
+};
+
+export type SurveyResponsesPage = {
+  serverTime: string;
+  responses: SurveyResponse[];
+  total: number;
+  aggregates: SurveyAggregates;
+};
+
+/** Filters combine with AND. Score filters are exact values. */
+export type SurveyResponsesFilter = {
+  clientId?: string;
+  orderId?: string;
+  fulfillmentKind?: SurveyFulfillmentKind;
+  rewardStatus?: SurveyRewardStatus;
+  needsFollowUp?: boolean;
+  fulfillmentStars?: number;
+  easeStars?: number;
+  qualityStars?: number;
+  priceFeeling?: number;
+  recommendScore?: number;
+  tag?: string;
+  /** Inclusive ISO instants, on submission time. */
+  from?: string;
+  to?: string;
+};

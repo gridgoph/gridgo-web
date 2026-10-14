@@ -11,8 +11,14 @@ import { useLiveOptional } from "@/lib/live/LiveProvider";
  * so the notice is the signal. Notices already in the inbox on mount do not
  * trigger a read; Refresh stays for everything else. A `null` prefix does
  * nothing, for callers that only sometimes listen.
+ *
+ * Survey responses use it the same way: a submission sends Super Admin an
+ * `order_survey_submitted` notice and no resource ping the desk could use.
  */
-export function useLegalInboxReload(prefix: "legal." | "privacy." | null, load: () => unknown): void {
+export function useLegalInboxReload(
+  prefix: "legal." | "privacy." | "order_survey_submitted" | null,
+  load: () => unknown,
+): void {
   const live = useLiveOptional();
   const notifications = live?.notifications;
   const seen = useRef<Set<string> | null>(null);

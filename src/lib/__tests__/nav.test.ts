@@ -75,6 +75,7 @@ describe("ROLE_NAV", () => {
       "/admin/chat",
       "/admin/account-deletion",
       "/admin/issue-reports",
+      "/admin/survey-responses",
       "/admin/riders",
       "/admin/hub",
       "/admin/verification",
@@ -141,6 +142,7 @@ describe("ROLE_NAV", () => {
       "/admin/shop-changes",
       "/admin/staff",
       "/admin/supplier-products",
+      "/admin/survey-responses",
       "/admin/tracker",
       "/admin/verification",
       "/admin/vouchers",
@@ -270,6 +272,7 @@ describe("ROLE_NAV", () => {
       "/admin/chat",
       "/admin/account-deletion",
       "/admin/issue-reports",
+      "/admin/survey-responses",
       "/admin/riders",
       "/admin/hub",
     ]);

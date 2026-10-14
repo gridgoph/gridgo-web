@@ -67,6 +67,7 @@ export type NavIconKey =
   | "legal"
   | "acceptances"
   | "privacy"
+  | "surveys"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -541,6 +542,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "issue-reports-new",
+        },
+        {
+          id: "admin-survey-responses",
+          href: "/admin/survey-responses",
+          label: "Survey responses",
+          title: "Survey responses",
+          icon: "surveys",
+          ready: true,
+          placeholderBody: "",
         },
         {
           id: "admin-riders",
