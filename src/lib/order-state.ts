@@ -126,7 +126,13 @@ export function presentOrderState(
   }
 }
 
-export function presentTimelineActor(by: string): string {
+/**
+ * Who moved an order, in words. Empty when the entry names no one: a
+ * supplier's timeline carries no actor, and an unnamed update is not
+ * GRIDGO's to claim.
+ */
+export function presentTimelineActor(by: string | null | undefined): string {
+  if (!by) return "";
   if (by === "system") return "GRIDGO";
   if (by === "user_client") return "Client";
   if (by === "user_supplier") return "Supplier";
@@ -313,6 +319,18 @@ export function presentMilestone(
         ? `${sharePercent}% release`
         : "Milestone";
   }
+}
+
+/**
+ * Payout stage codes an older API left in a timeline note ("Proof filed for
+ * production_started"). The API now writes the stage's own name; this keeps
+ * an older note from showing the internal code (report 6C695C15).
+ */
+const PAYOUT_STAGE_CODES = /\b(production_started|packaging_qc|issue_window)\b/g;
+
+/** A timeline note in plain words, with any payout stage code named. */
+export function presentTimelineNote(note: string): string {
+  return note.replace(PAYOUT_STAGE_CODES, (code) => presentMilestone(code));
 }
 
 /** `presentMilestone` for a stage as the API sends it. */

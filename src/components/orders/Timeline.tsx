@@ -5,6 +5,7 @@ import { formatDateTime } from "@/lib/format";
 import {
   presentOrderState,
   presentTimelineActor,
+  presentTimelineNote,
   type StatusTone,
 } from "@/lib/order-state";
 import type { PaymentSplitSource } from "@/lib/payments";
@@ -95,11 +96,12 @@ export function Timeline({ entries, newestFirst = false, order }: Props) {
                 ) : null}
               </div>
               <p className="text-caption text-text-muted m-0 mt-0.5">
-                {formatDateTime(entry.at)} · {presentTimelineActor(entry.by)}
+                {formatDateTime(entry.at)}
+                {entry.by ? ` · ${presentTimelineActor(entry.by)}` : ""}
               </p>
               {entry.note ? (
                 <p className="text-caption text-text-secondary m-0 mt-1">
-                  {entry.note}
+                  {presentTimelineNote(entry.note)}
                 </p>
               ) : null}
             </div>

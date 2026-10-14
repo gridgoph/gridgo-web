@@ -20,14 +20,22 @@
  * most jobs the proof above already covers it; a PDF proof does not, and then
  * the shop is asked for a photo before packing is offered.
  *
- * While a claim holds payouts (`payoutHold`), Package for pickup stays on the
- * page but disabled, with the reason: the API refuses to pack until
- * Operations clears the claim (`409 claim_hold_active`, gridgoph/gridgo-web#74).
+ * Ready for dispatch also needs a separate packing photo of the finished
+ * prints packed (`packingProgress`, `409 packing_photo_required`); a
+ * production photo never counts for it.
+ *
+ * Where the API sends `transitionReadiness` (report 6C695C15,
+ * `src/lib/packaging-readiness.ts`), its list decides which photo is still
+ * owed and what else holds the step. Anything the shop cannot lift itself, a
+ * claim above all, keeps Package for pickup on the page but disabled, with the
+ * API's own sentence (`409 claim_hold_active`, gridgoph/gridgo-web#74). An
+ * older API without the list falls back to `payoutHold` and the galleries.
  */
 
 import type { Order, PayoutMilestone } from "@/lib/api/types";
 import { milestoneName } from "@/lib/order-state";
 import { isLegacyPayoutPlan, shopProofStages } from "@/lib/payout-plan";
+import { packagingCheck, packagingHold } from "@/lib/packaging-readiness";
 import { productionPhotoMissing } from "@/lib/production-progress";
 
 export type SupplierActionKind =
@@ -36,7 +44,8 @@ export type SupplierActionKind =
   | "start_production"
   | "ready_for_pickup"
   | "add_proof"
-  | "add_progress_photo";
+  | "add_progress_photo"
+  | "add_packing_photo";
 
 /** A stage the shop files its own proof for. The order's plan decides which. */
 export type ShopProofCode =
@@ -72,7 +81,45 @@ export const CLAIM_HOLD_PACKING_REASON =
   "A claim is holding payouts on this order. Operations must clear the claim before you package it for pickup.";
 
 type ShopOrder = Pick<Order, "state" | "payoutMilestones" | "payoutHold"> &
-  Partial<Pick<Order, "payoutPlanVersion" | "productionProgress">>;
+  Partial<
+    Pick<
+      Order,
+      | "payoutPlanVersion"
+      | "productionProgress"
+      | "packingProgress"
+      | "transitionReadiness"
+    >
+  >;
+
+/** States where a shop may still attach a production or packing photo. */
+const PHOTO_OPEN_STATES = new Set(["production", "supplier_self_qc"]);
+
+/**
+ * The production photo is still owed. The API's list decides when it sent
+ * one; otherwise the gallery does, and an absent gallery owes nothing.
+ */
+export function productionPhotoOwed(order: ShopOrder): boolean {
+  const check = packagingCheck(order);
+  if (check) return check.missing.some((item) => item.kind === "production_photo");
+  return productionPhotoMissing(order);
+}
+
+/** The separate packing photo is still owed, by the same rule. */
+export function packingPhotoOwed(order: ShopOrder): boolean {
+  if (!PHOTO_OPEN_STATES.has(order.state)) return false;
+  const check = packagingCheck(order);
+  if (check) return check.missing.some((item) => item.kind === "packing_photo");
+  const progress = order.packingProgress;
+  if (!progress || !Array.isArray(progress.photos)) return false;
+  return progress.status === "waiting_for_photo" || progress.photos.length === 0;
+}
+
+/** Why packaging would be refused for a reason the shop cannot lift, or null. */
+export function packagingBlockedReason(order: ShopOrder): string | null {
+  const check = packagingCheck(order);
+  if (check) return packagingHold(check)?.message ?? null;
+  return order.payoutHold === true ? CLAIM_HOLD_PACKING_REASON : null;
+}
 
 type ShopProofWords = { label: string; noun: string; hint: string };
 export type OwedShopProof = ShopProofWords & { code: ShopProofCode };
@@ -170,12 +217,25 @@ const ADD_PROGRESS_PHOTO: SupplierAction = {
   primary: true,
 };
 
+const ADD_PACKING_PHOTO: SupplierAction = {
+  kind: "add_packing_photo",
+  label: "Add a packing photo",
+  targetState: null,
+  primary: true,
+};
+
 const PACKAGE_FOR_PICKUP: SupplierAction = {
   kind: "ready_for_pickup",
   label: "Package for pickup",
   targetState: "ready_for_dispatch",
   primary: true,
 };
+
+/** Package for pickup, disabled with the reason while someone else must act first. */
+function packageStep(order: ShopOrder): SupplierAction {
+  const blockedReason = packagingBlockedReason(order);
+  return blockedReason ? { ...PACKAGE_FOR_PICKUP, blockedReason } : PACKAGE_FOR_PICKUP;
+}
 
 export function actionsForJob(order: ShopOrder): SupplierAction[] {
   const owed = nextShopProof(order);
@@ -213,10 +273,10 @@ export function actionsForJob(order: ShopOrder): SupplierAction[] {
       if (owed) return [proofAction(owed)];
       // Proof filed as a PDF, or no proof stage at all: still no picture of
       // the job, and the API refuses to pack it without one.
-      if (productionPhotoMissing(order)) return [ADD_PROGRESS_PHOTO];
-      return order.payoutHold === true
-        ? [{ ...PACKAGE_FOR_PICKUP, blockedReason: CLAIM_HOLD_PACKING_REASON }]
-        : [PACKAGE_FOR_PICKUP];
+      if (productionPhotoOwed(order)) return [ADD_PROGRESS_PHOTO];
+      // Then the finished prints, packed: a separate photo of its own.
+      if (packingPhotoOwed(order)) return [ADD_PACKING_PHOTO];
+      return [packageStep(order)];
     default:
       return owed ? [proofAction(owed)] : [];
   }
@@ -231,11 +291,13 @@ export function needsSupplierAction(order: ShopOrder): boolean {
 }
 
 /**
- * True when a shop proof or the progress photo is still missing, so the job
- * must not leave the floor.
+ * True when a shop proof, the progress photo or the packing photo is still
+ * missing, so the job must not leave the floor.
  */
 export function shopProofOutstanding(order: ShopOrder): boolean {
-  return nextShopProof(order) !== null || productionPhotoMissing(order);
+  return (
+    nextShopProof(order) !== null || productionPhotoOwed(order) || packingPhotoOwed(order)
+  );
 }
 
 /**

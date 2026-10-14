@@ -104,7 +104,7 @@ describe("a job with no progress photo", () => {
     expect(screen.queryByRole("button", { name: "Package for pickup" })).toBeNull();
     const section = screen.getByRole("region", { name: "Progress photos" });
     expect(within(section).getByText("Waiting for a progress photo")).toBeInTheDocument();
-    expect(within(section).getByText(/Once one photo of this job is here/)).toBeInTheDocument();
+    expect(within(section).getByText(/Once one photo of this job on your floor is here/)).toBeInTheDocument();
     expect(screen.getByText(/a PDF does not/)).toBeInTheDocument();
   });
 

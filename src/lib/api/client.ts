@@ -820,6 +820,33 @@ export async function attachProductionPhoto(
 }
 
 /**
+ * Store a packing photo: the finished prints packed and ready for a rider.
+ * Separate evidence from the progress photo; neither counts for the other.
+ */
+export async function uploadPackingPhoto(file: File): Promise<StoredFile> {
+  const body = new FormData();
+  body.append("purpose", "packing_photo");
+  body.append("file", file);
+  const uploaded = await request<{ file: StoredFile }>("/files", {
+    method: "POST",
+    body,
+  });
+  return uploaded.file;
+}
+
+/**
+ * Bind a packing photo to the order while it is `production` or
+ * `supplier_self_qc`. It lets the job be marked Ready for dispatch and tells
+ * the client their order is packed; it changes no state or payout stage.
+ */
+export async function attachPackingPhoto(
+  fileId: string,
+  orderId: string,
+): Promise<{ file: StoredFile; order?: Order }> {
+  return attachProductionPhoto(fileId, orderId);
+}
+
+/**
  * Ops / Super Admin. Stores the receipt screenshot first, then releases the
  * share with its id and the reference, so a refused screenshot never leaves
  * a released share with no proof behind it.

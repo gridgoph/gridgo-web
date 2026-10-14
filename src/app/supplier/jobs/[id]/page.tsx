@@ -4,8 +4,18 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Camera, Check, History, ListChecks, Scale, Wallet, X } from "lucide-react";
+import {
+  Camera,
+  Check,
+  History,
+  ListChecks,
+  Package,
+  Scale,
+  Wallet,
+  X,
+} from "lucide-react";
 
+import { PackagingChecklist } from "@/app/supplier/_components/PackagingChecklist";
 import { JobFilesDialog } from "@/components/orders/JobFilesDialog";
 import { MilestoneList } from "@/components/orders/MilestoneList";
 import { OrderMeta } from "@/components/orders/OrderMeta";
@@ -36,16 +46,19 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import {
   ApiError,
   attachFulfilmentProof,
+  attachPackingPhoto,
   attachProductionPhoto,
   getOrder,
   transitionOrder,
   uploadFulfilmentProof,
+  uploadPackingPhoto,
   uploadProductionPhoto,
 } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
+import { packagingCheck, stepRefusal } from "@/lib/packaging-readiness";
 import {
   PRODUCTION_PHOTO_COPY,
   canAddProgressPhoto,
@@ -59,11 +72,37 @@ import { uploadErrorMessage } from "@/lib/upload-errors";
 import {
   CLAIM_HOLD_PACKING_REASON,
   actionsForJob,
+  packingPhotoOwed,
+  productionPhotoOwed,
   shopProofOutstanding,
   supplierWaitingOn,
   type SupplierAction,
 } from "@/lib/supplier-actions";
 import { jobActivity, relativeTime } from "@/app/supplier/_lib/job-activity";
+
+/** The two shop photos a job takes before packing, each with its own words. */
+type PhotoKind = "progress" | "packing";
+
+const PHOTO_WORDS: Record<
+  PhotoKind,
+  { title: string; hint: string; sent: string; fileLabel: string }
+> = {
+  progress: {
+    title: "Progress photo",
+    hint: PRODUCTION_PHOTO_COPY.supplierHint,
+    sent: "Photo sent. The client can see it on their order.",
+    fileLabel: "Progress photo file",
+  },
+  packing: {
+    title: "Packing photo",
+    hint: "Show the finished prints packed and ready for the rider. The client sees it and is told their order is packed.",
+    sent: "Packing photo sent. The client has been told their order is packed.",
+    fileLabel: "Packing photo file",
+  },
+};
+
+const PACKING_PHOTO_TOO_LATE =
+  "This job has moved on, so it no longer takes a packing photo. The page now shows where it stands.";
 
 function supplierErrorMessage(err: unknown): string {
   if (!(err instanceof ApiError)) {
@@ -76,6 +115,8 @@ function supplierErrorMessage(err: unknown): string {
       return PRODUCTION_PHOTO_COPY.supplierRefused;
     case "production_photo_upload_not_allowed":
       return PRODUCTION_PHOTO_COPY.supplierTooLate;
+    case "packing_photo_upload_not_allowed":
+      return PACKING_PHOTO_TOO_LATE;
     case "claim_hold_active":
       return CLAIM_HOLD_PACKING_REASON;
     case "verification_not_approved":
@@ -108,12 +149,13 @@ export default function SupplierJobDetailPage() {
   const [proofError, setProofError] = useState<string | null>(null);
   const [filedNote, setFiledNote] = useState<string | null>(null);
   const [photoOpen, setPhotoOpen] = useState(false);
+  const [photoKind, setPhotoKind] = useState<PhotoKind>("progress");
   const [photoFileId, setPhotoFileId] = useState<string | null>(null);
   const [photoFileName, setPhotoFileName] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
-  // The API refused to pack for want of a photo: the error offers the upload.
-  const [photoRefused, setPhotoRefused] = useState(false);
+  // The API refused to pack for want of a photo: the error offers that upload.
+  const [photoRefused, setPhotoRefused] = useState<PhotoKind | null>(null);
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -153,9 +195,10 @@ export default function SupplierJobDetailPage() {
     setActing(null);
   }
 
-  function openPhoto() {
+  function openPhoto(kind: PhotoKind = "progress") {
     setActionError(null);
-    setPhotoRefused(false);
+    setPhotoRefused(null);
+    setPhotoKind(kind);
     setPhotoError(null);
     setPhotoFileId(null);
     setPhotoFileName(null);
@@ -174,7 +217,11 @@ export default function SupplierJobDetailPage() {
   async function runAction(action: SupplierAction) {
     if (!job) return;
     if (action.kind === "add_progress_photo") {
-      openPhoto();
+      openPhoto("progress");
+      return;
+    }
+    if (action.kind === "add_packing_photo") {
+      openPhoto("packing");
       return;
     }
     if (action.kind === "add_proof" || action.targetState === null) {
@@ -193,7 +240,7 @@ export default function SupplierJobDetailPage() {
     }
     setActing(action.kind);
     setActionError(null);
-    setPhotoRefused(false);
+    setPhotoRefused(null);
     try {
       const note =
         action.kind === "decline"
@@ -206,11 +253,20 @@ export default function SupplierJobDetailPage() {
       setJob(await transitionOrder(job.id, action.targetState, { note }));
       setConfirmDecline(false);
     } catch (err) {
-      setActionError(supplierErrorMessage(err));
+      // GRIDGO's own sentence for a refused step, even when the checklist
+      // said it would pass: the step is checked again when pressed.
+      const refusal = stepRefusal(err);
+      setActionError(refusal?.message ?? supplierErrorMessage(err));
+      const owed = refusal?.missing.map((item) => item.kind) ?? [];
+      const code = err instanceof ApiError ? err.code : "";
       setPhotoRefused(
-        err instanceof ApiError && err.code === "production_photo_required",
+        owed.includes("production_photo") || code === "production_photo_required"
+          ? "progress"
+          : owed.includes("packing_photo") || code === "packing_photo_required"
+            ? "packing"
+            : null,
       );
-      await load();
+      await load().catch(() => undefined);
     } finally {
       setActing(null);
     }
@@ -223,7 +279,10 @@ export default function SupplierJobDetailPage() {
     setPhotoFileId(null);
     setPhotoFileName(file.name);
     try {
-      const stored = await uploadProductionPhoto(file);
+      const stored =
+        photoKind === "packing"
+          ? await uploadPackingPhoto(file)
+          : await uploadProductionPhoto(file);
       setPhotoFileId(stored.fileId);
     } catch (err) {
       setPhotoError(uploadErrorMessage(err, { what: "this photo" }));
@@ -237,15 +296,20 @@ export default function SupplierJobDetailPage() {
     setActing("add_progress_photo");
     setPhotoError(null);
     try {
-      await attachProductionPhoto(photoFileId, job.id);
+      if (photoKind === "packing") await attachPackingPhoto(photoFileId, job.id);
+      else await attachProductionPhoto(photoFileId, job.id);
       setJob(await getOrder(job.id));
-      setFiledNote("Photo sent. The client can see it on their order.");
+      setFiledNote(PHOTO_WORDS[photoKind].sent);
       closePhoto();
     } catch (err) {
-      if (err instanceof ApiError && err.code === "production_photo_upload_not_allowed") {
+      if (
+        err instanceof ApiError &&
+        (err.code === "production_photo_upload_not_allowed" ||
+          err.code === "packing_photo_upload_not_allowed")
+      ) {
         // The job moved on while the dialog was open. Show where it is now.
         closePhoto();
-        setActionError(PRODUCTION_PHOTO_COPY.supplierTooLate);
+        setActionError(supplierErrorMessage(err));
         await load();
         return;
       }
@@ -325,6 +389,13 @@ export default function SupplierJobDetailPage() {
   const photos = progressPhotos(job);
   const photoMissing = productionPhotoMissing(job);
   const photoOpenState = canAddProgressPhoto(job);
+  const check = packagingCheck(job);
+  const heldByChecklist = Boolean(primary?.blockedReason && check);
+  const packingPhotos = (job.packingProgress?.photos ?? []).filter(
+    (photo) => photo?.fileId,
+  );
+  const packingOwed = packingPhotoOwed(job);
+  const photoWords = PHOTO_WORDS[photoKind];
 
   return (
     <div className="flex w-full flex-col gap-3">
@@ -380,7 +451,11 @@ export default function SupplierJobDetailPage() {
                 className="w-full sm:w-auto sm:min-w-40"
                 disabled={acting !== null || Boolean(primary.blockedReason)}
                 aria-describedby={
-                  primary.blockedReason ? "primary-blocked-reason" : undefined
+                  primary.blockedReason
+                    ? heldByChecklist
+                      ? "packaging-hold-reason"
+                      : "primary-blocked-reason"
+                    : undefined
                 }
                 onClick={() => void runAction(primary)}
               >
@@ -415,7 +490,19 @@ export default function SupplierJobDetailPage() {
                 "Nothing for you to do on this job right now. The timeline below shows where it has got to."}
             </p>
           ) : null}
-          {primary?.blockedReason ? (
+          {/*
+            With the checklist on the page, its row carries GRIDGO's reason
+            (and the way to Operations); here it is only pointed to, so the
+            sentence is not said twice. An older API has no checklist, so the
+            reason stays under the button.
+          */}
+          {heldByChecklist && !actionError ? (
+            <p className="text-body text-text-secondary m-0 flex max-w-prose items-start gap-2">
+              <Scale className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+              Waiting on Operations. The list below says why.
+            </p>
+          ) : null}
+          {primary?.blockedReason && !heldByChecklist ? (
             <p
               id="primary-blocked-reason"
               className="text-body text-text-primary m-0 flex max-w-prose items-start gap-2"
@@ -427,7 +514,7 @@ export default function SupplierJobDetailPage() {
           {primary && waiting ? (
             <p className="text-caption text-text-muted m-0">{waiting}</p>
           ) : null}
-          {primary?.kind === "add_progress_photo" ? (
+          {primary?.kind === "add_progress_photo" && !check ? (
             <p className="text-caption text-text-muted m-0 max-w-prose">
               {PRODUCTION_PHOTO_COPY.supplierRule}
             </p>
@@ -456,12 +543,20 @@ export default function SupplierJobDetailPage() {
           {actionError && !confirmDecline && !proofOpen && !photoOpen ? (
             <div className="flex flex-col items-start gap-2" role="alert">
               <p className="text-body text-error m-0">{actionError}</p>
-              {photoRefused &&
+              {photoRefused === "progress" &&
               photoOpenState &&
               primary?.kind !== "add_progress_photo" ? (
-                <Button variant="secondary" onClick={openPhoto}>
+                <Button variant="secondary" onClick={() => openPhoto("progress")}>
                   <Camera size={16} strokeWidth={1.75} aria-hidden />
                   Add a progress photo
+                </Button>
+              ) : null}
+              {photoRefused === "packing" &&
+              photoOpenState &&
+              primary?.kind !== "add_packing_photo" ? (
+                <Button variant="secondary" onClick={() => openPhoto("packing")}>
+                  <Package size={16} strokeWidth={1.75} aria-hidden />
+                  Add a packing photo
                 </Button>
               ) : null}
             </div>
@@ -477,6 +572,8 @@ export default function SupplierJobDetailPage() {
       */}
       <div className="grid w-full gap-3 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:items-start">
         <div className="flex min-w-0 flex-col gap-3">
+          {check ? <PackagingChecklist check={check} /> : null}
+
           <section className="gg-card p-3" aria-labelledby="spec-heading">
             <h3
               id="spec-heading"
@@ -485,7 +582,7 @@ export default function SupplierJobDetailPage() {
               <ListChecks size={18} strokeWidth={1.75} aria-hidden />
               Spec
             </h3>
-            <OrderMeta order={job} showMoney={false} />
+            <OrderMeta order={job} showMoney={false} fromJobDetails />
           </section>
 
           {progress && progressReached(job) ? (
@@ -507,15 +604,46 @@ export default function SupplierJobDetailPage() {
                   tone={photoOpenState ? "attention" : "neutral"}
                   body={
                     photoOpenState
-                      ? "Once one photo of this job is here, you can pack it for a rider."
+                      ? "Once one photo of this job on your floor is here, the packing photo comes next."
                       : "This job left production without a progress photo."
                   }
                 />
               ) : (
                 <ProgressGallery
                   photos={photos}
-                  onAdd={photoOpenState ? openPhoto : undefined}
+                  onAdd={photoOpenState ? () => openPhoto("progress") : undefined}
                   addDisabled={acting !== null}
+                />
+              )}
+            </section>
+          ) : null}
+
+          {job.packingProgress && (packingPhotos.length || packingOwed) ? (
+            <section className="gg-card p-3" aria-labelledby="packing-heading">
+              <h3
+                id="packing-heading"
+                className="text-h3 text-text-primary m-0 mb-1 flex items-center gap-2"
+              >
+                <Package size={18} strokeWidth={1.75} aria-hidden />
+                Packing photos
+              </h3>
+              <p className="text-caption text-text-muted m-0 mb-3 max-w-prose">
+                The finished prints, packed for the rider. The client sees these on their
+                order.
+              </p>
+              {packingPhotos.length ? (
+                <ProgressGallery
+                  photos={packingPhotos}
+                  label="Packing photo"
+                  addLabel="Add another packing photo"
+                  onAdd={photoOpenState ? () => openPhoto("packing") : undefined}
+                  addDisabled={acting !== null}
+                />
+              ) : (
+                <WaitingForPhoto
+                  tone={productionPhotoOwed(job) ? "neutral" : "attention"}
+                  title="No packing photo yet"
+                  body="Once the job is packed, add one photo of it here before you mark it ready for pickup."
                 />
               )}
             </section>
@@ -636,8 +764,8 @@ export default function SupplierJobDetailPage() {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Progress photo</DialogTitle>
-            <DialogDescription>{PRODUCTION_PHOTO_COPY.supplierHint}</DialogDescription>
+            <DialogTitle>{photoWords.title}</DialogTitle>
+            <DialogDescription>{photoWords.hint}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2">
             <p className="text-caption text-text-muted m-0">
@@ -662,7 +790,7 @@ export default function SupplierJobDetailPage() {
               accept="image/jpeg,image/png,image/webp"
               className="sr-only"
               tabIndex={-1}
-              aria-label="Progress photo file"
+              aria-label={photoWords.fileLabel}
               disabled={acting !== null}
               onChange={(event) => {
                 const file = event.target.files?.[0];

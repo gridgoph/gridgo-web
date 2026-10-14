@@ -6,12 +6,12 @@ import {
   addOns,
   boardContextFor,
   effectiveFormatCodes,
-  effectiveTurnaroundHours,
+  effectiveMinimumTurnaround,
+  effectiveTurnaround,
   fromPriceMinor,
   hasPriceRange,
   pickLine,
   printerCapLine,
-  readyInLine,
   specs,
   subcategoryName,
   unitLine,
@@ -21,6 +21,7 @@ import {
   type SpecGroup,
 } from "@/lib/listings";
 import type { Taxonomy } from "@/lib/api/types";
+import { readyInLine } from "@/lib/production-time";
 
 type FileFormat = {
   code: string;
@@ -48,7 +49,10 @@ export function ListingPreviewBody({
   formats: readonly FileFormat[];
 }) {
   const context = boardContextFor(listing, services);
-  const hours = effectiveTurnaroundHours(listing, context.inheritedTurnaroundHours);
+  const readyIn = readyInLine(
+    effectiveTurnaround(listing, context.inheritedTurnaround),
+    effectiveMinimumTurnaround(listing),
+  );
   const codes = effectiveFormatCodes(listing, context.inheritedFormatCodes);
   const known = new Map(formats.map((format) => [format.code, format]));
   const uploads = codes.filter((code) => {
@@ -106,7 +110,7 @@ export function ListingPreviewBody({
           </span>{" "}
           <span className="text-body text-text-secondary">{unitLine(listing)}</span>
         </p>
-        <p className="text-body text-text-secondary m-0">{readyInLine(hours)}</p>
+        <p className="text-body text-text-secondary m-0">{readyIn}</p>
       </div>
 
       {listing.description ? (

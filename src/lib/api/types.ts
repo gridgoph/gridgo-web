@@ -295,7 +295,11 @@ export type PortalRoleProjection<R extends PortalRole = PortalRole> =
 export type TimelineEntry = {
   at: string;
   state: string;
-  by: string;
+  /**
+   * Who moved it. Absent on a supplier's timeline: the API keeps only
+   * `{ at, state, note }` there (gridgo-api SUPPLIER_JOB_READINESS_API.md).
+   */
+  by?: string;
   note: string;
   /** Set on the row the API writes when a Proof of Fulfilment or delivery photo is attached. */
   fileId?: string | null;
@@ -794,6 +798,21 @@ export type Order = {
   productionProgress?: ProductionProgress;
   /** Separate packed-work evidence; supplier, client and staff only. */
   packingProgress?: ProductionProgress;
+  /**
+   * What the API would still refuse each packaging step for, as of this read
+   * (assigned supplier and Operations/Super Admin). A snapshot, never a
+   * reservation: the transition is checked again when pressed. Read it
+   * through `src/lib/packaging-readiness.ts`.
+   */
+  transitionReadiness?: Partial<
+    Record<"supplier_self_qc" | "ready_for_dispatch", TransitionReadiness>
+  > | null;
+  /**
+   * Material, zone and the shop's date as the API filled them from the
+   * order's own snapshots. A value it could not fill is exactly
+   * "Not specified" and is named in `missing`.
+   */
+  jobDetails?: JobDetails | null;
   /** Wallet receipts Operations bound to released shares. Never sent to clients. */
   payoutReceiptFileIds?: string[];
 
@@ -1437,6 +1456,23 @@ export type DetectedArtwork = {
  * uploader, filename, payout stage or proof code. `downloadUrl` is missing when
  * signing failed; `GET /files/:fileId/download-url` retries it.
  */
+/** One thing the API still needs before a step, in its own sentence. */
+export type TransitionRequirement = { code: string; message: string };
+
+export type TransitionReadiness = {
+  allowed: boolean;
+  missing: TransitionRequirement[];
+  /** A supplier invoice scan. Optional: it never holds a step. */
+  receiptScan?: { required: boolean; attached: boolean } | null;
+};
+
+export type JobDetails = {
+  material: string;
+  zone: string;
+  promisedDate: string;
+  missing: Array<"material" | "zone" | "promisedDate" | (string & {})>;
+};
+
 export type ProductionPhoto = {
   fileId: string;
   contentType: string;
@@ -1654,8 +1690,16 @@ export type SupplierService = {
   qtyMax: number | null;
   pricingBasis: string;
   referenceRateMinor: number;
+  /**
+   * The line's usual production time. Read it through `readServiceLineTime`
+   * (`src/lib/production-time.ts`): days for day-based work, exact minutes
+   * for everything, hours kept for older apps.
+   */
   turnaroundDays?: number | null;
+  turnaroundMinutes?: number | null;
   turnaroundHours: number;
+  /** The shop's working day in minutes; a same-day time stays under it. */
+  productionDayMinutes?: number | null;
   capacityDaily: number | null;
   capacityWeekly: number | null;
   zones: string[];
@@ -1680,7 +1724,9 @@ export type CreateSupplierServiceInput = {
   qtyMax?: number | null;
   pricingBasis?: string;
   referenceRateMinor?: number;
-  turnaroundHours?: number;
+  /** Send one: whole working days, or same-day minutes under one working day. */
+  turnaroundDays?: number | null;
+  turnaroundMinutes?: number | null;
   capacityDaily?: number | null;
   capacityWeekly?: number | null;
   zones?: string[];
