@@ -28,6 +28,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/ui/StatusChip";
+import { SupplierInvoicesSummary } from "@/components/supplier-invoices/SupplierInvoicesSummary";
 import { listClaims, listOrders } from "@/lib/api/client";
 import { basketShopCounts, groupPositionLabel } from "@/lib/baskets";
 import { orderDeliverySplit } from "@/lib/delivery-split";
@@ -458,6 +459,8 @@ export default function AdminFinancePage() {
           />
         </div>
       </section>
+
+      <SupplierInvoicesSummary tree="admin" />
 
       <section className="gg-card" aria-labelledby="split-heading">
         <h2 id="split-heading" className="text-h3 text-text-primary m-0 mb-1">

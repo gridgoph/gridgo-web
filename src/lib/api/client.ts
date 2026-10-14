@@ -118,6 +118,8 @@ import type {
   ShopFailureEvent,
   ShopRecovery,
   SupplierProductionLapses,
+  SupplierInvoiceEnvelope,
+  SupplierInvoiceMonth,
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
 
@@ -3056,5 +3058,49 @@ export function updatePrivacyRequest(
   return request<{ request: PrivacyRequest }>(
     `/admin/privacy-requests/${encodeURIComponent(id)}`,
     { method: "PATCH", body: JSON.stringify(input) },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Supplier invoices and monthly paper collection (SUPPLIER_INVOICES_API.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ops / Super Admin. One page of a Manila month's invoices, ordered by order
+ * ID; `totals` and `shops` always cover the whole month (and shop, if set).
+ * `limit` 1–100; follow `nextCursor` as `after`.
+ */
+export async function listSupplierInvoices(
+  month: string,
+  page: { supplierId?: string; after?: string | null; limit?: number } = {},
+): Promise<SupplierInvoiceMonth> {
+  return request<SupplierInvoiceMonth>(
+    `/ops/finance/supplier-invoices${buildQuery({
+      month,
+      supplierId: page.supplierId,
+      after: page.after ?? undefined,
+      limit: page.limit,
+    })}`,
+  );
+}
+
+/** Ops / Super Admin. `409 supplier_invoice_not_expected` before readiness. */
+export async function getSupplierInvoice(orderId: string): Promise<SupplierInvoiceEnvelope> {
+  return request<SupplierInvoiceEnvelope>(
+    `/ops/finance/supplier-invoices/${encodeURIComponent(orderId)}`,
+  );
+}
+
+/**
+ * Ops / Super Admin. Records the caller as holding the paper original. Final:
+ * there is no undo, and a repeat returns the first record unchanged.
+ */
+export async function collectSupplierInvoice(
+  orderId: string,
+  expectedVersion: number,
+): Promise<SupplierInvoiceEnvelope> {
+  return request<SupplierInvoiceEnvelope>(
+    `/ops/finance/supplier-invoices/${encodeURIComponent(orderId)}/collect`,
+    { method: "POST", body: JSON.stringify({ expectedVersion }) },
   );
 }

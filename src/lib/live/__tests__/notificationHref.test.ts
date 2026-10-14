@@ -79,6 +79,20 @@ describe("notificationHref", () => {
     }
   });
 
+  it("opens a supplier invoice notice on that order's invoice, in each staff tree", () => {
+    for (const type of [
+      "supplier_invoice_scanned",
+      "supplier_invoice_expected",
+      "supplier_invoice_submitted",
+      "supplier_invoice_corrected",
+      "supplier_invoice_collected",
+    ]) {
+      const row = note({ type, orderId: "ord_9" });
+      expect(notificationHref("super_admin", row)).toBe("/admin/supplier-invoices?order=ord_9");
+      expect(notificationHref("ops_admin", row)).toBe("/ops/supplier-invoices?order=ord_9");
+    }
+  });
+
   it("opens the order workspace from an Operations progress ping", () => {
     const row = note({ type: "ops_order_progress", orderId: "ord_9" });
     expect(notificationHref("ops_admin", row)).toBe("/ops/orders/ord_9");
