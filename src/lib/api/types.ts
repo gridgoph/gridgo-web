@@ -816,6 +816,12 @@ export type Order = {
    */
   fileCheck?: FileCheck | null;
   /**
+   * While a new order's file check is pending: when Operations can review it
+   * (OPERATING_HOURS_API.md). Ops / Super Admin and the owning client; absent
+   * on an order from before operating hours or once the check is decided.
+   */
+  review?: OrderReview | null;
+  /**
    * The assigned shop's one-opening-hour window to accept (SHOP_RECOVERY_API.md).
    * Ops / Super Admin and the assigned shop.
    */
@@ -962,6 +968,51 @@ export type RescheduleQueue = {
   /** The shop's lifetime count (before the status filter). */
   totalRequests: number;
   requests: RescheduleRequest[];
+};
+
+// ---- Operating hours (gridgo-api docs/OPERATING_HOURS_API.md) ----
+
+/**
+ * GRIDGO's own working week: when artwork is reviewed, riders are dispatched
+ * and new orders' shop clocks count. One window per open day, Manila time.
+ */
+export type OperatingHours = {
+  /** Always `Asia/Manila`. */
+  timeZone: string;
+  schedule: {
+    /** Always 480. */
+    utcOffsetMinutes: number;
+    /** One window per open weekday; a weekday left out is closed. */
+    week: WeeklyWindow[];
+    /** Inclusive Manila dates; at most 100 ranges and 90 distinct days. */
+    closures: ScheduleClosure[];
+  };
+  /** Open-time minutes a review takes, 1–540. */
+  artworkReviewMinutes: number;
+  /** Minutes after Manila midnight, 0–1439. Stored only: Priority Delivery is not offered. */
+  priorityDispatchCutoffMinute: number;
+};
+
+/** The shared timing object: when a review placed at the read instant would happen. */
+export type OperatingTiming = {
+  timeZone: string;
+  isOpenNow: boolean;
+  artworkReviewMinutes: number;
+  /** Now while open, otherwise the next opening. */
+  scheduledReviewAt: string;
+  reviewCompletesAt: string;
+  /** A closure pushes the review later than the same week without closures. */
+  reviewDelayed: boolean;
+};
+
+/** `order.review`: a pending file check's live review time. */
+export type OrderReview = OperatingTiming & {
+  status: "waiting_for_review" | string;
+  label: string;
+  originallyScheduledReviewAt: string | null;
+  outsideHoursNotice: "outside_operating_hours" | null | string;
+  /** The client promise, never the shop's internal deadline. */
+  readyBy: string | null;
 };
 
 // ---- Hub pick-up (gridgo-api OPERATIONAL_MODEL_V2_API.md "Hub pick-up settings") ----
@@ -1179,6 +1230,17 @@ export type PlatformSettings = {
   hubPickup?: HubPickup;
   /** Manual QR checkout. `imageUrl` is the replaceable plate. */
   paymentQr?: PaymentQr;
+  /**
+   * GRIDGO's operating week, review time and the stored Priority dispatch
+   * cutoff. Every role reads it; only Super Admin writes it, always whole.
+   * Absent on an API that predates operating hours.
+   */
+  operatingHours?: OperatingHours;
+  /**
+   * Read with the settings, beside them in the response: is GRIDGO open now,
+   * and when a file arriving now would be reviewed.
+   */
+  operatingStatus?: OperatingTiming;
 };
 
 export type UpdateSettingsInput = {
@@ -1202,6 +1264,8 @@ export type UpdateSettingsInput = {
   handoverOtpEnabled?: boolean;
   /** Super Admin only, always `{schedule, feeMinor}`; the point is read-only. */
   hubPickup?: Pick<HubPickup, "schedule" | "feeMinor">;
+  /** Super Admin only, always the complete object. */
+  operatingHours?: OperatingHours;
   reason?: string;
 };
 

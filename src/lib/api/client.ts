@@ -66,6 +66,7 @@ import type {
   PhysicalInvoiceRequest,
   PayoutMilestone,
   PayoutMilestoneCode,
+  OperatingTiming,
   PlatformSettings,
   PortalRole,
   PortalRoleProjection,
@@ -878,10 +879,19 @@ export async function health(): Promise<HealthResult> {
  * settings object because every write has to quote it back: `PATCH /settings`
  * is a compare-and-swap and refuses a stale `expectedVersion` with 409.
  */
-type SettingsEnvelope = { version: number; settings: Omit<PlatformSettings, "version"> };
+type SettingsEnvelope = {
+  version: number;
+  settings: Omit<PlatformSettings, "version" | "operatingStatus">;
+  operatingStatus?: OperatingTiming;
+};
 
+/** The settings with their version and, when the API sends it, today's operating status. */
 function withVersion(result: SettingsEnvelope): PlatformSettings {
-  return { ...result.settings, version: result.version };
+  return {
+    ...result.settings,
+    version: result.version,
+    ...(result.operatingStatus ? { operatingStatus: result.operatingStatus } : {}),
+  };
 }
 
 export async function getSettings(): Promise<PlatformSettings> {

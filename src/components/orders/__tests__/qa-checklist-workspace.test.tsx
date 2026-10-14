@@ -239,3 +239,41 @@ it("uses the existing pickup and design-link check wording", async () => {
   ).toBeInTheDocument();
   capture("pickup-link");
 });
+
+it("holds approve and send back while GRIDGO is closed, and keeps cancel", async () => {
+  // The API projects a review at the next opening, well after now.
+  const opens = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString();
+  order.state = "needs_qa";
+  order.fileCheck = {
+    ...order.fileCheck!,
+    status: "pending",
+    reviewedAt: null,
+    reviewedBy: null,
+    checklist: null,
+  };
+  order.review = {
+    status: "waiting_for_review",
+    label: "Waiting for review",
+    timeZone: "Asia/Manila",
+    isOpenNow: false,
+    artworkReviewMinutes: 60,
+    scheduledReviewAt: opens,
+    reviewCompletesAt: opens,
+    reviewDelayed: true,
+    originallyScheduledReviewAt: null,
+    outsideHoursNotice: "outside_operating_hours",
+    readyBy: null,
+  };
+  const qa = await openQuality();
+  expect(qa.getByTestId("workspace-review-closed")).toHaveTextContent(
+    /GRIDGO is closed\. This file can be approved or sent back from/,
+  );
+  expect(qa.getByText(/Waiting for review: GRIDGO is closed.*Review delayed\./)).toBeInTheDocument();
+  for (const box of qa.getAllByRole("checkbox")) fireEvent.click(box);
+  fireEvent.change(qa.getByRole("textbox", { name: "Note to the client" }), {
+    target: { value: "Upload a sharper artwork file." },
+  });
+  expect(qa.getByRole("button", { name: "Approve and send to the shop" })).toBeDisabled();
+  expect(qa.getByRole("button", { name: "Send back for changes" })).toBeDisabled();
+  expect(qa.getByRole("button", { name: "Cancel this order" })).toBeEnabled();
+});

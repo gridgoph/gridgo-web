@@ -78,11 +78,13 @@ import { artworkSource, orderDesignLinks } from "@/lib/design-links";
 import { QaChecklistRecord, QaChecklistFields } from "./QaChecklist";
 import {
   fileCheckOf,
+  fileCheckReviewSlot,
   fileCheckWaitLine,
   qaChecksFor,
   qaChecklistPayload,
   canDecideFileCheck,
 } from "@/lib/file-check";
+import { manilaWhen } from "@/lib/operating-hours";
 import {
   confirmBasketPayment,
   confirmPayment,
@@ -1114,6 +1116,10 @@ function StepRow({
   const designLinks = orderDesignLinks(order);
   const qaChecks = qaChecksFor(order);
   const busy = acting !== null;
+  // While GRIDGO is closed the API refuses a pass or a send-back on a new
+  // order (OPERATING_HOURS_API.md); cancelling stays open.
+  const reviewSlot = step.id === "qa" ? fileCheckReviewSlot(order) : null;
+  const reviewClosed = Boolean(reviewSlot?.closed && reviewSlot.scheduledAt !== null);
   const trailing =
     step.id === "payment"
       ? paymentProgress(order).label
@@ -1170,6 +1176,17 @@ function StepRow({
                 <DesignLinkList links={designLinks} />
               </div>
             ) : null}
+            {reviewClosed && reviewSlot?.scheduledAt != null ? (
+              <p
+                className="text-body text-text-primary m-0 rounded-card border border-outline bg-surface-variant p-3"
+                role="note"
+                data-testid="workspace-review-closed"
+              >
+                GRIDGO is closed. This file can be approved or sent back from{" "}
+                {manilaWhen(reviewSlot.scheduledAt)}. You can open the artwork and tick the
+                checks now.
+              </p>
+            ) : null}
             <QaChecklistFields
               order={order}
               checked={checked}
@@ -1187,14 +1204,16 @@ function StepRow({
               <Button
                 variant="primary"
                 onClick={onApprove}
-                disabled={busy || qaChecks.some((check) => !checked[check.id])}
+                disabled={
+                  busy || reviewClosed || qaChecks.some((check) => !checked[check.id])
+                }
               >
                 {acting === "approve" ? "Sending…" : "Approve and send to the shop"}
               </Button>
               <Button
                 variant="secondary"
                 onClick={onCorrection}
-                disabled={busy || !note.trim()}
+                disabled={busy || reviewClosed || !note.trim()}
               >
                 Send back for changes
               </Button>

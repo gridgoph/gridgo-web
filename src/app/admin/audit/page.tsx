@@ -41,6 +41,7 @@ const ENTITY_FILTERS = [
   { value: "supplier_service", label: "Supplier service" },
   { value: "legal_document", label: "Legal document" },
   { value: "privacy_request", label: "Privacy request" },
+  { value: "settings", label: "Operational settings" },
 ] as const;
 
 export default function AdminAuditPage() {

@@ -26,8 +26,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { SkeletonLines } from "@/components/ui/loading";
-import { ApiError, listOrders } from "@/lib/api/client";
-import type { Order } from "@/lib/api/types";
+import { ApiError, getSettings, listOrders } from "@/lib/api/client";
+import type { OperatingHours, Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import {
@@ -85,6 +85,21 @@ export default function OpsOrdersPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // The file check reads GRIDGO's operating hours. A failed read only drops
+  // the hours strip; each order still carries its own review time.
+  const [hours, setHours] = useState<OperatingHours | null>(null);
+  const loadHours = useCallback(async () => {
+    try {
+      setHours((await getSettings()).operatingHours ?? null);
+    } catch {
+      // Keep whatever was read last.
+    }
+  }, []);
+  useEffect(() => {
+    void loadHours();
+  }, [loadHours]);
+  useLiveReload("settings", loadHours);
 
   const counts = useMemo(() => stageCounts(orders ?? []), [orders]);
   const waiting = useMemo(
@@ -270,7 +285,7 @@ export default function OpsOrdersPage() {
         // The file check is its own queue: oldest first, a live wait, and Pass
         // or Send back from the row. Orders still in payment review show their
         // wait beneath it.
-        <FileCheckQueue orders={orders ?? []} onChanged={load} />
+        <FileCheckQueue orders={orders ?? []} onChanged={load} hours={hours} />
       ) : (
         <>
           <div className="flex flex-wrap items-baseline justify-between gap-2">

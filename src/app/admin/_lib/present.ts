@@ -4,10 +4,12 @@
  */
 
 import type {
+  OperatingHours,
   Role,
   SupplierServiceState,
   VerificationStatus,
 } from "@/lib/api/types";
+import { operatingHoursChanges } from "@/lib/operating-hours";
 import type { StatusIconName, StatusTone } from "@/lib/order-state";
 import { roleLabel } from "@/lib/routes";
 
@@ -296,6 +298,7 @@ export function presentAuditAction(action: string): string {
     "legal.accepted": "Accepted legal documents",
     "privacy.requested": "Privacy request received",
     "privacy.updated": "Updated privacy request",
+    "settings.operational_update": "Changed operational settings",
   };
   if (map[action]) return map[action];
 
@@ -314,6 +317,7 @@ export function presentAuditAction(action: string): string {
 export function presentAuditDetail(entry: {
   action: string;
   detail: Record<string, unknown> | null;
+  reason?: string | null;
 }): string | null {
   const detail = entry.detail ?? {};
   if (entry.action === "legal.published" && typeof detail.version === "number") {
@@ -327,6 +331,9 @@ export function presentAuditDetail(entry: {
   ) {
     return `Draft revision ${detail.revision}`;
   }
+  if (entry.action === "settings.operational_update") {
+    return operatingHoursAuditLine(detail, entry.reason ?? null);
+  }
   if (entry.action === "privacy.updated" && typeof detail.status === "string") {
     const status: Record<string, string> = {
       pending: "New",
@@ -337,6 +344,40 @@ export function presentAuditDetail(entry: {
     return `Status: ${status[detail.status] ?? "Updated"}`;
   }
   return null;
+}
+
+/**
+ * What a settings save did to the operating hours (OPERATING_HOURS_API.md):
+ * the changes in words, and how many waiting files it tagged Review delayed.
+ * The portal's own reason already lists the changes, so they are not said
+ * twice. Null when there is nothing to add.
+ */
+function operatingHoursAuditLine(
+  detail: Record<string, unknown>,
+  reason: string | null,
+): string | null {
+  const hoursOf = (value: unknown): OperatingHours | null => {
+    const hours = (value as { operatingHours?: unknown } | null)?.operatingHours;
+    return hours && typeof hours === "object" && Array.isArray((hours as OperatingHours).schedule?.week)
+      ? (hours as OperatingHours)
+      : null;
+  };
+  const current = hoursOf(detail.current);
+  const changes = current ? operatingHoursChanges(hoursOf(detail.previous), current) : [];
+  const delayed = Array.isArray(detail.reviewDelayedOrderIds)
+    ? detail.reviewDelayedOrderIds.length
+    : 0;
+  const parts: string[] = [];
+  const line = `Operating hours: ${changes.join("; ")}`;
+  if (changes.length && !reason?.startsWith(line)) parts.push(line);
+  if (delayed) {
+    parts.push(
+      delayed === 1
+        ? "1 waiting order tagged Review delayed"
+        : `${delayed} waiting orders tagged Review delayed`,
+    );
+  }
+  return parts.length ? parts.join(". ") : null;
 }
 
 export function presentAuditEntityType(
@@ -356,6 +397,7 @@ export function presentAuditEntityType(
     order: "Order",
     legal_document: "Legal document",
     privacy_request: "Privacy request",
+    settings: "Operational settings",
   };
   if (map[entityType]) return map[entityType];
   return entityType
