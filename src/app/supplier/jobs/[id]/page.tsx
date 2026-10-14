@@ -499,7 +499,7 @@ export default function SupplierJobDetailPage() {
           {heldByChecklist && !actionError ? (
             <p className="text-body text-text-secondary m-0 flex max-w-prose items-start gap-2">
               <Scale className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
-              Waiting on Operations. Before it can be packaged, below, says why.
+              Waiting on Operations. The list below says why.
             </p>
           ) : null}
           {primary?.blockedReason && !heldByChecklist ? (
