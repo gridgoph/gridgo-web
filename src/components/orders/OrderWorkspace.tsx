@@ -12,6 +12,7 @@ import {
   CircleCheck,
   CircleDot,
   Lock,
+  MapPin,
   ShieldAlert,
   TriangleAlert,
   type LucideIcon,
@@ -1033,8 +1034,8 @@ const SHOP_MARKER: Record<ReturnType<typeof shopRowTone>, MarkerSpec> = {
 function riderLocationMarker(state: OrderRiderTracking): MarkerSpec {
   if (!state.active) return { icon: CircleDot, tone: "muted" };
   if (state.view?.needsContact) return { icon: TriangleAlert, tone: "current" };
-  if (state.view?.freshness === "live") return { icon: CircleCheck, tone: "success" };
-  return { icon: CircleDot, tone: "current" };
+  // A live location is a state, not a finished step: no green check.
+  return { icon: MapPin, tone: "current" };
 }
 
 function Marker({ icon: Icon, tone }: MarkerSpec) {

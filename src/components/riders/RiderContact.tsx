@@ -5,6 +5,10 @@ import { MessageSquare, Phone } from "lucide-react";
 
 import { buttonVariants } from "@/components/ui/button";
 import { telHref } from "@/lib/rider-tracking";
+import { cn } from "@/lib/utils";
+
+// Merged like <Button> does, so the outline border survives the base reset.
+const linkButton = cn(buttonVariants({ size: "sm" }));
 
 type Props = {
   riderId: string;
@@ -32,7 +36,7 @@ export function RiderContact({ riderId, name, phone, tree }: Props) {
       {tel ? (
         <a
           href={tel}
-          className={buttonVariants({ size: "sm" })}
+          className={linkButton}
           aria-label={`Call ${name} on ${phone}`}
         >
           <Phone size={16} aria-hidden />
@@ -41,7 +45,7 @@ export function RiderContact({ riderId, name, phone, tree }: Props) {
       ) : null}
       <Link
         href={riderChatHref(tree, riderId)}
-        className={buttonVariants({ size: "sm" })}
+        className={linkButton}
         aria-label={`Message ${name}`}
       >
         <MessageSquare size={16} aria-hidden />
