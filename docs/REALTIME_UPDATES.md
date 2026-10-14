@@ -139,6 +139,13 @@ carry, so those screens re-read when one of these inbox notices arrives
 (`useLegalInboxReload`), and keep their Refresh button. The rail's open privacy
 request count re-reads on the same `privacy.*` notices.
 
+Post-order survey notices (`order_survey_available`, `order_survey_dismissed`,
+`order_survey_submitted`; `gridgo-api/docs/SURVEY_API.md`) reach Operations and Super Admin
+without any answer. Only Super Admin can read responses, so its `order_survey_submitted`
+copy opens `/admin/survey-responses?response=:orderId`, which opens that response; every
+other survey notice, and every Operations copy, opens the order. An open responses desk
+re-reads when a new submission notice arrives (`useLegalInboxReload`).
+
 Sign-up links open Super Admin verification only; Operations has no sign-up destination.
 Operations service-review links open `/ops/service-lines`; legacy `/ops/approvals?tab=services`
 links still work. Other `/ops/approvals` links show the Super Admin only notice. Super Admin

@@ -21,6 +21,8 @@ import type {
   VoucherIssueRecipient,
   VoucherIssueReport,
   VoucherLedgerFilter,
+  SurveyResponsesFilter,
+  SurveyResponsesPage,
   VoucherLedgerPage,
   VoucherTab,
   LegalAcceptance,
@@ -2904,6 +2906,28 @@ export async function listVoucherLedger(
 export async function downloadVoucherLedger(filter: VoucherLedgerFilter = {}): Promise<Blob> {
   return requestBlob(
     `/admin/voucher-redemptions${buildQuery({ ...filter, format: "csv" })}`,
+    { headers: { Accept: "text/csv" } },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Post-order survey responses (SURVEY_API.md)
+// ---------------------------------------------------------------------------
+
+/** Super Admin. Newest submission first; `limit` 1–500. Aggregates cover every match. */
+export async function listSurveyResponses(
+  filter: SurveyResponsesFilter = {},
+  page: { offset?: number; limit?: number } = {},
+): Promise<SurveyResponsesPage> {
+  return request<SurveyResponsesPage>(
+    `/admin/survey-responses${buildQuery({ ...filter, offset: page.offset, limit: page.limit })}`,
+  );
+}
+
+/** Super Admin. Every matching response as `survey-responses.csv` (no paging). */
+export async function downloadSurveyResponses(filter: SurveyResponsesFilter = {}): Promise<Blob> {
+  return requestBlob(
+    `/admin/survey-responses${buildQuery({ ...filter, format: "csv" })}`,
     { headers: { Accept: "text/csv" } },
   );
 }
