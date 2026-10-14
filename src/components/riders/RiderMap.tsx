@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { presentLocation, type LocationFreshness } from "@/app/ops/_lib/dispatch";
 import type { RiderRoutes } from "@/components/riders/useRiderRoutes";
 import type { MapPoint, RiderLocation } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
 import { routeSummaryLabel } from "@/lib/osrm";
+import { formatAge, type RiderLocationView } from "@/lib/rider-tracking";
 import { resolveTheme } from "@/lib/theme";
 import { vehicleGlyphSvg, vehicleSummary } from "@/lib/vehicle";
 
@@ -96,13 +96,27 @@ function useDarkTheme(): boolean {
   return dark;
 }
 
+/** A rider with a position the map can draw. */
+type Placed = RiderLocation & { lat: number; lng: number };
+
 type Props = {
+  /** Riders without a position are skipped here; the lists above and below keep them. */
   riders: RiderLocation[];
   routes: RiderRoutes;
   /** Pan to this rider and open their pin. Changes are honoured once each. */
   focusRiderId: string | null;
-  nowMs: number;
+  /** Freshness per rider id, from `presentRiderLocation`. */
+  views: Record<string, RiderLocationView>;
 };
+
+function placed(rider: RiderLocation): rider is Placed {
+  return (
+    rider.lat != null &&
+    rider.lng != null &&
+    Number.isFinite(rider.lat) &&
+    Number.isFinite(rider.lng)
+  );
+}
 
 type TripLayers = {
   rider: LeafletMarker;
@@ -122,7 +136,8 @@ type TripLayers = {
  * Layers are diffed by rider id so a location update never resets the camera
  * or closes an open popup; the viewport is fitted once, on first data.
  */
-export function RiderMap({ riders, routes, focusRiderId, nowMs }: Props) {
+export function RiderMap({ riders: all, routes, focusRiderId, views }: Props) {
+  const riders = useMemo(() => all.filter(placed), [all]);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [instance, setInstance] = useState<{ map: LeafletMap; L: LeafletLike } | null>(
     null,
@@ -202,27 +217,16 @@ export function RiderMap({ riders, routes, focusRiderId, nowMs }: Props) {
     }
     const points = riders.map((rider) => {
       const point: [number, number] = [rider.lat, rider.lng];
-      const freshness = presentLocation(
-        {
-          id: rider.riderId,
-          orderId: rider.orderId,
-          riderId: rider.riderId,
-          lat: rider.lat,
-          lng: rider.lng,
-          accuracy: rider.accuracy,
-          at: rider.at,
-        },
-        rider.state,
-        nowMs,
-      ).freshness;
-      const iconKey = `${rider.vehicleType ?? "unknown"}|${freshness}`;
-      const html = popupHtml(rider, freshness, routes[rider.riderId]);
+      const view = views[rider.riderId];
+      const stale = view ? view.freshness !== "live" : false;
+      const iconKey = `${rider.vehicleType ?? "unknown"}|${stale}`;
+      const html = popupHtml(rider, view, routes[rider.riderId]);
       const existing = trips.get(rider.riderId);
       if (existing) {
         existing.rider.setLatLng(point);
         existing.rider.setPopupContent(html);
         if (existing.iconKey !== iconKey) {
-          existing.rider.setIcon(riderIcon(L, rider, freshness));
+          existing.rider.setIcon(riderIcon(L, rider, stale));
           existing.iconKey = iconKey;
         }
         existing.pickup = syncEndpoint(L, map, existing.pickup, rider.pickup, "pickup");
@@ -235,7 +239,7 @@ export function RiderMap({ riders, routes, focusRiderId, nowMs }: Props) {
         );
       } else {
         const marker = L.marker(point, {
-          icon: riderIcon(L, rider, freshness),
+          icon: riderIcon(L, rider, stale),
           zIndexOffset: 1000,
           alt: `${rider.name}, ${vehicleSummary(rider.vehicleType, rider.plateNumber)}`,
         }).addTo(map);
@@ -257,7 +261,7 @@ export function RiderMap({ riders, routes, focusRiderId, nowMs }: Props) {
       else map.fitBounds(points, { padding: [32, 32] });
       fittedRef.current = true;
     }
-  }, [instance, riders, routes, nowMs]);
+  }, [instance, riders, routes, views]);
 
   // Road routes, redrawn when the route or the theme changes.
   useEffect(() => {
@@ -318,8 +322,7 @@ function removeTrip(trip: TripLayers) {
   trip.line?.remove();
 }
 
-function riderIcon(L: LeafletLike, rider: RiderLocation, freshness: LocationFreshness) {
-  const stale = freshness !== "live";
+function riderIcon(L: LeafletLike, rider: RiderLocation, stale: boolean) {
   return L.divIcon({
     className: "gg-pin-host",
     html: `<div class="gg-rider-pin${stale ? " gg-rider-pin--stale" : ""}">${vehicleGlyphSvg(rider.vehicleType, 22)}</div>`,
@@ -369,14 +372,17 @@ function syncEndpoint(
 
 function popupHtml(
   rider: RiderLocation,
-  freshness: LocationFreshness,
+  view: RiderLocationView | undefined,
   route: RiderRoutes[string],
 ): string {
   const status = presentOrderState(rider.state).label;
   const order = rider.orderTitle
     ? `${rider.orderTitle} · Order ${rider.orderId}`
     : `Order ${rider.orderId}`;
-  const ping = `Last ping ${formatDateTime(rider.at)}${freshness === "stale" ? " · stale" : ""}`;
+  const ping =
+    view && view.freshness !== "live"
+      ? `Last known position, ${formatDateTime(rider.at)} (${formatAge(view.ageSeconds ?? 0)} ago)`
+      : `Last ping ${formatDateTime(rider.at)}`;
   return [
     `<strong>${escapeHtml(rider.name)}</strong>`,
     escapeHtml(vehicleSummary(rider.vehicleType, rider.plateNumber)),

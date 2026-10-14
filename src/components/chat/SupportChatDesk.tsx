@@ -40,6 +40,7 @@ import type {
   SupportChatPerson,
   SupportChatSenderRole,
   SupportChatThread,
+  SupportChatThreadRole,
 } from "@/lib/api/types";
 import { ChatAttachButton } from "@/components/chat/ChatAttachButton";
 import { ChatMessage } from "@/components/chat/ChatMessage";
@@ -89,7 +90,25 @@ function errorCopy(error: unknown): string {
   return "Could not load the chat desk. Try again.";
 }
 
-export function SupportChatDesk() {
+/** `?with=<userId>&role=<client|supplier|rider>` from a Message link, or null. */
+export function chatOpenWith(
+  params: Pick<URLSearchParams, "get">,
+): { userId: string; role: SupportChatThreadRole } | null {
+  const userId = params.get("with")?.trim();
+  const role = params.get("role");
+  if (!userId || (role !== "rider" && role !== "client" && role !== "supplier")) return null;
+  return { userId, role };
+}
+
+type Props = {
+  /**
+   * Open (or create) the thread with this person on arrival, e.g. a stale
+   * rider's Message action (`?with=<userId>&role=rider`).
+   */
+  openWith?: { userId: string; role: SupportChatThreadRole } | null;
+};
+
+export function SupportChatDesk({ openWith = null }: Props = {}) {
   const [threads, setThreads] = useState<SupportChatThread[] | null>(null);
   const [messages, setMessages] = useState<SupportChatMessage[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -334,7 +353,7 @@ export function SupportChatDesk() {
     }
   }
 
-  async function startWith(person: SupportChatPerson) {
+  async function startWith(person: Pick<SupportChatPerson, "userId" | "role">) {
     try {
       const opened = await openSupportChatThread({
         userId: person.userId,
@@ -356,6 +375,21 @@ export function SupportChatDesk() {
       setError(errorCopy(err));
     }
   }
+
+  // Arriving with someone to write to: open their thread once the inbox has
+  // loaded, so it sits in the list like any other conversation.
+  const openedWith = useRef<string | null>(null);
+  const openWithKey = openWith ? `${openWith.role}:${openWith.userId}` : null;
+  const inboxLoaded = threads !== null;
+  const startWithRef = useRef(startWith);
+  startWithRef.current = startWith;
+  useEffect(() => {
+    if (!openWith || !openWithKey || !inboxLoaded || openedWith.current === openWithKey) {
+      return;
+    }
+    openedWith.current = openWithKey;
+    void startWithRef.current(openWith);
+  }, [openWith, openWithKey, inboxLoaded]);
 
   if (error && !threads) {
     return (

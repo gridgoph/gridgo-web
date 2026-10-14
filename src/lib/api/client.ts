@@ -58,6 +58,7 @@ import type {
   Escalation,
   HealthResult,
   Issue,
+  LocationDiagnostics,
   LocationPing,
   RiderLocation,
   Notification,
@@ -2043,6 +2044,16 @@ export async function getDispatchLocation(orderId: string): Promise<LocationPing
 export async function listRiderLocations(): Promise<RiderLocation[]> {
   const result = await request<{ riders: RiderLocation[] }>("/ops/riders/locations");
   return result.riders;
+}
+
+/**
+ * Ops/Super Admin. The current assignment's freshness and up to 100 recent
+ * receive gaps, coordinate-free (gridgo-api#229).
+ */
+export async function getLocationDiagnostics(orderId: string): Promise<LocationDiagnostics> {
+  return request<LocationDiagnostics>(
+    `/ops/orders/${encodeURIComponent(orderId)}/location-diagnostics`,
+  );
 }
 
 /** Rider only — included so the client surface is complete. */
