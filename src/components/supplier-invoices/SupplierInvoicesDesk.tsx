@@ -60,6 +60,7 @@ import {
   isInvoiceMonth,
   manilaMonth,
   matchesView,
+  meterSentence,
   monthHeadline,
   monthLabel,
   parseInvoiceView,
@@ -266,14 +267,17 @@ export function SupplierInvoicesDesk({ tree }: { tree: "ops" | "admin" }) {
               {shopName(shop)}
             </span>
             <CollectionMeter counts={shop} size="sm" className="max-w-56" />
+            {/* Phone cards read the counts as one line instead of five rows. */}
+            <span className="text-caption text-text-secondary md:hidden">{meterSentence(shop)}</span>
           </div>
         ),
       },
+      // What Operations acts on first, so a narrow screen keeps it in view.
+      countColumn("toCollect", "To collect", (shop) => shop.toCollect, true),
+      countColumn("missing", "Missing scan", (shop) => shop.missing, true),
       countColumn("expected", "Expected", (shop) => shop.expected),
       countColumn("received", "Scanned in", (shop) => shop.received),
-      countColumn("missing", "Missing scan", (shop) => shop.missing, true),
       countColumn("collected", "Collected", (shop) => shop.collected),
-      countColumn("toCollect", "To collect", (shop) => shop.toCollect, true),
     ],
     [],
   );
@@ -591,6 +595,7 @@ function countColumn(
   return {
     id,
     header,
+    hideOnMobile: true,
     sortValue: value,
     cell: (shop) => {
       const count = value(shop);
