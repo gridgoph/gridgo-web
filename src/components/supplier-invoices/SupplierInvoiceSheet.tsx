@@ -24,7 +24,8 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { getUser } from "@/lib/api/client";
 import type { SupplierInvoice } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/AuthProvider";
-import { formatDateTime, formatPhp } from "@/lib/format";
+import { formatPhp } from "@/lib/format";
+import { formatManila } from "@/lib/legal";
 import {
   collectBlocker,
   invoiceDateLabel,
@@ -87,7 +88,7 @@ function Body({
         </SheetTitle>
         <SheetDescription>
           <span className="text-body text-text-secondary">
-            Invoice for {orderName}. Ready for pick-up {formatDateTime(invoice.expectedAt)},
+            Invoice for {orderName}. Ready for pick-up {formatManila(invoice.expectedAt)},
             so it counts in {monthLabel(invoice.month)}.
           </span>
         </SheetDescription>
@@ -103,7 +104,7 @@ function Body({
         </h3>
         <p className="text-body text-text-secondary m-0">{scan.detail}</p>
         {scanId ? (
-          <EvidencePlate fileId={scanId} label="Invoice scan" downloadable />
+          <EvidencePlate fileId={scanId} label="Invoice scan" downloadable whole />
         ) : null}
         {otherScans.length ? (
           <details className="text-body">
@@ -114,7 +115,7 @@ function Body({
             </summary>
             <div className="mt-2 flex flex-col gap-3">
               {otherScans.map((id, index) => (
-                <EvidencePlate key={id} fileId={id} label={`Other scan ${index + 1}`} />
+                <EvidencePlate key={id} fileId={id} label={`Other scan ${index + 1}`} whole />
               ))}
             </div>
           </details>
@@ -133,9 +134,9 @@ function Body({
               <Fact term="Amount">
                 {invoice.amountMinor !== null ? formatPhp(invoice.amountMinor) : "—"}
               </Fact>
-              <Fact term="Sent">{formatDateTime(invoice.submittedAt)}</Fact>
+              <Fact term="Sent">{formatManila(invoice.submittedAt)}</Fact>
               {invoice.updatedAt && invoice.updatedAt !== invoice.submittedAt && !invoice.collected ? (
-                <Fact term="Last corrected">{formatDateTime(invoice.updatedAt)}</Fact>
+                <Fact term="Last corrected">{formatManila(invoice.updatedAt)}</Fact>
               ) : null}
             </dl>
             <p className="text-caption text-text-muted m-0">
@@ -223,7 +224,7 @@ function CollectedLine({ invoice }: { invoice: SupplierInvoice }) {
   const who = mine ? "you" : name ?? "a staff member";
   return (
     <p className="text-body text-text-primary m-0">
-      Collected {formatDateTime(invoice.collectedAt)} by {who}. The invoice details are final.
+      Collected {formatManila(invoice.collectedAt)} by {who}. The invoice details are final.
     </p>
   );
 }

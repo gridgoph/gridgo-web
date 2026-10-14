@@ -46,7 +46,8 @@ import type {
   SupplierInvoiceCounts,
   SupplierInvoiceShop,
 } from "@/lib/api/types";
-import { formatDate, formatPhp } from "@/lib/format";
+import { formatPhp } from "@/lib/format";
+import { formatManilaDate } from "@/lib/legal";
 import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import {
@@ -292,7 +293,7 @@ export function SupplierInvoicesDesk({ tree }: { tree: "ops" | "admin" }) {
               {orderName(row.orderId)}
             </span>
             <span className="text-caption text-text-muted">
-              Ready for pick-up {formatDate(row.expectedAt)}
+              Ready for pick-up {formatManilaDate(row.expectedAt)}
             </span>
           </div>
         ),
