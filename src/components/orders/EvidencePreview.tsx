@@ -55,6 +55,11 @@ type PlateProps = {
    * leave this off.
    */
   deletable?: boolean;
+  /**
+   * A document read as a whole, such as a shop's invoice scan: the preview
+   * shows the full page rather than a cropped middle.
+   */
+  whole?: boolean;
 };
 
 type Loaded = {
@@ -73,6 +78,7 @@ export function EvidencePlate({
   downloadable = false,
   featuredDownload = false,
   deletable = false,
+  whole = false,
 }: PlateProps) {
   const access = useFileDeletionAccess();
   const [open, setOpen] = useState(false);
@@ -164,7 +170,9 @@ export function EvidencePlate({
                 "w-full object-center",
                 featuredDownload
                   ? "h-64 object-contain"
-                  : "aspect-[4/3] h-36 object-cover",
+                  : whole
+                    ? "h-80 bg-surface-variant object-contain"
+                    : "aspect-[4/3] h-36 object-cover",
               )}
             />
             <span className="block truncate px-3 py-1.5 text-caption text-white/80">

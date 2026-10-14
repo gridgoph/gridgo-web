@@ -524,6 +524,20 @@
   background-color: var(--color-surface);
 }
 
+/*
+ * "Scanned, paper original still at the shop" on the supplier invoice
+ * collection meter: a hatch in the current text colour, so the meter's three
+ * parts differ by fill rather than hue and still read in greyscale.
+ */
+@utility gg-invoice-hatch {
+  background-color: var(--color-surface);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    currentColor 0 2px,
+    transparent 2px 5px
+  );
+}
+
 @utility gg-panel {
   border-radius: var(--radius-card);
   background-color: var(--color-surface-variant);

@@ -149,6 +149,15 @@ export function notificationHref(role: Role, notification: Notification): string
     return `/admin/survey-responses?response=${encodeURIComponent(notification.orderId)}`;
   }
 
+  // Supplier invoices (SUPPLIER_INVOICES_API.md): a scan, an entry, a
+  // correction or a collection opens that order's invoice on the desk, which
+  // finds the month it counts in.
+  if (type.startsWith("supplier_invoice_") && notification.orderId) {
+    const order = encodeURIComponent(notification.orderId);
+    if (role === "super_admin") return `/admin/supplier-invoices?order=${order}`;
+    if (role === "ops_admin") return `/ops/supplier-invoices?order=${order}`;
+  }
+
   if (type === "ops_issue_report_filed") {
     if (role === "super_admin") return "/admin/issue-reports";
     if (role === "ops_admin") return "/ops/issue-reports";

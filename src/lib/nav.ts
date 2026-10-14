@@ -68,6 +68,7 @@ export type NavIconKey =
   | "acceptances"
   | "privacy"
   | "surveys"
+  | "invoices"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -419,6 +420,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          id: "ops-supplier-invoices",
+          href: "/ops/supplier-invoices",
+          label: "Supplier invoices",
+          title: "Supplier invoices",
+          icon: "invoices",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "ops-refunds",
           href: "/ops/refunds",
           label: "Client refunds",
@@ -665,6 +675,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Finance",
           title: "Finance",
           icon: "finance",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-supplier-invoices",
+          href: "/admin/supplier-invoices",
+          label: "Supplier invoices",
+          title: "Supplier invoices",
+          icon: "invoices",
           ready: true,
           placeholderBody: "",
         },

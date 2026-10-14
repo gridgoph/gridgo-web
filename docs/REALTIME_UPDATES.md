@@ -146,6 +146,12 @@ copy opens `/admin/survey-responses?response=:orderId`, which opens that respons
 other survey notice, and every Operations copy, opens the order. An open responses desk
 re-reads when a new submission notice arrives (`useLegalInboxReload`).
 
+Supplier invoice notices (`supplier_invoice_scanned|expected|submitted|corrected|collected`;
+`gridgo-api/docs/SUPPLIER_INVOICES_API.md`) reach Operations and Super Admin and open
+`/{ops,admin}/supplier-invoices?order=:orderId`, which finds the Manila month the invoice
+counts in and opens it. An open desk, and the Finance page's invoice summary, re-read on the
+same notices (`useLegalInboxReload`).
+
 Sign-up links open Super Admin verification only; Operations has no sign-up destination.
 Operations service-review links open `/ops/service-lines`; legacy `/ops/approvals?tab=services`
 links still work. Other `/ops/approvals` links show the Super Admin only notice. Super Admin

@@ -2859,3 +2859,65 @@ export type SurveyResponsesFilter = {
   from?: string;
   to?: string;
 };
+
+// ---- Supplier invoices and monthly paper collection (SUPPLIER_INVOICES_API.md) ----
+
+/**
+ * One order's incoming shop invoice. The obligation is fixed when the order
+ * first became ready for pick-up: shop, order, `expectedAt` and `month`
+ * (Asia/Manila) never move. Details are null until the shop enters them.
+ * `received` is entered details plus the selected scan still on file;
+ * `collected` is GRIDGO holding the paper original. They are independent.
+ */
+export type SupplierInvoice = {
+  orderId: string;
+  supplierId: string;
+  expectedAt: string;
+  /** `YYYY-MM`, the Manila month `expectedAt` falls in. */
+  month: string;
+  fileId: string | null;
+  number: string | null;
+  /** The date printed on the shop's invoice, `YYYY-MM-DD` (a calendar date). */
+  date: string | null;
+  /** What the shop typed from its invoice, in centavos. Not order money. */
+  amountMinor: number | null;
+  submittedAt: string | null;
+  updatedAt: string | null;
+  version: number;
+  collectedAt: string | null;
+  /** User ID of the staff member who recorded the paper original. */
+  collectedBy: string | null;
+  /** Every ready scan the shop attached to this order, the selected one included. */
+  scanFileIds: string[];
+  received: boolean;
+  collected: boolean;
+};
+
+/** `missing = expected - received`; `toCollect = expected - collected`. */
+export type SupplierInvoiceCounts = {
+  expected: number;
+  received: number;
+  missing: number;
+  collected: number;
+  toCollect: number;
+};
+
+export type SupplierInvoiceShop = SupplierInvoiceCounts & {
+  supplierId: string;
+  shopName: string;
+};
+
+/** Totals and shops cover the whole filtered month; `invoices` is one page. */
+export type SupplierInvoiceMonth = {
+  month: string;
+  reminder: string;
+  totals: SupplierInvoiceCounts;
+  shops: SupplierInvoiceShop[];
+  invoices: SupplierInvoice[];
+  nextCursor: string | null;
+};
+
+export type SupplierInvoiceEnvelope = {
+  invoice: SupplierInvoice;
+  reminder: string;
+};

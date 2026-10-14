@@ -14,9 +14,11 @@ import { useLiveOptional } from "@/lib/live/LiveProvider";
  *
  * Survey responses use it the same way: a submission sends Super Admin an
  * `order_survey_submitted` notice and no resource ping the desk could use.
+ * Supplier invoices too: every scan, entry, correction and collection sends
+ * staff a `supplier_invoice_*` notice.
  */
 export function useLegalInboxReload(
-  prefix: "legal." | "privacy." | "order_survey_submitted" | null,
+  prefix: "legal." | "privacy." | "order_survey_submitted" | "supplier_invoice_" | null,
   load: () => unknown,
 ): void {
   const live = useLiveOptional();
