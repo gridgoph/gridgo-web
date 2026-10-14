@@ -1203,8 +1203,21 @@ export type PlatformSettings = {
    * nothing.
    */
   riderCommissionBps?: number;
-  /** Live client tracking radius in whole meters; Super Admin writes it. */
+  /**
+   * Deprecated since gridgo-api#229: still stored, no longer controls what a
+   * client sees. Not shown or sent by this portal.
+   */
   clientRiderLocationRevealDistanceMeters?: number;
+  /**
+   * How often client maps re-read the rider's position, whole seconds 15–30
+   * (default 20). Super Admin writes it. Absent on an API before #229.
+   */
+  riderLocationRefreshIntervalSeconds?: number;
+  /**
+   * How old a rider's last fix may be before it is flagged stale, whole
+   * seconds 30–600 (default 120). Super Admin writes it.
+   */
+  riderLocationStaleAfterSeconds?: number;
   /**
    * How much of a new checkout the client pays up front: 100 (the default
    * since 2026-09-25, gridgo-api#66) or 75 (75% now, 25% before delivery).
@@ -1251,8 +1264,10 @@ export type UpdateSettingsInput = {
   physicalInvoiceRequestsEnabled?: boolean;
   organizationDiscountRateBps?: number;
   riderCommissionBps?: number;
-  /** Live client tracking radius in whole meters; Super Admin writes it. */
-  clientRiderLocationRevealDistanceMeters?: number;
+  /** Super Admin only; whole seconds 15–30. */
+  riderLocationRefreshIntervalSeconds?: number;
+  /** Super Admin only; whole seconds 30–600. */
+  riderLocationStaleAfterSeconds?: number;
   downpaymentPercent?: number;
   deliveryFeeBands?: DeliveryFeeBand[];
   productionNudge?: ProductionNudge;
@@ -1821,9 +1836,14 @@ export type LocationPing = {
 };
 
 /**
- * Latest shared GPS fix for a rider on an active trip, with what the map needs
- * to draw them honestly: the vehicle they drive and the trip's two ends.
- * `dropoff` is already the GRIDGO Office for a collected order.
+ * Latest shared GPS fix for a rider on an active trip (`rider_assigned`,
+ * `picked_up`, `out_for_delivery`), with what the map needs to draw them
+ * honestly: the vehicle they drive and the trip's two ends. `dropoff` is
+ * already the GRIDGO Office for a collected order.
+ *
+ * Since gridgo-api#229 a rider who has never sent a fix is still a row, with
+ * null position and times, so Operations can call them. The freshness fields
+ * are absent on an older API.
  */
 export type RiderLocation = {
   riderId: string;
@@ -1833,12 +1853,45 @@ export type RiderLocation = {
   orderId: string;
   orderTitle: string | null;
   state: string;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   accuracy: number | null;
-  at: string;
+  /** Source GPS time of the latest fix; null when none was ever sent. */
+  at: string | null;
+  /** When the server received that fix. */
+  receivedAt?: string | null;
+  lastUpdatedAt?: string | null;
+  /** Server-counted age of the fix at read time. */
+  ageSeconds?: number | null;
+  /** Past `riderLocationStaleAfterSeconds`, including a rider with no fix past the grace period. */
+  stale?: boolean;
   pickup: MapPoint | null;
   dropoff: MapPoint | null;
+};
+
+/** One accepted fix in the ping-gap diagnostics. No coordinates. */
+export type LocationDiagnosticsSample = {
+  at: string;
+  receivedAt: string;
+  processedAt: string | null;
+  /** Seconds since the previous received fix; null for the first. */
+  receiveGapSeconds: number | null;
+  /** Seconds from the GPS fix to server receipt. */
+  sourceDelaySeconds: number;
+};
+
+/** `GET /ops/orders/:id/location-diagnostics`, Operations and Super Admin only. */
+export type LocationDiagnostics = {
+  orderId: string;
+  riderId: string | null;
+  lastUpdatedAt: string | null;
+  ageSeconds: number | null;
+  stale: boolean;
+  sampleLimit: number;
+  sampleCount: number;
+  maxReceiveGapSeconds: number | null;
+  secondsSinceLastReceived: number | null;
+  samples: LocationDiagnosticsSample[];
 };
 
 // ---- Platform announcements ----

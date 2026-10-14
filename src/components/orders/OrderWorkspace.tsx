@@ -51,6 +51,13 @@ import { PaymentSummary } from "@/components/orders/PaymentSummary";
 import { ShopModeChip } from "@/components/orders/ShopModeChip";
 import { ProgressGallery, WaitingForPhoto } from "@/components/orders/ProductionProgress";
 import { ResolveEscalationDialog } from "@/components/orders/ResolveEscalationDialog";
+import {
+  RiderLocationPanel,
+  riderLocationNeedsContact,
+  riderLocationSummary,
+  useOrderRiderTracking,
+  type OrderRiderTracking,
+} from "@/components/orders/RiderLocation";
 import { PayoutMilestones } from "@/components/orders/PayoutMilestones";
 import {
   ReleaseMilestoneDialog,
@@ -171,6 +178,7 @@ type SectionId =
   | "deadline"
   | "counter"
   | "delivery"
+  | "rider-location"
   | "payout"
   | "refund"
   | "physical-invoice"
@@ -331,6 +339,19 @@ export function OrderWorkspace({
   }, [order]);
 
   const steps = useMemo(() => (order ? stepsFor(order) : []), [order]);
+
+  // The rider's location while they have the order, re-read on its own clock
+  // because no push arrives for a GPS fix.
+  const riderTracking = useOrderRiderTracking(order);
+  const riderNeedsContact = riderLocationNeedsContact(riderTracking);
+  // A rider who has gone quiet is a decision for Operations: open the row
+  // when that starts, and leave it to the reader after.
+  useEffect(() => {
+    if (!riderNeedsContact) return;
+    setOpen((current) =>
+      current.includes("rider-location") ? current : [...current, "rider-location"],
+    );
+  }, [riderNeedsContact]);
 
   // Who counted and who answered, by name. Best effort: a missing person
   // reads "the rider", never a raw id.
@@ -710,6 +731,17 @@ export function OrderWorkspace({
                     />
                   </SectionRow>
                 ) : null}
+                {step.id === "delivery" && riderTracking.shown ? (
+                  <SectionRow
+                    id="rider-location"
+                    heading="Rider location"
+                    summary={riderLocationSummary(riderTracking)}
+                    marker={riderLocationMarker(riderTracking)}
+                    trailing={riderNeedsContact ? "Your call" : undefined}
+                  >
+                    <RiderLocationPanel state={riderTracking} tree={tree} />
+                  </SectionRow>
+                ) : null}
                 {step.id === "production" ? (
                   <CounterRow
                     order={order}
@@ -997,6 +1029,13 @@ const SHOP_MARKER: Record<ReturnType<typeof shopRowTone>, MarkerSpec> = {
   done: { icon: CircleCheck, tone: "success" },
   quiet: { icon: CircleDot, tone: "muted" },
 };
+
+function riderLocationMarker(state: OrderRiderTracking): MarkerSpec {
+  if (!state.active) return { icon: CircleDot, tone: "muted" };
+  if (state.view?.needsContact) return { icon: TriangleAlert, tone: "current" };
+  if (state.view?.freshness === "live") return { icon: CircleCheck, tone: "success" };
+  return { icon: CircleDot, tone: "current" };
+}
 
 function Marker({ icon: Icon, tone }: MarkerSpec) {
   return (

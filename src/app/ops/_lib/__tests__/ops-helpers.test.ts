@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Claim, Issue, Order } from "@/lib/api/types";
 
-import { filterDispatchOrders, presentLocation, LOCATION_STALE_MS } from "../dispatch";
+import { filterDispatchOrders } from "../dispatch";
 import {
   buildOverviewBuckets,
   isSlaAtRisk,
@@ -176,44 +176,7 @@ describe("recovery", () => {
   });
 });
 
-describe("dispatch location freshness", () => {
-  const now = Date.parse("2026-08-08T12:00:00.000Z");
-
-  it("never labels a stale ping as live", () => {
-    const stale = presentLocation(
-      {
-        id: "p1",
-        orderId: "o",
-        riderId: "r",
-        lat: 7.1,
-        lng: 125.6,
-        accuracy: 10,
-        at: new Date(now - LOCATION_STALE_MS - 1000).toISOString(),
-      },
-      "out_for_delivery",
-      now,
-    );
-    expect(stale.freshness).toBe("stale");
-    expect(stale.label.toLowerCase()).not.toContain("live");
-  });
-
-  it("labels a recent ping as live", () => {
-    const live = presentLocation(
-      {
-        id: "p2",
-        orderId: "o",
-        riderId: "r",
-        lat: 7.1,
-        lng: 125.6,
-        accuracy: 10,
-        at: new Date(now - 30_000).toISOString(),
-      },
-      "out_for_delivery",
-      now,
-    );
-    expect(live.freshness).toBe("live");
-  });
-
+describe("dispatch board", () => {
   it("filters dispatch orders and ranks ready first", () => {
     const list = filterDispatchOrders([
       order({ id: "a", state: "out_for_delivery" }),

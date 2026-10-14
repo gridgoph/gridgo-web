@@ -6,7 +6,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { SupportChatDesk } from "@/components/chat/SupportChatDesk";
+import { chatOpenWith, SupportChatDesk } from "@/components/chat/SupportChatDesk";
 import { formatDateTime } from "@/lib/format";
 
 vi.stubGlobal("React", React);
@@ -111,6 +111,32 @@ beforeEach(() => {
 });
 
 describe("SupportChatDesk", () => {
+  it("opens the rider's thread when arriving from a Message link, once", async () => {
+    const riderThread = {
+      ...thread,
+      id: "thread-rider",
+      partyUserId: "rider1",
+      partyRole: "rider" as const,
+      partyName: "Ramon Rider",
+    };
+    openSupportChatThread.mockResolvedValue({ thread: riderThread });
+    const openWith = chatOpenWith(new URLSearchParams("with=rider1&role=rider"));
+    expect(openWith).toEqual({ userId: "rider1", role: "rider" });
+    const view = render(<SupportChatDesk openWith={openWith} />);
+    await waitFor(() =>
+      expect(openSupportChatThread).toHaveBeenCalledWith({ userId: "rider1", role: "rider" }),
+    );
+    await waitFor(() => expect(getSupportChatThread).toHaveBeenCalledWith("thread-rider"));
+    view.rerender(<SupportChatDesk openWith={{ userId: "rider1", role: "rider" }} />);
+    expect(openSupportChatThread).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores a link without a person or with a staff role", () => {
+    expect(chatOpenWith(new URLSearchParams(""))).toBeNull();
+    expect(chatOpenWith(new URLSearchParams("with=u1&role=super_admin"))).toBeNull();
+    expect(chatOpenWith(new URLSearchParams("role=rider"))).toBeNull();
+  });
+
   it("lists threads and opens the conversation", async () => {
     render(<SupportChatDesk />);
     expect((await screen.findAllByText("Ana Client")).length).toBeGreaterThan(0);
