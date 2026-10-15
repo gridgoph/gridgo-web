@@ -132,6 +132,23 @@ const CODE_COPY: Record<string, string> = {
     "This order already has an open refund request. Work that one instead.",
   refund_stale:
     "Someone else changed this refund while you were reading it. Reload it and check again.",
+  // Delivery pin (DELIVERY_PIN_API.md).
+  delivery_pin_stale:
+    "The delivery pin changed while you were reading it. The order has been reloaded; check it again.",
+  delivery_pin_payment_mismatch:
+    "The amount must be exactly the pin's fee difference. Check the transfer against it.",
+  delivery_pin_payment_unavailable:
+    "No pin payment is waiting any more. Someone may already have decided it; the order has been reloaded.",
+  delivery_pin_payment_pending:
+    "The client's pin payment is waiting on Operations. Verify or reject it before a rider is assigned.",
+  delivery_pin_money_reconciliation_required:
+    "This order's money needs reconciling first: a payment is still pending, or a refund is already open. Resolve that, then decide the pin payment.",
+  delivery_pin_idempotency_conflict:
+    "This decision was already sent with different details. Reload the order and decide again.",
+  delivery_pin_locked:
+    "The delivery pin can no longer change on this order.",
+  invalid_delivery_pin_request:
+    "Write a reason of up to 2,000 characters, then try again.",
   refund_idempotency_conflict:
     "This action was already sent with different details. Reload the refund and start again.",
   refund_destination_locked:

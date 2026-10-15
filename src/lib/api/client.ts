@@ -107,7 +107,8 @@ import type {
   TrackerItem,
   TrackerStatus,
   RefundDestination,
-  RefundKind,
+  DeliveryPin,
+  FileableRefundKind,
   RefundPreview,
   RefundRequest,
   RefundStatus,
@@ -2801,6 +2802,46 @@ async function refundWrite(
   return result.refund;
 }
 
+// ---------------------------------------------------------------------------
+// Delivery pin (gridgo-api docs/DELIVERY_PIN_API.md)
+//
+// Operations' only writes on a pin: verifying or rejecting the client's QR
+// transfer for a dearer pin. Each carries an `Idempotency-Key` and the
+// `expectedVersion` of the pin on screen (`409 delivery_pin_stale` otherwise).
+// A cheaper pin's credit is paid through the refund case, never `/settle`.
+// ---------------------------------------------------------------------------
+
+async function deliveryPinWrite(
+  orderId: string,
+  action: "confirm" | "reject",
+  key: string,
+  body: Record<string, unknown>,
+): Promise<DeliveryPin> {
+  const result = await request<{ deliveryPin: DeliveryPin }>(
+    `/orders/${encodeURIComponent(orderId)}/delivery-pin/payment/${action}`,
+    refundCommand(key, body),
+  );
+  return result.deliveryPin;
+}
+
+/** Verify the exact surcharge: applies the new pin in the same step. */
+export async function confirmDeliveryPinPayment(
+  orderId: string,
+  input: { expectedVersion: number; amountMinor: number; reason: string },
+  key: string,
+): Promise<DeliveryPin> {
+  return deliveryPinWrite(orderId, "confirm", key, input);
+}
+
+/** No matching transfer: the original pin stays and the client may send a new proof. */
+export async function rejectDeliveryPinPayment(
+  orderId: string,
+  input: { expectedVersion: number; reason: string },
+  key: string,
+): Promise<DeliveryPin> {
+  return deliveryPinWrite(orderId, "reject", key, input);
+}
+
 /** Ops / Super Admin see every request; an optional exact status filter. */
 export async function listRefunds(status?: RefundStatus): Promise<RefundRequest[]> {
   const result = await request<{ refunds: RefundRequest[] }>(
@@ -2829,7 +2870,7 @@ export async function getRefund(refundId: string): Promise<RefundRequest> {
  */
 export async function fileRefundRequest(
   orderId: string,
-  input: { kind: RefundKind; reason: string; evidenceFileIds?: string[] },
+  input: { kind: FileableRefundKind; reason: string; evidenceFileIds?: string[] },
   key: string,
 ): Promise<RefundRequest> {
   const result = await request<{ refund: RefundRequest }>(

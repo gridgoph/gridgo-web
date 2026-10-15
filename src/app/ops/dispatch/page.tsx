@@ -57,6 +57,12 @@ import {
   type RiderLocationView,
 } from "@/lib/rider-tracking";
 import { vehicleSummary } from "@/lib/vehicle";
+import {
+  pinDispatchBlocker,
+  pinNotesLine,
+  pinReceiverLine,
+  presentPinForDispatch,
+} from "@/lib/delivery-pin";
 
 /** Demo rider when order has none — same honesty as QA workspace. */
 const DEMO_RIDER_ID = "user_rider";
@@ -197,7 +203,11 @@ export default function OpsDispatchPage() {
       await load();
     } catch (err) {
       if (err instanceof ApiError) {
-        setActionError(`Could not assign rider (${err.code}).`);
+        setActionError(
+          err.code === "delivery_pin_payment_pending"
+            ? "The client's delivery-pin payment is waiting on Operations. Verify or reject it on the order, then assign a rider."
+            : `Could not assign rider (${err.code}).`,
+        );
       } else {
         setActionError("Network error while assigning rider.");
       }
@@ -293,6 +303,51 @@ export default function OpsDispatchPage() {
                     ? "Show route on map"
                     : "Show last position on map"}
                 </Link>
+              ) : null}
+            </div>
+          );
+        },
+      },
+      {
+        /*
+          Whether the client will be at the pin, who receives it and the notes
+          for the rider. A pin payment waiting on Operations holds dispatch
+          until someone decides it on the order.
+        */
+        id: "pin",
+        header: "Delivery pin",
+        sortValue: (o) => presentPinForDispatch(o)?.label ?? "",
+        filterValue: (o) =>
+          o.deliveryPin ? `${pinReceiverLine(o.deliveryPin)} ${o.deliveryPin.notes}` : "",
+        cell: (o) => {
+          const pin = o.deliveryPin;
+          const chip = presentPinForDispatch(o);
+          if (!pin || !chip) {
+            return <span className="text-body text-text-muted">No pin check</span>;
+          }
+          const blocker = pinDispatchBlocker(o);
+          return (
+            <div className="flex max-w-64 flex-col items-start gap-1 whitespace-normal">
+              <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} />
+              {blocker ? (
+                <Link
+                  href={`/ops/orders/${o.id}`}
+                  className="text-caption text-text-primary underline-offset-4 hover:underline"
+                >
+                  Dispatch held. Verify the pin payment on the order
+                </Link>
+              ) : pin.status === "confirmed" && pin.confirmedAt ? (
+                <span className="text-caption text-text-muted">
+                  {formatDateTime(pin.confirmedAt)}
+                </span>
+              ) : null}
+              <span className="text-caption text-text-secondary block max-w-64 break-words">
+                Receiver: {pinReceiverLine(pin)}
+              </span>
+              {pin.notes.trim() ? (
+                <span className="text-caption text-text-muted block max-w-64 line-clamp-2 break-words">
+                  Notes: {pinNotesLine(pin)}
+                </span>
               ) : null}
             </div>
           );
@@ -423,9 +478,13 @@ export default function OpsDispatchPage() {
             <>
               {o.state === "ready_for_dispatch" ? (
                 <DataTableRowAction
-                  label="Assign rider"
+                  label={
+                    pinDispatchBlocker(o)
+                      ? "Assign rider (verify the pin payment first)"
+                      : "Assign rider"
+                  }
                   icon={Bike}
-                  disabled={acting !== null}
+                  disabled={acting !== null || pinDispatchBlocker(o) !== null}
                   onClick={() => void assignRider(o)}
                 />
               ) : null}

@@ -898,6 +898,78 @@ export type Order = {
   hubPickup?: HubPickup | null;
   /** Already inside `deliveryFeeMinor` on a pick-up order. Never add the two. */
   pickupFeeMinor?: number;
+  /**
+   * The production-finished delivery pin (gridgo-api `docs/DELIVERY_PIN_API.md`):
+   * whether the client will be there, and their one change. Absent on a pick-up
+   * order, a legacy trip and every supplier payload. Read through
+   * `@/lib/delivery-pin`.
+   */
+  deliveryPin?: DeliveryPin | null;
+  /**
+   * The delivery fee now, after an applied pin change. `deliveryFeeMinor`
+   * stays the checkout fee. Sent only with `deliveryPin`.
+   */
+  effectiveDeliveryFeeMinor?: number;
+  /** The checkout total plus an applied pin change's difference. */
+  effectiveTotalMinor?: number;
+};
+
+// ---- Delivery pin (gridgo-api docs/DELIVERY_PIN_API.md) ----
+
+/** The client's surcharge transfer for a dearer pin, and Operations' check of it. */
+export type DeliveryPinPayment = {
+  proofFileId: string;
+  reference: string;
+  submittedAt: string;
+  /** Set when Operations verified it: always the exact difference. */
+  amountMinor?: number;
+  confirmedAt?: string;
+  confirmedBy?: string;
+};
+
+export type DeliveryPinChangeStatus = "pending_payment" | "pending_confirmation" | "applied";
+
+/** The one change. A dearer pin is a proposal until its payment is verified. */
+export type DeliveryPinChange = {
+  id: string;
+  status: DeliveryPinChangeStatus | string;
+  point: MapPoint;
+  zone: DeliveryZoneKey | string;
+  distanceMeters: number;
+  /** The delivery fee at the new pin. */
+  deliveryFeeMinor: number;
+  /** Signed: positive is collected from the client, negative is a credit back. */
+  feeDifferenceMinor: number;
+  createdAt: string;
+  appliedAt?: string | null;
+  /** A cheaper pin's delivery-fee credit, a `delivery_pin` refund request. */
+  refundRequestId?: string | null;
+  payment?: DeliveryPinPayment | null;
+  /** The last rejected proof's reason, which the client read. */
+  rejectionReason?: string | null;
+  /** Staff only: the signed split of the difference. */
+  riderDifferenceMinor?: number;
+  platformDifferenceMinor?: number;
+};
+
+export type DeliveryPin = {
+  version: number;
+  /** `pending` until the client says they will be there (or a change applies). */
+  status: "pending" | "confirmed" | string;
+  requestedAt: string;
+  confirmedAt: string | null;
+  /** The effective pin: the original until a change is applied. */
+  point: MapPoint;
+  zone: DeliveryZoneKey | string;
+  notes: string;
+  /** Empty means the client receives it themselves. */
+  receiverName: string;
+  changeUsed: boolean;
+  canConfirm: boolean;
+  canChange: boolean;
+  /** The checkout pin. Never on a rider payload. */
+  original?: MapPoint;
+  change?: DeliveryPinChange | null;
 };
 
 // ---- Operations file check (gridgo-api#122) ----
@@ -2519,10 +2591,17 @@ export type RefundStatus =
   | "rejected"
   | "withdrawn";
 
-export type RefundKind = "cancellation" | "complaint";
+/** `delivery_pin`: a cheaper pin's delivery-fee credit. It never cancels anything. */
+export type RefundKind = "cancellation" | "complaint" | "delivery_pin";
 
-/** `cancelled` before handover; `fulfilled_with_refund` after it. */
-export type RefundDisposition = "cancelled" | "fulfilled_with_refund";
+/** What a person can file. A delivery-fee credit is opened only by the pin route. */
+export type FileableRefundKind = Exclude<RefundKind, "delivery_pin">;
+
+/**
+ * `cancelled` before handover; `fulfilled_with_refund` after it;
+ * `delivery_adjustment` for a pin change's credit, reserved when the pin applied.
+ */
+export type RefundDisposition = "cancelled" | "fulfilled_with_refund" | "delivery_adjustment";
 
 /** The client's own receiving account. Only the client can set or replace it. */
 export type RefundDestination = {
@@ -2591,7 +2670,18 @@ export type RefundSettlement = RefundComponents & {
   shopEntitlementMinor?: number;
   riderEntitlementMinor?: number;
   platformDeliveryMinor?: number;
+  /**
+   * The settlement's frozen working. A `delivery_adjustment` carries
+   * `DeliveryCreditSnapshot` instead: read it through `deliveryCreditSnapshot`.
+   */
   snapshot?: RefundAmounts;
+};
+
+/** A delivery-fee credit's frozen working: the checkout fee and the fee at the new pin. */
+export type DeliveryCreditSnapshot = {
+  changeId: string;
+  originalFeeMinor: number;
+  deliveryFeeMinor: number;
 };
 
 export type RefundAttemptStatus = "in_progress" | "unknown" | "failed" | "paid";

@@ -87,6 +87,7 @@ import type {
   Order,
   RefundPreview,
   RefundRequest,
+  RefundSettlement,
   SettlementInput,
   SupplierSettlementPayout,
 } from "@/lib/api/types";
@@ -117,6 +118,7 @@ import {
 } from "@/lib/refunds";
 import { cn } from "@/lib/utils";
 import { orderVoucher } from "@/lib/vouchers";
+import { deliveryCreditSnapshot, isDeliveryCredit } from "@/lib/delivery-pin";
 
 type Tree = "ops" | "admin";
 
@@ -344,9 +346,13 @@ export function RefundCase({ tree }: { tree: Tree }) {
             <ChevronLeft size={14} strokeWidth={2} aria-hidden />
             Back to refunds
           </Link>
-          <h1 className="text-h2 text-text-primary m-0 truncate">Refund on {title}</h1>
+          <h1 className="text-h2 text-text-primary m-0 truncate">
+            {isDeliveryCredit(refund) ? "Delivery-fee credit" : "Refund"} on {title}
+          </h1>
           <p className="text-body text-text-secondary m-0 mt-1">
-            {refundKindLabel(refund.kind)} filed {formatDateTime(refund.createdAt)}
+            {isDeliveryCredit(refund)
+              ? `Reserved ${formatDateTime(refund.createdAt)}, when the client moved their delivery pin somewhere cheaper`
+              : `${refundKindLabel(refund.kind)} filed ${formatDateTime(refund.createdAt)}`}
           </p>
         </div>
         <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
@@ -427,7 +433,9 @@ export function RefundCase({ tree }: { tree: Tree }) {
                       input,
                       keys.keyFor({ review: refund.version, ...input }),
                     ),
-                  refund.status === "destination_review"
+                  isDeliveryCredit(refund)
+                    ? "Receiving QR verified. The credit can be reserved and paid."
+                    : refund.status === "destination_review"
                     ? "New receiving QR verified. The approved refund can be paid."
                     : "Marked reviewed. Settle the refund next.",
                 )
@@ -824,6 +832,7 @@ function requestSummary(refund: RefundRequest): string {
   const base = `${refundKindLabel(refund.kind)}, ${formatDate(refund.createdAt)}`;
   if (refund.status === "rejected") return `${base}. Rejected.`;
   if (refund.status === "withdrawn") return `${base}. Withdrawn by the client.`;
+  if (isDeliveryCredit(refund)) return `${base}. Opened by a cheaper delivery pin.`;
   return refund.beforeProduction
     ? `${base}, before production.`
     : `${base}, after production started.`;
@@ -833,7 +842,9 @@ function accountSummary(refund: RefundRequest): string {
   const d = refund.destination;
   if (!d) return "Waiting on the client to add their receiving QR.";
   const words = `${refundProviderLabel(d.provider)}, ${d.accountName}, revision ${d.revision}`;
-  if (refund.status === "destination_review") return `${words}. New, not yet verified.`;
+  if (refund.status === "destination_review") {
+    return isDeliveryCredit(refund) ? `${words}. Not yet verified.` : `${words}. New, not yet verified.`;
+  }
   if (refund.status === "requested") return `${words}. Not yet verified.`;
   return `${words}.`;
 }
@@ -847,6 +858,9 @@ function settlementSummary(refund: RefundRequest): string {
     return "Not settled yet.";
   }
   const when = s.approvedAt ?? s.createdAt;
+  if (s.disposition === "delivery_adjustment") {
+    return `${formatPhp(s.totalMinor)} reserved${when ? ` ${formatDate(when)}` : ""}, when the pin changed.`;
+  }
   return `${formatPhp(s.totalMinor)} approved${when ? ` ${formatDate(when)}` : ""}.`;
 }
 
@@ -858,7 +872,10 @@ function transferSummary(
     case "approved":
       return "Approved. No money sent yet.";
     case "destination_review":
-      return "Waiting on the new receiving QR to be verified.";
+      if (!refund.destination) return "Waiting on the client's receiving QR.";
+      return isDeliveryCredit(refund)
+        ? "Waiting on the client's receiving QR to be verified."
+        : "Waiting on the new receiving QR to be verified.";
     case "payment_in_progress":
       return `Reserved by ${nameOf(refund.attempt?.payerId, "another payer")}. Not recorded yet.`;
     case "payment_unknown":
@@ -905,7 +922,9 @@ function RequestPanel({
         </dd>
         <dt className="text-caption text-text-muted">Timing</dt>
         <dd className="m-0 text-body text-text-secondary">
-          {refund.beforeProduction
+          {isDeliveryCredit(refund)
+            ? "Opened by the pin change, not filed by anyone. The order carries on: nothing is cancelled, and work, dispatch and every payout continue."
+            : refund.beforeProduction
             ? "Before production: all verified money goes back, and the shop and rider are owed nothing."
             : "After production started: what goes back depends on what the shop and rider keep."}
         </dd>
@@ -970,7 +989,9 @@ function AccountPanel({
 }) {
   const reviewing =
     refund.status === "requested" || refund.status === "destination_review";
-  const replaced = refund.status === "destination_review";
+  const credit = isDeliveryCredit(refund);
+  // A credit's first QR is reviewed in this state too; only a later one is a replacement.
+  const replaced = refund.status === "destination_review" && !credit;
   const complaint = refund.kind === "complaint" && !replaced;
   const [verified, setVerified] = useState(false);
   const [substantiated, setSubstantiated] = useState(false);
@@ -980,20 +1001,24 @@ function AccountPanel({
     setVerified(false);
     setSubstantiated(false);
     setReason(
-      replaced
+      credit
+        ? "Your receiving account was checked for your delivery-fee credit."
+        : replaced
         ? "Your new receiving account was checked."
         : complaint
           ? "Your evidence was reviewed and your receiving account checked."
           : "Your request and receiving account were checked.",
     );
-  }, [refund.version, replaced, complaint]);
+  }, [refund.version, replaced, complaint, credit]);
 
   if (!refund.destination) {
     return (
       <p className="text-body text-text-secondary m-0">
         The client has not added a receiving QR yet. Only they can, in the GRIDGO app, and
-        it cannot be reviewed before that. The request stays open meanwhile, holding work
-        and payouts.
+        it cannot be reviewed before that.{" "}
+        {credit
+          ? "The credit stays reserved meanwhile. It holds no work, dispatch or payout."
+          : "The request stays open meanwhile, holding work and payouts."}
       </p>
     );
   }
@@ -1060,7 +1085,13 @@ function AccountPanel({
                 })
               }
             >
-              {busy ? "Saving…" : replaced ? "Verify the new QR" : "Mark reviewed"}
+              {busy
+                ? "Saving…"
+                : replaced
+                  ? "Verify the new QR"
+                  : credit
+                    ? "Verify the QR"
+                    : "Mark reviewed"}
             </Button>
           </div>
         </FieldGroup>
@@ -1482,6 +1513,9 @@ function SettlementRecord({
 }) {
   const settlement = refund.settlement!;
   const payouts = refund.supplierSettlementPayouts ?? [];
+  if (settlement.disposition === "delivery_adjustment") {
+    return <DeliveryCreditRecord settlement={settlement} />;
+  }
   return (
     <div className="flex flex-col gap-4">
       {settlement.snapshot ? (
@@ -1545,6 +1579,53 @@ function SettlementRecord({
           The shop is owed nothing more on this order.
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * A delivery-fee credit's settlement: reserved by the pin route when the
+ * cheaper pin applied, never previewed or approved here. It returns only the
+ * delivery difference; the shop, the rider's original share and the order's
+ * progress are untouched.
+ */
+function DeliveryCreditRecord({ settlement }: { settlement: RefundSettlement }) {
+  const working = deliveryCreditSnapshot(settlement);
+  return (
+    <div className="flex flex-col gap-3">
+      <dl className="m-0 grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1">
+        {working ? (
+          <>
+            <dt className="text-caption text-text-muted">Delivery fee at checkout</dt>
+            <dd className="m-0 text-body text-text-secondary tabular-nums text-right">
+              {formatPhp(working.originalFeeMinor)}
+            </dd>
+            <dt className="text-caption text-text-muted">Delivery fee at the new pin</dt>
+            <dd className="m-0 text-body text-text-secondary tabular-nums text-right">
+              {formatPhp(working.deliveryFeeMinor)}
+            </dd>
+          </>
+        ) : null}
+        <dt className="text-body text-text-primary" style={{ fontFamily: "var(--font-medium)" }}>
+          Credit to the client
+        </dt>
+        <dd
+          className="m-0 text-body text-text-primary tabular-nums text-right"
+          style={{ fontFamily: "var(--font-medium)" }}
+        >
+          {formatPhp(settlement.totalMinor)}
+        </dd>
+      </dl>
+      <p className="text-body text-text-secondary m-0">
+        Reserved {formatDateTime(settlement.approvedAt ?? settlement.createdAt)}, when the
+        cheaper pin was saved. There is nothing to approve: send exactly this amount once the
+        client&rsquo;s QR is verified.
+      </p>
+      <p className="text-caption text-text-muted m-0">
+        Not a cancellation. The shop&rsquo;s price, its payout stages and the order&rsquo;s
+        progress do not change, and this credit holds no work, dispatch or payout. It cannot be
+        rejected or withdrawn.
+      </p>
     </div>
   );
 }
@@ -1643,8 +1724,11 @@ function TransferPanel({
   if (refund.status === "destination_review") {
     return (
       <p className="text-body text-text-secondary m-0">
-        The client replaced their receiving QR after approval. Verify the new one under
-        Client&rsquo;s receiving account before anyone reserves or sends this refund.
+        {isDeliveryCredit(refund)
+          ? refund.destination
+            ? "Verify the client's QR under Client's receiving account before anyone reserves or sends this credit."
+            : "Nothing to send until the client adds their receiving QR and it is verified."
+          : "The client replaced their receiving QR after approval. Verify the new one under Client's receiving account before anyone reserves or sends this refund."}
       </p>
     );
   }
@@ -1879,7 +1963,15 @@ function MoneyCard({ refund }: { refund: RefundRequest }) {
         />
         <MoneyRow label="Earlier refunds on this order" minor={previous} />
         {s ? (
-          <MoneyRow label="This refund, approved" minor={s.totalMinor} strong />
+          <MoneyRow
+            label={
+              s.disposition === "delivery_adjustment"
+                ? "This credit, reserved"
+                : "This refund, approved"
+            }
+            minor={s.totalMinor}
+            strong
+          />
         ) : null}
         {reserved !== null ? (
           <MoneyRow label="Reserved for one payer" minor={reserved} />
