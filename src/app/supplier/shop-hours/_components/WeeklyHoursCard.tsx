@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -25,6 +26,7 @@ import {
   weekDraftOf,
   type WeekDraft,
 } from "@/lib/shop-hours";
+import { cn } from "@/lib/utils";
 
 type Props = {
   hours: ShopHours;
@@ -96,22 +98,33 @@ export function WeeklyHoursCard({ hours, now, saving, onSave }: Props) {
           disabled={saving}
           onValueChange={(values) => edit({ days: values.map(Number).sort((a, b) => a - b) })}
         >
-          {WEEKDAYS.map(({ day, short, long }) => (
-            <ToggleGroupItem
-              key={day}
-              value={String(day)}
-              aria-label={day === today ? `${long}, today` : long}
-              variant="outline"
-              className="min-h-11 min-w-14 flex-1 flex-col gap-0 data-[pressed]:border-foreground"
-            >
-              <span>{short}</span>
-              {day === today ? (
-                <span className="text-caption text-text-muted" aria-hidden>
-                  Today
+          {WEEKDAYS.map(({ day, short, long }) => {
+            const open = draft.days.includes(day);
+            return (
+              <ToggleGroupItem
+                key={day}
+                value={String(day)}
+                aria-label={day === today ? `${long}, today` : long}
+                variant="outline"
+                className={cn(
+                  "min-h-11 min-w-14 flex-1 flex-col gap-0",
+                  open
+                    ? "border-[var(--color-info)] bg-[var(--season-track-busy)] aria-pressed:bg-[var(--season-track-busy)] hover:bg-[var(--season-track-peak)]"
+                    : "border-dashed text-text-muted",
+                )}
+              >
+                <span className="inline-flex items-center gap-1">
+                  {open ? <Check aria-hidden className="size-3.5" /> : null}
+                  {short}
                 </span>
-              ) : null}
-            </ToggleGroupItem>
-          ))}
+                {day === today ? (
+                  <span className="text-caption text-text-muted" aria-hidden>
+                    Today
+                  </span>
+                ) : null}
+              </ToggleGroupItem>
+            );
+          })}
         </ToggleGroup>
       </Field>
 

@@ -453,6 +453,8 @@ describe("nav helpers", () => {
       "Pickup escalations",
     );
     expect(contextTitleForPath("/admin/zones", "super_admin")).toBe("Delivery zones");
+    expect(contextTitleForPath("/ops/shop-hours/user_a", "ops_admin")).toBe("Shop's hours");
+    expect(contextTitleForPath("/admin/shop-hours", "super_admin")).toBe("Shop hours");
     expect(contextTitleForPath("/admin/supplier-products", "super_admin")).toBe(
       "Supplier products",
     );

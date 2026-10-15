@@ -1022,6 +1022,7 @@ export function contextTitleForPath(
   ) {
     return "Shop's late jobs";
   }
+  if (/^\/(ops|admin)\/shop-hours\/[^/]+/.test(pathname)) return "Shop's hours";
   if (pathname === "/admin/escalations" || pathname.startsWith("/admin/escalations/")) {
     return "Pickup escalations";
   }

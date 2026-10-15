@@ -106,9 +106,7 @@ export function ShopHoursDesk({ tree }: { tree: ShopHoursTree }) {
             >
               {row.shopName}
             </Link>
-            <span className="text-caption text-text-muted">
-              {shopStatus(row.hours, now, "staff").detail}
-            </span>
+            <span className="text-caption text-text-muted">{rowDetail(row, now)}</span>
           </div>
         ),
       },
@@ -285,6 +283,12 @@ function TodayCell({ row, now }: { row: ShopHoursRow; now: number }) {
       ) : null}
     </div>
   );
+}
+
+/** One short line under the shop's name, so the table never scrolls sideways. */
+function rowDetail(row: ShopHoursRow, now: number): string {
+  if (row.hours.temporarilyClosed) return "No reopening date set";
+  return shopStatus(row.hours, now, "staff").detail;
 }
 
 function summaryLine(total: number, counts: Record<ShopStatusState, number>): string {
