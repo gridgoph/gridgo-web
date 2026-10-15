@@ -607,6 +607,74 @@ export type ProductionItem = {
   specialInstructions?: string | null;
   /** The latest change the client agreed to (and paid for) on this line. */
   agreedChange?: { id: string; proposedSpec: string; appliedAt: string } | null;
+  /**
+   * What the uploaded files measured against the product type at checkout,
+   * and which warnings the client accepted. Frozen when the order was placed;
+   * `null` on older orders and lines with no uploaded file, absent on an older
+   * API. Read through `@/lib/artwork-guidance`.
+   */
+  artworkGuidance?: ArtworkGuidanceRecord | null;
+};
+
+// ---- Artwork guidance ----
+// Contract: gridgo-api docs/ARTWORK_GUIDANCE_API.md.
+
+/** One product type's target. `minimumDpi` 50–1200, or null for no resolution check. */
+export type ArtworkGuidanceTarget = {
+  minimumDpi: number | null;
+  /** `false`: the product type expects CMYK, so an RGB file gets a warning. */
+  acceptsRgb: boolean;
+};
+
+/** `settings.artworkGuidance`: the default and each product type's own target. */
+export type ArtworkGuidanceSettings = {
+  version: 1;
+  default: ArtworkGuidanceTarget;
+  /** Keyed by taxonomy subcategory code; a code without an entry uses `default`. */
+  subcategories: Record<string, ArtworkGuidanceTarget>;
+};
+
+export type ArtworkColorMode = "rgb" | "cmyk" | "grayscale" | "mixed";
+
+export type ArtworkGuidanceWarning =
+  | {
+      code: "low_resolution";
+      effectiveDpi: number;
+      minimumDpi: number;
+      /** When the client accepted it; null when nobody did. */
+      acceptedAt: string | null;
+    }
+  | {
+      code: "color_mode";
+      colorMode: ArtworkColorMode | string;
+      expectedColorMode: string;
+      acceptedAt: string | null;
+    };
+
+export type ArtworkGuidanceFile = {
+  fileId: string;
+  /** Null when the file does not say (Word, a PDF naming no colour space). */
+  colorMode: ArtworkColorMode | string | null;
+  pixelWidth: number | null;
+  pixelHeight: number | null;
+  /** At the ordered size, limiting side. Null without pixels or a size. */
+  effectiveDpi: number | null;
+  warnings: ArtworkGuidanceWarning[];
+};
+
+/** The order line's frozen record (`productionItems[].artworkGuidance`). */
+export type ArtworkGuidanceRecord = {
+  version: number;
+  evaluatedAt: string;
+  subcategoryCode: string | null;
+  minimumDpi: number | null;
+  acceptsRgb: boolean;
+  /** `cmyk`, or `rgb_accepted` when the product type takes RGB. */
+  expectedColorMode: string;
+  /** Thousandths of a millimetre; null when the line names no size. */
+  orderedSize: { widthMilli: number; heightMilli: number } | null;
+  files: ArtworkGuidanceFile[];
+  openWarningCount: number;
 };
 
 export type PhysicalInvoiceRequest = {
@@ -1624,6 +1692,12 @@ export type PlatformSettings = {
    * and when a file arriving now would be reviewed.
    */
   operatingStatus?: OperatingTiming;
+  /**
+   * Recommended resolution and colour per product type. Every role reads it;
+   * only Super Admin writes it, always the whole value. Absent on an API that
+   * predates artwork guidance.
+   */
+  artworkGuidance?: ArtworkGuidanceSettings;
 };
 
 export type UpdateSettingsInput = {
@@ -1655,6 +1729,8 @@ export type UpdateSettingsInput = {
   hubPickup?: Pick<HubPickup, "schedule" | "feeMinor">;
   /** Super Admin only, always the complete object. */
   operatingHours?: OperatingHours;
+  /** Super Admin only, always the complete value (`403` for anyone else). */
+  artworkGuidance?: ArtworkGuidanceSettings;
   reason?: string;
 };
 

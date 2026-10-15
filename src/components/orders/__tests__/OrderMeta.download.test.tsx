@@ -19,6 +19,7 @@ vi.mock("@/lib/api/client", () => ({
 import { JobFilesDialog } from "@/components/orders/JobFilesDialog";
 import { OrderMeta } from "@/components/orders/OrderMeta";
 import type { ArtworkLink, Order, ProductionItem, StoredFile } from "@/lib/api/types";
+import { tarpaulinRecord } from "@/test/artwork-guidance";
 
 const CANVA: ArtworkLink = {
   formatCode: "canva_link",
@@ -228,6 +229,32 @@ describe("supplier spec file download", () => {
       within(dialog).queryByRole("button", { name: /^Download / }),
     ).not.toBeInTheDocument();
     expect(getFile).not.toHaveBeenCalled();
+  });
+
+  it("shows the shop what the released file measured and what the client accepted", () => {
+    render(
+      <OrderMeta
+        order={order({
+          productionItems: [
+            {
+              id: "line-1",
+              itemName: "Tarpaulin",
+              quantity: 1,
+              measurement: null,
+              artworkFileId: "file_front",
+              artworkGuidance: tarpaulinRecord(),
+            },
+          ],
+        })}
+        showMoney={false}
+        fromJobDetails
+      />,
+    );
+    const record = screen.getByTestId("artwork-guidance-record");
+    expect(record).toHaveTextContent("Target: 100 DPI at the ordered size, expects CMYK");
+    expect(record).toHaveTextContent(/Client accepted on/);
+    expect(record).toHaveTextContent("the client chose to print from this file");
+    expect(record).not.toHaveTextContent("shop's fault");
   });
 
   it("does not offer a file panel when no files or links exist", () => {

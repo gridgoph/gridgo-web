@@ -7,9 +7,11 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RoleMembership } from "@/lib/api/types";
+import { guidanceSettings, guidanceTaxonomy } from "@/test/artwork-guidance";
 
 const auth = vi.hoisted(() => ({ memberships: [] as RoleMembership[] }));
 const getSettings = vi.hoisted(() => vi.fn());
+const getTaxonomy = vi.hoisted(() => vi.fn());
 
 vi.stubGlobal("React", React);
 vi.mock("@/lib/auth/AuthProvider", () => ({
@@ -19,6 +21,7 @@ vi.mock("@/lib/live/useLiveReload", () => ({ useLiveReload: () => {} }));
 vi.mock("@/lib/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/client")>()),
   getSettings,
+  getTaxonomy,
 }));
 vi.mock("next/link", () => ({
   default: ({
@@ -62,6 +65,7 @@ afterEach(() => {
   cleanup();
   auth.memberships = [];
   getSettings.mockReset();
+  getTaxonomy.mockReset();
 });
 
 describe("Operations settings and audit routes", () => {
@@ -89,6 +93,20 @@ describe("Operations settings and audit routes", () => {
     expect(within(card).queryByRole("button")).toBeNull();
     // ₱5,000 under the brackets in force.
     expect(within(card).getAllByText("₱2,000.00 × 45% + ₱3,000.00 × 25%").length).toBeGreaterThan(0);
+  });
+
+  it("lets Operations read the artwork guidance, with nothing to change", async () => {
+    auth.memberships = OPS_ONLY;
+    getSettings.mockResolvedValue({ ...SETTINGS, artworkGuidance: guidanceSettings() });
+    getTaxonomy.mockResolvedValue(guidanceTaxonomy());
+    render(<OpsSettingsPage />);
+    const card = await screen.findByRole("region", { name: "Artwork guidance" });
+    expect(await within(card).findByText("Tarpaulins and outdoor banners")).toBeVisible();
+    expect(within(card).getAllByText("100 DPI minimum").length).toBeGreaterThan(0);
+    expect(within(card).getByText("Only Super Admin changes these.")).toBeVisible();
+    expect(within(card).queryByRole("textbox")).toBeNull();
+    expect(within(card).queryByRole("switch")).toBeNull();
+    expect(within(card).queryByRole("button")).toBeNull();
   });
 
   it("shows Super Admin only on audit, with no rows", () => {
