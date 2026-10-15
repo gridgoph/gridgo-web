@@ -209,6 +209,30 @@ describe("who, where and what", () => {
     expect(presentAuditDevice(null)).toBeNull();
   });
 
+  it("reads a service fee bracket change in words", () => {
+    const table = (middle: number) => ({
+      version: 2,
+      rounding: "half_up_once",
+      brackets: [
+        { upToMinor: 200000, rateBps: 4500 },
+        { upToMinor: 2000000, rateBps: middle },
+        { upToMinor: null, rateBps: 1500 },
+      ],
+    });
+    const change = auditChange({
+      before: { serviceFeeSchedule: table(2500) },
+      after: { serviceFeeSchedule: table(2000) },
+    });
+    if (change.kind !== "changed") throw new Error(change.kind);
+    expect(change.changed).toHaveLength(1);
+    const [row] = change.changed;
+    expect(auditFieldLabel(row)).toBe("Service fee brackets › Bracket › #2 › Rate");
+    expect(presentAuditValue(row.key, row.before)).toBe("25%");
+    expect(presentAuditValue(row.key, row.after)).toBe("20%");
+    expect(presentAuditValue("upToMinor", null)).toBe("No limit");
+    expect(presentAuditValue("upToMinor", 200000)).toBe("₱2,000.00");
+  });
+
   it("lists every order a shared record belongs to once", () => {
     expect(auditOrderIds({ orderId: "a", orderIds: ["a", "b"] })).toEqual(["a", "b"]);
     expect(auditOrderIds({ orderId: null })).toEqual([]);

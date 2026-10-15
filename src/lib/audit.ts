@@ -633,6 +633,15 @@ const FIELD_LABELS: Record<string, string> = {
   clientId: "Client",
   actorId: "Person",
   serviceFeeRateBps: "Service fee rate",
+  serviceFeeSchedule: "Service fee brackets",
+  scheduledServiceFee: "Scheduled service fee",
+  serviceFeeWorking: "Service fee working",
+  brackets: "Bracket",
+  upToMinor: "Up to",
+  rateBps: "Rate",
+  taxableMinor: "Charged on",
+  effectiveFrom: "Starts",
+  settingsVersion: "Settings version",
   organizationDiscountRateBps: "Organization discount rate",
   riderCommissionBps: "Rider share of delivery",
   commissionRatePercent: "Commission rate",
@@ -800,6 +809,8 @@ export type AuditNames = Readonly<Record<string, string>>;
 export function presentAuditValue(key: string, value: unknown, names: AuditNames = {}): string {
   // A field the item did not have yet (or no longer has) reads as empty.
   if (value === ABSENT) return "None";
+  // The last service fee bracket has no upper limit.
+  if (key === "upToMinor" && value === null) return "No limit";
   if (value === null || value === undefined || value === "") return "None";
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") {

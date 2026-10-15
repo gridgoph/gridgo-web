@@ -1,6 +1,13 @@
 import { formatRatePercent } from "@/components/settings/service-fee";
 import type { Order } from "@/lib/api/types";
 import { orderDeliverySplit, platformShareBps } from "@/lib/delivery-split";
+import {
+  chargedRows,
+  orderFeeBasis,
+  scheduleSummary,
+  workingTerm,
+  type OrderFeeBasis,
+} from "@/lib/service-fee-brackets";
 import { formatPhp } from "@/lib/format";
 import { asDeduction, discountLabel, orderFeeSplit } from "@/lib/organization-discount";
 import { orderVoucher, VOUCHER_LINE_LABEL } from "@/lib/vouchers";
@@ -25,6 +32,11 @@ type Props = {
  * keeps. The shop price and the delivery split above and below it never
  * move — the discount is GRIDGO's alone.
  *
+ * The fee shows how it was priced (gridgo-api#220): on a bracket order, the
+ * working under it ("₱2,000.00 × 45%", "₱3,000.00 × 25%", the rows adding up
+ * to the fee before any discount) and the table it was frozen under; on an
+ * older order, the one flat rate it was priced at, named as such.
+ *
  * A GRIDGO-funded voucher (gridgo-api#204) sits last, just above the total it
  * was taken off, with where it came from: GRIDGO's fee first, then delivery.
  * The shop price, the rider payout and the delivery split stay at their gross
@@ -34,10 +46,9 @@ export function OrderMoneyLines({ order, totalLabel = "Client total" }: Props) {
   const deliverySplit = orderDeliverySplit(order);
   const fee = orderFeeSplit(order);
   const voucher = orderVoucher(order);
-  const rate =
-    order.serviceFeeRateBps != null
-      ? ` (${formatRatePercent(order.serviceFeeRateBps)})`
-      : "";
+  const basis = orderFeeBasis(order);
+  // A bracket order has no single rate; a flat one names its rate.
+  const rate = basis.kind === "flat" ? ` (${formatRatePercent(basis.rateBps)})` : "";
   return (
     <>
       {order.supplierSubtotalMinor != null ? (
@@ -46,6 +57,7 @@ export function OrderMoneyLines({ order, totalLabel = "Client total" }: Props) {
       {fee ? (
         <>
           <Line label={`Service fee${rate}`} value={formatPhp(fee.grossMinor)} />
+          <FeeWorking basis={basis} />
           <Line
             label={discountLabel(fee.discountRateBps)}
             value={asDeduction(formatPhp(fee.discountMinor))}
@@ -55,7 +67,10 @@ export function OrderMoneyLines({ order, totalLabel = "Client total" }: Props) {
           <Line label="Fee GRIDGO keeps" value={formatPhp(fee.netMinor)} indent />
         </>
       ) : order.serviceFeeMinor != null ? (
-        <Line label={`Service fee${rate}`} value={formatPhp(order.serviceFeeMinor)} />
+        <>
+          <Line label={`Service fee${rate}`} value={formatPhp(order.serviceFeeMinor)} />
+          <FeeWorking basis={basis} />
+        </>
       ) : null}
       {order.deliveryFeeMinor != null ? (
         <Line label="Delivery" value={formatPhp(order.deliveryFeeMinor)} />
@@ -119,24 +134,68 @@ export function OrderMoneyLines({ order, totalLabel = "Client total" }: Props) {
   );
 }
 
+/**
+ * How the fee above was priced. Brackets the price never reached are left
+ * out; the table line names the whole table the order was frozen under.
+ */
+function FeeWorking({ basis }: { basis: OrderFeeBasis }) {
+  if (basis.kind === "brackets") {
+    return (
+      <>
+        {chargedRows(basis.working).map((row) => (
+          <Line
+            key={row.fromMinor}
+            label={workingTerm(row)}
+            value={formatPhp(row.amountMinor)}
+            indent
+            testId="service-fee-working"
+          />
+        ))}
+        <Line
+          label="Fee table"
+          value={scheduleSummary(basis.schedule)}
+          indent
+          muted
+          testId="service-fee-table"
+        />
+      </>
+    );
+  }
+  if (basis.kind === "flat") {
+    return (
+      <Line
+        label="Fee table"
+        value="One flat rate on the whole shop price, from before brackets"
+        indent
+        muted
+        testId="service-fee-table"
+      />
+    );
+  }
+  return null;
+}
+
 function Line({
   label,
   value,
   indent = false,
   strong = false,
+  muted = false,
   testId,
 }: {
   label: string;
   value: string;
   indent?: boolean;
   strong?: boolean;
+  /** An explanation rather than an amount. */
+  muted?: boolean;
   testId?: string;
 }) {
   return (
     <>
       <dt className={`text-caption text-text-muted${indent ? " pl-3" : ""}`}>{label}</dt>
       <dd
-        className={`text-body m-0 tabular-nums ${strong ? "text-text-primary" : "text-text-secondary"}`}
+        className={`m-0 tabular-nums ${muted ? "text-caption text-text-muted" : "text-body"} ${strong ? "text-text-primary" : muted ? "" : "text-text-secondary"}`}
         data-testid={testId}
       >
         {value}

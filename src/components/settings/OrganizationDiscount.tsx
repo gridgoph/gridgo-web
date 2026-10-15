@@ -16,7 +16,9 @@ import { formatRatePercent } from "@/components/settings/service-fee";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { formatPhp } from "@/lib/format";
+import type { ServiceFeeSchedule } from "@/lib/api/types";
 import { asDeduction, organizationExample } from "@/lib/organization-discount";
+import { serviceFeeFor } from "@/lib/service-fee-brackets";
 
 export const ORGANIZATION_DISCOUNT_COPY = (
   <>
@@ -34,6 +36,16 @@ export const ORGANIZATION_DISCOUNT_HELP = (
   </>
 );
 
+/** Under bracket fees there is no single fee rate to stay under; each order's fee caps it. */
+export const ORGANIZATION_DISCOUNT_HELP_BRACKETS = (
+  <>
+    0 to 100, up to two decimals. On each order the discount is capped at that
+    order&rsquo;s service fee, so GRIDGO never pays out more than it charges. Applies to
+    orders placed from now on &mdash; every order already placed keeps the discount it was
+    given.
+  </>
+);
+
 export const ORGANIZATION_DISCOUNT_INVALID =
   "The discount is a percentage from 0 to 100 with up to two decimals, like 5 or 2.5.";
 
@@ -48,6 +60,8 @@ type Props = {
   draftBps: number;
   /** The service fee as it will be saved, which the discount must fit inside. */
   feeBps: number;
+  /** The bracket table in force (gridgo-api#220); null or absent under a flat fee. */
+  feeSchedule?: ServiceFeeSchedule | null;
   invalid: boolean;
   /** Why this discount and fee cannot be saved together; null when they can. */
   problem: string | null;
@@ -59,6 +73,7 @@ export function OrganizationDiscount({
   inForceBps,
   draftBps,
   feeBps,
+  feeSchedule = null,
   invalid,
   problem,
 }: Props) {
@@ -104,7 +119,11 @@ export function OrganizationDiscount({
                 </span>
               </div>
               <FieldDescription id="organization-discount-help">
-                {invalid ? ORGANIZATION_DISCOUNT_INVALID : ORGANIZATION_DISCOUNT_HELP}
+                {invalid
+                  ? ORGANIZATION_DISCOUNT_INVALID
+                  : feeSchedule
+                    ? ORGANIZATION_DISCOUNT_HELP_BRACKETS
+                    : ORGANIZATION_DISCOUNT_HELP}
               </FieldDescription>
             </Field>
             {problem ? (
@@ -136,7 +155,7 @@ export function OrganizationDiscount({
             </p>
           </FieldGroup>
 
-          <DiscountExample feeBps={feeBps} discountBps={draftBps} />
+          <DiscountExample feeBps={feeBps} feeSchedule={feeSchedule} discountBps={draftBps} />
         </div>
       )}
     </section>
@@ -150,15 +169,28 @@ export function OrganizationDiscount({
  */
 function DiscountExample({
   feeBps,
+  feeSchedule,
   discountBps,
 }: {
   feeBps: number;
+  feeSchedule: ServiceFeeSchedule | null;
   discountBps: number;
 }) {
-  const example = organizationExample(feeBps, discountBps);
-  const fits = discountBps <= feeBps;
-  const discountWidth =
-    feeBps > 0 ? `${Math.min(100, (discountBps / feeBps) * 100)}%` : "100%";
+  const example = organizationExample(
+    feeBps,
+    discountBps,
+    feeSchedule
+      ? { feeFor: (price) => serviceFeeFor(price, feeSchedule).grossServiceFeeMinor }
+      : {},
+  );
+  // Under brackets the API caps the discount at the fee, so it always fits.
+  const fits = feeSchedule ? true : discountBps <= feeBps;
+  const discountWidth = feeSchedule
+    ? `${example.grossFeeMinor > 0 ? Math.min(100, (example.discountMinor / example.grossFeeMinor) * 100) : 100}%`
+    : feeBps > 0
+      ? `${Math.min(100, (discountBps / feeBps) * 100)}%`
+      : "100%";
+  const feeWords = feeSchedule ? "under the brackets in force" : `at a ${formatRatePercent(feeBps)} fee`;
   return (
     <div
       className="rounded-card bg-surface-variant flex min-w-0 flex-col gap-3 p-3"
@@ -166,8 +198,8 @@ function DiscountExample({
     >
       <p className="text-caption text-text-muted m-0">
         A {formatPhp(example.shopPriceMinor)} job with{" "}
-        {formatPhp(example.deliveryFeeMinor)} delivery, at a {formatRatePercent(feeBps)}{" "}
-        fee and a {formatRatePercent(discountBps)} discount
+        {formatPhp(example.deliveryFeeMinor)} delivery, {feeWords} and a{" "}
+        {formatRatePercent(discountBps)} discount
       </p>
       <div
         className="border-outline flex h-3 w-full overflow-hidden rounded-pill border"
@@ -186,7 +218,7 @@ function DiscountExample({
       <dl className="m-0 flex flex-col gap-1" data-testid="organization-discount-example">
         <Line label="Shop is paid" value={formatPhp(example.shopPriceMinor)} />
         <Line
-          label={`Service fee (${formatRatePercent(feeBps)})`}
+          label={feeSchedule ? "Service fee" : `Service fee (${formatRatePercent(feeBps)})`}
           value={formatPhp(example.grossFeeMinor)}
         />
         <Line

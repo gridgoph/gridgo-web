@@ -634,6 +634,16 @@ export type Order = {
    * Read the three through `src/lib/organization-discount.ts`.
    */
   serviceFeeMinor?: number;
+  /**
+   * Ops / Super Admin. The fee table this order was priced under, frozen at
+   * checkout (gridgo-api#220). Version 2 is the bracket table; version 1 a
+   * legacy flat rate. Orders on version 2 carry `serviceFeeRateBps: null`:
+   * never infer one whole-order rate for them. Read through
+   * `src/lib/service-fee-brackets.ts`.
+   */
+  serviceFeeSchedule?: ServiceFeeSchedule | null;
+  /** Ops / Super Admin. How the gross fee was worked out, bracket by bracket. */
+  serviceFeeWorking?: ServiceFeeWorkingRow[] | null;
   /** Ops / Super Admin. The fee before the organization discount. */
   grossServiceFeeMinor?: number;
   /** Ops / Super Admin. The discount rate snapshotted at checkout; 0 for everyone else. */
@@ -1174,6 +1184,67 @@ export type ProductionNudge = {
   maxCount: number;
 };
 
+// ---- Service fee brackets ----
+// Contract: gridgo-api docs/SERVICE_FEE_API.md (gridgo-api#220).
+
+/** One bracket: the rate on the part of the shop price up to `upToMinor`; null on the last. */
+export type ServiceFeeBracket = { upToMinor: number | null; rateBps: number };
+
+/** A legacy flat rate on the whole shop price, as older orders snapshot it. */
+export type ServiceFeeScheduleV1 = { version: 1; rateBps: number };
+
+/** Marginal brackets, rounded half-up once per shop/deadline group. */
+export type ServiceFeeScheduleV2 = {
+  version: 2;
+  rounding: "half_up_once";
+  brackets: ServiceFeeBracket[];
+  /** The settings version that saved it (settings edits only). */
+  settingsVersion?: number;
+  /** When it prices new orders, as UTC ISO (settings edits only). */
+  effectiveFrom?: string;
+};
+
+export type ServiceFeeSchedule = ServiceFeeScheduleV1 | ServiceFeeScheduleV2;
+
+/** One line of the fee's working: `taxableMinor × rateBps`, rounded so the rows add to the fee. */
+export type ServiceFeeWorkingRow = {
+  fromMinor: number;
+  upToMinor: number | null;
+  rateBps: number;
+  taxableMinor: number;
+  amountMinor: number;
+};
+
+export type ServiceFeeResult = {
+  grossServiceFeeMinor: number;
+  serviceFeeSchedule: ServiceFeeSchedule;
+  serviceFeeWorking: ServiceFeeWorkingRow[];
+};
+
+/** `POST /settings/service-fee/preview`: today's table against the proposed one. */
+export type ServiceFeePreview = {
+  version: number;
+  current: ServiceFeeSchedule;
+  proposed: ServiceFeeSchedule;
+  examples: Array<{
+    shopPriceMinor: number;
+    previous: ServiceFeeResult;
+    next: ServiceFeeResult;
+  }>;
+};
+
+export type ServiceFeePreviewInput = {
+  expectedVersion: number;
+  serviceFeeBrackets: ServiceFeeBracket[];
+  serviceFeeEffectiveFrom?: string;
+};
+
+/** The order fields the money panel reads a fee from. */
+export type OrderFeeLike = Pick<
+  Order,
+  "serviceFeeSchedule" | "serviceFeeWorking" | "serviceFeeRateBps" | "supplierSubtotalMinor"
+>;
+
 export type PlatformSettings = {
   /**
    * The settings row's version, quoted back as `expectedVersion` on every
@@ -1195,6 +1266,19 @@ export type PlatformSettings = {
    */
   serviceFeeRateBps: number;
   /**
+   * The bracket table pricing new orders (gridgo-api#220). Operations and
+   * Super Admin only; the API strips it from everyone else. When present,
+   * `serviceFeeRateBps` is kept for old consumers and prices nothing new.
+   * Absent on an API from before brackets.
+   */
+  serviceFeeSchedule?: ServiceFeeSchedule;
+  /**
+   * A table waiting for its `effectiveFrom`. Once that time has passed the API
+   * prices with it, though it stays here as evidence until the next edit:
+   * resolve through `scheduleInForce`.
+   */
+  scheduledServiceFee?: ServiceFeeScheduleV2 | null;
+  /**
    * Whether client checkout names the fee (`Service fee · N%`). The pesos
    * stay inside Printing either way. Absent on an older settings row; treat
    * as shown.
@@ -1208,9 +1292,10 @@ export type PlatformSettings = {
   physicalInvoiceRequestsEnabled?: boolean;
   /**
    * The organization discount, in basis points of the same shop price the
-   * service fee is charged on (500 = 5%), 0–10,000. Paid out of GRIDGO's fee,
-   * so it may never exceed `serviceFeeRateBps` (`400
-   * organization_discount_exceeds_service_fee`). Super Admin writes it.
+   * service fee is charged on (500 = 5%), 0–10,000. Paid out of GRIDGO's fee.
+   * Under a flat rate it may never exceed `serviceFeeRateBps` (`400
+   * organization_discount_exceeds_service_fee`); under brackets each order's
+   * discount is capped at its own fee instead. Super Admin writes it.
    * Absent on an API that predates organization discounts.
    */
   organizationDiscountRateBps?: number;
@@ -1279,6 +1364,10 @@ export type UpdateSettingsInput = {
   issueWindowHours?: number;
   serviceFeeRateBps?: number;
   serviceFeeVisibleToClient?: boolean;
+  /** Super Admin only. The complete bracket table; the last limit is null. */
+  serviceFeeBrackets?: ServiceFeeBracket[];
+  /** With `serviceFeeBrackets` only: when it starts (ISO with offset). Omit to start now. */
+  serviceFeeEffectiveFrom?: string;
   /** Super Admin only. Off unless sent as `true`. */
   physicalInvoiceRequestsEnabled?: boolean;
   organizationDiscountRateBps?: number;

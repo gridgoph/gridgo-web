@@ -61,9 +61,18 @@ export type WorkedExample = {
  */
 export function workedExample(
   rateBps: number,
-  { shopPriceMinor = 100_000, deliveryFeeMinor = 5_000 } = {},
+  {
+    shopPriceMinor = 100_000,
+    deliveryFeeMinor = 5_000,
+    feeFor = (price: number) => applyRateBps(price, rateBps),
+  }: {
+    shopPriceMinor?: number;
+    deliveryFeeMinor?: number;
+    /** The fee on a shop price; the flat rate unless the caller prices in brackets. */
+    feeFor?: (shopPriceMinor: number) => number;
+  } = {},
 ): WorkedExample {
-  const serviceFeeMinor = applyRateBps(shopPriceMinor, rateBps);
+  const serviceFeeMinor = feeFor(shopPriceMinor);
   return {
     shopPriceMinor,
     serviceFeeMinor,
