@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppProviders } from "@/components/providers/AppProviders";
 import "./globals.css";
 import { DEV_WEB_HOST_BOUNCE_SCRIPT } from "@/lib/devWebHost";
+import { INSTALL_CAPTURE_SCRIPT } from "@/lib/pwa/install";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 
 export const metadata: Metadata = {
@@ -30,6 +31,8 @@ export default function RootLayout({
           <script dangerouslySetInnerHTML={{ __html: DEV_WEB_HOST_BOUNCE_SCRIPT }} />
         ) : null}
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+        {/* Holds Chrome's install prompt for the supplier app until React is up. */}
+        <script dangerouslySetInnerHTML={{ __html: INSTALL_CAPTURE_SCRIPT }} />
       </head>
       <body className="font-sans antialiased">
         <AppProviders>

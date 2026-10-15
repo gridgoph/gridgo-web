@@ -126,6 +126,7 @@ import type {
   SupplierProductionLapses,
   SupplierInvoiceEnvelope,
   SupplierInvoiceMonth,
+  WebPushSubscriptionInput,
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
 
@@ -1263,6 +1264,38 @@ export async function grantCredits(input: {
   return request("/credits/grant", {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Web Push for the installed supplier app (contract: gridgo-api
+// docs/WEB_PUSH_API.md). Supplier only; `503 web_push_unavailable` means the
+// server has no VAPID keys yet. The browser side lives in `src/lib/pwa/`.
+// ---------------------------------------------------------------------------
+
+/** The server's VAPID application server key (base64url). */
+export async function getWebPushPublicKey(): Promise<string> {
+  const result = await request<{ publicKey: string }>("/web-push/public-key");
+  return result.publicKey;
+}
+
+/** Saves (or refreshes) this browser's subscription for the signed-in shop. */
+export async function subscribeWebPush(subscription: WebPushSubscriptionInput): Promise<void> {
+  await request<{ ok: true }>("/web-push/subscribe", {
+    method: "POST",
+    body: JSON.stringify({ subscription }),
+  });
+}
+
+/** Stops pushes to this browser. Unknown endpoints succeed too. */
+export async function unsubscribeWebPush(
+  endpoint: string,
+  init: Pick<RequestInit, "signal"> = {},
+): Promise<void> {
+  await request<{ ok: true }>("/web-push/unsubscribe", {
+    method: "POST",
+    body: JSON.stringify({ endpoint }),
+    signal: init.signal,
   });
 }
 

@@ -874,27 +874,12 @@ export default function ListingEditorPage() {
         onSend={() => void sendForReview()}
       />
 
+      {/* The editor comes first in the page, so on a phone the shop edits
+          before scrolling past the preview; from 1024px the grid places the
+          preview back in the left column. */}
       <div className="lg:grid lg:grid-cols-[minmax(18rem,28rem)_minmax(0,1fr)] lg:items-start lg:gap-8 xl:gap-10">
-        <aside
-          aria-label="What clients see"
-          className="flex flex-col gap-4 lg:sticky lg:top-[4.75rem] lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto"
-        >
-          <div className="flex flex-col gap-1">
-            <p className="text-overline text-text-muted m-0 uppercase">
-              What clients see
-            </p>
-            <SaveStatus state={saveState} onRetry={() => void persist()} />
-          </div>
-          <ListingPreviewBody
-            listing={merged}
-            taxonomy={taxonomy}
-            services={services}
-            prepSteps={prepSteps}
-            formats={formats}
-          />
-        </aside>
-
-        <div className="mt-10 flex flex-col gap-6 lg:mt-0">
+        <div className="flex flex-col gap-6 lg:col-start-2 lg:row-start-1">
+          <SaveStatus state={saveState} onRetry={() => void persist()} />
           <div role="tablist" aria-label="Listing steps" className="flex flex-wrap gap-1">
             {EDITOR_STEPS.map((entry) => {
               const selected = step === entry.id;
@@ -1386,6 +1371,22 @@ export default function ListingEditorPage() {
             </div>
           </div>
         </div>
+
+        <aside
+          aria-label="What clients see"
+          className="mt-10 flex flex-col gap-4 lg:sticky lg:col-start-1 lg:row-start-1 lg:mt-0 lg:top-[4.75rem] lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto"
+        >
+          <p className="text-overline text-text-muted m-0 uppercase">
+            What clients see
+          </p>
+          <ListingPreviewBody
+            listing={merged}
+            taxonomy={taxonomy}
+            services={services}
+            prepSteps={prepSteps}
+            formats={formats}
+          />
+        </aside>
       </div>
 
       <AlertDialog open={removeOpen} onOpenChange={setRemoveOpen}>

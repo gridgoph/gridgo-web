@@ -269,7 +269,7 @@ export default function SupplierJobsPage() {
         hint line under each number says where it came from and the loading
         state holds its own layout.
       */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         <StatCard
           label="Need your action"
           value={String(actionRequired)}
@@ -294,6 +294,7 @@ export default function SupplierJobsPage() {
           hint="What every assigned job pays your shop"
           icon={Banknote}
           loading={pending}
+          className="col-span-2 lg:col-span-1"
         />
       </div>
 

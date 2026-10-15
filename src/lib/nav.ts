@@ -965,6 +965,8 @@ export function contextTitleForPath(
   // Nested workspaces that share a list parent
   if (pathname.startsWith("/supplier/jobs/")) return "Order workspace";
   if (pathname === "/supplier/catalogue/new") return "New listing";
+  if (pathname === "/supplier/phone-app") return "Phone app";
+  if (pathname === "/supplier/notice") return "Opening update";
   if (pathname.startsWith("/supplier/catalogue/")) return "Listing";
   if (pathname === "/admin/catalogue/jobs/new") return "Add print job";
   if (pathname.startsWith("/admin/catalogue/jobs/")) return "Print job";
