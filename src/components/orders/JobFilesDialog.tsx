@@ -15,6 +15,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import type { Order } from "@/lib/api/types";
+import { attachmentFileEvidence, showsAttachmentList } from "@/lib/artwork-attachments";
 import { orderDesignLinks } from "@/lib/design-links";
 import { jobFileEvidence } from "@/lib/evidence";
 
@@ -22,7 +23,10 @@ import { jobFileEvidence } from "@/lib/evidence";
 export function JobFilesDialog({ order }: { order: Order }) {
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const { artwork, mockups } = jobFileEvidence(order);
+  const evidence = jobFileEvidence(order);
+  // Several files on an item: every one of them is a choice, by its label.
+  const artwork = showsAttachmentList(order) ? attachmentFileEvidence(order) : evidence.artwork;
+  const mockups = evidence.mockups;
   const files = [...artwork, ...mockups];
   const links = orderDesignLinks(order);
   const selected = files.find((file) => file.fileId === selectedId) ?? files[0];

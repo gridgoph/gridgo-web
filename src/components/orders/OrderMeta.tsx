@@ -14,8 +14,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { ArtworkAttachments } from "@/components/orders/ArtworkAttachments";
 import { DesignLinkLead, DesignLinkList } from "@/components/orders/DesignLinks";
 import { EvidencePlate } from "@/components/orders/EvidencePreview";
+import { showsAttachmentList } from "@/lib/artwork-attachments";
 import { orderDesignLinks } from "@/lib/design-links";
 import { jobFileEvidence } from "@/lib/evidence";
 import { formatDateTime, formatPhp } from "@/lib/format";
@@ -96,6 +98,7 @@ export function OrderMeta({ order, showMoney = true, fromJobDetails = false }: P
   // carry the other shop's files.
   const { artwork, mockups } = jobFileEvidence(order);
   const designLinks = orderDesignLinks(order);
+  const attachmentList = showsAttachmentList(order);
 
   return (
     <div className="flex flex-col gap-4">
@@ -137,7 +140,14 @@ export function OrderMeta({ order, showMoney = true, fromJobDetails = false }: P
           A design link is artwork too: the file is behind it. A link-only
           order says so plainly instead of the plate's "None on file".
         */}
-        {artwork.length || designLinks.length === 0 ? (
+        {attachmentList ? (
+          // Several files or labelled ones on an item: every file and link,
+          // item by item, in the client's order, across the full width.
+          <div className="flex min-w-0 flex-col gap-2 sm:col-span-2">
+            <p className="text-caption text-text-muted m-0">Artwork</p>
+            <ArtworkAttachments order={order} audience="shop" />
+          </div>
+        ) : artwork.length || designLinks.length === 0 ? (
           <div className="flex min-w-0 flex-col gap-3">
             {/*
               One plate per file. The last id used to be the only one drawn,

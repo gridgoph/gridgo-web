@@ -33,6 +33,7 @@ import {
   openingMsBetween,
 } from "@/lib/operating-hours";
 import { stageOf } from "@/app/ops/_lib/pipeline";
+import { ATTACHMENTS_QA_CHECK_LABEL, showsAttachmentList } from "@/lib/artwork-attachments";
 import { artworkQaCheckLabel, artworkSource } from "@/lib/design-links";
 
 /** A wait this long is worth a second look (portal choice, not an API rule). */
@@ -241,6 +242,8 @@ export function qaChecksFor(
   const pickup = order.requestFulfillment?.fulfillmentMode === "pickup";
   return QA_CHECKS.map((check) => {
     if (check.id === "artwork") {
+      // Several files or links on an item: the check covers every one of them.
+      if (showsAttachmentList(order)) return { id: check.id, label: ATTACHMENTS_QA_CHECK_LABEL };
       return { id: check.id, label: artworkQaCheckLabel(artworkSource(order)) };
     }
     if (check.id === "address" && pickup) {

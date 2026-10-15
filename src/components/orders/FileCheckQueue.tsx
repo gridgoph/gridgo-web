@@ -28,6 +28,7 @@ import { CircleCheck, Eye, Undo2 } from "lucide-react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { OrderArtwork } from "@/components/orders/DesignLinks";
+import { allAttachments, showsAttachmentList } from "@/lib/artwork-attachments";
 import { Button } from "@/components/ui/button";
 import {
   DataTable,
@@ -478,7 +479,11 @@ function ClosedNotice({ slot }: { slot: ReviewSlot | null }) {
 }
 
 function ArtworkCell({ order }: { order: Order }) {
-  const files = (order.artworkFileIds ?? []).filter(Boolean).length;
+  // Several or labelled attachments: count every file and link on every item.
+  const several = showsAttachmentList(order);
+  const files = several
+    ? allAttachments(order).filter((entry) => entry.kind === "file").length
+    : (order.artworkFileIds ?? []).filter(Boolean).length;
   const links = orderDesignLinks(order);
   if (!files && !links.length) {
     return <span className="text-body text-error">No artwork on file</span>;
@@ -494,7 +499,7 @@ function ArtworkCell({ order }: { order: Order }) {
         // HTTPS only, as everywhere a design link is drawn: anything else is
         // shown as words, never as something to click.
         const href = safeLinkHref(link.url);
-        const label = `${providerName(link.provider)} link`;
+        const label = link.label?.trim() || `${providerName(link.provider)} link`;
         return href ? (
           <a
             key={link.key}
@@ -572,7 +577,7 @@ function PassDialog({
         </DialogHeader>
         <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto">
           <ClosedNotice slot={slot} />
-          <OrderArtwork order={order} />
+          <OrderArtwork order={order} review />
           <QaChecklistFields
             order={order}
             checked={checked}
