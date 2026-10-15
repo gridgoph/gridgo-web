@@ -81,6 +81,7 @@ import {
   actionsForJob,
   packingPhotoOwed,
   productionPhotoOwed,
+  shopLetJobGo,
   shopProofOutstanding,
   supplierWaitingOn,
   type SupplierAction,
@@ -311,7 +312,6 @@ export default function SupplierJobDetailPage() {
     try {
       await declineJob(job.id, reason);
       setDeclineOpen(false);
-      setFiledNote("Job declined. GRIDGO gives it to another shop.");
       await load().catch(() => undefined);
     } catch (err) {
       setDeclineError(supplierErrorMessage(err));
@@ -675,7 +675,7 @@ export default function SupplierJobDetailPage() {
             <SpecialInstructionsCard
               notes={notes}
               readAt={instructionsReadAt(job)}
-              offer={job.state === "supplier_assigned"}
+              offer={job.state === "supplier_assigned" && !shopLetJobGo(job)}
               onRequestChange={
                 changeAllowed && !needsTick ? () => setChangeOpen(true) : undefined
               }

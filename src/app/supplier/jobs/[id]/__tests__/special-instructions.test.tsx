@@ -157,6 +157,28 @@ describe("special instructions on the offer", () => {
     expect(declineJobMock).not.toHaveBeenCalled();
   });
 
+  it("stops offering the job once the shop declined it", async () => {
+    getOrderMock.mockResolvedValue(
+      job({
+        shopAcceptance: {
+          supplierId: "shop_1",
+          assignedAt: "2026-10-15T17:00:48.770Z",
+          deadlineAt: "2026-10-16T01:00:00.000Z",
+          workingMinutes: 60,
+          status: "declined",
+        },
+      }),
+    );
+
+    render(<SupplierJobDetailPage />);
+    expect(
+      await screen.findByText("You declined this job. GRIDGO is giving it to another shop."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Accept job" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByText("You tick that you read these when you accept.")).not.toBeInTheDocument();
+  });
+
   it("accepts a job without notes exactly as before", async () => {
     const user = userEvent.setup();
     const plain = { productionItems: [], specialInstructionLines: [], specialInstructions: "" };
