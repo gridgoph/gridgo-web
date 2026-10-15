@@ -83,8 +83,8 @@ function emptyValues(defaultCategory?: string): ServiceFormValues {
 function fromService(service: SupplierService): ServiceFormValues {
   return {
     categoryCode: service.categoryCode,
-    materialCodes: [...service.materialCodes],
-    finishCodes: [...service.finishCodes],
+    materialCodes: [...(service.materialCodes ?? [])],
+    finishCodes: [...(service.finishCodes ?? [])],
     sizeMin: service.sizeMin ?? "",
     sizeMax: service.sizeMax ?? "",
     qtyMin: service.qtyMin != null ? String(service.qtyMin) : "",
@@ -99,7 +99,7 @@ function fromService(service: SupplierService): ServiceFormValues {
       service.capacityDaily != null ? String(service.capacityDaily) : "",
     capacityWeekly:
       service.capacityWeekly != null ? String(service.capacityWeekly) : "",
-    zones: [...service.zones],
+    zones: [...(service.zones ?? [])],
     equipmentNotes: service.equipmentNotes ?? "",
   };
 }
@@ -216,7 +216,7 @@ export function ServiceFormDialog({
     mode === "edit" &&
     service?.state === "live" &&
     (values.categoryCode !== service.categoryCode ||
-      values.materialCodes.some((c) => !service.materialCodes.includes(c)));
+      values.materialCodes.some((c) => !(service.materialCodes ?? []).includes(c)));
 
   function toggleCode(
     field: "materialCodes" | "finishCodes" | "zones",
