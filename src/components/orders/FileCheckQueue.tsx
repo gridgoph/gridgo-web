@@ -28,6 +28,10 @@ import { CircleCheck, Eye, Undo2 } from "lucide-react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { OrderArtwork } from "@/components/orders/DesignLinks";
+import {
+  ArtworkGuidanceCountChip,
+  ArtworkGuidanceRecord,
+} from "@/components/orders/ArtworkGuidanceRecord";
 import { allAttachments, showsAttachmentList } from "@/lib/artwork-attachments";
 import { Button } from "@/components/ui/button";
 import {
@@ -495,6 +499,9 @@ function ArtworkCell({ order }: { order: Order }) {
           {files === 1 ? "1 file" : `${files} files`}
         </span>
       ) : null}
+      <span className="flex">
+        <ArtworkGuidanceCountChip order={order} />
+      </span>
       {links.map((link) => {
         // HTTPS only, as everywhere a design link is drawn: anything else is
         // shown as words, never as something to click.
@@ -578,6 +585,7 @@ function PassDialog({
         <div className="flex max-h-[60vh] flex-col gap-3 overflow-y-auto">
           <ClosedNotice slot={slot} />
           <OrderArtwork order={order} review />
+          <ArtworkGuidanceRecord order={order} audience="staff" />
           <QaChecklistFields
             order={order}
             checked={checked}

@@ -60,6 +60,7 @@ import {
   OrderArtwork,
 } from "@/components/orders/DesignLinks";
 import { ArtworkAttachments } from "@/components/orders/ArtworkAttachments";
+import { ArtworkGuidanceRecord } from "@/components/orders/ArtworkGuidanceRecord";
 import { BasketPanel } from "@/components/orders/BasketPanel";
 import { BasketPayment } from "@/components/orders/BasketPayment";
 import { OrderMoneyLines } from "@/components/orders/OrderMoneyLines";
@@ -1546,6 +1547,11 @@ function StepRow({
                 checks now.
               </p>
             ) : null}
+            {/*
+              What each file measured against its product type, and which
+              warnings the client accepted, before the file is passed.
+            */}
+            <ArtworkGuidanceRecord order={order} audience="staff" />
             <QaChecklistFields
               order={order}
               checked={checked}
@@ -2115,6 +2121,14 @@ function SpecRail({
         <section className="gg-card p-3">
           <h2 className="text-overline text-text-muted m-0 mb-2">Artwork</h2>
           <OrderArtwork order={order} />
+          {/*
+            While the file check is open the record sits in the Quality check
+            step, where the decision is made. After it, it stays here: the
+            evidence when a claim about a soft or off-colour print comes in.
+          */}
+          {canDecideFileCheck(order) ? null : (
+            <ArtworkGuidanceRecord order={order} audience="staff" className="mt-3" />
+          )}
         </section>
       ) : null}
 

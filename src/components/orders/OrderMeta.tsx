@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { ArtworkAttachments } from "@/components/orders/ArtworkAttachments";
+import { ArtworkGuidanceRecord } from "@/components/orders/ArtworkGuidanceRecord";
 import { DesignLinkLead, DesignLinkList } from "@/components/orders/DesignLinks";
 import { EvidencePlate } from "@/components/orders/EvidencePreview";
 import { showsAttachmentList } from "@/lib/artwork-attachments";
@@ -195,6 +196,16 @@ export function OrderMeta({ order, showMoney = true, fromJobDetails = false }: P
             <EvidencePlate fileId={null} label="Mockup" empty="No mockup on file" />
           )}
         </div>
+        {/*
+          What each released file measured against its product type, and
+          which warnings the client accepted before checkout. The API sends it
+          to the shop once the artwork is released; older orders have none.
+        */}
+        <ArtworkGuidanceRecord
+          order={order}
+          audience="shop"
+          className="min-w-0 sm:col-span-2"
+        />
       </div>
     </div>
   );

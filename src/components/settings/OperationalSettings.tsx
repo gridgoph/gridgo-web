@@ -49,6 +49,7 @@ import {
   OrganizationDiscount,
 } from "@/components/settings/OrganizationDiscount";
 import { ProductionPenalties } from "@/components/settings/ProductionPenalties";
+import { ArtworkGuidanceSettings } from "@/components/settings/ArtworkGuidanceSettings";
 import { ServiceFeeBrackets } from "@/components/settings/ServiceFeeBrackets";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -910,6 +911,17 @@ export function OperationalSettings() {
       </section>
 
       <ProductionPenalties
+        settings={settings}
+        canEdit
+        disabled={busy}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={() => load(true)}
+      />
+
+      <ArtworkGuidanceSettings
         settings={settings}
         canEdit
         disabled={busy}
