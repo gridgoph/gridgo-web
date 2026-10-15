@@ -360,7 +360,7 @@ Supplier services: `listSupplierServices`, `getSupplierService`, `createSupplier
 Matching: `getEligibleSuppliers`.  
 Claims: `listClaims`, `getClaim`, `createClaim`, `holdClaim`, `releaseClaim`.  
 Issues: `listIssues`, `getIssue`, `reportOrderIssue`, `resolveIssue`.  
-Audit: `listAudit`.  
+Audit: `listAudit`, `listAuditPage` (super), `listOrderAudit`, `downloadAuditCsv` (contract `gridgo-api/docs/AUDIT_API.md`).  
 Dispatch: `listDispatchOffers`, `getDispatchLocation`, plus rider helpers for completeness.  
 Also: `listNotifications`, `listCatalog`, `health`.
 
@@ -509,7 +509,7 @@ Releasing a share is a person scanning the shop's own receiving QR (GCash / Maya
 
 Operational settings and the audit log belong to Super Admin (gridgo-web#112, the captain's decisions of 5 Oct 2026). The API refuses every settings write (`PATCH /settings`, `POST /settings/payment-qr`) from anyone else, delivery-zone limits and prices included; `GET /settings` stays readable because operational screens need it. `OperationalSettings` is mounted only at `/admin/settings`. `/ops/settings` and `/ops/audit` render `SuperAdminOnly` (`src/components/shell/SuperAdminOnly.tsx`): who to ask, and for an identity that also holds Super Admin, a link to the same page in `/admin`. The rail and account menu never link Operations there.
 
-Operations keeps two records on its workspaces, read from the audit log through the API's narrowed rule: an Operations caller must ask for `action` `order.production_override`, `file.early_delete` or `file.retention_delete`, or `entityType=file` with an `entityId`; anything else is `403`. `src/lib/api/__tests__/ops-audit-scope.test.ts` fails if a `listAudit` call outside `src/app/admin` asks for anything else.
+Operations keeps two records on its workspaces, read from the audit log through the API's narrowed rule: an Operations caller of `GET /audit` must ask for `action` `order.production_override`, `order.transition_refused`, `file.early_delete` or `file.retention_delete`, or `entityType=file` with an `entityId`; anything else is `403`. `src/lib/api/__tests__/ops-audit-scope.test.ts` fails if a `listAudit` call outside `src/app/admin` asks for anything else. The order workspace's Audit row reads `GET /orders/:id/audit`, which the API narrows to those four actions for Operations and leaves whole for Super Admin.
 
 ### Settings the captain owns
 

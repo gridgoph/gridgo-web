@@ -48,6 +48,7 @@ import type {
   StatementPeriod,
   AuthMe,
   AuditEntry,
+  AuditPage,
   CatalogItem,
   Claim,
   CreateSupplierServiceInput,
@@ -2000,10 +2001,10 @@ export async function resolveIssue(
 
 /**
  * The full log is Super Admin only. Operations may read only its workspace
- * records: `action` of `order.production_override`, `file.early_delete` or
- * `file.retention_delete`, or `entityType: "file"` with an `entityId`; any
- * other scope is `403`. `__tests__/ops-audit-scope.test.ts` holds the call
- * sites outside the admin tree to that.
+ * records: `action` of `order.production_override`, `order.transition_refused`,
+ * `file.early_delete` or `file.retention_delete`, or `entityType: "file"` with
+ * an `entityId`; any other scope is `403`. `__tests__/ops-audit-scope.test.ts`
+ * holds the call sites outside the admin tree to that.
  */
 export async function listAudit(filters?: {
   entityType?: string;
@@ -2023,6 +2024,96 @@ export async function listAudit(filters?: {
   });
   const result = await request<{ audit: AuditEntry[] }>(`/audit${q}`);
   return result.audit;
+}
+
+/** Search, filters and paging the permanent log accepts (AUDIT_API.md). */
+export type AuditPageQuery = {
+  q?: string;
+  person?: string;
+  actorId?: string;
+  action?: string;
+  orderId?: string;
+  entityType?: string;
+  entityId?: string;
+  /** UTC date or timestamp; inclusive. */
+  from?: string;
+  /** UTC date or timestamp; inclusive. */
+  to?: string;
+  limit?: number;
+  offset?: number;
+};
+
+function auditPage(
+  body: { audit?: AuditEntry[]; limit?: number; offset?: number; nextOffset?: number | null },
+  query: AuditPageQuery,
+): AuditPage {
+  const legacy = !("nextOffset" in body);
+  return {
+    audit: body.audit ?? [],
+    limit: body.limit ?? query.limit ?? 100,
+    offset: body.offset ?? query.offset ?? 0,
+    nextOffset: legacy ? null : (body.nextOffset ?? null),
+    legacy,
+  };
+}
+
+/**
+ * Super Admin. One page of the whole log, newest first, with every filter
+ * applied by the API. The Audit log screen only; Operations is refused.
+ */
+export async function listAuditPage(query: AuditPageQuery = {}): Promise<AuditPage> {
+  const body = await request<Parameters<typeof auditPage>[0]>(
+    `/audit${buildQuery({ ...query })}`,
+  );
+  return auditPage(body, query);
+}
+
+/**
+ * Ops / Super Admin. One order's entries, including shared basket payment
+ * and file records. The API scopes Operations to the correction and deletion
+ * records, so this is safe from either tree. Unknown order: `404 order_not_found`.
+ */
+export async function listOrderAudit(
+  orderId: string,
+  query: Omit<AuditPageQuery, "orderId"> = {},
+): Promise<AuditPage> {
+  const body = await request<Parameters<typeof auditPage>[0]>(
+    `/orders/${encodeURIComponent(orderId)}/audit${buildQuery({ ...query })}`,
+  );
+  return auditPage(body, query);
+}
+
+/**
+ * The log as the API's CSV (its quoting and formula escaping), every page.
+ * `to` must be pinned by the caller so new entries cannot move the pages;
+ * pages follow `X-Next-Offset`, and each repeats the header, so later headers
+ * are dropped. `onPage` hears how many pages have arrived.
+ */
+export async function downloadAuditCsv(
+  query: AuditPageQuery & { to: string },
+  options: { orderId?: string; onPage?: (pages: number) => void } = {},
+): Promise<Blob> {
+  const base = options.orderId ? `/orders/${encodeURIComponent(options.orderId)}/audit` : "/audit";
+  const parts: string[] = [];
+  let offset: number | null = 0;
+  while (offset !== null) {
+    const path = `${base}${buildQuery({ ...query, limit: 5000, offset, format: "csv" })}`;
+    const page: { text: string; next: number | null } = await withRequestDeadline(
+      undefined,
+      async (signal) => {
+        const res = await send(path, {}, signal, "text/csv");
+        const text = await res.text();
+        if (!res.ok) throw failed(path, res.status, parseBody(text));
+        const header = res.headers.get("X-Next-Offset");
+        const next = header === null || header === "" ? null : Number(header);
+        return { text, next: Number.isSafeInteger(next) ? next : null };
+      },
+    );
+    parts.push(parts.length === 0 ? page.text : page.text.replace(/^[^\n]*\n/, ""));
+    options.onPage?.(parts.length);
+    offset = page.next !== null && page.next > offset ? page.next : null;
+  }
+  return new Blob(parts, { type: "text/csv;charset=utf-8" });
 }
 
 // ---------------------------------------------------------------------------

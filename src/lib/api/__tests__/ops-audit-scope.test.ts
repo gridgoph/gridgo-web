@@ -1,11 +1,12 @@
 /**
- * The audit log is Super Admin only (gridgo-web#112). Operations keeps two
- * records on its workspaces, the production override and the file-deletion
- * bylines, because the API lets it read only these scopes: `action` equal to
- * one of the three below, or `entityType: "file"` with an `entityId`. Anything
- * else answers 403 for Operations. Every `listAudit` call outside the Super
- * Admin tree must therefore name one of them, or Operations silently loses
- * the record.
+ * The audit log is Super Admin only (gridgo-web#112). Operations keeps its
+ * workspace records, the production override and the file-deletion bylines,
+ * because the API lets it read only these scopes on `GET /audit`: `action`
+ * equal to one of the four below, or `entityType: "file"` with an `entityId`.
+ * Anything else answers 403 for Operations. Every `listAudit` call outside the
+ * Super Admin tree must therefore name one of them, or Operations silently
+ * loses the record. The order's Audit row reads `GET /orders/:id/audit`
+ * (`listOrderAudit`), which the API scopes for Operations itself.
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -21,6 +22,7 @@ const ALLOWED_ACTIONS = new Set([
   "FILE_EARLY_DELETE_ACTION",
   "FILE_RETENTION_DELETE_ACTION",
   '"order.production_override"',
+  '"order.transition_refused"',
   '"file.early_delete"',
   '"file.retention_delete"',
 ]);

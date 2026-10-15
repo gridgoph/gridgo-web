@@ -1856,17 +1856,48 @@ export type Issue = {
 
 // ---- Audit ----
 
+/**
+ * One permanent audit entry (`gridgo-api/docs/AUDIT_API.md`). The name, role,
+ * app and device are snapshots taken when the action happened; old rows and
+ * an older API leave them null or absent, and the portal never fills them in.
+ */
 export type AuditEntry = {
   id: string;
   at: string;
   actorId: string | null;
+  /** Snapshot of the person's name; "System" for automatic work. */
+  actorName?: string | null;
   actorRole: string | null;
+  /** `X-GRIDGO-App`, else the request origin, else `api`; `system` off-request. */
+  app?: string | null;
+  /** Bounded User-Agent. Describes the request; not a verified device. */
+  device?: string | null;
   action: string;
   entityType: string | null;
   entityId: string | null;
   orderId: string | null;
+  /** Every order a shared basket payment or file record belongs to. */
+  orderIds?: string[] | null;
+  /** The item before the action; null on creation. */
+  before?: unknown;
+  /** The item after the action; null on removal. */
+  after?: unknown;
   detail: Record<string, unknown> | null;
   reason: string | null;
+};
+
+/** One page of `GET /audit` or `GET /orders/:id/audit`, newest first. */
+export type AuditPage = {
+  audit: AuditEntry[];
+  limit: number;
+  offset: number;
+  /** Offset of the next page; null on the last one. */
+  nextOffset: number | null;
+  /**
+   * True when the API answered without paging, as the API before the
+   * permanent log did: search, person and dates were not applied.
+   */
+  legacy: boolean;
 };
 
 // ---- Dispatch ----
