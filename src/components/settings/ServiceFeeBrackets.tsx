@@ -420,7 +420,7 @@ export function ServiceFeeBrackets({
               maxLength={REASON_MAX}
               rows={3}
               disabled={locked}
-              placeholder="For example: Report 5A07D2C2, brackets agreed with the captain"
+              placeholder="For example: report 5A07D2C2, new bracket table"
               onChange={(event) => setReason(event.target.value)}
             />
             <FieldDescription>
@@ -569,7 +569,7 @@ function BracketLadder({
               </span>
               <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
                 {!last ? (
-                  <Field className="w-auto" data-invalid={limitInvalid || undefined}>
+                  <div className="flex flex-col gap-1">
                     <FieldLabel htmlFor={limitId}>
                       <span className="text-caption text-text-secondary">Up to</span>
                     </FieldLabel>
@@ -591,9 +591,9 @@ function BracketLadder({
                         onChange={(event) => update(index, { upTo: event.target.value })}
                       />
                     </div>
-                  </Field>
+                  </div>
                 ) : null}
-                <Field className="w-auto" data-invalid={rateInvalid || undefined}>
+                <div className="flex flex-col gap-1">
                   <FieldLabel htmlFor={rateId}>
                     <span className="text-caption text-text-secondary">Rate on that part</span>
                   </FieldLabel>
@@ -615,7 +615,7 @@ function BracketLadder({
                       %
                     </span>
                   </div>
-                </Field>
+                </div>
                 {rows.length > 1 ? (
                   <Button
                     variant="ghost"
@@ -790,19 +790,19 @@ function PreviewTable({
               Shop price
             </th>
             {compare ? (
-              <th scope="col" className="pb-1 text-right font-normal">
+              <th scope="col" className="pb-1 pl-3 text-right font-normal whitespace-nowrap">
                 Today
               </th>
             ) : null}
-            <th scope="col" className="pb-1 text-right font-normal">
+            <th scope="col" className="pb-1 pl-3 text-right font-normal whitespace-nowrap">
               {afterLabel}
             </th>
             {compare ? (
-              <th scope="col" className="pb-1 text-right font-normal">
+              <th scope="col" className="pb-1 pl-3 text-right font-normal whitespace-nowrap">
                 Change
               </th>
             ) : null}
-            <th scope="col" className="pb-1 text-right font-normal">
+            <th scope="col" className="pb-1 pl-3 text-right font-normal whitespace-nowrap">
               Share of price
             </th>
           </tr>
@@ -821,11 +821,11 @@ function PreviewTable({
                   {formatPhp(row.shopPriceMinor)}
                 </th>
                 {compare ? (
-                  <td className="text-body text-text-secondary py-1.5 pl-2 text-right tabular-nums">
+                  <td className="text-body text-text-secondary py-1.5 pl-3 text-right tabular-nums">
                     {formatPhp(before)}
                   </td>
                 ) : null}
-                <td className="py-1.5 pl-2 text-right">
+                <td className="py-1.5 pl-3 text-right">
                   <span className="text-body text-text-primary block tabular-nums" style={medium}>
                     {formatPhp(after)}
                   </span>
@@ -836,14 +836,14 @@ function PreviewTable({
                 {compare ? (
                   <td
                     className={cn(
-                      "text-body py-1.5 pl-2 text-right whitespace-nowrap tabular-nums",
+                      "text-body py-1.5 pl-3 text-right whitespace-nowrap tabular-nums",
                       after === before ? "text-text-muted" : "text-text-primary",
                     )}
                   >
                     {feeChange(before, after)}
                   </td>
                 ) : null}
-                <td className="text-body text-text-secondary py-1.5 pl-2 text-right tabular-nums">
+                <td className="text-body text-text-secondary py-1.5 pl-3 text-right tabular-nums">
                   {effectiveRate(row.shopPriceMinor, after)}
                 </td>
               </tr>
