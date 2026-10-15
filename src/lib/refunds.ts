@@ -28,7 +28,10 @@ import type { StatePresentation } from "@/lib/order-state";
 export const TRANSFER_EVIDENCE_LABEL = "Wallet transfer evidence";
 export const SETTLEMENT_PAYOUT_LABEL = "Agreed refund settlement payout";
 
-/** Requests that still hold the order's work and payouts. */
+/**
+ * Open requests: one per order at a time. A cancellation or complaint also
+ * holds the order's work and payouts; a delivery-fee credit holds nothing.
+ */
 export const ACTIVE_REFUND_STATUSES = new Set([
   "requested",
   "reviewed",
@@ -54,6 +57,7 @@ export function refundIsUndecided(refund: Pick<RefundRequest, "status">): boolea
 export function refundKindLabel(kind: string): string {
   if (kind === "cancellation") return "Cancellation";
   if (kind === "complaint") return "Complaint";
+  if (kind === "delivery_pin") return "Delivery-fee credit";
   return "Refund request";
 }
 
@@ -90,7 +94,11 @@ export function presentRefundStatus(status: string): StatePresentation {
 export function presentRefundState(
   refund: Pick<RefundRequest, "status" | "destination">,
 ): StatePresentation {
-  if (refund.status === "requested" && !refund.destination) {
+  // A delivery-fee credit starts reserved, waiting on the client's QR.
+  if (
+    (refund.status === "requested" || refund.status === "destination_review") &&
+    !refund.destination
+  ) {
     return { label: "Waiting on the client's QR", tone: "neutral", icon: "clock" };
   }
   return presentRefundStatus(refund.status);
@@ -101,6 +109,8 @@ export function refundHistoryLabel(entry: Pick<RefundHistoryEntry, "kind">): str
   switch (entry.kind) {
     case "requested":
       return "Refund requested. Work and payouts paused";
+    case "delivery_credit_reserved":
+      return "Delivery-fee credit reserved when the pin changed. No money sent yet";
     case "reviewed":
       return "Reviewed";
     case "settled":
@@ -241,7 +251,8 @@ export function refundInboxGroup(
     case "approved":
       return "pay";
     case "destination_review":
-      return "review";
+      // A delivery-fee credit is reserved before the client has a QR on it.
+      return refund.destination ? "review" : "client-qr";
     case "requested":
     case "reviewed":
       if (refund.late && role !== "super_admin") return "super-admin";
@@ -288,6 +299,11 @@ export function pendingShopSettlements(
  */
 export function refundNextStep(refund: RefundRequest, viewer: RefundViewer): string {
   const decides = canDecideRefund(refund, viewer);
+  if (refund.kind === "delivery_pin" && refund.status === "destination_review") {
+    return refund.destination
+      ? "The client added their receiving QR for this delivery-fee credit. Verify it, then reserve and send the exact amount."
+      : "Reserved when the client moved their pin somewhere cheaper. Waiting on the client to add their own receiving QR in the GRIDGO app.";
+  }
   switch (refund.status) {
     case "requested":
       if (!refund.destination) {

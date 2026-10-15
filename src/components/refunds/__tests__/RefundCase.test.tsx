@@ -536,3 +536,85 @@ describe("the refund case", { timeout: 20_000 }, () => {
     );
   });
 });
+
+describe("a delivery-fee credit from a cheaper pin", { timeout: 20_000 }, () => {
+  const credit = (patch: Partial<RefundRequest> = {}) =>
+    refund({
+      kind: "delivery_pin",
+      status: "destination_review",
+      reason: "Delivery pin changed to a lower delivery fee.",
+      destination: null,
+      history: [
+        {
+          kind: "delivery_credit_reserved",
+          reason: "Delivery pin changed to a lower delivery fee.",
+          at: "2026-10-15T06:30:00.000Z",
+        },
+      ],
+      settlement: {
+        id: "rsettle_pin",
+        principalMinor: 0,
+        feeMinor: 0,
+        deliveryMinor: 4000,
+        totalMinor: 4000,
+        disposition: "delivery_adjustment",
+        reason: "Delivery pin changed to a lower delivery fee.",
+        createdAt: "2026-10-15T06:30:00.000Z",
+        createdBy: "ops_1",
+        shopAgreement: "No change to shop entitlement or published stages.",
+        deliveryEvidence: "Pin changed before first dispatch.",
+        snapshot: { changeId: "pin_1", originalFeeMinor: 5000, deliveryFeeMinor: 1000 },
+      } as unknown as RefundRequest["settlement"],
+      ...patch,
+    });
+
+  it("reads as a reserved credit that waits on the client, never a cancellation", async () => {
+    current = credit();
+    const user = userEvent.setup();
+    render(<RefundCase tree="ops" />);
+
+    expect(
+      await screen.findByRole("heading", { name: /Delivery-fee credit on Tarpaulin 3x6/ }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Waiting on the client's QR").length).toBeGreaterThan(0);
+    expect(
+      screen.getByText(/Waiting on the client to add their own receiving QR/),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^Settlement/ }));
+    expect(screen.getByText("Delivery fee at checkout")).toBeInTheDocument();
+    expect(screen.getByText("Delivery fee at the new pin")).toBeInTheDocument();
+    expect(screen.getByText(/It cannot be rejected or withdrawn/)).toBeInTheDocument();
+    expect(screen.queryByText(/The order was cancelled/)).toBeNull();
+    expect(screen.queryByText(/closed as delivered/)).toBeNull();
+    // Nothing to reject, approve or settle: the amount was reserved by the pin.
+    expect(screen.queryByRole("button", { name: /Reject/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Preview/ })).toBeNull();
+    expect(calls.some((c) => c.path.endsWith("/settle"))).toBe(false);
+  });
+
+  it("verifies the client's QR, then is ready to reserve and pay", async () => {
+    current = credit({ destination });
+    answer = (call) =>
+      call.method === "POST" && call.path === "/refund-requests/refund_1/review"
+        ? json({ refund: credit({ destination, status: "approved", version: 2 }) })
+        : null;
+    const user = userEvent.setup();
+    render(<RefundCase tree="ops" />);
+
+    const verify = await screen.findByRole("button", { name: "Verify the QR" });
+    expect(screen.queryByText(/replaced their receiving QR after approval/)).toBeNull();
+    await user.click(
+      screen.getByRole("checkbox", { name: /I scanned this QR in a wallet app/ }),
+    );
+    await user.click(verify);
+    await waitFor(() =>
+      expect(
+        calls.find((c) => c.path === "/refund-requests/refund_1/review")?.body,
+      ).toMatchObject({ destinationVerified: true, expectedVersion: 1 }),
+    );
+    expect(
+      await screen.findByText("Receiving QR verified. The credit can be reserved and paid."),
+    ).toBeInTheDocument();
+  });
+});

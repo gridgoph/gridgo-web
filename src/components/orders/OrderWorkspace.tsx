@@ -35,6 +35,7 @@ import {
 import { FinishedReviewPanel } from "@/components/handover/FinishedReviewPanel";
 import { HandoverTimeline } from "@/components/handover/HandoverTimeline";
 import { CounterCheck } from "@/components/orders/CounterCheck";
+import { DeliveryPinPanel } from "@/components/orders/DeliveryPin";
 import {
   DeadlinePanel,
   ShopAcceptancePanel,
@@ -88,6 +89,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { installmentsAwaitingConfirmation } from "@/lib/api/constraints";
 import { counterRow, counterStep } from "@/lib/counter-check";
 import { deliveryEvidenceItems } from "@/lib/evidence";
+import {
+  pinPaymentAwaitingOperations,
+  pinReceiverLine,
+  pinRowSummary,
+  presentPinConfirmation,
+} from "@/lib/delivery-pin";
 import { artworkSource, orderDesignLinks } from "@/lib/design-links";
 import { QaChecklistRecord, QaChecklistFields } from "./QaChecklist";
 import {
@@ -207,6 +214,7 @@ type SectionId =
   | "shop"
   | "deadline"
   | "handover"
+  | "delivery-pin"
   | "counter"
   | "delivery"
   | "rider-location"
@@ -413,6 +421,9 @@ export function OrderWorkspace({
       ids.add(order.shopRecovery.proposal.supplierId);
     if (order?.rescheduleRequest?.supplierId) ids.add(order.rescheduleRequest.supplierId);
     for (const event of failures ?? []) if (event.supplierId) ids.add(event.supplierId);
+    // Who verified a delivery-pin payment.
+    const pinPayer = order?.deliveryPin?.change?.payment?.confirmedBy;
+    if (pinPayer) ids.add(pinPayer);
     // Each shop group's rider, for the basket panel.
     for (const group of basket?.groups ?? []) {
       if (group.order.riderId) ids.add(group.order.riderId);
@@ -838,6 +849,35 @@ export function OrderWorkspace({
                     />
                   </SectionRow>
                 ) : null}
+                {/*
+                  When the shop finishes a door delivery the client is asked
+                  whether they will be at the pin: their answer, receiver and
+                  notes, and their one change with its money.
+                */}
+                {step.id === "production" && order.deliveryPin ? (
+                  <SectionRow
+                    id="delivery-pin"
+                    heading="Delivery pin"
+                    summary={pinRowSummary(order)}
+                    marker={
+                      pinPaymentAwaitingOperations(order)
+                        ? { icon: TriangleAlert, tone: "current" }
+                        : order.deliveryPin.status === "confirmed"
+                          ? { icon: CircleCheck, tone: "success" }
+                          : { icon: MapPin, tone: "muted" }
+                    }
+                    trailing={pinPaymentAwaitingOperations(order) ? "Your call" : undefined}
+                    current={pinPaymentAwaitingOperations(order)}
+                  >
+                    <DeliveryPinPanel
+                      order={order}
+                      refunds={refunds}
+                      tree={tree}
+                      names={names}
+                      onUpdated={load}
+                    />
+                  </SectionRow>
+                ) : null}
                 {step.id === "delivery" && riderTracking.shown ? (
                   <SectionRow
                     id="rider-location"
@@ -1040,6 +1080,7 @@ export function defaultOpenSections(order: Order): SectionId[] {
   if (recoveryNeedsOperations(order.shopRecovery)) ids.add("shop");
   if (rescheduleNeedsOperations(order.rescheduleRequest)) ids.add("deadline");
   if (awaitingFinishedReview(order)) ids.add("handover");
+  if (pinPaymentAwaitingOperations(order)) ids.add("delivery-pin");
   if (isCancelled(order)) ids.add("history");
   return [...ids];
 }
@@ -2093,6 +2134,14 @@ function SpecRail({
       <section className="gg-card p-3">
         <h2 className="text-overline text-text-muted m-0 mb-2">Delivery</h2>
         <p className="text-body text-text-secondary m-0">{order.address || "Not set"}</p>
+        {order.deliveryPin ? (
+          <div className="mt-2 flex flex-col items-start gap-1">
+            <StatusChip {...presentPinConfirmation(order.deliveryPin)} />
+            <span className="text-caption text-text-muted">
+              Receiver: {pinReceiverLine(order.deliveryPin)}
+            </span>
+          </div>
+        ) : null}
         {order.readyBy ? (
           <p className="text-caption text-text-muted m-0 mt-2">
             Client was promised {formatDateTime(order.readyBy)}
@@ -2280,6 +2329,11 @@ function RefundRowPanel({
             </Button>
           </div>
         </div>
+      ) : refunds?.some((refund) => refund.kind === "delivery_pin" && refundIsActive(refund)) ? (
+        <p className="text-caption text-text-muted m-0">
+          The delivery-fee credit is still open. Finish paying it before filing another
+          refund on this order; only one can be open at a time.
+        </p>
       ) : canFileRefund(order, refunds) && late ? (
         <p className="text-caption text-text-muted m-0">
           The complaint deadline has passed. Super Admin files and decides late refund

@@ -11,6 +11,7 @@ import {
 import { formatPhp } from "@/lib/format";
 import { asDeduction, discountLabel, orderFeeSplit } from "@/lib/organization-discount";
 import { orderVoucher, VOUCHER_LINE_LABEL } from "@/lib/vouchers";
+import { appliedPinChange, signedPhp } from "@/lib/delivery-pin";
 
 type Props = {
   order: Order;
@@ -41,12 +42,23 @@ type Props = {
  * was taken off, with where it came from: GRIDGO's fee first, then delivery.
  * The shop price, the rider payout and the delivery split stay at their gross
  * figures above it, because the voucher never moves them.
+ *
+ * A saved delivery-pin change (DELIVERY_PIN_API.md) leaves the checkout fee
+ * and total as they were and adds its signed difference beside them: delivery
+ * at checkout, the pin change, delivery now. The rider and GRIDGO lines are
+ * the API's, which already carry the change, so they add up to delivery now.
  */
 export function OrderMoneyLines({ order, totalLabel = "Client total" }: Props) {
   const deliverySplit = orderDeliverySplit(order);
   const fee = orderFeeSplit(order);
   const voucher = orderVoucher(order);
   const basis = orderFeeBasis(order);
+  // A pin change that moved money: the API's effective figures sit beside the checkout ones.
+  const pinChange = appliedPinChange(order);
+  const pinMoved =
+    pinChange !== null &&
+    pinChange.feeDifferenceMinor !== 0 &&
+    typeof order.effectiveDeliveryFeeMinor === "number";
   // A bracket order has no single rate; a flat one names its rate.
   const rate = basis.kind === "flat" ? ` (${formatRatePercent(basis.rateBps)})` : "";
   return (
@@ -72,7 +84,22 @@ export function OrderMoneyLines({ order, totalLabel = "Client total" }: Props) {
           <FeeWorking basis={basis} />
         </>
       ) : null}
-      {order.deliveryFeeMinor != null ? (
+      {pinMoved ? (
+        <>
+          <Line label="Delivery at checkout" value={formatPhp(order.deliveryFeeMinor)} />
+          <Line
+            label="Pin change"
+            value={signedPhp(pinChange.feeDifferenceMinor)}
+            indent
+            testId="pin-change-difference"
+          />
+          <Line
+            label="Delivery now"
+            value={formatPhp(order.effectiveDeliveryFeeMinor!)}
+            testId="delivery-now"
+          />
+        </>
+      ) : order.deliveryFeeMinor != null ? (
         <Line label="Delivery" value={formatPhp(order.deliveryFeeMinor)} />
       ) : null}
       {/*
@@ -126,10 +153,18 @@ export function OrderMoneyLines({ order, totalLabel = "Client total" }: Props) {
         </>
       ) : null}
       <Line
-        label={totalLabel}
+        label={pinMoved ? `${totalLabel} at checkout` : totalLabel}
         value={order.totalMinor != null ? formatPhp(order.totalMinor) : "—"}
         strong
       />
+      {pinMoved && typeof order.effectiveTotalMinor === "number" ? (
+        <Line
+          label={`${totalLabel} now`}
+          value={formatPhp(order.effectiveTotalMinor)}
+          strong
+          testId="total-now"
+        />
+      ) : null}
     </>
   );
 }
