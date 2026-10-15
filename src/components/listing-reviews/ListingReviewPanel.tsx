@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useId, useState, type RefObject } from "react";
 import { ChevronLeft, ImageOff, TriangleAlert } from "lucide-react";
 
+import { LayoutGlyph } from "@/components/orders/PrintLayoutRecord";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusChip } from "@/components/ui/StatusChip";
@@ -29,6 +30,7 @@ import {
   type Listing,
 } from "@/lib/listings";
 import { readyInLine } from "@/lib/production-time";
+import { layoutLabel, layoutsLine, type KnownLayout } from "@/lib/print-layout";
 
 type Props = {
   entry: ReviewEntry;
@@ -385,6 +387,14 @@ function ListingFacts({
             <dd className="text-body text-text-primary m-0">{cap}</dd>
           </>
         ) : null}
+        {listing.printLayouts ? (
+          <>
+            <dt className="text-caption text-text-muted">Print layouts</dt>
+            <dd className="m-0">
+              <PrintLayoutsFact layouts={listing.printLayouts} />
+            </dd>
+          </>
+        ) : null}
         {noFormats ? null : (
           <>
             <dt className="text-caption text-text-muted">Artwork accepted</dt>
@@ -447,6 +457,31 @@ function ListingFacts({
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * The layouts this version asks clients to choose from, each with its
+ * placement in miniature. None marked means clients are not asked.
+ */
+function PrintLayoutsFact({ layouts }: { layouts: KnownLayout[] }) {
+  if (!layouts.length) {
+    return <span className="text-body text-text-secondary">{layoutsLine(layouts)}</span>;
+  }
+  return (
+    <span className="flex flex-col gap-1.5">
+      <ul className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1.5 p-0">
+        {layouts.map((code) => (
+          <li key={code} className="text-body text-text-primary flex items-center gap-2">
+            <LayoutGlyph layout={code} selected className="h-6 w-[18px]" />
+            {layoutLabel(code)}
+          </li>
+        ))}
+      </ul>
+      <span className="text-caption text-text-secondary">
+        Clients must choose one before they can order.
+      </span>
+    </span>
   );
 }
 

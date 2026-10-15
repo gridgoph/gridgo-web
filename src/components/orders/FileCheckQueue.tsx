@@ -32,6 +32,7 @@ import {
   ArtworkGuidanceCountChip,
   ArtworkGuidanceRecord,
 } from "@/components/orders/ArtworkGuidanceRecord";
+import { PrintLayoutRecord } from "@/components/orders/PrintLayoutRecord";
 import { allAttachments, showsAttachmentList } from "@/lib/artwork-attachments";
 import { Button } from "@/components/ui/button";
 import {
@@ -586,6 +587,7 @@ function PassDialog({
           <ClosedNotice slot={slot} />
           <OrderArtwork order={order} review />
           <ArtworkGuidanceRecord order={order} audience="staff" />
+          <PrintLayoutRecord order={order} />
           <QaChecklistFields
             order={order}
             checked={checked}

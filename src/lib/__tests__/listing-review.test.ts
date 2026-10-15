@@ -191,6 +191,22 @@ describe("listing review queue", () => {
     });
     expect(listingChanges(live, live)).toEqual([]);
   });
+
+  it("shows a change to the print layouts clients must choose from", () => {
+    const live = normalizeListing(item({ printLayouts: [] }))!;
+    const draft = normalizeListing(
+      item({ printLayouts: ["actual_size_original_position", "fit_to_paper"] }),
+    )!;
+    expect(listingChanges(live, draft)).toEqual([
+      {
+        label: "Print layouts",
+        before: "None: clients are not asked",
+        after: "Fit to paper; Actual size, in its original position",
+      },
+    ]);
+    // An API without layouts sends none, so nothing is said.
+    expect(listingChanges(normalizeListing(item())!, normalizeListing(item())!)).toEqual([]);
+  });
 });
 
 describe("product-type requests", () => {

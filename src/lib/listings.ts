@@ -12,6 +12,7 @@
 
 import { formatPhp } from "@/lib/format";
 import type { Taxonomy } from "@/lib/api/types";
+import { readPrintLayouts, type KnownLayout } from "@/lib/print-layout";
 import {
   readDayMinutes,
   readListingTime,
@@ -118,6 +119,12 @@ export type Listing = {
   minimumWidthMilli: number | null;
   /** Printing-machine cap in whole feet. Required for tarpaulin listings only. */
   printerMaxWidthFeet: number | null;
+  /**
+   * The print layouts the shop marked, in the canonical order (`[]` asks
+   * clients nothing). `null` on an API that predates layouts.
+   * Contract: gridgo-api docs/PRINT_LAYOUT_API.md.
+   */
+  printLayouts: KnownLayout[] | null;
   minimumHeightMilli: number | null;
   minimumLengthMilli: number | null;
   minimumOrderQuantity: number | null;
@@ -396,6 +403,7 @@ export function normalizeListing(body: unknown, index = 0): Listing | null {
     printerMaxWidthFeet: parsePrinterMaxWidthFeet(
       pick(raw, "printerMaxWidthFeet", "printer_max_width_feet"),
     ),
+    printLayouts: readPrintLayouts(pick(raw, "printLayouts", "print_layouts")),
     minimumHeightMilli: num(pick(raw, "minimumHeightMilli", "minimum_height_milli")),
     minimumLengthMilli: num(pick(raw, "minimumLengthMilli", "minimum_length_milli")),
     minimumOrderQuantity: num(pick(raw, "minimumOrderQuantity", "minimum_order_quantity")),

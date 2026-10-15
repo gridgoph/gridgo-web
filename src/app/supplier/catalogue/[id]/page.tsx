@@ -11,6 +11,7 @@ import { Check, Trash2 } from "lucide-react";
 
 import { ListingPreviewBody } from "@/app/supplier/_components/ListingPreviewBody";
 import { PrinterMaxWidthField } from "@/app/supplier/_components/PrinterMaxWidthField";
+import { PrintLayoutsField } from "@/app/supplier/_components/PrintLayoutsField";
 import {
   PRODUCTION_TIME_HINT,
   ProductionTimeField,
@@ -121,6 +122,7 @@ import {
   workingDays,
   type ProductionTime,
 } from "@/lib/production-time";
+import { PRINT_LAYOUTS_HELP, sameLayouts, type KnownLayout } from "@/lib/print-layout";
 import { cn } from "@/lib/utils";
 
 type Draft = {
@@ -137,6 +139,8 @@ type Draft = {
   minimumTurnaround: ProductionTime;
   subcategoryCode: string;
   printerMaxWidthFeet: number | null;
+  /** Null on an API without layouts: nothing is shown or sent. */
+  printLayouts: KnownLayout[] | null;
 };
 
 /** Section and field ids; the readiness checklist scrolls to these. */
@@ -215,6 +219,7 @@ function draftFrom(listing: Listing): Draft {
     minimumTurnaround: listing.minimumTurnaround ?? listing.turnaround ?? DEFAULT_LISTING_TIME,
     subcategoryCode: listing.subcategoryCode,
     printerMaxWidthFeet: listing.printerMaxWidthFeet,
+    printLayouts: listing.printLayouts,
   };
 }
 
@@ -262,6 +267,7 @@ function payloadOf(draft: Draft) {
       draft.printerMaxWidthFeet,
       "update",
     ),
+    ...(draft.printLayouts ? { printLayouts: draft.printLayouts } : {}),
   };
 }
 
@@ -271,6 +277,9 @@ function savePayload(draft: Draft, listing: Listing) {
   if (!timeChanged(draft, listing)) {
     for (const key of Object.keys(timePayload(draft))) delete payload[key];
   }
+  // The set is replaced whole and a change opens review, so it is sent only
+  // when the shop changed it.
+  if (sameLayouts(draft.printLayouts, listing.printLayouts)) delete payload.printLayouts;
   return payload;
 }
 
@@ -411,6 +420,7 @@ export default function ListingEditorPage() {
           printerMaxWidthFeet: needsPrinterMaxWidth(working.subcategoryCode)
             ? working.printerMaxWidthFeet
             : null,
+          printLayouts: working.printLayouts,
         }
       : listing;
   const checklist = merged && context ? boardChecklist(merged, context) : [];
@@ -1299,6 +1309,20 @@ export default function ListingEditorPage() {
                     )}
                   </FieldGroup>
                 </Section>
+                {working.printLayouts ? (
+                  <Section
+                    id="section-print-layouts"
+                    step="06"
+                    title="Print layouts"
+                    help={PRINT_LAYOUTS_HELP}
+                  >
+                    <PrintLayoutsField
+                      value={working.printLayouts}
+                      onChange={(printLayouts) => setDraft({ ...working, printLayouts })}
+                      inReview={listing.reviewStatus != null}
+                    />
+                  </Section>
+                ) : null}
               </>
             ) : null}
 
@@ -1338,8 +1362,8 @@ export default function ListingEditorPage() {
                 )}
                 {listing.reviewStatus ? (
                   <p className="text-caption text-text-secondary m-0 max-w-prose">
-                    Operations reviews every new listing, and any change to its price, specs,
-                    artwork formats or photos, before clients see it. Photos must not show a
+                    The GRIDGO Team reviews every new listing, and any change to its price,
+                    specs, print layouts, artwork formats or photos, before clients see it. Photos must not show a
                     watermark, logo or shop branding.
                   </p>
                 ) : null}
