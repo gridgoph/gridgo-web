@@ -1180,6 +1180,38 @@ export type WeeklyWindow = { weekday: number; opensMinute: number; closesMinute:
 /** Inclusive `YYYY-MM-DD` days the hub is shut. */
 export type ScheduleClosure = { startDay: string; endDay: string };
 
+// ---- Shop hours ----
+// Contract: gridgo-api docs/SHOP_HOURS_API.md. Read through
+// `normalizeShopHours` in `src/lib/shop-hours.ts`, never raw.
+
+/** Today's extra hours, a Manila date and minutes after its midnight. */
+export type ShopHoursExtension = { day: string; opensMinute: number; closesMinute: number };
+
+/** A shop's hours as the screens read them. */
+export type ShopHours = {
+  /** Shared with `/me/supplier-profile`; a stale one is `409 supplier_profile_stale`. */
+  version: number;
+  /** One window per open weekday; a weekday left out is closed. */
+  week: WeeklyWindow[];
+  closures: ScheduleClosure[];
+  temporarilyClosed: boolean;
+  isOpenNow: boolean;
+  /** False when the API holds an older calendar it cannot schedule against. */
+  calendarAvailable: boolean;
+  /** Now while open, the next opening while closed, null while closed for a while. */
+  nextOpeningAt: string | null;
+  todayExtension: ShopHoursExtension | null;
+  /** `dispatchNotice` is `review_and_dispatch_in_next_working_window`. */
+  dispatchWaits: boolean;
+};
+
+/** `PATCH /me/shop-hours` without its `expectedVersion`. Fields left out are kept. */
+export type ShopHoursPatch = {
+  schedule?: { utcOffsetMinutes: number; week: WeeklyWindow[]; closures: ScheduleClosure[] };
+  temporarilyClosed?: boolean;
+  extension?: { closesMinute: number } | null;
+};
+
 export type WeeklySchedule = {
   utcOffsetMinutes: number;
   week: WeeklyWindow[];
