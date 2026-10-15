@@ -249,6 +249,7 @@ describe("a cheaper pin's delivery-fee credit", () => {
       },
     } as RefundRequest;
     expect(refundInboxGroup(withQr, "ops_admin")).toBe("review");
+    expect(presentRefundState(withQr).label).toBe("Receiving QR to verify");
     expect(refundNextStep(withQr, { role: "ops_admin", userId: "ops_1" })).toContain(
       "Verify it, then reserve and send the exact amount",
     );

@@ -1963,7 +1963,15 @@ function MoneyCard({ refund }: { refund: RefundRequest }) {
         />
         <MoneyRow label="Earlier refunds on this order" minor={previous} />
         {s ? (
-          <MoneyRow label="This refund, approved" minor={s.totalMinor} strong />
+          <MoneyRow
+            label={
+              s.disposition === "delivery_adjustment"
+                ? "This credit, reserved"
+                : "This refund, approved"
+            }
+            minor={s.totalMinor}
+            strong
+          />
         ) : null}
         {reserved !== null ? (
           <MoneyRow label="Reserved for one payer" minor={reserved} />

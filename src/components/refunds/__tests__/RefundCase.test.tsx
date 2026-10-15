@@ -603,6 +603,8 @@ describe("a delivery-fee credit from a cheaper pin", { timeout: 20_000 }, () => 
     render(<RefundCase tree="ops" />);
 
     const verify = await screen.findByRole("button", { name: "Verify the QR" });
+    expect(screen.getAllByText("Receiving QR to verify").length).toBeGreaterThan(0);
+    expect(screen.getByText("This credit, reserved")).toBeInTheDocument();
     expect(screen.queryByText(/replaced their receiving QR after approval/)).toBeNull();
     await user.click(
       screen.getByRole("checkbox", { name: /I scanned this QR in a wallet app/ }),

@@ -92,8 +92,16 @@ export function presentRefundStatus(status: string): StatePresentation {
 
 /** The status chip for a request, which also says when it waits on the client. */
 export function presentRefundState(
-  refund: Pick<RefundRequest, "status" | "destination">,
+  refund: Pick<RefundRequest, "status" | "destination"> & Partial<Pick<RefundRequest, "kind">>,
 ): StatePresentation {
+  // A delivery-fee credit's first QR is not a replacement: nothing was approved before it.
+  if (
+    refund.kind === "delivery_pin" &&
+    refund.status === "destination_review" &&
+    refund.destination
+  ) {
+    return { label: "Receiving QR to verify", tone: "warning", icon: "square-pen" };
+  }
   // A delivery-fee credit starts reserved, waiting on the client's QR.
   if (
     (refund.status === "requested" || refund.status === "destination_review") &&
