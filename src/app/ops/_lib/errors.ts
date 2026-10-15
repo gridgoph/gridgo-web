@@ -45,7 +45,25 @@ const CODE_COPY: Record<string, string> = {
   resolution_required:
     "Write the instruction. The rider is waiting at the shop and this is what they act on.",
   production_override_reason_required:
-    "Write why you are moving this job on without the shop's photo. The reason is kept in the audit log.",
+    "Write why you are forcing this step. The note is kept in the audit log.",
+  production_override_reason_code_required:
+    "Choose why you are forcing this step, then try again.",
+  production_override_reason_too_long:
+    "Shorten the note to 2,000 characters or fewer.",
+  // Finished-work review (SHOP_HANDOVER_API.md).
+  production_review_note_required:
+    "Write what the shop needs to fix. It cannot be sent back without a reason.",
+  invalid_production_review: "Choose Approve or Send back, then try again.",
+  production_review_not_available:
+    "Someone has already reviewed these photos, or the shop is no longer waiting. Refresh to see where it stands.",
+  finished_product_photo_required:
+    "A photo in this submission is no longer on file, so it cannot be reviewed. Ask the shop to send its photos again.",
+  production_finished_required:
+    "The shop has not sent photos of the finished work yet.",
+  production_review_required:
+    "The finished work has not been approved yet.",
+  handover_flow_not_available:
+    "This order follows the older handover, so it has no finished-work review. Refresh the order.",
   production_photo_required:
     "The shop has not sent a progress photo. Move the job on with a written reason instead.",
   production_penalty_pending:

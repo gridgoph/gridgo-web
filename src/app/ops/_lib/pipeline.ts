@@ -24,6 +24,7 @@ import {
   productionProgressOf,
   progressPhotoCount,
 } from "@/lib/production-progress";
+import { finishedReviewStatus } from "@/lib/shop-handover";
 
 export type Stage = "payment" | "qa" | "production" | "delivery" | "done";
 
@@ -206,7 +207,7 @@ export function stageSummary(
     | "readyAt"
     | "cancelledAt"
   > &
-    Partial<Pick<Order, "productionProgress">>,
+    Partial<Pick<Order, "productionProgress" | "handoverFlow" | "shopHandover" | "supplierId">>,
   stage: Exclude<Stage, "done">,
   formatMoney: (minor: number) => string,
   formatWhen: (iso: string) => string,
@@ -280,6 +281,15 @@ export function stageSummary(
       return "Waiting for the shop to accept the job.";
     if (order.state === "payment_authorized")
       return "Shop has accepted. Printing starts next.";
+    // Rider-packs handover (SHOP_HANDOVER_API.md): GRIDGO reviews the
+    // finished, unpacked work, and nothing is packed at the shop.
+    if (order.handoverFlow === "rider_packs") {
+      const review = finishedReviewStatus(order);
+      if (review === "pending") return "Finished work is waiting for your review.";
+      if (review === "sent_back") return "Sent back to the shop. Waiting for new photos.";
+      if (order.state === "ready_for_dispatch")
+        return "Ready for rider pickup. The rider checks it unpacked and packs it at the shop.";
+    }
     if (order.state === "production") return filed ?? "Being printed now.";
     if (order.state === "supplier_self_qc")
       return filed ?? "Packing at the shop (older flow).";

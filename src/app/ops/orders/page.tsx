@@ -3,6 +3,7 @@
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Eye } from "lucide-react";
 
@@ -38,6 +39,7 @@ import {
 } from "@/lib/baskets";
 import { presentOrderState } from "@/lib/order-state";
 import { describeQuantity } from "@/lib/quantity";
+import { awaitingFinishedReview, finishedReviewWaitingCount } from "@/lib/shop-handover";
 
 /**
  * Every order, in one place, filtered by where it has got to.
@@ -118,6 +120,11 @@ export default function OpsOrdersPage() {
     );
   }, [orders, stage]);
 
+  const finishedWaiting = useMemo(
+    () => finishedReviewWaitingCount(orders ?? []),
+    [orders],
+  );
+
   // Counted across every order, not the stage on screen: a basket's groups
   // move through the stages independently.
   const shopCounts = useMemo(() => basketShopCounts(orders ?? []), [orders]);
@@ -181,7 +188,11 @@ export default function OpsOrdersPage() {
               fontFamily: stageNeedsOperations(order) ? "var(--font-medium)" : undefined,
             }}
           >
-            {stageNeedsOperations(order) ? "You" : waitingOn(order.state)}
+            {stageNeedsOperations(order)
+              ? "You"
+              : awaitingFinishedReview(order)
+                ? "Your review"
+                : waitingOn(order.state)}
           </span>
         ),
       },
@@ -288,6 +299,18 @@ export default function OpsOrdersPage() {
         <FileCheckQueue orders={orders ?? []} onChanged={load} hours={hours} />
       ) : (
         <>
+          {stage === "production" && finishedWaiting > 0 ? (
+            // The finished-work review has its own desk; say so where those
+            // orders sit, so "Nothing for you to do" never hides them.
+            <p className="text-body text-text-primary m-0 rounded-card border border-outline bg-surface-variant p-3">
+              {finishedWaiting === 1
+                ? "1 job's finished work is waiting for your review."
+                : `${finishedWaiting} jobs' finished work is waiting for your review.`}{" "}
+              <Link href="/ops/finished-work" className="underline underline-offset-2">
+                Open Finished work
+              </Link>
+            </p>
+          ) : null}
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <p className="text-body text-text-secondary m-0">{active?.hint}</p>
             <Button variant="secondary" onClick={() => void load()}>

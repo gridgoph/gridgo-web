@@ -52,6 +52,11 @@ export const NAV_COUNT_MEANING: Record<NavCountKey, CountMeaning> = {
     phrase: (count) => `${compactCount(count)} waiting for review`,
     attention: false,
   },
+  // A rider-packs order cannot leave production until this desk decides.
+  "finished-work-waiting": {
+    phrase: (count) => `${compactCount(count)} waiting for review`,
+    attention: true,
+  },
   // A due date, not a stopped order: monochrome.
   "privacy-requests-open": {
     phrase: (count) => `${compactCount(count)} open`,

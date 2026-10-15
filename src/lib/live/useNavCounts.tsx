@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
@@ -33,13 +34,14 @@ import {
 import { claimBlocksPayout } from "@/lib/api/constraints";
 import { normalizeProductTypeRequests, normalizeReviewPage } from "@/lib/listing-review";
 import { listSupportChatThreads } from "@/lib/api/support-chat";
-import type { InvalidateResource } from "@/lib/api/types";
+import type { InvalidateResource, Order } from "@/lib/api/types";
 import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import type { NavCountKey } from "@/lib/nav";
 import type { NavCounts } from "@/lib/nav-counts";
 import { refundNeedsStaff } from "@/lib/refunds";
+import { finishedReviewWaitingCount } from "@/lib/shop-handover";
 import { buildNeedsOperations } from "@/lib/shop-changes";
 import { needsSupplierAction } from "@/lib/supplier-actions";
 
@@ -57,14 +59,29 @@ type CountSource = {
 };
 
 /**
+ * Counts reduced from the orders list. A rail showing several of them reads
+ * the list once and reduces it for each.
+ */
+const ORDER_COUNTS = {
+  "orders-waiting": { resources: ["orders"], reduce: waitingOnOperationsCount },
+  // The Finished work desk's Waiting tab.
+  "finished-work-waiting": { resources: ["orders", "jobs"], reduce: finishedReviewWaitingCount },
+} satisfies Record<
+  string,
+  { resources: readonly InvalidateResource[]; reduce: (orders: Order[]) => number }
+>;
+
+type OrderCountKey = keyof typeof ORDER_COUNTS;
+
+function isOrderCount(source: NavCountKey): source is OrderCountKey {
+  return source in ORDER_COUNTS;
+}
+
+/**
  * Every count is an existing list read the page itself already makes, reduced
  * the same way the page reduces it. No endpoint exists only for the rail.
  */
-const NAV_COUNT_SOURCES: Record<NavCountKey, CountSource> = {
-  "orders-waiting": {
-    resources: ["orders"],
-    load: async () => waitingOnOperationsCount(await listOrders()),
-  },
+const NAV_COUNT_SOURCES: Record<Exclude<NavCountKey, OrderCountKey>, CountSource> = {
   "signups-waiting": {
     resources: ["approvals"],
     load: async () => {
@@ -194,7 +211,7 @@ function NavCountSource({
   pathname,
   onCount,
 }: {
-  source: NavCountKey;
+  source: Exclude<NavCountKey, OrderCountKey>;
   pathname: string;
   onCount: (source: NavCountKey, count: number) => void;
 }) {
@@ -220,6 +237,42 @@ function NavCountSource({
   return null;
 }
 
+/** One orders read for every orders count this rail shows. */
+function OrderCountsSource({
+  sources,
+  onCount,
+}: {
+  sources: readonly OrderCountKey[];
+  onCount: (source: NavCountKey, count: number) => void;
+}) {
+  const key = sources.join(",");
+  const resources = useMemo(
+    () => [...new Set(sources.flatMap((source) => ORDER_COUNTS[source].resources))],
+    // `key` stands for the list's contents.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [key],
+  );
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      try {
+        const orders = await listOrders();
+        for (const source of key.split(",") as OrderCountKey[]) {
+          onCount(source, ORDER_COUNTS[source].reduce(orders));
+        }
+      } catch {
+        /* Keep the last good counts. */
+      }
+    }, [key, onCount]),
+  );
+
+  useLiveReload(resources, load);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return null;
+}
+
 /**
  * Reads each count once for the whole rail, and only the counts this rail
  * actually shows: a supplier rail never asks for the orders list, and a
@@ -235,20 +288,21 @@ export function NavCountsProvider({
   children: ReactNode;
 }) {
   const [counts, setCounts] = useState<NavCounts>({});
+  const orderSources = sources.filter(isOrderCount);
   const onCount = useCallback((source: NavCountKey, count: number) => {
     setCounts((prev) => (prev[source] === count ? prev : { ...prev, [source]: count }));
   }, []);
 
   return (
     <NavCountsContext.Provider value={counts}>
-      {sources.map((source) => (
-        <NavCountSource
-          key={source}
-          source={source}
-          pathname={pathname}
-          onCount={onCount}
-        />
-      ))}
+      {orderSources.length ? (
+        <OrderCountsSource sources={orderSources} onCount={onCount} />
+      ) : null}
+      {sources.map((source) =>
+        isOrderCount(source) ? null : (
+          <NavCountSource key={source} source={source} pathname={pathname} onCount={onCount} />
+        ),
+      )}
       {children}
     </NavCountsContext.Provider>
   );

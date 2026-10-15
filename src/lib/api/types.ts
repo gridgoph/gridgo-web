@@ -464,7 +464,12 @@ export type PickupCheck = {
  * repeat all six checks and a fresh count before taking the package.
  */
 export type PickupChecklistStatus =
-  "not_started" | "passed" | "failed_escalated" | "escalation_resolved";
+  | "not_started"
+  | "passed"
+  | "failed_escalated"
+  | "escalation_resolved"
+  // Rider-packs handover: six passes on the unpacked products, custody not moved yet.
+  | "inspected";
 
 /**
  * What the rider counts at the counter, one row per order line. The API
@@ -508,6 +513,14 @@ export type PickupChecklist = {
   signOffPrompt?: string;
   /** `null` on a failed attempt; absent on checks recorded before signatures. */
   handoffSignature?: HandoffSignature | null;
+  /**
+   * Rider-packs handover only. `status: "inspected"` is a passing check of
+   * the unpacked products that has not moved custody yet; the final pickup
+   * keeps the inspection it confirmed and the packed photos.
+   */
+  inspectionId?: string;
+  inspectedAt?: string;
+  packedPhotoFileIds?: string[];
 };
 
 export type DeliveryEvidence = {
@@ -808,6 +821,23 @@ export type Order = {
   productionProgress?: ProductionProgress;
   /** Separate packed-work evidence; supplier, client and staff only. */
   packingProgress?: ProductionProgress;
+  /**
+   * Which shop-to-rider handover this order follows (contract
+   * `gridgo-api/docs/SHOP_HANDOVER_API.md`). Staff and the assigned
+   * shop/rider only; absent on an older API. Read it through
+   * `src/lib/shop-handover.ts`, never from dates or payout amounts.
+   */
+  handoverFlow?: HandoverFlow;
+  /** The handover evidence trail. Staff and the assigned shop/rider only. */
+  shopHandover?: ShopHandover | null;
+  /** Every staff-forced production step, with its reason. Staff and assigned parties. */
+  forcedSteps?: ForcedStep[];
+  /** True once any step was forced: every app shows "Forced by GRIDGO". */
+  forcedByGridgo?: boolean;
+  /** Staff only: the reason codes a forced step may carry. */
+  forcedStepReasonCodes?: string[];
+  /** Staff only: already-packed jobs this shop has presented, across its orders. */
+  shopArrivedPackedCount?: number;
   /**
    * What the API would still refuse each packaging step for, as of this read
    * (assigned supplier and Operations/Super Admin). A snapshot, never a
@@ -1562,6 +1592,75 @@ export type DetectedArtwork = {
  */
 /** One thing the API still needs before a step, in its own sentence. */
 export type TransitionRequirement = { code: string; message: string };
+
+/** `rider_packs`: the shop sends unpacked photos, GRIDGO reviews, the rider packs. */
+export type HandoverFlow = "rider_packs" | "legacy";
+
+/** The shop's finished, unpacked product photos, as one immutable submission. */
+export type FinishedSubmission = {
+  at: string;
+  by: string;
+  supplierId: string;
+  photoFileIds: string[];
+};
+
+/** GRIDGO's answer to one submission. `note` is what the shop reads when sent back. */
+export type FinishedReview = {
+  at: string;
+  by: string;
+  decision: "approved" | "rejected" | (string & {});
+  note: string;
+};
+
+/** One reviewed submission, kept for good. */
+export type FinishedAttempt = { finished: FinishedSubmission; review: FinishedReview };
+
+/** A rider found the job already packed and recorded it before inspecting. */
+export type ArrivedPackedEvent = {
+  at: string;
+  riderId: string;
+  supplierId: string;
+  assignedAt: string | null;
+};
+
+/** A passing check of the unpacked products at the counter. */
+export type HandoverInspection = {
+  status: string;
+  inspectionId: string;
+  checks: PickupCheck[];
+  counts?: PickupCount[];
+  completedAt: string;
+  completedBy: string;
+};
+
+/** A packing photo the rider took after an inspection. */
+export type RiderPackingPhoto = {
+  at: string;
+  by: string;
+  fileId: string;
+  inspectionId: string;
+};
+
+export type ShopHandover = {
+  finished?: FinishedSubmission | null;
+  review?: FinishedReview | null;
+  attempts?: FinishedAttempt[];
+  arrivedPacked?: ArrivedPackedEvent[];
+  inspections?: HandoverInspection[];
+  packingPhotos?: RiderPackingPhoto[];
+};
+
+/** A production step GRIDGO staff forced, and the checks it went past. */
+export type ForcedStep = {
+  at: string;
+  by: string;
+  role: string;
+  from: string;
+  to: string;
+  reasonCode: string;
+  note: string;
+  skippedChecks: string[];
+};
 
 export type TransitionReadiness = {
   allowed: boolean;

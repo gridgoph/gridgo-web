@@ -993,7 +993,8 @@ describe("AppShell chrome", () => {
       countMocks.listJobs.mockClear();
       renderShell("/admin/overview");
       await vi.waitFor(() => expect(countMocks.listSupportChatThreads).toHaveBeenCalled());
-      expect(listOrdersMock).not.toHaveBeenCalled();
+      // Once, for Finished work: Super Admin's rail has no Orders count.
+      await vi.waitFor(() => expect(listOrdersMock).toHaveBeenCalledTimes(1));
       expect(countMocks.listEscalations).not.toHaveBeenCalled();
       expect(countMocks.listJobs).not.toHaveBeenCalled();
     });

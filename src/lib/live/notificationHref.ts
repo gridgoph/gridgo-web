@@ -84,6 +84,14 @@ export function notificationHref(role: Role, notification: Notification): string
     return null;
   }
 
+  // A shop's finished, unpacked work is decided on the Finished work desk,
+  // with that order open. Every other handover notice falls through to the order.
+  if (type === "order_finished_review_required" && notification.orderId) {
+    const order = encodeURIComponent(notification.orderId);
+    if (role === "super_admin") return `/admin/finished-work?order=${order}`;
+    if (role === "ops_admin") return `/ops/finished-work?order=${order}`;
+  }
+
   // A pickup escalation opens its order, where the counter check shows the
   // count, the six checks, the photos and the Resolve action together. Only
   // a notice without an order falls back to the escalations queue.
