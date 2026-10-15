@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Info, Plus } from "lucide-react";
+import { ChevronLeft, Info, Plus } from "lucide-react";
 
 import {
   AlertDialog,
@@ -357,13 +357,20 @@ export default function SupplierChatPage() {
         </div>
       ) : null}
       <div
-        className={`grid min-h-[36rem] gap-4 ${
+        className={`grid gap-4 lg:min-h-[36rem] ${
           detailsOpen
             ? "grid-cols-1 xl:grid-cols-[18rem_minmax(0,1fr)_20rem]"
             : "lg:grid-cols-[18rem_minmax(0,1fr)]"
         }`}
       >
-        <aside className={`gg-card flex-col gap-3 ${detailsOpen ? "hidden xl:flex" : "flex"}`}>
+        {/* Below 1024px the list and the open conversation take turns: a phone
+            shows one or the other, never an empty "Pick a conversation" box
+            under the list. */}
+        <aside
+          className={`gg-card flex-col gap-3 ${
+            detailsOpen ? "hidden xl:flex" : selectedId ? "hidden lg:flex" : "flex"
+          }`}
+        >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 className="text-h3 text-text-primary m-0">Operations</h2>
@@ -452,7 +459,11 @@ export default function SupplierChatPage() {
           ) : null}
         </aside>
 
-        <section className={`gg-card min-h-[28rem] min-w-0 flex-col gap-3 ${detailsOpen ? "hidden xl:flex" : "flex"}`}>
+        <section
+          className={`gg-card min-h-[28rem] min-w-0 flex-col gap-3 ${
+            detailsOpen ? "hidden xl:flex" : selectedId ? "flex" : "hidden lg:flex"
+          }`}
+        >
           {!selectedId ? (
             <EmptyState
               title="Pick a conversation"
@@ -460,6 +471,15 @@ export default function SupplierChatPage() {
             />
           ) : (
             <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="self-start lg:hidden"
+                onClick={() => setSelectedId(null)}
+              >
+                <ChevronLeft data-icon="inline-start" aria-hidden />
+                All conversations
+              </Button>
               <div className="flex items-start justify-between gap-3">
                 <button
                   type="button"

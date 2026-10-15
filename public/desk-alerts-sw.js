@@ -1,17 +1,25 @@
 /*
  * GRIDGO Desk alerts worker.
  *
- * Raises the desktop alerts a portal tab asks for and routes their clicks back
- * to the portal. It has no fetch handler: it never touches the network or the
- * page cache. The page side lives in `src/lib/live/desktopAlerts.ts`.
+ * Raises the desktop alerts a portal tab asks for, shows the Web Push
+ * notifications the API sends to an installed supplier app, and routes both
+ * kinds of click back to the portal. It has no fetch handler: it never touches
+ * the network or the page cache, so no API data is ever stored here. The page
+ * side lives in `src/lib/live/desktopAlerts.ts` and `src/lib/pwa/webPush.ts`.
  *
  * Message in:  { type: "gridgo-desk-alert-show", alert }
  * Message out: { type: "gridgo-desk-alert-click", notificationId, href }
+ * Push in:     { title, body, data: { notificationId, type, orderId, at }, url }
  */
 
 const SHOW = "gridgo-desk-alert-show";
 const CLICK = "gridgo-desk-alert-click";
 const ICON = "/icon.png";
+const PUSH_ICON = "/pwa/icon-192.png";
+const PUSH_BADGE = "/pwa/badge-96.png";
+const PUSH_TREE = "/supplier/";
+// Opens the slip a push names; the page there works out its destination.
+const PUSH_NOTICE = "/supplier/notice";
 
 self.addEventListener("install", () => {
   self.skipWaiting();
@@ -96,6 +104,54 @@ async function open(data) {
   // Every portal tab is gone: open the destination fresh.
   await self.clients.openWindow(href || tree);
 }
+
+function readPush(event) {
+  if (!event.data) return {};
+  try {
+    const value = event.data.json();
+    return value && typeof value === "object" ? value : {};
+  } catch {
+    try {
+      return { body: event.data.text() };
+    } catch {
+      return {};
+    }
+  }
+}
+
+/** The supplier page that opens a pushed slip, or null without a slip id. */
+function noticePath(data) {
+  const id = text(data.notificationId);
+  if (!id) return null;
+  const query = new URLSearchParams({ id });
+  if (text(data.type)) query.set("type", text(data.type));
+  if (text(data.orderId)) query.set("orderId", text(data.orderId));
+  return `${PUSH_NOTICE}?${query.toString()}`;
+}
+
+/*
+ * Every push is shown, even while the app is open: iOS and Chrome both expect a
+ * visible notification for each push and may end the subscription otherwise.
+ * The tag is the Desk alert's, so a slip already raised by an open tab is
+ * replaced in place instead of announced twice.
+ */
+async function showPush(payload) {
+  const data = payload.data && typeof payload.data === "object" ? payload.data : payload;
+  const title = text(payload.title) || "GRIDGO";
+  const notificationId = text(data.notificationId) || null;
+  const href = noticePath(data) || portalPath(payload.url) || PUSH_TREE;
+  await self.registration.showNotification(title, {
+    body: text(payload.body),
+    tag: notificationId ? `gridgo-desk:${notificationId}` : "gridgo-push",
+    icon: PUSH_ICON,
+    badge: PUSH_BADGE,
+    data: { href, notificationId, tree: PUSH_TREE },
+  });
+}
+
+self.addEventListener("push", (event) => {
+  event.waitUntil(showPush(readPush(event)));
+});
 
 self.addEventListener("message", (event) => {
   const data = event.data;

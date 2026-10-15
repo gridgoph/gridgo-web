@@ -23,7 +23,13 @@ type Props = {
   className?: string;
 };
 
-/** A single figure with its provenance. Structural fill only — never yellow. */
+/**
+ * A single figure with its provenance. Structural fill only — never yellow.
+ *
+ * Below 768px figures sit two to a row, so the number steps down to `text-h3`
+ * and the glyph tile drops out: at 390px a ₱123,456.00 still fits its half of
+ * the screen, and the first job on a board is not pushed below the fold.
+ */
 export function StatCard({
   label,
   value,
@@ -40,14 +46,19 @@ export function StatCard({
       <div className="min-w-0">
         <p className="text-overline text-text-muted m-0 uppercase">{label}</p>
         {loading ? (
-          // 30px is the `text-h2` line box, so the number drops in without
-          // nudging the hint below it.
-          <div className="mt-1 flex h-[30px] items-center">
+          // 26px / 30px are the `text-h3` / `text-h2` line boxes, so the number
+          // drops in without nudging the hint below it.
+          <div className="mt-1 flex h-[26px] items-center md:h-[30px]">
             <Skeleton className="h-6 w-20" aria-hidden />
             <span className="sr-only">Still loading</span>
           </div>
         ) : (
-          <p className="text-h2 text-text-primary m-0 mt-1 tabular-nums">{value}</p>
+          <p
+            data-slot="stat-value"
+            className="text-h3 md:text-h2 text-text-primary m-0 mt-1 tabular-nums"
+          >
+            {value}
+          </p>
         )}
         {hint ? (
           <p className="text-caption text-text-muted m-0 mt-1">{hint}</p>
@@ -55,7 +66,7 @@ export function StatCard({
       </div>
       {Icon ? (
         <span
-          className="bg-surface-variant text-text-muted flex size-10 shrink-0 items-center justify-center rounded-field"
+          className="bg-surface-variant text-text-muted hidden size-10 shrink-0 items-center justify-center rounded-field md:flex"
           aria-hidden
         >
           <Icon size={18} strokeWidth={1.75} />

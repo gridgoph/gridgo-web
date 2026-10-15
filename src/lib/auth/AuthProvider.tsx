@@ -15,6 +15,7 @@ import { useRouter } from "next/navigation";
 
 import { getAuthMe, isApiError, setTokenProvider } from "@/lib/api/client";
 import type { RoleMembership, User } from "@/lib/api/types";
+import { releaseWebPushForSignOut } from "@/lib/pwa/webPush";
 
 export type PortalIdentityStatus =
   "checking" | "mapped" | "unmapped" | "unavailable" | "signed_out";
@@ -245,6 +246,9 @@ function SessionAuthProvider({
 
   const signOut = useCallback(async () => {
     invalidateRefresh();
+    // A shared phone stops getting this shop's notifications. It needs the
+    // session, so it runs first, and it is bounded so sign-out never waits.
+    await releaseWebPushForSignOut().catch(() => undefined);
     await clerkSession.signOut({ redirectUrl: "/login" });
     if (!mounted.current) return;
     setTokenProvider(() => null);

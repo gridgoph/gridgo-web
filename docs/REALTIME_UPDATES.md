@@ -89,8 +89,39 @@ alerts and routes their clicks.
   page-level `Notification`, and a browser that refuses that constructor keeps the bell and
   toast.
 
-Nothing arrives with the browser closed: that needs Web Push (VAPID keys, a subscription
-endpoint and sender in `gridgo-api`), a follow-up the worker is already shaped for.
+With the browser closed, desktop alerts stop. Shops get the closed-browser case from Web
+Push instead (next section); Operations and Super Admin have no push.
+
+## Phone app and Web Push
+
+The supplier tree is an installable web app (gridgo-web#182), so a shop can use GRIDGO on an
+iPhone or Android phone like an app and get new jobs on the lock screen.
+
+- **Manifest.** `public/supplier.webmanifest`, linked only from `src/app/supplier/layout.tsx`
+  (with the iOS `apple-mobile-web-app-*` tags and the Home Screen icon). It starts at
+  `/supplier/dashboard`; its scope is `/`, not `/supplier/`, because `/login` and
+  `/sso-callback` must stay inside the app: on iPhone an out-of-scope page opens in a
+  separate browser with its own cookies, and the sign-in never lands back in the app. Icons
+  are drawn from the 3×3 mark by `scripts/generate-pwa-icons.mjs` into `public/pwa/`.
+- **Install.** `src/lib/pwa/install.ts`. Chrome's `beforeinstallprompt` is held from the root
+  layout's head (`INSTALL_CAPTURE_SCRIPT`) and offered as "Install app". iPhone has no
+  install event, so iOS Safari, and only Safari, gets the Share → Add to Home Screen
+  guide; other iOS browsers are pointed at Safari.
+- **Notifications.** `src/lib/pwa/webPush.ts`, API contract `gridgo-api/docs/WEB_PUSH_API.md`.
+  "Turn on notifications" asks for permission as the first thing the tap does, subscribes
+  with the server's VAPID key (`GET /web-push/public-key`, read ahead of the tap) and saves
+  the subscription (`POST /web-push/subscribe`). On iPhone this exists only inside the
+  installed app on iOS 16.4+. The shell re-sends a held subscription once per load, and
+  sign-out releases it (`POST /web-push/unsubscribe`) so a shared phone stops getting the
+  shop's notices.
+- **Worker.** The same `public/desk-alerts-sw.js` shows every push (browsers expect a visible
+  notification for each one) under the Desk alert's tag, so a slip an open tab already
+  raised is replaced, not repeated. A tap opens `/supplier/notice?id=…`, which marks the row
+  read and moves on through `notificationHref`. The worker still has no fetch handler and
+  caches nothing.
+- **Screens.** `/supplier/phone-app` (account menu → Phone app) shows both steps; the
+  dashboard invites a phone once per step (`src/components/pwa/PhoneApp.tsx`, "Not now"
+  remembered in `gridgo-web.phone-app-invite`). Screenshots: `docs/screenshots/phone-app/`.
 
 ## Inbox destinations
 

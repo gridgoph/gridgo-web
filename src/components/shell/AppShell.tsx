@@ -1,7 +1,13 @@
 "use client";
 import { TicketPercent, UserRoundMinus } from "lucide-react";
 
-import { useCallback, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useClerk, useUser } from "@clerk/nextjs";
@@ -65,6 +71,7 @@ import {
   TimerOff,
   Warehouse,
   IdCard,
+  Smartphone,
   type LucideIcon,
 } from "lucide-react";
 
@@ -129,6 +136,7 @@ import {
 import { ThemeToggle } from "@/components/shell/ThemeToggle";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { LiveProvider } from "@/lib/live/LiveProvider";
+import { syncWebPush } from "@/lib/pwa/webPush";
 import { NavCountsProvider, useNavCounts } from "@/lib/live/useNavCounts";
 import { notificationHref } from "@/lib/live/notificationHref";
 import {
@@ -346,6 +354,17 @@ function NavUser({ role }: { role: Role }) {
                 >
                   <Settings aria-hidden />
                   Settings
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            ) : null}
+            {role === "supplier" ? (
+              <DropdownMenuGroup>
+                <DropdownMenuItem
+                  render={<Link href="/supplier/phone-app" />}
+                  className="min-h-11"
+                >
+                  <Smartphone aria-hidden />
+                  Phone app
                 </DropdownMenuItem>
               </DropdownMenuGroup>
             ) : null}
@@ -858,6 +877,16 @@ export function AppShell({ role, children }: Props) {
   const title = contextTitleForPath(pathname, role);
   const parentItem = navItemForPath(pathname, role);
   const isNested = Boolean(parentItem && pathname !== parentItem.href);
+
+  // A shop's phone keeps its push subscription current with the API; this
+  // never asks for permission (`src/lib/pwa/webPush.ts`).
+  const { user: account } = useAuth();
+  const accountId = account?.id ?? null;
+  useEffect(() => {
+    if (role === "supplier" && accountId) {
+      void syncWebPush(accountId).catch(() => undefined);
+    }
+  }, [role, accountId]);
 
   return (
     <LiveProvider
