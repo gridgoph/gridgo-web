@@ -341,11 +341,11 @@ export default function OpsDispatchPage() {
                   {formatDateTime(pin.confirmedAt)}
                 </span>
               ) : null}
-              <span className="text-caption text-text-secondary">
+              <span className="text-caption text-text-secondary block max-w-64 break-words">
                 Receiver: {pinReceiverLine(pin)}
               </span>
               {pin.notes.trim() ? (
-                <span className="text-caption text-text-muted line-clamp-2">
+                <span className="text-caption text-text-muted block max-w-64 line-clamp-2 break-words">
                   Notes: {pinNotesLine(pin)}
                 </span>
               ) : null}

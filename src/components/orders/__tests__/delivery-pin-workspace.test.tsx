@@ -323,6 +323,9 @@ describe("the order workspace's delivery pin row", { timeout: 20_000 }, () => {
     expect(within(rail).getByTestId("pin-change-difference")).toHaveTextContent("−₱40.00");
     expect(within(rail).getByTestId("delivery-now")).toHaveTextContent("₱10.00");
     expect(within(rail).getByTestId("total-now")).toHaveTextContent("₱1,110.00");
+    expect(
+      screen.getByText("Delivery-fee credit: Waiting on the client's QR, ₱40.00."),
+    ).toBeInTheDocument();
     // An open credit is the one open request: filing another is explained, not offered.
     expect(screen.queryByRole("button", { name: "File a refund for the client" })).toBeNull();
   });

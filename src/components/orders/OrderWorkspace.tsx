@@ -184,7 +184,12 @@ import {
   sentBackAttempts,
   skippedCheckLabel,
 } from "@/lib/shop-handover";
-import { presentRefundStatus, refundIsActive, refundKindLabel } from "@/lib/refunds";
+import {
+  presentRefundState,
+  presentRefundStatus,
+  refundIsActive,
+  refundKindLabel,
+} from "@/lib/refunds";
 import {
   failuresForOrder,
   recoveryHoldsWork,
@@ -2192,6 +2197,13 @@ function latestRefund(refunds: RefundRequest[] | null): RefundRequest | null {
   return sorted.find(refundIsActive) ?? sorted[0];
 }
 
+/** A delivery-fee credit starts reserved and waiting on the client's QR; say so. */
+function refundRowState(refund: RefundRequest) {
+  return refund.kind === "delivery_pin"
+    ? presentRefundState(refund)
+    : presentRefundStatus(refund.status);
+}
+
 function refundRowSummary(order: Order, refunds: RefundRequest[] | null): string {
   const latest = latestRefund(refunds);
   if (!latest) {
@@ -2200,7 +2212,7 @@ function refundRowSummary(order: Order, refunds: RefundRequest[] | null): string
     }
     return "No refund requested.";
   }
-  const status = presentRefundStatus(latest.status).label;
+  const status = refundRowState(latest).label;
   const amount = latest.payment?.amountMinor ?? latest.settlement?.totalMinor;
   return `${refundKindLabel(latest.kind)}: ${status}${
     amount !== undefined ? `, ${formatPhp(amount)}` : ""
@@ -2280,7 +2292,7 @@ function RefundRowPanel({
       {sorted.length ? (
         <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {sorted.map((refund) => {
-            const status = presentRefundStatus(refund.status);
+            const status = refundRowState(refund);
             const amount = refund.payment?.amountMinor ?? refund.settlement?.totalMinor;
             return (
               <li
