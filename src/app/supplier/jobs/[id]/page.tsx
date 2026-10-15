@@ -15,22 +15,17 @@ import {
   X,
 } from "lucide-react";
 
+import { ChangeRequestCard } from "@/app/supplier/_components/ChangeRequestCard";
+import { DeclineJobDialog } from "@/app/supplier/_components/DeclineJobDialog";
 import { PackagingChecklist } from "@/app/supplier/_components/PackagingChecklist";
+import { RequestChangeDialog } from "@/app/supplier/_components/RequestChangeDialog";
+import { SpecialInstructionsCard } from "@/app/supplier/_components/SpecialInstructionsCard";
 import { JobFilesDialog } from "@/components/orders/JobFilesDialog";
 import { MilestoneList } from "@/components/orders/MilestoneList";
 import { OrderMeta } from "@/components/orders/OrderMeta";
 import { ProgressGallery, WaitingForPhoto } from "@/components/orders/ProductionProgress";
 import { Timeline } from "@/components/orders/Timeline";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Confirmation } from "@/components/refunds/dialogs";
 import { Button } from "@/components/ui/button";
 import { TakePhotoButton } from "@/components/ui/TakePhotoButton";
 import {
@@ -49,6 +44,7 @@ import {
   attachFulfilmentProof,
   attachPackingPhoto,
   attachProductionPhoto,
+  declineJob,
   getOrder,
   transitionOrder,
   uploadFulfilmentProof,
@@ -58,6 +54,16 @@ import {
 import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
+import {
+  canRequestChange,
+  changeRequestsOf,
+  currentChangeRequest,
+  hasSpecialInstructions,
+  instructionsReadAt,
+  itemInstructions,
+  shopChangeErrorMessage,
+  type DeclineReasonId,
+} from "@/lib/order-changes";
 import { presentOrderState } from "@/lib/order-state";
 import { packagingCheck, stepRefusal } from "@/lib/packaging-readiness";
 import {
@@ -109,6 +115,8 @@ function supplierErrorMessage(err: unknown): string {
   if (!(err instanceof ApiError)) {
     return "Network error while updating. Try again.";
   }
+  const changeCopy = shopChangeErrorMessage(err);
+  if (changeCopy) return changeCopy;
   switch (err.code) {
     case "transition_not_allowed":
       return "That step is no longer available for this job. Refresh to see where it stands.";
@@ -142,7 +150,14 @@ export default function SupplierJobDetailPage() {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [confirmDecline, setConfirmDecline] = useState(false);
+  // The decline dialog, opened on a reason when "Not possible?" opened it.
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [declineReason, setDeclineReason] = useState<DeclineReasonId | null>(null);
+  const [declineError, setDeclineError] = useState<string | null>(null);
+  // Always starts unticked: a box ticked for the shop records nothing it did.
+  const [instructionsRead, setInstructionsRead] = useState(false);
+  const [tickMissing, setTickMissing] = useState(false);
+  const [changeOpen, setChangeOpen] = useState(false);
   const [proofOpen, setProofOpen] = useState(false);
   const [proofFileId, setProofFileId] = useState<string | null>(null);
   const [proofFileName, setProofFileName] = useState<string | null>(null);
@@ -235,8 +250,14 @@ export default function SupplierJobDetailPage() {
     }
     if (action.blockedReason) return;
     if (action.kind === "ready_for_pickup" && shopProofOutstanding(job)) return;
-    if (action.destructive && !confirmDecline) {
-      setConfirmDecline(true);
+    if (action.kind === "decline") {
+      openDecline(null);
+      return;
+    }
+    // GRIDGO refuses the acceptance until the shop ticks that it read the notes.
+    const needsTick = action.kind === "accept" && hasSpecialInstructions(job);
+    if (needsTick && !instructionsRead) {
+      setTickMissing(true);
       return;
     }
     setActing(action.kind);
@@ -244,15 +265,19 @@ export default function SupplierJobDetailPage() {
     setPhotoRefused(null);
     try {
       const note =
-        action.kind === "decline"
-          ? "Supplier declined — returned for rematch"
-          : action.kind === "accept"
-            ? "Accepted"
-            : action.kind === "ready_for_pickup"
-              ? "Packaging ready — packed and staged for joint pickup checks with the rider"
-              : action.label;
-      setJob(await transitionOrder(job.id, action.targetState, { note }));
-      setConfirmDecline(false);
+        action.kind === "accept"
+          ? "Accepted"
+          : action.kind === "ready_for_pickup"
+            ? "Packaging ready — packed and staged for joint pickup checks with the rider"
+            : action.label;
+      setJob(
+        await transitionOrder(
+          job.id,
+          action.targetState,
+          // The tick is recorded with the time, against the notes as they stand.
+          needsTick ? { note, specialInstructionsRead: true } : { note },
+        ),
+      );
     } catch (err) {
       // GRIDGO's own sentence for a refused step, even when the checklist
       // said it would pass: the step is checked again when pressed.
@@ -267,6 +292,29 @@ export default function SupplierJobDetailPage() {
             ? "packing"
             : null,
       );
+      await load().catch(() => undefined);
+    } finally {
+      setActing(null);
+    }
+  }
+
+  function openDecline(reason: DeclineReasonId | null) {
+    setDeclineError(null);
+    setDeclineReason(reason);
+    setDeclineOpen(true);
+  }
+
+  async function decline(reason: string) {
+    if (!job) return;
+    setActing("decline");
+    setDeclineError(null);
+    try {
+      await declineJob(job.id, reason);
+      setDeclineOpen(false);
+      setFiledNote("Job declined. GRIDGO gives it to another shop.");
+      await load().catch(() => undefined);
+    } catch (err) {
+      setDeclineError(supplierErrorMessage(err));
       await load().catch(() => undefined);
     } finally {
       setActing(null);
@@ -397,6 +445,11 @@ export default function SupplierJobDetailPage() {
   );
   const packingOwed = packingPhotoOwed(job);
   const photoWords = PHOTO_WORDS[photoKind];
+  const notes = itemInstructions(job);
+  const needsTick = primary?.kind === "accept" && hasSpecialInstructions(job);
+  const changeAllowed = canRequestChange(job);
+  const changeRequest = currentChangeRequest(job);
+  const earlierChanges = changeRequestsOf(job).filter((row) => row.id !== changeRequest?.id);
 
   return (
     <div className="flex w-full flex-col gap-3">
@@ -520,6 +573,44 @@ export default function SupplierJobDetailPage() {
               {PRODUCTION_PHOTO_COPY.supplierRule}
             </p>
           ) : null}
+          {needsTick ? (
+            <div className="flex max-w-prose flex-col gap-1">
+              <Confirmation
+                id="special-instructions-read"
+                checked={instructionsRead}
+                disabled={acting !== null}
+                onChange={(next) => {
+                  setInstructionsRead(next);
+                  setTickMissing(false);
+                  setActionError(null);
+                }}
+              >
+                I&rsquo;ve read the special instructions
+                <span className="text-caption text-text-muted block">
+                  GRIDGO records when you ticked it. Your shop makes the job with them.
+                </span>
+              </Confirmation>
+              {tickMissing && !instructionsRead ? (
+                <p className="text-body text-error m-0" role="alert">
+                  Tick that you read the special instructions to accept.
+                </p>
+              ) : null}
+              <div className="flex flex-wrap gap-x-4">
+                {changeAllowed ? (
+                  <Button variant="link" className="px-0" onClick={() => setChangeOpen(true)}>
+                    They cost more? Request a change
+                  </Button>
+                ) : null}
+                <Button
+                  variant="link"
+                  className="px-0"
+                  onClick={() => openDecline("special_instructions")}
+                >
+                  Not possible? Decline this job
+                </Button>
+              </div>
+            </div>
+          ) : null}
           {primary?.kind === "accept" ? (
             <div className="flex max-w-prose flex-col gap-1">
               <p className="text-body text-text-secondary m-0">
@@ -541,7 +632,7 @@ export default function SupplierJobDetailPage() {
           {filedNote ? (
             <p className="text-body text-text-secondary m-0">{filedNote}</p>
           ) : null}
-          {actionError && !confirmDecline && !proofOpen && !photoOpen ? (
+          {actionError && !declineOpen && !proofOpen && !photoOpen && !changeOpen ? (
             <div className="flex flex-col items-start gap-2" role="alert">
               <p className="text-body text-error m-0">{actionError}</p>
               {photoRefused === "progress" &&
@@ -574,6 +665,26 @@ export default function SupplierJobDetailPage() {
       <div className="grid w-full gap-3 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:items-start">
         <div className="flex min-w-0 flex-col gap-3">
           {check ? <PackagingChecklist check={check} /> : null}
+
+          {/*
+            The client's own words come before the docket: they are the part of
+            the job nobody picked from a list. On an offer the tick sits with
+            Accept above; once accepted the card says when it was ticked.
+          */}
+          {notes.length ? (
+            <SpecialInstructionsCard
+              notes={notes}
+              readAt={instructionsReadAt(job)}
+              offer={job.state === "supplier_assigned"}
+              onRequestChange={
+                changeAllowed && !needsTick ? () => setChangeOpen(true) : undefined
+              }
+            />
+          ) : null}
+
+          {changeRequest ? (
+            <ChangeRequestCard request={changeRequest} earlier={earlierChanges} />
+          ) : null}
 
           <section className="gg-card p-3" aria-labelledby="spec-heading">
             <h3
@@ -830,42 +941,25 @@ export default function SupplierJobDetailPage() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog
-        open={confirmDecline}
-        onOpenChange={(open) => {
-          if (!open) setConfirmDecline(false);
+      <DeclineJobDialog
+        open={declineOpen}
+        initialReason={declineReason}
+        busy={acting === "decline"}
+        error={declineError}
+        onCancel={() => setDeclineOpen(false)}
+        onDecline={(reason) => void decline(reason)}
+      />
+
+      <RequestChangeDialog
+        job={job}
+        open={changeOpen}
+        onClose={() => setChangeOpen(false)}
+        onSent={async (message) => {
+          setChangeOpen(false);
+          setFiledNote(message);
+          await load().catch(() => undefined);
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Decline this job?</AlertDialogTitle>
-            <AlertDialogDescription>
-              It goes back to Operations to be given to another supplier, and you lose
-              this assignment.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {actionError ? (
-            <p className="text-body text-error m-0" role="alert">
-              {actionError}
-            </p>
-          ) : null}
-          <AlertDialogFooter>
-            <AlertDialogCancel variant="secondary" disabled={acting !== null}>
-              Keep job
-            </AlertDialogCancel>
-            <AlertDialogAction
-              variant="danger"
-              disabled={acting !== null}
-              onClick={() => {
-                const decline = secondary.find((action) => action.destructive);
-                if (decline) void runAction(decline);
-              }}
-            >
-              {acting === "decline" ? "Declining…" : "Confirm decline"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      />
     </div>
   );
 }

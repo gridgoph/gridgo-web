@@ -1,6 +1,12 @@
 "use client";
 
 import { PackingPhotos } from "@/components/orders/PackingPhotos";
+import { SpecialInstructionsPanel } from "@/components/orders/SpecialInstructions";
+import {
+  changePaymentAwaitingStaff,
+  instructionsRowSummary,
+  instructionsRowVisible,
+} from "@/lib/order-changes";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -13,6 +19,7 @@ import {
   CircleDot,
   Lock,
   MapPin,
+  MessageSquareText,
   ScrollText,
   ShieldAlert,
   TriangleAlert,
@@ -217,6 +224,7 @@ type SectionId =
   | "payment"
   | "qa"
   | "production"
+  | "instructions"
   | "shop"
   | "deadline"
   | "handover"
@@ -430,6 +438,13 @@ export function OrderWorkspace({
     // Who verified a delivery-pin payment.
     const pinPayer = order?.deliveryPin?.change?.payment?.confirmedBy;
     if (pinPayer) ids.add(pinPayer);
+    // The shop that ticked the notes, each change's shop and who verified its payment.
+    const ticked = order?.specialInstructionsAcknowledgement?.supplierId;
+    if (ticked) ids.add(ticked);
+    for (const change of order?.changeRequests ?? []) {
+      if (change.supplierId) ids.add(change.supplierId);
+      if (change.payment?.confirmedBy) ids.add(change.payment.confirmedBy);
+    }
     // Each shop group's rider, for the basket panel.
     for (const group of basket?.groups ?? []) {
       if (group.order.riderId) ids.add(group.order.riderId);
@@ -773,6 +788,27 @@ export function OrderWorkspace({
                   When a shop could not take, keep or meet the order: its
                   acceptance window and dropouts, then its deadline request.
                 */}
+                {/*
+                  The client's notes per item, the shop's tick that it read
+                  them, and any change it asked for with its money. A
+                  client's transfer for a change is the team's to verify.
+                */}
+                {step.id === "production" && instructionsRowVisible(order) ? (
+                  <SectionRow
+                    id="instructions"
+                    heading="Special instructions"
+                    summary={instructionsRowSummary(order)}
+                    marker={
+                      changePaymentAwaitingStaff(order)
+                        ? { icon: TriangleAlert, tone: "current" }
+                        : { icon: MessageSquareText, tone: "muted" }
+                    }
+                    trailing={changePaymentAwaitingStaff(order) ? "Your call" : undefined}
+                    current={changePaymentAwaitingStaff(order)}
+                  >
+                    <SpecialInstructionsPanel order={order} names={names} onUpdated={load} />
+                  </SectionRow>
+                ) : null}
                 {step.id === "production" && shopRowVisible(order) ? (
                   <SectionRow
                     id="shop"
@@ -1087,6 +1123,7 @@ export function defaultOpenSections(order: Order): SectionId[] {
   if (rescheduleNeedsOperations(order.rescheduleRequest)) ids.add("deadline");
   if (awaitingFinishedReview(order)) ids.add("handover");
   if (pinPaymentAwaitingOperations(order)) ids.add("delivery-pin");
+  if (changePaymentAwaitingStaff(order)) ids.add("instructions");
   if (isCancelled(order)) ids.add("history");
   return [...ids];
 }

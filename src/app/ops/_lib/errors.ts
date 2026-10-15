@@ -149,6 +149,35 @@ const CODE_COPY: Record<string, string> = {
     "The delivery pin can no longer change on this order.",
   invalid_delivery_pin_request:
     "Write a reason of up to 2,000 characters, then try again.",
+  // Change requests (ORDER_CHANGES_API.md).
+  change_request_stale:
+    "The change request moved on while you were reading it. The order has been reloaded; check it again.",
+  change_payment_unavailable:
+    "No change payment is waiting any more. Someone may already have decided it; the order has been reloaded.",
+  change_payment_mismatch:
+    "The amount must be exactly what the client owes for the change. Check the transfer against it.",
+  change_payment_reference_used:
+    "That transfer reference is already recorded against another payment. Reject this one and ask the client for the right transfer.",
+  change_request_idempotency_conflict:
+    "This decision was already sent with different details. Reload the order and decide again.",
+  change_request_window_closed:
+    "The job has moved past production, so this change can no longer be applied. Reject the payment or reconcile it by hand.",
+  change_request_supplier_changed:
+    "The order has a different shop now, so this change cannot be applied. Reject the payment or reconcile it by hand.",
+  change_deadline_stale:
+    "The order's dates changed since the shop asked, so this change cannot be applied as it stands.",
+  change_deadline_operations_required:
+    "A late-production deduction applies to this order, so this time change needs reconciling by hand.",
+  change_payment_pending:
+    "A client's payment for a change is waiting. Verify or reject it on the Special instructions row first.",
+  change_payment_reconciliation_required:
+    "A paid change belongs to this order's shop. Reconcile it before the order moves to another shop.",
+  invalid_change_request:
+    "Write a reason of up to 2,000 characters, then try again.",
+  supplement_payout_amount_mismatch:
+    "The transfer must be this share plus every paid change extra. Reload the order and release again.",
+  supplement_payout_receipt_required:
+    "This share includes a paid change extra, so it needs the wallet receipt and its reference.",
   refund_idempotency_conflict:
     "This action was already sent with different details. Reload the refund and start again.",
   refund_destination_locked:

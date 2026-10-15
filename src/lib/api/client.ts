@@ -108,6 +108,7 @@ import type {
   TrackerStatus,
   RefundDestination,
   DeliveryPin,
+  OrderChangeRequest,
   FileableRefundKind,
   RefundPreview,
   RefundRequest,
@@ -472,6 +473,12 @@ export type TransitionExtra = {
   promisedDate?: string | null;
   reason?: string;
   note?: string;
+  /**
+   * The shop's tick that it read the client's special instructions. Required
+   * on acceptance when any note is nonempty
+   * (`409 special_instructions_acknowledgement_required`).
+   */
+  specialInstructionsRead?: boolean;
   [key: string]: unknown;
 };
 
@@ -755,6 +762,13 @@ export type ReleaseMilestoneInput = {
   reference?: string;
   /** A ready `payout_receipt` upload from `uploadPayoutReceipt`. Optional. */
   receiptFileId?: string;
+  /**
+   * The whole transfer, sent only on a final stage that carries paid change
+   * extras: the stage's amount plus every unreleased extra
+   * (`409 supplement_payout_amount_mismatch` otherwise). Such a release also
+   * needs `reference` and `receiptFileId`.
+   */
+  amountMinor?: number;
 };
 
 /**
@@ -882,13 +896,14 @@ export async function attachPackingPhoto(
 export async function releaseMilestoneWithReceipt(
   orderId: string,
   code: PayoutMilestoneCode | string,
-  decision: { note: string; reference: string; receipt: File | null },
+  decision: { note: string; reference: string; receipt: File | null; amountMinor?: number },
 ): Promise<{ order: Order; milestone: PayoutMilestone }> {
   const receipt = decision.receipt ? await uploadPayoutReceipt(decision.receipt) : null;
   return releaseMilestone(orderId, code, {
     note: decision.note,
     ...(decision.reference ? { reference: decision.reference } : {}),
     ...(receipt ? { receiptFileId: receipt.fileId } : {}),
+    ...(decision.amountMinor !== undefined ? { amountMinor: decision.amountMinor } : {}),
   });
 }
 
@@ -2873,6 +2888,82 @@ export async function rejectDeliveryPinPayment(
   key: string,
 ): Promise<DeliveryPin> {
   return deliveryPinWrite(orderId, "reject", key, input);
+}
+
+// ---------------------------------------------------------------------------
+// Special instructions and change requests (gridgo-api docs/ORDER_CHANGES_API.md)
+//
+// The shop asks; the client answers and pays; Operations and Super Admin
+// verify or reject the client's transfer. Every write carries an
+// `Idempotency-Key` (one per body: a retry replays the first answer) and every
+// action on an existing request its `expectedVersion`.
+// ---------------------------------------------------------------------------
+
+export type OrderChangeInput = {
+  /** Omitted only on an older order without lines. */
+  lineItemId?: string;
+  reason: string;
+  proposedSpec: string;
+  extraPrincipalMinor: number;
+};
+
+/** Supplier. Ask the client to approve a change to the job. */
+export async function requestOrderChange(
+  orderId: string,
+  input: OrderChangeInput,
+  key: string,
+): Promise<OrderChangeRequest> {
+  const result = await request<{ changeRequest: OrderChangeRequest }>(
+    `/orders/${encodeURIComponent(orderId)}/change-requests`,
+    refundCommand(key, input),
+  );
+  return result.changeRequest;
+}
+
+async function changePaymentWrite(
+  orderId: string,
+  changeId: string,
+  action: "confirm" | "reject",
+  key: string,
+  body: Record<string, unknown>,
+): Promise<OrderChangeRequest> {
+  const result = await request<{ changeRequest: OrderChangeRequest }>(
+    `/orders/${encodeURIComponent(orderId)}/change-requests/${encodeURIComponent(changeId)}/payment/${action}`,
+    refundCommand(key, body),
+  );
+  return result.changeRequest;
+}
+
+/** Ops / Super Admin. Verify the exact transfer: applies the change in the same step. */
+export async function confirmChangePayment(
+  orderId: string,
+  changeId: string,
+  input: { expectedVersion: number; amountMinor: number; reason: string },
+  key: string,
+): Promise<OrderChangeRequest> {
+  return changePaymentWrite(orderId, changeId, "confirm", key, input);
+}
+
+/** Ops / Super Admin. No matching transfer: back to waiting for payment; the client reads `reason`. */
+export async function rejectChangePayment(
+  orderId: string,
+  changeId: string,
+  input: { expectedVersion: number; reason: string },
+  key: string,
+): Promise<OrderChangeRequest> {
+  return changePaymentWrite(orderId, changeId, "reject", key, input);
+}
+
+/**
+ * Supplier. Decline an offered job with the reason GRIDGO records (≤ 2,000
+ * characters; `400 shop_cancel_reason_required` when blank). The job goes
+ * back for another shop.
+ */
+export async function declineJob(orderId: string, reason: string): Promise<void> {
+  await request(`/orders/${encodeURIComponent(orderId)}/decline`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
 }
 
 /** Ops / Super Admin see every request; an optional exact status filter. */

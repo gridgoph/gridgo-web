@@ -573,6 +573,14 @@ export type ProductionItem = {
   /** Design links on this line; `[]` when none, absent on an older API. */
   artworkLinks?: ArtworkLink[];
   mockupFileId?: string | null;
+  /**
+   * The client's special instructions for this line (≤ 300 characters),
+   * contact details already masked by GRIDGO; empty or absent when none.
+   * Read through `@/lib/order-changes`.
+   */
+  specialInstructions?: string | null;
+  /** The latest change the client agreed to (and paid for) on this line. */
+  agreedChange?: { id: string; proposedSpec: string; appliedAt: string } | null;
 };
 
 export type PhysicalInvoiceRequest = {
@@ -912,6 +920,104 @@ export type Order = {
   effectiveDeliveryFeeMinor?: number;
   /** The checkout total plus an applied pin change's difference. */
   effectiveTotalMinor?: number;
+  /**
+   * Special instructions and change requests (gridgo-api
+   * `docs/ORDER_CHANGES_API.md`). Read only through `@/lib/order-changes`.
+   * `specialInstructions` is an older order's single note; checkout orders
+   * carry one per line.
+   */
+  specialInstructions?: string | null;
+  specialInstructionLines?: SpecialInstructionLine[];
+  /** The assigned shop's tick that it read the notes, once it accepted. */
+  specialInstructionsAcknowledgement?: SpecialInstructionsAcknowledgement | null;
+  changeRequests?: OrderChangeRequest[];
+  /** Verified change payments on top of the checkout total. Absent until one is confirmed. */
+  supplementalTotalMinor?: number;
+  totalIncludingSupplementsMinor?: number;
+};
+
+// ---- Special instructions and change requests (gridgo-api docs/ORDER_CHANGES_API.md) ----
+
+export type SpecialInstructionLine = { lineItemId: string; text: string };
+
+export type SpecialInstructionsAcknowledgement = {
+  /** The shop that ticked. Stripped for clients. */
+  supplierId?: string;
+  at: string;
+  /** The notes exactly as the shop read them. */
+  lines?: SpecialInstructionLine[];
+  /** An older order's single note, when it had one. */
+  text?: string;
+};
+
+export type OrderChangeStatus =
+  | "pending"
+  | "pending_payment"
+  | "pending_confirmation"
+  | "applied"
+  | "declined"
+  | "closed";
+
+/** The client's QR transfer for a change, and the GRIDGO Team's check of it. */
+export type OrderChangePayment = {
+  proofFileId: string;
+  reference: string;
+  submittedAt: string;
+  confirmedAt?: string;
+  confirmedBy?: string;
+};
+
+export type OrderChangeRejectedPayment = OrderChangePayment & {
+  rejectedAt: string;
+  rejectedBy?: string;
+  reason?: string;
+};
+
+/** The shop's extra for an applied change, paid with the final payout stage. */
+export type OrderChangePayout = {
+  status: "pending" | "released" | "superseded";
+  amountMinor: number;
+  releaseRequires?: string;
+  reference?: string;
+  createdAt?: string;
+};
+
+/**
+ * One change request. Which fields arrive depends on the caller: the shop
+ * never gets the client's total, GRIDGO's fee or the payment; staff get
+ * everything.
+ */
+export type OrderChangeRequest = {
+  id: string;
+  orderId?: string;
+  supplierId?: string;
+  lineItemId: string | null;
+  status: OrderChangeStatus | (string & {});
+  version: number;
+  reason: string;
+  /** Empty for a time-only request. */
+  proposedSpec: string;
+  proposedReadyBy?: string | null;
+  proposedPromiseBy?: string | null;
+  /** The shop's own extra (centavos). Shop and staff only. */
+  extraPrincipalMinor?: number;
+  /** GRIDGO's added fee on the extra. Staff only. */
+  feeMinor?: number;
+  /** What the client pays for the change: extra + fee. Client and staff. */
+  totalMinor?: number;
+  createdAt: string;
+  originalInstructions?: string;
+  originalReadyBy?: string | null;
+  originalPromiseBy?: string | null;
+  answeredAt?: string;
+  answeredBy?: string;
+  appliedAt?: string;
+  closedAt?: string;
+  closureReason?: string;
+  payment?: OrderChangePayment;
+  paymentHistory?: OrderChangeRejectedPayment[];
+  rejectionReason?: string;
+  payout?: OrderChangePayout | null;
 };
 
 // ---- Delivery pin (gridgo-api docs/DELIVERY_PIN_API.md) ----
