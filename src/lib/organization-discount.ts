@@ -6,8 +6,9 @@
  * out of GRIDGO's service fee: the shop's price, the delivery fee and the
  * rider's share never move. Since gridgo-api#155 an order's `serviceFeeMinor`
  * is the fee GRIDGO keeps (net); the gross fee and the discount ride beside
- * it. The settings rule is the same both ways: the fee rate may never be set
- * below the discount rate (`400 organization_discount_exceeds_service_fee`).
+ * it. Under a flat fee the rate may never be set below the discount rate
+ * (`400 organization_discount_exceeds_service_fee`); under bracket fees
+ * (gridgo-api#220) the API caps each order's discount at that order's fee.
  *
  * Pure functions, unit tested.
  */
@@ -108,14 +109,26 @@ export type OrganizationExample = {
   totalMinor: number;
 };
 
-/** One sample organization order, rounded the way the API rounds it. */
+/**
+ * One sample organization order, rounded the way the API rounds it. With
+ * `feeFor` (bracket fees) the discount is capped at the fee, as the API caps it.
+ */
 export function organizationExample(
   feeBps: number,
   discountBps: number,
-  { shopPriceMinor = 100_000, deliveryFeeMinor = 5_000 } = {},
+  {
+    shopPriceMinor = 100_000,
+    deliveryFeeMinor = 5_000,
+    feeFor,
+  }: {
+    shopPriceMinor?: number;
+    deliveryFeeMinor?: number;
+    feeFor?: (shopPriceMinor: number) => number;
+  } = {},
 ): OrganizationExample {
-  const grossFeeMinor = applyRateBps(shopPriceMinor, feeBps);
-  const discountMinor = applyRateBps(shopPriceMinor, discountBps);
+  const grossFeeMinor = feeFor ? feeFor(shopPriceMinor) : applyRateBps(shopPriceMinor, feeBps);
+  const rawDiscount = applyRateBps(shopPriceMinor, discountBps);
+  const discountMinor = feeFor ? Math.min(grossFeeMinor, rawDiscount) : rawDiscount;
   return {
     shopPriceMinor,
     grossFeeMinor,

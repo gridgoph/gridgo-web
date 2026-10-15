@@ -49,6 +49,7 @@ import {
   OrganizationDiscount,
 } from "@/components/settings/OrganizationDiscount";
 import { ProductionPenalties } from "@/components/settings/ProductionPenalties";
+import { ServiceFeeBrackets } from "@/components/settings/ServiceFeeBrackets";
 import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -77,6 +78,8 @@ import {
   type ZoneDraft,
 } from "@/lib/delivery-zones";
 import { formatPhp } from "@/lib/format";
+import { hasBracketSettings, scheduleInForce, serviceFeeFor } from "@/lib/service-fee-brackets";
+import type { ServiceFeeSchedule } from "@/lib/api/types";
 
 /**
  * Section copy is the same whether or not the values have arrived, so both the
@@ -380,7 +383,9 @@ export function OperationalSettings() {
 
   async function save() {
     if (!settings) return;
-    const parsedRate = percentInputToBps(rate);
+    // Under brackets the flat rate prices nothing new; the brackets card saves the fee.
+    const brackets = hasBracketSettings(settings);
+    const parsedRate = brackets ? settings.serviceFeeRateBps : percentInputToBps(rate);
     if (parsedRate === null) {
       setSaveError(
         "The service fee is a percentage from 0 to 100 with up to two decimals, like 10 or 12.5.",
@@ -401,9 +406,10 @@ export function OperationalSettings() {
       setSaveError(ORGANIZATION_DISCOUNT_INVALID);
       return;
     }
-    // The discount is paid out of the fee, so the fee may never be below it.
+    // The discount is paid out of the fee, so a flat fee may never be below it.
+    // Under brackets the API caps each order's discount at its own fee instead.
     const discountProblem =
-      parsedDiscount !== null ? discountRuleProblem(parsedRate, parsedDiscount) : null;
+      parsedDiscount !== null && !brackets ? discountRuleProblem(parsedRate, parsedDiscount) : null;
     if (discountProblem) {
       setSaveError(discountProblem);
       return;
@@ -436,7 +442,7 @@ export function OperationalSettings() {
     try {
       const next = await updateSettings({
         expectedVersion: settings.version,
-        serviceFeeRateBps: parsedRate,
+        ...(brackets ? {} : { serviceFeeRateBps: parsedRate }),
         serviceFeeVisibleToClient: feeVisible,
         physicalInvoiceRequestsEnabled: physicalInvoiceRequests,
         ...(parsedRiderShare !== null ? { riderCommissionBps: parsedRiderShare } : {}),
@@ -480,8 +486,11 @@ export function OperationalSettings() {
         next.downpaymentPercent !== undefined
           ? ` Checkout: ${checkoutPaymentLabel(next.downpaymentPercent)}.`
           : "";
+      const feePart = hasBracketSettings(next)
+        ? `Saved. Orders placed from now on${riderPart ? ` ${riderPart.slice(2, -1)} and` : ""}`
+        : `Saved. Orders placed from now on carry a ${formatRatePercent(next.serviceFeeRateBps)} service fee${riderPart} and`;
       setSaveOk(
-        `Saved. Orders placed from now on carry a ${formatRatePercent(next.serviceFeeRateBps)} service fee${riderPart} and price delivery from these zones, and issue windows opened from now use the new length.${discountPart}${checkoutPart} Orders already placed keep the figures they were given.`,
+        `${feePart} price delivery from these zones, and issue windows opened from now use the new length.${discountPart}${checkoutPart} Orders already placed keep the figures they were given.`,
       );
     } catch (err) {
       if (err instanceof ApiError && err.code === "settings_version_conflict") {
@@ -562,8 +571,10 @@ export function OperationalSettings() {
     );
   }
 
+  const brackets = hasBracketSettings(settings);
+  const feeSchedule: ServiceFeeSchedule | null = brackets ? scheduleInForce(settings) : null;
   const dirty =
-    rate !== bpsToPercentInput(settings.serviceFeeRateBps) ||
+    (!brackets && rate !== bpsToPercentInput(settings.serviceFeeRateBps)) ||
     feeVisible !== feeVisibleOf(settings) ||
     physicalInvoiceRequests !== physicalInvoiceRequestsOf(settings) ||
     riderShare !== riderShareInput(settings.riderCommissionBps) ||
@@ -576,7 +587,7 @@ export function OperationalSettings() {
   // The example follows the field as it is typed; an unreadable draft shows
   // the rate in force so the receipts never go blank mid-edit.
   const draftRateBps = percentInputToBps(rate) ?? settings.serviceFeeRateBps;
-  const rateInvalid = rate.trim() !== "" && percentInputToBps(rate) === null;
+  const rateInvalid = !brackets && rate.trim() !== "" && percentInputToBps(rate) === null;
   const draftRiderBps =
     percentInputToBps(riderShare) ?? settings.riderCommissionBps ?? 0;
   const discountInvalid =
@@ -585,7 +596,7 @@ export function OperationalSettings() {
   const draftDiscountBps =
     percentInputToBps(orgDiscount) ?? settings.organizationDiscountRateBps ?? 0;
   const discountProblem =
-    settings.organizationDiscountRateBps !== undefined && !rateInvalid && !discountInvalid
+    settings.organizationDiscountRateBps !== undefined && !brackets && !rateInvalid && !discountInvalid
       ? discountRuleProblem(draftRateBps, draftDiscountBps)
       : null;
   const riderShareInvalid =
@@ -610,89 +621,130 @@ export function OperationalSettings() {
         onConflict={() => load(true)}
       />
 
-      <section className="gg-card p-3" aria-labelledby="service-fee-heading">
-        <h2 id="service-fee-heading" className="text-h3 text-text-primary m-0">
-          Service fee
-        </h2>
-        <p className="text-body text-text-secondary m-0 mt-1 max-w-prose">
-          {SERVICE_FEE_COPY}
-        </p>
-        <p className="text-body text-text-primary m-0 mt-2 max-w-prose">
-          {SERVICE_FEE_VISIBILITY}
-        </p>
-
-        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
-          <FieldGroup>
-            <Field orientation="horizontal">
-              <FieldLabel htmlFor="service-fee-visible">Show on client checkout</FieldLabel>
-              <Switch
-                id="service-fee-visible"
-                checked={feeVisible}
-                onCheckedChange={(checked) => setFeeVisible(Boolean(checked))}
-                aria-label="Show on client checkout"
-              />
-            </Field>
-            <Field data-invalid={rateInvalid || discountProblem ? true : undefined}>
-              <FieldLabel htmlFor="service-fee-rate">Rate on the shop price</FieldLabel>
-              <div className="relative max-w-40">
-                <Input
-                  id="service-fee-rate"
-                  inputMode="decimal"
-                  className="pr-9"
-                  value={rate}
-                  aria-invalid={rateInvalid || discountProblem ? true : undefined}
-                  aria-describedby={
-                    discountProblem ? "service-fee-help fee-below-discount" : "service-fee-help"
-                  }
-                  onChange={(e) => setRate(e.target.value)}
-                />
-                <span
-                  aria-hidden
-                  className="text-body text-text-muted pointer-events-none absolute inset-y-0 right-3 flex items-center"
-                >
-                  %
-                </span>
-              </div>
-              <FieldDescription id="service-fee-help">{RATE_HELP}</FieldDescription>
-              {discountProblem ? (
-                <p
-                  id="fee-below-discount"
-                  className="text-body text-error m-0 max-w-prose"
-                  data-testid="fee-below-discount"
-                >
-                  This fee is below the {formatRatePercent(draftDiscountBps)} organization
-                  discount, which is paid out of it. Raise the fee to at least{" "}
-                  {formatRatePercent(draftDiscountBps)}, or lower the discount under
-                  Organization discount below.
-                </p>
-              ) : null}
-            </Field>
-            <p className="text-body text-text-secondary m-0" data-testid="rate-in-force">
-              In force right now:{" "}
-              <span
-                className="text-text-primary tabular-nums"
-                style={{ fontFamily: "var(--font-medium)" }}
-              >
-                {formatRatePercent(settings.serviceFeeRateBps)}
-              </span>
-              {draftRateBps !== settings.serviceFeeRateBps ? (
-                <>
-                  {" "}
-                  &middot; after saving:{" "}
-                  <span
-                    className="text-text-primary tabular-nums"
-                    style={{ fontFamily: "var(--font-medium)" }}
-                  >
-                    {formatRatePercent(draftRateBps)}
-                  </span>
-                </>
-              ) : null}
+      {feeSchedule ? (
+        <>
+          <ServiceFeeBrackets
+            settings={settings}
+            canEdit
+            disabled={busy}
+            onSaved={(next) => {
+              settingsRef.current = next;
+              setSettings(next);
+            }}
+            onConflict={() => load(true)}
+          />
+          <section className="gg-card p-3" aria-labelledby="service-fee-checkout-heading">
+            <h2 id="service-fee-checkout-heading" className="text-h3 text-text-primary m-0">
+              Service fee on checkout
+            </h2>
+            <p className="text-body text-text-primary m-0 mt-1 max-w-prose">
+              {SERVICE_FEE_VISIBILITY}
             </p>
-          </FieldGroup>
+            <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+              <FieldGroup>
+                <Field orientation="horizontal">
+                  <FieldLabel htmlFor="service-fee-visible">Show on client checkout</FieldLabel>
+                  <Switch
+                    id="service-fee-visible"
+                    checked={feeVisible}
+                    onCheckedChange={(checked) => setFeeVisible(Boolean(checked))}
+                    aria-label="Show on client checkout"
+                  />
+                </Field>
+              </FieldGroup>
+              <WorkedReceipts
+                rateBps={draftRateBps}
+                schedule={feeSchedule}
+                feeVisible={feeVisible}
+              />
+            </div>
+          </section>
+        </>
+      ) : (
+        <section className="gg-card p-3" aria-labelledby="service-fee-heading">
+          <h2 id="service-fee-heading" className="text-h3 text-text-primary m-0">
+            Service fee
+          </h2>
+          <p className="text-body text-text-secondary m-0 mt-1 max-w-prose">
+            {SERVICE_FEE_COPY}
+          </p>
+          <p className="text-body text-text-primary m-0 mt-2 max-w-prose">
+            {SERVICE_FEE_VISIBILITY}
+          </p>
 
-          <WorkedReceipts rateBps={draftRateBps} feeVisible={feeVisible} />
-        </div>
-      </section>
+          <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+            <FieldGroup>
+              <Field orientation="horizontal">
+                <FieldLabel htmlFor="service-fee-visible">Show on client checkout</FieldLabel>
+                <Switch
+                  id="service-fee-visible"
+                  checked={feeVisible}
+                  onCheckedChange={(checked) => setFeeVisible(Boolean(checked))}
+                  aria-label="Show on client checkout"
+                />
+              </Field>
+              <Field data-invalid={rateInvalid || discountProblem ? true : undefined}>
+                <FieldLabel htmlFor="service-fee-rate">Rate on the shop price</FieldLabel>
+                <div className="relative max-w-40">
+                  <Input
+                    id="service-fee-rate"
+                    inputMode="decimal"
+                    className="pr-9"
+                    value={rate}
+                    aria-invalid={rateInvalid || discountProblem ? true : undefined}
+                    aria-describedby={
+                      discountProblem ? "service-fee-help fee-below-discount" : "service-fee-help"
+                    }
+                    onChange={(e) => setRate(e.target.value)}
+                  />
+                  <span
+                    aria-hidden
+                    className="text-body text-text-muted pointer-events-none absolute inset-y-0 right-3 flex items-center"
+                  >
+                    %
+                  </span>
+                </div>
+                <FieldDescription id="service-fee-help">{RATE_HELP}</FieldDescription>
+                {discountProblem ? (
+                  <p
+                    id="fee-below-discount"
+                    className="text-body text-error m-0 max-w-prose"
+                    data-testid="fee-below-discount"
+                  >
+                    This fee is below the {formatRatePercent(draftDiscountBps)} organization
+                    discount, which is paid out of it. Raise the fee to at least{" "}
+                    {formatRatePercent(draftDiscountBps)}, or lower the discount under
+                    Organization discount below.
+                  </p>
+                ) : null}
+              </Field>
+              <p className="text-body text-text-secondary m-0" data-testid="rate-in-force">
+                In force right now:{" "}
+                <span
+                  className="text-text-primary tabular-nums"
+                  style={{ fontFamily: "var(--font-medium)" }}
+                >
+                  {formatRatePercent(settings.serviceFeeRateBps)}
+                </span>
+                {draftRateBps !== settings.serviceFeeRateBps ? (
+                  <>
+                    {" "}
+                    &middot; after saving:{" "}
+                    <span
+                      className="text-text-primary tabular-nums"
+                      style={{ fontFamily: "var(--font-medium)" }}
+                    >
+                      {formatRatePercent(draftRateBps)}
+                    </span>
+                  </>
+                ) : null}
+              </p>
+            </FieldGroup>
+
+            <WorkedReceipts rateBps={draftRateBps} feeVisible={feeVisible} />
+          </div>
+        </section>
+      )}
 
       <OrganizationDiscount
         value={orgDiscount}
@@ -700,6 +752,7 @@ export function OperationalSettings() {
         inForceBps={settings.organizationDiscountRateBps}
         draftBps={draftDiscountBps}
         feeBps={draftRateBps}
+        feeSchedule={feeSchedule}
         invalid={discountInvalid}
         problem={discountProblem}
       />
@@ -1082,13 +1135,27 @@ function Receipt({
  * most, with "Show on client checkout" on, a named row with no amount, since
  * its pesos are already inside the price of the work.
  */
-function WorkedReceipts({ rateBps, feeVisible }: { rateBps: number; feeVisible: boolean }) {
-  const example = workedExample(rateBps);
+function WorkedReceipts({
+  rateBps,
+  schedule = null,
+  feeVisible,
+}: {
+  rateBps: number;
+  /** The bracket table in force; null prices the flat rate. */
+  schedule?: ServiceFeeSchedule | null;
+  feeVisible: boolean;
+}) {
+  const example = workedExample(
+    rateBps,
+    schedule ? { feeFor: (price) => serviceFeeFor(price, schedule).grossServiceFeeMinor } : {},
+  );
+  // Under brackets no single rate describes the fee, so none is named.
+  const rateWords = schedule ? "" : formatRatePercent(rateBps);
   return (
     <div aria-label="Worked example" className="flex min-w-0 flex-col gap-2">
       <p className="text-caption text-text-muted m-0">
         A {formatPhp(example.shopPriceMinor)} job with {formatPhp(example.deliveryFeeMinor)}{" "}
-        delivery, at {formatRatePercent(rateBps)}
+        delivery, {rateWords ? `at ${rateWords}` : "under the brackets in force"}
       </p>
       <div className="grid gap-2 sm:grid-cols-2">
         <Receipt
@@ -1102,7 +1169,12 @@ function WorkedReceipts({ rateBps, feeVisible }: { rateBps: number; feeVisible: 
           lines={[
             { label: "Items", value: formatPhp(example.clientItemsMinor) },
             ...(feeVisible
-              ? [{ label: `Service fee · ${formatRatePercent(rateBps)}`, value: "Included" }]
+              ? [
+                  {
+                    label: rateWords ? `Service fee · ${rateWords}` : "Service fee",
+                    value: "Included",
+                  },
+                ]
               : []),
             { label: "Delivery", value: formatPhp(example.deliveryFeeMinor) },
             { label: "Total", value: formatPhp(example.clientTotalMinor), total: true },
@@ -1115,7 +1187,7 @@ function WorkedReceipts({ rateBps, feeVisible }: { rateBps: number; feeVisible: 
           lines={[
             { label: "Shop price", value: formatPhp(example.shopPriceMinor) },
             {
-              label: `Service fee (${formatRatePercent(rateBps)})`,
+              label: rateWords ? `Service fee (${rateWords})` : "Service fee",
               value: formatPhp(example.serviceFeeMinor),
               emphasis: true,
             },

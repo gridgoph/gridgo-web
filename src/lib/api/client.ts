@@ -86,6 +86,8 @@ import type {
   TaxonomyMaterial,
   TaxonomySubcategory,
   UpdateSettingsInput,
+  ServiceFeePreview,
+  ServiceFeePreviewInput,
   UpdateSupplierServiceInput,
   UpdateZoneInput,
   ApprovalCaseDetail,
@@ -941,6 +943,20 @@ export async function updateSettings(
       body: JSON.stringify(input),
     }),
   );
+}
+
+/**
+ * Ops / Super Admin, read-only. The six reference shop prices under today's
+ * service fee table and under `serviceFeeBrackets`. Writes nothing. A stale
+ * `expectedVersion` is `409 settings_version_conflict`, as on save.
+ */
+export async function previewServiceFee(
+  input: ServiceFeePreviewInput,
+): Promise<ServiceFeePreview> {
+  return request<ServiceFeePreview>("/settings/service-fee/preview", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 // ---------------------------------------------------------------------------
