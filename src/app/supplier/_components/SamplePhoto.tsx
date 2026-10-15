@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent, type WheelEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode, type WheelEvent } from "react";
 
 import {
   Dialog,
@@ -114,7 +114,15 @@ export function SamplePhoto({
  * picture. Samples need a closer look than a QR, so the picture itself scales
  * instead of only growing the frame.
  */
-function ZoomablePhoto({ src, alt }: { src: string; alt: string }) {
+export function ZoomablePhoto({
+  src,
+  alt,
+  children,
+}: {
+  src?: string;
+  alt: string;
+  children?: ReactNode;
+}) {
   const frameRef = useRef<HTMLDivElement>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const pinch = useRef<{ distance: number; scale: number } | null>(null);
@@ -205,16 +213,25 @@ function ZoomablePhoto({ src, alt }: { src: string; alt: string }) {
       onPointerCancel={onPointerUp}
       onDoubleClick={onDoubleClick}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={alt}
-        draggable={false}
-        className="max-h-[70vh] w-full max-w-full origin-center object-contain select-none"
-        style={{
-          transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
-        }}
-      />
+      {children ? (
+        <div
+          className="h-[70vh] w-full origin-center"
+          style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }}
+        >
+          {children}
+        </div>
+      ) : (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={alt}
+          draggable={false}
+          className="max-h-[70vh] w-full max-w-full origin-center object-contain select-none"
+          style={{
+            transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+          }}
+        />
+      )}
     </div>
   );
 }

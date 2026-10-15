@@ -552,6 +552,10 @@ export type ProductionItem = {
   measurement: OrderLineMeasurement | null;
   structuredSpec?: Record<string, unknown>;
   options?: Array<{ groupName: string; label: string }>;
+  /** Ops / Super Admin. The shop's stored unit price and line total. */
+  effectiveUnitPriceMinor?: number | null;
+  lineSubtotalMinor?: number | null;
+  documentPages?: { total?: number | null; range?: string | null; printed?: number | null } | null;
   artworkFileId?: string | null;
   /** Design links on this line; `[]` when none, absent on an older API. */
   artworkLinks?: ArtworkLink[];
@@ -810,6 +814,27 @@ export type Order = {
   } | null;
   /** The hub's schedule and fee as snapshotted at checkout, on a pick-up order. */
   hubPickup?: HubPickup | null;
+  /** Ops / Super Admin. Set when Operations holds the file and tells the client. */
+  qaHold?: { at: string; by: string; reason: string } | null;
+  /** Free text the client wrote, when the order stored it. */
+  specialInstructions?: string | null;
+  notes?: string | null;
+  /** Optional landmark kept beside the composed address. */
+  landmark?: string | null;
+  /** Present only when a pin check already recorded one of these. */
+  pinWarning?: string | null;
+  pinFarFromAddress?: boolean;
+  outsideDeliveryArea?: boolean;
+  dropoffConfirmation?: {
+    status: string;
+    requestedAt?: string;
+    answeredAt?: string | null;
+    point?: MapPoint | null;
+    requestedPoint?: MapPoint | null;
+    warning?: string | null;
+    farFromAddress?: boolean;
+    outsideArea?: boolean;
+  } | null;
   /** Already inside `deliveryFeeMinor` on a pick-up order. Never add the two. */
   pickupFeeMinor?: number;
 };
@@ -1158,6 +1183,10 @@ export type PlatformSettings = {
   hubPickup?: HubPickup;
   /** Manual QR checkout. `imageUrl` is the replaceable plate. */
   paymentQr?: PaymentQr;
+  /** Super Admin pricing dashboard. Monthly fixed costs in centavos. */
+  pricingFixedCostsMinor?: number | null;
+  /** Super Admin pricing dashboard. Payment-fee rate in basis points. */
+  pricingPaymentFeeBps?: number | null;
 };
 
 export type UpdateSettingsInput = {
@@ -1181,6 +1210,10 @@ export type UpdateSettingsInput = {
   handoverOtpEnabled?: boolean;
   /** Super Admin only, always `{schedule, feeMinor}`; the point is read-only. */
   hubPickup?: Pick<HubPickup, "schedule" | "feeMinor">;
+  /** Pricing dashboard. Whole centavos of monthly fixed cost. */
+  pricingFixedCostsMinor?: number | null;
+  /** Pricing dashboard. Payment fee in basis points, 0–10,000. */
+  pricingPaymentFeeBps?: number | null;
   reason?: string;
 };
 
@@ -1345,6 +1378,17 @@ export type DetectedArtwork = {
   /** "A4", "Letter" — null when the size matches no name GRIDGO knows. */
   pageSize: string | null;
   orientation: "portrait" | "landscape" | "square" | null;
+  /**
+   * Read at upload when the bytes said so. Absent or null means the file
+   * did not say — the desk does not invent a colour mode, a font list or bleed.
+   */
+  colorMode?: "cmyk" | "rgb" | "gray" | "mixed" | "indexed" | "icc" | "spot" | null;
+  fonts?: { name: string; embedded: boolean }[] | null;
+  /** Smallest bleed margin, in thousandths of a millimetre. */
+  bleedMilli?: number | null;
+  hasAlpha?: boolean | null;
+  /** The warning a client accepted while uploading, when that record was stored. */
+  acceptedWarning?: { at: string; message?: string | null } | null;
 };
 
 /**
@@ -1715,10 +1759,16 @@ export type AuditEntry = {
   at: string;
   actorId: string | null;
   actorRole: string | null;
+  /** Copied from the user row when the entry was written. A later rename does not change it. */
+  actorName?: string | null;
+  /** The app role header and the device that sent the request, when the request had them. */
+  source?: { app?: string | null; device?: string | null } | null;
   action: string;
   entityType: string | null;
   entityId: string | null;
   orderId: string | null;
+  previous?: unknown;
+  current?: unknown;
   detail: Record<string, unknown> | null;
   reason: string | null;
 };

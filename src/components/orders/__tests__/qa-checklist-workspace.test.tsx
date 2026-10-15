@@ -73,6 +73,16 @@ beforeEach(() => {
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const path = new URL(String(input), "http://gridgo.test").pathname;
+      if (init?.method === "POST" && (path.endsWith("/qa-checks") || path.endsWith("/qa-actions"))) {
+        return json({ ok: true, threadId: "thread" });
+      }
+      if (init?.method === "POST" && path.endsWith("/artwork-downloads")) {
+        return json({ files: [] });
+      }
+      if (path.startsWith("/files/") && path.endsWith("/download-url")) {
+        return json({ url: "https://files.test/artwork" });
+      }
+      if (path.startsWith("/files/")) return json({ file: { fileId: path.split("/")[2], originalFilename: "flyer.pdf", detectedContentType: "application/pdf", state: "ready", detected: null } });
       if (init?.method === "POST") {
         const body = JSON.parse(String(init.body));
         posts.push(body);
@@ -134,16 +144,10 @@ it.each(["ops", "admin"])(
   async (tree) => {
     const qa = await openQuality(tree);
     capture(`reviewed-${tree}`);
-    expect(
-      qa.getByText("Artwork opens and is high enough resolution"),
-    ).toBeInTheDocument();
-    expect(
-      qa.getByText("Specification matches what the client ordered"),
-    ).toBeInTheDocument();
-    expect(qa.getByText("Quantity looks deliberate")).toBeInTheDocument();
-    expect(
-      qa.getByText("Delivery address is somewhere a rider can go"),
-    ).toBeInTheDocument();
+    expect(qa.getByText("Artwork is print-ready")).toBeInTheDocument();
+    expect(qa.getByText("Specifications match the order")).toBeInTheDocument();
+    expect(qa.getByText("Quantity is intentional and not mistaken")).toBeInTheDocument();
+    expect(qa.getByText("Rider can reach the delivery address")).toBeInTheDocument();
     expect(qa.getAllByText("Checked")).toHaveLength(4);
     expect(await qa.findByText(/Reviewed by Test operator/)).toHaveTextContent(/Oct 7/);
     expect(qa.queryByRole("checkbox")).toBeNull();
@@ -207,7 +211,10 @@ it.each(["approve", "send back"])(
     const boxes = qa.getAllByRole("checkbox");
     const approve = qa.getByRole("button", { name: "Approve and send to the shop" });
     expect(approve).toBeDisabled();
-    for (const box of action === "approve" ? boxes : boxes.slice(1)) fireEvent.click(box);
+    for (const box of action === "approve" ? boxes : boxes.slice(1)) {
+      fireEvent.click(box);
+      await waitFor(() => expect(box).toBeChecked());
+    }
     capture(`review-form-${action.replace(" ", "-")}`);
     if (action === "approve") fireEvent.click(approve);
     else {
@@ -224,6 +231,14 @@ it.each(["approve", "send back"])(
 );
 
 it("uses the existing pickup and design-link check wording", async () => {
+  order.state = "needs_qa";
+  order.fileCheck = {
+    ...order.fileCheck!,
+    status: "pending",
+    reviewedAt: null,
+    reviewedBy: null,
+    checklist: null,
+  };
   order.requestFulfillment = { fulfillmentMode: "pickup" } as Order["requestFulfillment"];
   order.productionItems = [
     { id: "line", artworkLinks: [{ url: "https://example.com/design/view" }] },
@@ -232,10 +247,7 @@ it("uses the existing pickup and design-link check wording", async () => {
   expect(
     qa.getByText("Client collects at the GRIDGO counter (Pick-up)"),
   ).toBeInTheDocument();
-  expect(
-    qa.getByText(
-      "Design link opens without signing in, and the design is high enough resolution",
-    ),
-  ).toBeInTheDocument();
+  expect(qa.getByText("Artwork is print-ready")).toBeInTheDocument();
+  expect(qa.getByText("Design link: open it to get the file")).toBeInTheDocument();
   capture("pickup-link");
 });

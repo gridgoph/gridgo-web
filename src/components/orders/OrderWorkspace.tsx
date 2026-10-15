@@ -76,12 +76,13 @@ import { Button } from "@/components/ui/button";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonDetail } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
-import { Textarea } from "@/components/ui/textarea";
 import { installmentsAwaitingConfirmation } from "@/lib/api/constraints";
 import { counterRow, counterStep } from "@/lib/counter-check";
 import { deliveryEvidenceItems } from "@/lib/evidence";
 import { artworkSource, orderDesignLinks } from "@/lib/design-links";
-import { QaChecklistRecord, QaChecklistFields } from "./QaChecklist";
+import { OrderAudit } from "./OrderAudit";
+import { QaChecklistRecord } from "./QaChecklist";
+import { QualityReview } from "./QualityReview";
 import {
   fileCheckOf,
   fileCheckWaitLine,
@@ -178,7 +179,8 @@ type SectionId =
   | "payout"
   | "refund"
   | "physical-invoice"
-  | "history";
+  | "history"
+  | "audit";
 
 /**
  * One order, as a sequence of steps with everything about it beside them.
@@ -651,6 +653,15 @@ export function OrderWorkspace({
                       }),
                     )
                   }
+                  onRequestFile={() =>
+                    run("request-file", () =>
+                      transitionOrder(order.id, "client_correction", {
+                        note,
+                        qaChecklist: qaChecklistPayload(checked),
+                        qaAction: "request_file",
+                      }),
+                    )
+                  }
                   onCancel={() =>
                     run("cancel", () =>
                       transitionOrder(order.id, "cancelled", { reason: note }),
@@ -818,6 +829,15 @@ export function OrderWorkspace({
               marker={{ icon: CircleDot, tone: "muted" }}
             >
               <Timeline entries={order.timeline} order={order} />
+            </SectionRow>
+
+            <SectionRow
+              id="audit"
+              heading="Audit record"
+              summary="Who changed this order, and what it was before."
+              marker={{ icon: CircleDot, tone: "muted" }}
+            >
+              <OrderAudit orderId={order.id} />
             </SectionRow>
           </Accordion>
 
@@ -1094,6 +1114,7 @@ type StepRowProps = {
   onRejectBasket: (reason: string) => void;
   onApprove: () => void;
   onCorrection: () => void;
+  onRequestFile: () => void;
   onCancel: () => void;
   corrections: ProductionCorrection[];
   names: Record<string, string>;
@@ -1117,6 +1138,7 @@ function StepRow({
   onRejectBasket,
   onApprove,
   onCorrection,
+  onRequestFile,
   onCancel,
   corrections,
   names,
@@ -1184,18 +1206,14 @@ function StepRow({
                 <DesignLinkList links={designLinks} />
               </div>
             ) : null}
-            <QaChecklistFields
+            <QualityReview
               order={order}
               checked={checked}
               onCheck={onCheck}
               disabled={busy}
-            />
-            <Textarea
-              value={note}
-              onChange={(event) => onNote(event.target.value)}
-              placeholder="What the client needs to change, or why this is being cancelled"
-              rows={2}
-              aria-label="Note to the client"
+              note={note}
+              onNote={onNote}
+              onRequestFile={onRequestFile}
             />
             <div className="flex flex-wrap gap-2">
               <Button

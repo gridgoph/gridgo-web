@@ -1,11 +1,8 @@
 /**
- * The audit log is Super Admin only (gridgo-web#112). Operations keeps two
- * records on its workspaces, the production override and the file-deletion
- * bylines, because the API lets it read only these scopes: `action` equal to
- * one of the three below, or `entityType: "file"` with an `entityId`. Anything
- * else answers 403 for Operations. Every `listAudit` call outside the Super
- * Admin tree must therefore name one of them, or Operations silently loses
- * the record.
+ * The full audit log is Super Admin only. Operations may read one order
+ * (`orderId`), a file by id, or the production-override and file-deletion
+ * actions. Anything else answers 403. Every `listAudit` call outside the
+ * Super Admin tree must stay inside those scopes.
  */
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -52,7 +49,8 @@ function auditCalls(source: string): string[] {
 function allowedForOperations(args: string): boolean {
   const action = /action:\s*([A-Z_]+|"[^"]+")/.exec(args)?.[1];
   if (action && ALLOWED_ACTIONS.has(action)) return true;
-  return /entityType:\s*"file"/.test(args) && /entityId:/.test(args);
+  if (/entityType:\s*"file"/.test(args) && /entityId:/.test(args)) return true;
+  return /\borderId\b/.test(args) && !/actionQuery:/.test(args) && !/\bactor:/.test(args);
 }
 
 describe("audit reads outside the Super Admin tree", () => {
@@ -70,6 +68,7 @@ describe("audit reads outside the Super Admin tree", () => {
     expect(calls.map((call) => call.file).sort()).toEqual([
       "src/components/files/DeletedFile.tsx",
       "src/components/files/OrderFileDeletions.tsx",
+      "src/components/orders/OrderAudit.tsx",
       "src/components/orders/OrderWorkspace.tsx",
     ]);
   });

@@ -48,6 +48,7 @@ export type NavIconKey =
   | "zones"
   | "credits"
   | "finance"
+  | "pricing"
   | "planning"
   | "seasons"
   | "broadcast"
@@ -601,6 +602,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Finance",
           title: "Finance",
           icon: "finance",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-pricing",
+          href: "/admin/pricing",
+          label: "Pricing",
+          title: "Pricing",
+          icon: "pricing",
           ready: true,
           placeholderBody: "",
         },

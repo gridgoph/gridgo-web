@@ -5,7 +5,9 @@ import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { LiveContext, type LiveContextValue } from "@/lib/live/LiveProvider";
 import type { InvalidatePing, SupplierService } from "@/lib/api/types";
+import { formatPhp } from "@/lib/format";
 import OpsApprovals from "@/app/ops/service-lines/page";
+import { ServiceLines } from "@/components/approvals/ServiceLines";
 vi.stubGlobal("React", React);
 const list = vi.hoisted(() => vi.fn<() => Promise<SupplierService[]>>(async () => []));
 const listUsers = vi.hoisted(() => vi.fn(async () => []));
@@ -103,3 +105,34 @@ it.each(["approvals", "services", "identity"] as const)(
     expect(screen.queryByText("No service lines")).not.toBeInTheDocument();
   },
 );
+
+it("renders a service line that omits catalogue arrays and pricing basis", async () => {
+  list.mockResolvedValue([
+    {
+      id: "service_old",
+      supplierId: "user_old_shop",
+      categoryCode: "flyers",
+      state: "pending_verification",
+      referenceRateMinor: 0,
+      productFamilyIds: [],
+      sizeMin: null,
+      sizeMax: null,
+      qtyMin: null,
+      qtyMax: null,
+      turnaroundHours: 24,
+      capacityDaily: null,
+      capacityWeekly: null,
+      equipmentNotes: "",
+      verifiedAt: null,
+      suspendedAt: null,
+      suspendReason: null,
+      withdrawnAt: null,
+      createdAt: "2026-09-15T00:00:00Z",
+      updatedAt: "2026-09-15T00:00:00Z",
+    } as SupplierService,
+  ]);
+  render(<ServiceLines />);
+  expect(await screen.findByText("flyers")).toBeInTheDocument();
+  expect(screen.getByText("user_old_shop")).toBeInTheDocument();
+  expect(document.body.textContent).toContain(formatPhp(0));
+});

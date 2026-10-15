@@ -161,7 +161,7 @@ it("sends a file back only with a reason the client reads", async () => {
 
   fireEvent.click(
     within(dialog).getByRole("checkbox", {
-      name: "Specification matches what the client ordered",
+      name: "Specifications match the order",
     }),
   );
   fireEvent.change(within(dialog).getByLabelText("What the client needs to fix"), {

@@ -81,6 +81,7 @@ describe("ROLE_NAV", () => {
       "/admin/listing-reviews",
       "/admin/zones",
       "/admin/finance",
+      "/admin/pricing",
       "/admin/refunds",
       "/admin/organizations",
       "/admin/late-production",
@@ -122,6 +123,7 @@ describe("ROLE_NAV", () => {
       "/admin/organizations",
       "/admin/overview",
       "/admin/planning",
+      "/admin/pricing",
       "/admin/refunds",
       "/admin/riders",
       "/admin/roles",
@@ -275,6 +277,7 @@ describe("ROLE_NAV", () => {
         ?.items.map((n) => n.href),
     ).toEqual([
       "/admin/finance",
+      "/admin/pricing",
       "/admin/refunds",
       "/admin/organizations",
       "/admin/late-production",

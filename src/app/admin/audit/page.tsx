@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/select";
 import { listAudit } from "@/lib/api/client";
 import type { AuditEntry } from "@/lib/api/types";
+import { auditCsv, itemOf, whereOf } from "@/lib/audit-csv";
 import { formatDateTime } from "@/lib/format";
 
 const ENTITY_FILTERS = [
@@ -47,6 +48,9 @@ export default function AdminAuditPage() {
   const [entityType, setEntityType] = useState<string>("all");
   const [actionQuery, setActionQuery] = useState("");
   const [actorQuery, setActorQuery] = useState("");
+  const [orderQuery, setOrderQuery] = useState("");
+  const [fromDay, setFromDay] = useState("");
+  const [toDay, setToDay] = useState("");
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -55,7 +59,12 @@ export default function AdminAuditPage() {
       try {
         const data = await listAudit({
           entityType: entityType === "all" ? undefined : entityType,
-          limit: 200,
+          actor: actorQuery.trim() || undefined,
+          actionQuery: actionQuery.trim() || undefined,
+          orderId: orderQuery.trim() || undefined,
+          from: fromDay ? `${fromDay}T00:00:00.000Z` : undefined,
+          to: toDay ? `${toDay}T23:59:59.999Z` : undefined,
+          limit: 500,
         });
         setEntries(data);
       } catch (err) {
@@ -69,7 +78,7 @@ export default function AdminAuditPage() {
       } finally {
         setLoading(false);
       }
-    }, [entityType]),
+    }, [entityType, actorQuery, actionQuery, orderQuery, fromDay, toDay]),
   );
 
   useLiveReload(["orders", "claims", "payouts", "identity", "settings"], load);
@@ -78,25 +87,20 @@ export default function AdminAuditPage() {
     void load();
   }, [load]);
 
-  const filtered = useMemo(() => {
-    if (!entries) return [];
-    const actionQ = actionQuery.trim().toLowerCase();
-    const actorQ = actorQuery.trim().toLowerCase();
-    return entries.filter((e) => {
-      if (actionQ) {
-        const label = presentAuditAction(e.action).toLowerCase();
-        if (!label.includes(actionQ) && !e.action.toLowerCase().includes(actionQ)) {
-          return false;
-        }
-      }
-      if (actorQ) {
-        const role = presentActorRole(e.actorRole).toLowerCase();
-        const id = (e.actorId ?? "").toLowerCase();
-        if (!role.includes(actorQ) && !id.includes(actorQ)) return false;
-      }
-      return true;
-    });
-  }, [entries, actionQuery, actorQuery]);
+  const filtered = entries ?? [];
+
+  function downloadCsv() {
+    if (!entries) return;
+    const blob = new Blob([auditCsv(entries)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "audit-log.csv";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  }
 
   const columns = useMemo<DataTableColumn<AuditEntry>[]>(
     () => [
@@ -130,6 +134,14 @@ export default function AdminAuditPage() {
             {e.reason ? (
               <p className="text-caption text-text-muted m-0 mt-0.5">{e.reason}</p>
             ) : null}
+            {whereOf(e) ? (
+              <p className="text-caption text-text-muted m-0 mt-0.5">{whereOf(e)}</p>
+            ) : null}
+            <p className="text-caption text-text-muted m-0 mt-0.5">
+              {itemOf(e) || "—"}
+              {e.previous != null ? ` · was ${typeof e.previous === "string" ? e.previous : JSON.stringify(e.previous)}` : ""}
+              {e.current != null ? ` · now ${typeof e.current === "string" ? e.current : JSON.stringify(e.current)}` : ""}
+            </p>
           </div>
         ),
       },
@@ -139,14 +151,12 @@ export default function AdminAuditPage() {
         sortValue: (e) => presentActorRole(e.actorRole),
         cell: (e) => {
           const role = presentActorRole(e.actorRole);
-          const account = e.actorId ? e.actorId.replace(/^user_/, "") : "";
+          const name = e.actorName || (e.actorId ? e.actorId.replace(/^user_/, "") : "");
           return (
             <div>
-              <p className="text-body text-text-primary m-0">{role}</p>
-              {/* The account line only earns its place when it is not the role
-                  label repeated back. */}
-              {account && account.toLowerCase() !== role.toLowerCase() ? (
-                <p className="text-caption text-text-muted m-0 mt-0.5">{account}</p>
+              <p className="text-body text-text-primary m-0">{name || role}</p>
+              {name && name.toLowerCase() !== role.toLowerCase() ? (
+                <p className="text-caption text-text-muted m-0 mt-0.5">{role}</p>
               ) : null}
             </div>
           );
@@ -199,18 +209,22 @@ export default function AdminAuditPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="max-w-prose">
           <p className="text-body text-text-secondary m-0">
-            Platform-wide audit trail for role changes, verification, grants, zones,
-            taxonomy, claims, and issues. Per-order history stays on each order’s
-            timeline.
+            One record of who did what, when, and from which app. Entries are not
+            edited or deleted. An order’s own entries also show on that order.
           </p>
           <p className="text-caption text-text-muted m-0 mt-2">
             Policy configuration is not exposed by the demo API, so this screen is the
             audit log only — no silent policy controls.
           </p>
         </div>
-        <Button variant="secondary" disabled={loading} onClick={() => void load()}>
-          Refresh
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" disabled={loading || !entries} onClick={downloadCsv}>
+            Download CSV
+          </Button>
+          <Button variant="secondary" disabled={loading} onClick={() => void load()}>
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <section className="gg-card" aria-labelledby="filters-heading">
@@ -248,13 +262,30 @@ export default function AdminAuditPage() {
             />
           </Field>
           <Field>
-            <FieldLabel htmlFor="audit-actor">Actor contains</FieldLabel>
+            <FieldLabel htmlFor="audit-actor">Person</FieldLabel>
             <Input
               id="audit-actor"
               value={actorQuery}
               onChange={(e) => setActorQuery(e.target.value)}
-              placeholder="e.g. Super Admin, admin"
+              placeholder="Name or account"
             />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="audit-order">Order</FieldLabel>
+            <Input
+              id="audit-order"
+              value={orderQuery}
+              onChange={(e) => setOrderQuery(e.target.value)}
+              placeholder="Order id"
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="audit-from">From</FieldLabel>
+            <Input id="audit-from" type="date" value={fromDay} onChange={(e) => setFromDay(e.target.value)} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="audit-to">To</FieldLabel>
+            <Input id="audit-to" type="date" value={toDay} onChange={(e) => setToDay(e.target.value)} />
           </Field>
         </FieldGroup>
       </section>
@@ -270,6 +301,9 @@ export default function AdminAuditPage() {
                 setEntityType("all");
                 setActionQuery("");
                 setActorQuery("");
+                setOrderQuery("");
+                setFromDay("");
+                setToDay("");
                 void load();
               }}
             >

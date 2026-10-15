@@ -275,14 +275,34 @@ export function EvidencePlate({
 /** Long enough for any browser to have started the save from the blob. */
 const REVOKE_AFTER_MS = 10_000;
 
-function FileDownload({
+export async function saveRemoteFile(url: string, filename: string): Promise<void> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("download failed");
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  try {
+    anchor.click();
+  } finally {
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), REVOKE_AFTER_MS);
+  }
+}
+
+export function FileDownload({
   fileId,
   filename,
   featured,
+  resolveUrl,
 }: {
   fileId: string;
   filename: string;
   featured: boolean;
+  /** When set, this request is the audited download instead of the plain signed link. */
+  resolveUrl?: () => Promise<string>;
 }) {
   const [failed, setFailed] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -299,23 +319,8 @@ function FileDownload({
     setFailed(false);
     setSaving(true);
     try {
-      const url = await getFileDownloadUrl(fileId);
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("download failed");
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = objectUrl;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      try {
-        anchor.click();
-      } finally {
-        anchor.remove();
-        // Safari and some Firefox builds drop a save whose URL is revoked in
-        // the same task as the click, so let the save start first.
-        setTimeout(() => URL.revokeObjectURL(objectUrl), REVOKE_AFTER_MS);
-      }
+      const url = resolveUrl ? await resolveUrl() : await getFileDownloadUrl(fileId);
+      await saveRemoteFile(url, filename);
     } catch {
       if (live.current) setFailed(true);
     } finally {

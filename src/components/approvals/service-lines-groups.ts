@@ -192,23 +192,27 @@ export function presentLineFacts(
 ): string[] {
   const facts: string[] = [];
   const materialsAndFinishes = [
-    ...line.materialCodes.map(
+    ...(line.materialCodes ?? []).map(
       (code) => names.materials[code] ?? code.replace(/_/g, " "),
     ),
-    ...line.finishCodes.map((code) => names.finishes[code] ?? code.replace(/_/g, " ")),
+    ...(line.finishCodes ?? []).map(
+      (code) => names.finishes[code] ?? code.replace(/_/g, " "),
+    ),
   ].filter(Boolean);
   if (materialsAndFinishes.length) facts.push(materialsAndFinishes.join(", "));
   if (line.qtyMin != null || line.qtyMax != null) {
     facts.push(`${line.qtyMin ?? "—"}–${line.qtyMax ?? "—"}`);
   }
   facts.push(productionDaysLine(line.turnaroundDays));
-  if (line.zones.length) {
+  if (line.zones?.length) {
     facts.push(line.zones.map(presentZone).join(", "));
   }
-  if (line.pricingBasis || line.referenceRateMinor != null) {
+  if (typeof line.pricingBasis === "string" && line.pricingBasis) {
     facts.push(
       `${presentPricingBasis(line.pricingBasis)} ${formatPhp(line.referenceRateMinor)}`,
     );
+  } else if (line.referenceRateMinor != null) {
+    facts.push(formatPhp(line.referenceRateMinor));
   }
   return facts;
 }
@@ -221,7 +225,7 @@ function lineMatchesFilter(
   const category = presentCategoryName(line.categoryCode, names.categories);
   if (category.toLowerCase().includes(query)) return true;
   if (line.categoryCode.replace(/_/g, " ").toLowerCase().includes(query)) return true;
-  for (const zone of line.zones) {
+  for (const zone of line.zones ?? []) {
     if (zone.toLowerCase().includes(query)) return true;
     if (presentZone(zone).toLowerCase().includes(query)) return true;
   }

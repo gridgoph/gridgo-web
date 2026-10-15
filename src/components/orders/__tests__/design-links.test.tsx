@@ -167,11 +167,7 @@ describe("design link rows", () => {
     // Once in the QA step, once in the rail.
     expect(screen.getAllByRole("list", { name: "Design links" })).toHaveLength(2);
     expect(screen.getAllByText("Design link: open it to get the file")).toHaveLength(2);
-    expect(
-      screen.getByLabelText(
-        "Design link opens without signing in, and the design is high enough resolution",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Artwork is print-ready")).toBeInTheDocument();
     expect(screen.queryByText(/no artwork/i)).not.toBeInTheDocument();
   });
 });

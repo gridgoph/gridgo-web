@@ -17,7 +17,6 @@
 
 import type { FileCheck, Order, QaCheckId, QaChecklist } from "@/lib/api/types";
 import { stageOf } from "@/app/ops/_lib/pipeline";
-import { artworkQaCheckLabel, artworkSource } from "@/lib/design-links";
 
 /** A wait this long is worth a second look (portal choice, not an API rule). */
 export const FILE_CHECK_LONG_WAIT_SECONDS = 30 * 60;
@@ -154,10 +153,10 @@ export function fileCheckWaitLine(
 
 /** Version 1 of the four Operations checks, persisted with the review. */
 export const QA_CHECKS = [
-  { id: "artwork", label: "Artwork opens and is high enough resolution" },
-  { id: "spec", label: "Specification matches what the client ordered" },
-  { id: "quantity", label: "Quantity looks deliberate" },
-  { id: "address", label: "Delivery address is somewhere a rider can go" },
+  { id: "artwork", label: "Artwork is print-ready" },
+  { id: "spec", label: "Specifications match the order" },
+  { id: "quantity", label: "Quantity is intentional and not mistaken" },
+  { id: "address", label: "Rider can reach the delivery address" },
 ] as const;
 
 /** The four checks in this order's own words: its artwork, and pick-up or delivery. */
@@ -166,9 +165,6 @@ export function qaChecksFor(
 ): { id: QaCheckId; label: string }[] {
   const pickup = order.requestFulfillment?.fulfillmentMode === "pickup";
   return QA_CHECKS.map((check) => {
-    if (check.id === "artwork") {
-      return { id: check.id, label: artworkQaCheckLabel(artworkSource(order)) };
-    }
     if (check.id === "address" && pickup) {
       return { id: check.id, label: "Client collects at the GRIDGO counter (Pick-up)" };
     }

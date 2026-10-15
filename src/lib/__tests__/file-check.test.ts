@@ -115,7 +115,7 @@ describe("qaChecksFor", () => {
       requestFulfillment: { fulfillmentMode: "pickup", dropoff: null },
     });
     expect(checks.map((c) => c.id)).toEqual(["artwork", "spec", "quantity", "address"]);
-    expect(checks[0].label).toMatch(/Design link opens without signing in/);
+    expect(checks[0].label).toBe("Artwork is print-ready");
     expect(checks[3].label).toMatch(/GRIDGO counter/);
   });
 });
