@@ -42,6 +42,8 @@ function fixture(partial: Partial<Order> = {}): Order {
     promisedDate: null,
     artworkName: null,
     artworkFileIds: [],
+    // One link per line: an older order the attachment list leaves alone
+    // (several entries on one line read as the list, artwork-attachments.test).
     productionItems: [
       {
         id: "line1",
@@ -49,7 +51,15 @@ function fixture(partial: Partial<Order> = {}): Order {
         quantity: 500,
         measurement: null,
         artworkFileId: null,
-        artworkLinks: [CANVA, DRIVE],
+        artworkLinks: [CANVA],
+      },
+      {
+        id: "line2",
+        itemName: "Posters",
+        quantity: 50,
+        measurement: null,
+        artworkFileId: null,
+        artworkLinks: [DRIVE],
       },
     ],
     createdAt: AT,
@@ -138,6 +148,14 @@ describe("design link rows", () => {
               quantity: 500,
               measurement: null,
               artworkFileId: "file_art",
+              artworkLinks: [],
+            },
+            {
+              id: "line2",
+              itemName: "Posters",
+              quantity: 50,
+              measurement: null,
+              artworkFileId: null,
               artworkLinks: [CANVA],
             },
           ],

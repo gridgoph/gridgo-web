@@ -557,7 +557,31 @@ export type ArtworkLinkFormat =
 export type ArtworkLink = {
   formatCode: ArtworkLinkFormat | (string & {});
   url: string;
+  /** The client's own name for it ("Logo design"); absent when they gave none. */
+  label?: string | null;
 };
+
+/**
+ * One entry in a line's ordered artwork: an uploaded file or a design link,
+ * each with an optional client label ("Front", "Back", "Logo PDF"). At most
+ * ten per line, in the client's order; the first file is `artworkFileId`.
+ * File entries carry a short-lived signed link when the API could sign one.
+ * Contract: "Multiple artwork attachments" in `gridgo-api/docs/ORDER_MATCH_API.md`.
+ */
+export type ArtworkAttachment =
+  | {
+      kind: "file";
+      fileId: string;
+      label?: string | null;
+      downloadUrl?: string;
+      downloadUrlExpiresAt?: string;
+    }
+  | {
+      kind: "link";
+      formatCode: ArtworkLinkFormat | (string & {});
+      url: string;
+      label?: string | null;
+    };
 
 /** One print line on a placed order. */
 export type ProductionItem = {
@@ -572,6 +596,8 @@ export type ProductionItem = {
   artworkFileId?: string | null;
   /** Design links on this line; `[]` when none, absent on an older API. */
   artworkLinks?: ArtworkLink[];
+  /** Every file and link on this line, in order; absent on an older API. */
+  artworkAttachments?: ArtworkAttachment[];
   mockupFileId?: string | null;
   /**
    * The client's special instructions for this line (≤ 300 characters),

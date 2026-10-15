@@ -59,6 +59,7 @@ import {
   DesignLinkList,
   OrderArtwork,
 } from "@/components/orders/DesignLinks";
+import { ArtworkAttachments } from "@/components/orders/ArtworkAttachments";
 import { BasketPanel } from "@/components/orders/BasketPanel";
 import { BasketPayment } from "@/components/orders/BasketPayment";
 import { OrderMoneyLines } from "@/components/orders/OrderMoneyLines";
@@ -103,6 +104,7 @@ import {
   pinRowSummary,
   presentPinConfirmation,
 } from "@/lib/delivery-pin";
+import { showsAttachmentList } from "@/lib/artwork-attachments";
 import { artworkSource, orderDesignLinks } from "@/lib/design-links";
 import { QaChecklistRecord, QaChecklistFields } from "./QaChecklist";
 import {
@@ -1466,6 +1468,7 @@ function StepRow({
   const current = step.status === "current";
   const artwork = artworkSource(order);
   const designLinks = orderDesignLinks(order);
+  const attachmentList = showsAttachmentList(order);
   const qaChecks = qaChecksFor(order);
   const busy = acting !== null;
   // While GRIDGO is closed the API refuses a pass or a send-back on a new
@@ -1522,7 +1525,11 @@ function StepRow({
               A design link is the one piece of artwork the rail cannot show:
               the file is behind it. Put it where the check is made.
             */}
-            {designLinks.length ? (
+            {attachmentList ? (
+              // Several files and links on an item: every one of them is
+              // listed here, item by item, so each can be opened and checked.
+              <ArtworkAttachments order={order} audience="staff" review />
+            ) : designLinks.length ? (
               <div className="flex flex-col gap-2">
                 <DesignLinkLead fileToo={artwork !== "link"} />
                 <DesignLinkList links={designLinks} />
