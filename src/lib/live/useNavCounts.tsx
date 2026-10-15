@@ -40,6 +40,7 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import type { NavCountKey } from "@/lib/nav";
 import type { NavCounts } from "@/lib/nav-counts";
 import { refundNeedsStaff } from "@/lib/refunds";
+import { finishedReviewWaitingCount } from "@/lib/shop-handover";
 import { buildNeedsOperations } from "@/lib/shop-changes";
 import { needsSupplierAction } from "@/lib/supplier-actions";
 
@@ -168,6 +169,11 @@ const NAV_COUNT_SOURCES: Record<NavCountKey, CountSource> = {
       ]);
       return waiting.requests.length + working.requests.length;
     },
+  },
+  // The Finished work desk's Waiting tab, from the same orders read.
+  "finished-work-waiting": {
+    resources: ["orders", "jobs"],
+    load: async () => finishedReviewWaitingCount(await listOrders()),
   },
   // GitHub is the source, so no stream covers it. The API caches its GitHub
   // read for 60 s, so re-reading on each page move stays cheap.

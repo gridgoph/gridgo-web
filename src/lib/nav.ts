@@ -70,6 +70,7 @@ export type NavIconKey =
   | "privacy"
   | "surveys"
   | "invoices"
+  | "finished-work"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -120,7 +121,8 @@ export type NavCountKey =
   | "refunds-waiting"
   | "shop-changes-needs-ops"
   | "listing-reviews-waiting"
-  | "privacy-requests-open";
+  | "privacy-requests-open"
+  | "finished-work-waiting";
 
 /**
  * One rail section. A missing `label` is a top-level cluster (Overview / Jobs)
@@ -300,6 +302,18 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "orders-waiting",
+        },
+        {
+          // Rider-packs orders stop here until GRIDGO approves the shop's
+          // photos of the finished, unpacked work (SHOP_HANDOVER_API.md).
+          id: "ops-finished-work",
+          href: "/ops/finished-work",
+          label: "Finished work",
+          title: "Finished work",
+          icon: "finished-work",
+          ready: true,
+          placeholderBody: "",
+          count: "finished-work-waiting",
         },
         {
           id: "ops-approvals",
@@ -734,6 +748,18 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "organizations",
           ready: true,
           placeholderBody: "",
+        },
+        {
+          // The same desk as Operations': no rider is called until the
+          // shop's finished, unpacked work is approved.
+          id: "admin-finished-work",
+          href: "/admin/finished-work",
+          label: "Finished work",
+          title: "Finished work",
+          icon: "finished-work",
+          ready: true,
+          placeholderBody: "",
+          count: "finished-work-waiting",
         },
         {
           id: "admin-late-production",

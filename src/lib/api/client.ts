@@ -485,6 +485,28 @@ export async function transitionOrder(
   return normalizeOrder(result.order);
 }
 
+/** GRIDGO's answer to the shop's finished, unpacked product photos. */
+export type FinishedProductsDecision =
+  | { decision: "approved" }
+  | { decision: "rejected"; note: string };
+
+/**
+ * Approve or send back a rider-packs order's finished-product photos
+ * (Operations / Super Admin; `gridgo-api/docs/SHOP_HANDOVER_API.md`).
+ * Approval lets the shop call a rider; sending back returns the job to
+ * production and the shop reads `note` word for word.
+ */
+export async function reviewFinishedProducts(
+  orderId: string,
+  review: FinishedProductsDecision,
+): Promise<Order> {
+  const result = await request<{ order: Order }>(
+    `/orders/${encodeURIComponent(orderId)}/production-review`,
+    { method: "POST", body: JSON.stringify(review) },
+  );
+  return normalizeOrder(result.order);
+}
+
 /**
  * Release a collected order at the GRIDGO Office counter.
  *

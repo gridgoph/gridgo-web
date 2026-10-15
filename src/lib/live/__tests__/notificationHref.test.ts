@@ -57,6 +57,23 @@ describe("notificationHref", () => {
     }
   });
 
+  it("lands finished work waiting for review on the desk with that order open", () => {
+    const type = "order_finished_review_required";
+    expect(notificationHref("ops_admin", note({ type, orderId: "ord 1" }))).toBe(
+      "/ops/finished-work?order=ord%201",
+    );
+    expect(notificationHref("super_admin", note({ type, orderId: "ord_1" }))).toBe(
+      "/admin/finished-work?order=ord_1",
+    );
+    // The shop's decision notice and the rider's handover notices open the order.
+    expect(
+      notificationHref("supplier", note({ type: "order_finished_reviewed", orderId: "ord_1" })),
+    ).toBe("/supplier/jobs/ord_1");
+    expect(
+      notificationHref("ops_admin", note({ type: "order_arrived_packed", orderId: "ord_1" })),
+    ).toBe("/ops/orders/ord_1");
+  });
+
   it("opens the restored listing for the shop, and nothing for staff", () => {
     expect(
       notificationHref(

@@ -10,6 +10,7 @@ import {
   productionProgressOf,
   progressPhotos,
   signedUrlUsable,
+  staffCorrections,
 } from "@/lib/production-progress";
 import { actionsForJob, primaryAction, shopProofOutstanding } from "@/lib/supplier-actions";
 import { escrowStages, proofOnFile } from "@/test/payout-plans";
@@ -106,8 +107,68 @@ describe("audited production corrections", () => {
         from: "production",
         to: "ready_for_dispatch",
         photoMissing: true,
+        reasonCode: null,
+        skippedChecks: [],
       },
     ]);
+  });
+
+  it("reads the reason code and skipped checks a coded correction carries", () => {
+    const [correction] = productionCorrections(
+      [
+        entry({
+          detail: {
+            from: "supplier_self_qc",
+            to: "ready_for_dispatch",
+            reasonCode: "technical_issue",
+            skippedChecks: ["production_review_required", 7],
+          },
+        }),
+      ],
+      "ord_1",
+    );
+    expect(correction.reasonCode).toBe("technical_issue");
+    expect(correction.skippedChecks).toEqual(["production_review_required"]);
+  });
+
+  it("merges the order's forced steps with the uncoded corrections from before them", () => {
+    const audited = productionCorrections(
+      [
+        entry({ id: "aud_old", at: "2026-09-01T08:00:00.000Z" }),
+        // The audit copy of a forced step the order already carries.
+        entry({
+          id: "aud_new",
+          at: "2026-10-15T08:00:00.000Z",
+          detail: { from: "production", to: "ready_for_dispatch", reasonCode: "other" },
+        }),
+      ],
+      "ord_1",
+    );
+    const merged = staffCorrections(
+      [
+        {
+          at: "2026-10-15T08:00:00.000Z",
+          by: "user_ops",
+          role: "ops_admin",
+          from: "production",
+          to: "ready_for_dispatch",
+          reasonCode: "other",
+          note: "Uploads failed all day",
+          skippedChecks: ["production_finished_required", "production_review_required"],
+        },
+      ],
+      audited,
+    );
+    expect(merged.map((correction) => correction.id)).toEqual([
+      "aud_old",
+      "forced-0-2026-10-15T08:00:00.000Z",
+    ]);
+    expect(merged[1]).toMatchObject({
+      reason: "Uploads failed all day",
+      reasonCode: "other",
+      skippedChecks: ["production_finished_required", "production_review_required"],
+      photoMissing: false,
+    });
   });
 
   it("reads a failed or malformed audit read as no corrections", () => {

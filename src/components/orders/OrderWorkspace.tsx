@@ -28,7 +28,12 @@ import {
   type WorkspaceStep,
 } from "@/app/ops/_lib/pipeline";
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
-import { CorrectProductionDialog } from "@/components/orders/CorrectProductionDialog";
+import {
+  CorrectProductionDialog,
+  type ForcedStepInput,
+} from "@/components/orders/CorrectProductionDialog";
+import { FinishedReviewPanel } from "@/components/handover/FinishedReviewPanel";
+import { HandoverTimeline } from "@/components/handover/HandoverTimeline";
 import { CounterCheck } from "@/components/orders/CounterCheck";
 import {
   DeadlinePanel,
@@ -112,6 +117,7 @@ import {
   releaseMilestoneWithReceipt,
   resolveEscalation,
   transitionOrder,
+  reviewFinishedProducts,
   uploadRefundEvidence,
 } from "@/lib/api/client";
 import type {
@@ -148,12 +154,29 @@ import {
   canAddProgressPhoto,
   productionCorrections,
   productionPhotoMissing,
+  staffCorrections,
   productionProgressOf,
   progressPhotos,
   progressReached,
   type ProductionCorrection,
 } from "@/lib/production-progress";
 import { describeQuantity } from "@/lib/quantity";
+import {
+  FORCED_BY_GRIDGO,
+  awaitingFinishedReview,
+  checksAForceSkips,
+  finishedReviewStatus,
+  forcedByGridgo,
+  forcedReasonCodes,
+  forcedReasonLabel,
+  forcedSummary,
+  handoverFlowOf,
+  handoverVisible,
+  latestReview,
+  ridersPack,
+  sentBackAttempts,
+  skippedCheckLabel,
+} from "@/lib/shop-handover";
 import { presentRefundStatus, refundIsActive, refundKindLabel } from "@/lib/refunds";
 import {
   failuresForOrder,
@@ -183,6 +206,7 @@ type SectionId =
   | "production"
   | "shop"
   | "deadline"
+  | "handover"
   | "counter"
   | "delivery"
   | "rider-location"
@@ -244,6 +268,7 @@ export function OrderWorkspace({
   const [corrections, setCorrections] = useState<ProductionCorrection[]>([]);
   const [correcting, setCorrecting] = useState(false);
   const [correctError, setCorrectError] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const [filing, setFiling] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const fileKey = useRef<{ signature: string; key: string } | null>(null);
@@ -373,8 +398,12 @@ export function OrderWorkspace({
       if (escalation.riderId) ids.add(escalation.riderId);
       if (escalation.resolvedBy) ids.add(escalation.resolvedBy);
     }
-    for (const correction of corrections) {
+    for (const correction of staffCorrections(order?.forcedSteps, corrections)) {
       if (correction.actorId) ids.add(correction.actorId);
+    }
+    // Who decided the shop's finished work.
+    for (const attempt of order?.shopHandover?.attempts ?? []) {
+      if (attempt.review?.by) ids.add(attempt.review.by);
     }
     // Shops named in the acceptance, recovery and deadline rows.
     if (order?.shopAcceptance?.supplierId) ids.add(order.shopAcceptance.supplierId);
@@ -452,14 +481,19 @@ export function OrderWorkspace({
     }
   }
 
-  async function correctProduction(reason: string) {
+  async function correctProduction({ reasonCode, reason }: ForcedStepInput) {
     if (!order) return;
     setActing("correct-production");
     setCorrectError(null);
     try {
-      // The reason is the audit record; the note carries it into the history
-      // Operations and the shop read. The client's history never shows it.
-      await transitionOrder(order.id, "ready_for_dispatch", { reason, note: reason });
+      // The code and note are the forced-step record and the audit; the note
+      // also carries it into the history Operations and the shop read. The
+      // client's history never shows it, only "Forced by GRIDGO".
+      await transitionOrder(order.id, "ready_for_dispatch", {
+        reasonCode,
+        reason,
+        note: reason,
+      });
       setCorrecting(false);
       await load();
     } catch (err) {
@@ -468,6 +502,28 @@ export function OrderWorkspace({
           err,
           "The job could not be moved on. Refresh the order and try again.",
         ),
+      );
+    } finally {
+      setActing(null);
+    }
+  }
+
+  /** GRIDGO's answer to the shop's finished, unpacked work. */
+  async function reviewFinished(decision: "approved" | "rejected", note?: string) {
+    if (!order) return;
+    setActing("finished-review");
+    setReviewError(null);
+    try {
+      setOrder(
+        await reviewFinishedProducts(
+          order.id,
+          decision === "approved" ? { decision } : { decision, note: note ?? "" },
+        ),
+      );
+      await load();
+    } catch (err) {
+      setReviewError(
+        opsErrorMessage(err, "That decision did not go through. Refresh the order and try again."),
       );
     } finally {
       setActing(null);
@@ -581,7 +637,12 @@ export function OrderWorkspace({
             </div>
           ) : null}
         </div>
-        <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
+        <div className="flex flex-wrap items-center gap-2">
+          {forcedByGridgo(order) ? (
+            <StatusChip tone="warning" icon="triangle-alert" label={FORCED_BY_GRIDGO} />
+          ) : null}
+          <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
+        </div>
       </div>
 
       {isCancelled(order) ? (
@@ -677,7 +738,10 @@ export function OrderWorkspace({
                       transitionOrder(order.id, "cancelled", { reason: note }),
                     )
                   }
-                  corrections={corrections}
+                  corrections={
+                    // The Handover row carries the corrections when it shows.
+                    handoverVisible(order) ? [] : staffCorrections(order.forcedSteps, corrections)
+                  }
                   names={names}
                   onCorrectProduction={() => {
                     setCorrectError(null);
@@ -738,6 +802,39 @@ export function OrderWorkspace({
                       names={names}
                       tree={tree}
                       onResolved={load}
+                    />
+                  </SectionRow>
+                ) : null}
+                {/*
+                  From finished work to the rider's hands, in this order's own
+                  flow: GRIDGO's review of the unpacked work (rider-packs), or
+                  the shop's own packing (older flow), and any forced step.
+                */}
+                {step.id === "production" && handoverVisible(order) ? (
+                  <SectionRow
+                    id="handover"
+                    heading="Handover"
+                    summary={handoverSummary(order)}
+                    marker={
+                      awaitingFinishedReview(order)
+                        ? { icon: TriangleAlert, tone: "current" }
+                        : finishedReviewStatus(order) === "approved" ||
+                            counterStep(order) === "done"
+                          ? { icon: CircleCheck, tone: "success" }
+                          : { icon: CircleDot, tone: "muted" }
+                    }
+                    trailing={awaitingFinishedReview(order) ? "Your call" : undefined}
+                    current={awaitingFinishedReview(order)}
+                  >
+                    <HandoverPanel
+                      order={order}
+                      corrections={staffCorrections(order.forcedSteps, corrections)}
+                      names={names}
+                      busy={busy}
+                      reviewing={acting === "finished-review"}
+                      reviewError={reviewError}
+                      onApprove={() => void reviewFinished("approved")}
+                      onSendBack={(reason) => void reviewFinished("rejected", reason)}
                     />
                   </SectionRow>
                 ) : null}
@@ -885,6 +982,9 @@ export function OrderWorkspace({
 
       <CorrectProductionDialog
         open={correcting}
+        ridersPack={ridersPack(order)}
+        reasonCodes={forcedReasonCodes(order)}
+        skippedChecks={checksAForceSkips(order)}
         photoMissing={productionPhotoMissing(order)}
         busy={acting === "correct-production"}
         error={correctError}
@@ -892,7 +992,7 @@ export function OrderWorkspace({
           setCorrecting(false);
           setCorrectError(null);
         }}
-        onConfirm={(reason) => void correctProduction(reason)}
+        onConfirm={(input) => void correctProduction(input)}
       />
 
       <FileRefundDialog
@@ -939,6 +1039,7 @@ export function defaultOpenSections(order: Order): SectionId[] {
   if (releasableMilestones(order).length > 0) ids.add("payout");
   if (recoveryNeedsOperations(order.shopRecovery)) ids.add("shop");
   if (rescheduleNeedsOperations(order.rescheduleRequest)) ids.add("deadline");
+  if (awaitingFinishedReview(order)) ids.add("handover");
   if (isCancelled(order)) ids.add("history");
   return [...ids];
 }
@@ -984,6 +1085,115 @@ function CounterRow({
         onResolve={onResolve}
       />
     </SectionRow>
+  );
+}
+
+/** The Handover row's closed line, in the order's own flow. */
+function handoverSummary(order: Order): string {
+  const status = finishedReviewStatus(order);
+  if (status === "pending") {
+    return "The shop's photos of the finished, unpacked work are waiting for your review.";
+  }
+  if (status === "sent_back") {
+    const last = sentBackAttempts(order).at(-1);
+    return last
+      ? `Sent back ${formatDateTime(last.review.at)}. Waiting for the shop's new photos.`
+      : "Sent back. Waiting for the shop's new photos.";
+  }
+  if (order.pickupChecklist?.status === "passed") {
+    return order.pickupChecklist.handoffSignature
+      ? `Handed to the rider ${formatDateTime(order.pickupChecklist.handoffSignature.signedAt)}.`
+      : "Handed to the rider.";
+  }
+  if (order.pickupChecklist?.status === "inspected") {
+    return "The rider checked the unpacked items. Packing and the shop's signature are next.";
+  }
+  if (status === "approved") {
+    const review = latestReview(order);
+    return review
+      ? `Finished work approved ${formatDateTime(review.at)}. The rider packs it in front of the shop.`
+      : "Finished work approved. The rider packs it in front of the shop.";
+  }
+  if (status === "not_submitted") return "The shop sends photos of the finished, unpacked work when printing is done.";
+  if (handoverFlowOf(order) === "legacy") {
+    // Present tense: a correction can reach dispatch with nothing packed on record.
+    return "Older handover: the shop packs the job itself.";
+  }
+  return forcedByGridgo(order) ? forcedSummary(order) : "Handover steps for this order.";
+}
+
+/**
+ * The Handover row: GRIDGO's decision when the shop's finished work is
+ * waiting, the steps in this order's flow, then every forced step with its
+ * reason and the checks it went past.
+ */
+function HandoverPanel({
+  order,
+  corrections,
+  names,
+  busy,
+  reviewing,
+  reviewError,
+  onApprove,
+  onSendBack,
+}: {
+  order: Order;
+  corrections: ProductionCorrection[];
+  names: Record<string, string>;
+  busy: boolean;
+  reviewing: boolean;
+  reviewError: string | null;
+  onApprove: () => void;
+  onSendBack: (reason: string) => void;
+}) {
+  const reviews = order.shopHandover?.attempts ?? [];
+  return (
+    <div className="flex flex-col gap-4">
+      {awaitingFinishedReview(order) ? (
+        <FinishedReviewPanel
+          order={order}
+          shopName={order.supplierId ? names[order.supplierId] || null : null}
+          busy={busy || reviewing}
+          error={reviewError}
+          onApprove={onApprove}
+          onSendBack={onSendBack}
+          ticket={false}
+        />
+      ) : null}
+      <HandoverTimeline order={order} />
+      {reviews.length ? (
+        <section aria-label="Finished-work reviews" className="flex flex-col gap-2">
+          <h3 className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+            Reviews of the finished work
+          </h3>
+          <ol className="m-0 flex list-none flex-col gap-2 p-0">
+            {reviews.map((attempt) => {
+              const approved = attempt.review.decision === "approved";
+              const who = (attempt.review.by && names[attempt.review.by]) || "GRIDGO";
+              return (
+                <li key={attempt.review.at} className="flex flex-col gap-1">
+                  <span className="text-caption text-text-muted">
+                    {approved ? "Approved" : "Sent back"} by {who}, {formatDateTime(attempt.review.at)}.{" "}
+                    {attempt.finished.photoFileIds.length === 1
+                      ? "1 photo"
+                      : `${attempt.finished.photoFileIds.length} photos`}{" "}
+                    sent {formatDateTime(attempt.finished.at)}.
+                  </span>
+                  {!approved && attempt.review.note ? (
+                    <blockquote className="border-outline text-body text-text-secondary m-0 border-l-2 pl-3">
+                      {attempt.review.note}
+                    </blockquote>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      ) : null}
+      {corrections.map((correction) => (
+        <CorrectionNote key={correction.id} order={order} correction={correction} names={names} />
+      ))}
+    </div>
   );
 }
 
@@ -1613,7 +1823,7 @@ function ProductionStep({
       <PackingPhotos order={order} />
 
       {corrections.map((correction) => (
-        <CorrectionNote key={correction.id} correction={correction} names={names} />
+        <CorrectionNote key={correction.id} order={order} correction={correction} names={names} />
       ))}
 
       {filed.map(({ milestone, proofs }) => (
@@ -1643,12 +1853,16 @@ function ProductionStep({
       {correctable ? (
         <div className="border-outline-subtle flex flex-col items-start gap-2 border-t pt-3">
           <p className="text-caption text-text-muted m-0 max-w-prose">
-            {photoMissing
-              ? "If you have seen the finished job yourself, you can move it on without the photo. You will be asked why."
-              : "The shop has not marked this job ready for dispatch yet. You can move it on for them. You will be asked why."}
+            {ridersPack(order)
+              ? awaitingFinishedReview(order)
+                ? "Review the finished work in the Handover row. Force it past the review only if the photos cannot reach you; you will be asked why."
+                : "If you have checked the finished work yourself, you can force this job to ready for rider pickup. You will be asked why, and the order shows it was forced."
+              : photoMissing
+                ? "If you have seen the finished job yourself, you can move it on without the photo. You will be asked why."
+                : "The shop has not marked this job ready for dispatch yet. You can move it on for them. You will be asked why."}
           </p>
           <Button variant="secondary" disabled={busy} onClick={onCorrect}>
-            Move to ready for dispatch
+            {ridersPack(order) ? "Force to ready for pickup" : "Move to ready for dispatch"}
           </Button>
         </div>
       ) : null}
@@ -1658,17 +1872,20 @@ function ProductionStep({
 
 /** Who moved the job, the edge, whether a photo existed, and the reason in their words. */
 function CorrectionNote({
+  order,
   correction,
   names,
 }: {
+  /** The order's flow names the states (rider-packs has no shop packing). */
+  order: Order;
   correction: ProductionCorrection;
   names: Record<string, string>;
 }) {
   const who =
     (correction.actorId && names[correction.actorId]) ||
     (correction.actorRole === "super_admin" ? "Super Admin" : "Operations");
-  const from = correction.from ? presentOrderState(correction.from).label : null;
-  const to = correction.to ? presentOrderState(correction.to).label : null;
+  const from = correction.from ? presentOrderState(correction.from, order).label : null;
+  const to = correction.to ? presentOrderState(correction.to, order).label : null;
   return (
     <div
       className="border-outline bg-surface-variant rounded-card flex gap-3 border p-3"
@@ -1686,13 +1903,21 @@ function CorrectionNote({
           className="text-body text-text-primary m-0"
           style={{ fontFamily: "var(--font-medium)" }}
         >
-          Moved on by {who}
+          {correction.reasonCode ? `${FORCED_BY_GRIDGO}: ${who}` : `Moved on by ${who}`}
         </p>
         <p className="text-caption text-text-muted m-0">
           {formatDateTime(correction.at)}
           {from && to ? `. From ${from} to ${to}.` : "."}
-          {correction.photoMissing ? " No progress photo was on file." : ""}
+          {correction.reasonCode ? ` Reason: ${forcedReasonLabel(correction.reasonCode)}.` : ""}
+          {!correction.skippedChecks.length && correction.photoMissing
+            ? " No progress photo was on file."
+            : ""}
         </p>
+        {correction.skippedChecks.length ? (
+          <p className="text-caption text-text-muted m-0">
+            Skipped: {correction.skippedChecks.map(skippedCheckLabel).join("; ")}.
+          </p>
+        ) : null}
         {correction.reason ? (
           <blockquote className="border-outline text-body text-text-secondary m-0 mt-1 border-l-2 pl-3">
             {correction.reason}

@@ -222,6 +222,17 @@ export function counterRow(
       marker: "current",
     };
   }
+  // Rider-packs handover: six passes on the unpacked products move nothing.
+  // The rider packs in front of the shop, photographs it, then takes the
+  // signature that moves custody.
+  if (checklist?.status === "inspected") {
+    const when = checklist.completedAt ? ` ${formatWhen(checklist.completedAt)}` : "";
+    return {
+      summary: `Unpacked items checked and counted${when}. Packing in front of the rider and the shop's signature are next.`,
+      trailing: "Packing",
+      marker: "current",
+    };
+  }
   if (checklist?.status === "passed") {
     const when = checklist.completedAt ? ` ${formatWhen(checklist.completedAt)}` : "";
     const retries =
