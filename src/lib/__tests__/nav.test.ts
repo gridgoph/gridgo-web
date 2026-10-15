@@ -32,6 +32,7 @@ describe("ROLE_NAV", () => {
       "/supplier/chat",
       "/supplier/catalogue",
       "/supplier/schedule",
+      "/supplier/shop-hours",
       "/supplier/capacity",
       "/supplier/payouts",
       "/supplier/payout-account",
@@ -53,6 +54,7 @@ describe("ROLE_NAV", () => {
       "/ops/dispatch",
       "/ops/riders",
       "/ops/rankings",
+      "/ops/shop-hours",
       "/ops/late-production",
       "/ops/shop-changes",
       "/ops/hub",
@@ -85,6 +87,7 @@ describe("ROLE_NAV", () => {
       "/admin/roles",
       "/admin/staff",
       "/admin/supplier-products",
+      "/admin/shop-hours",
       "/admin/catalogue",
       "/admin/listing-reviews",
       "/admin/featured-prints",
@@ -148,6 +151,7 @@ describe("ROLE_NAV", () => {
       "/admin/season-windows",
       "/admin/settings",
       "/admin/shop-changes",
+      "/admin/shop-hours",
       "/admin/staff",
       "/admin/supplier-invoices",
       "/admin/supplier-products",
@@ -181,6 +185,7 @@ describe("ROLE_NAV", () => {
       "/ops/schedule",
       "/ops/service-lines",
       "/ops/shop-changes",
+      "/ops/shop-hours",
       "/ops/supplier-invoices",
       "/ops/vouchers",
       "/supplier/capacity",
@@ -191,6 +196,7 @@ describe("ROLE_NAV", () => {
       "/supplier/payout-account",
       "/supplier/payouts",
       "/supplier/schedule",
+      "/supplier/shop-hours",
     ]);
   });
 
@@ -262,6 +268,7 @@ describe("ROLE_NAV", () => {
       "/ops/dispatch",
       "/ops/riders",
       "/ops/rankings",
+      "/ops/shop-hours",
       "/ops/late-production",
       "/ops/shop-changes",
       "/ops/hub",
@@ -304,6 +311,7 @@ describe("ROLE_NAV", () => {
       "/admin/roles",
       "/admin/staff",
       "/admin/supplier-products",
+      "/admin/shop-hours",
     ]);
     expect(
       ROLE_NAV_GROUPS.super_admin
@@ -358,7 +366,12 @@ describe("ROLE_NAV", () => {
       ROLE_NAV_GROUPS.supplier
         .find((g) => g.id === "supplier-shop")
         ?.items.map((n) => n.href),
-    ).toEqual(["/supplier/catalogue", "/supplier/schedule", "/supplier/capacity"]);
+    ).toEqual([
+      "/supplier/catalogue",
+      "/supplier/schedule",
+      "/supplier/shop-hours",
+      "/supplier/capacity",
+    ]);
     expect(
       ROLE_NAV_GROUPS.supplier
         .find((g) => g.id === "supplier-money")
@@ -440,6 +453,8 @@ describe("nav helpers", () => {
       "Pickup escalations",
     );
     expect(contextTitleForPath("/admin/zones", "super_admin")).toBe("Delivery zones");
+    expect(contextTitleForPath("/ops/shop-hours/user_a", "ops_admin")).toBe("Shop's hours");
+    expect(contextTitleForPath("/admin/shop-hours", "super_admin")).toBe("Shop hours");
     expect(contextTitleForPath("/admin/supplier-products", "super_admin")).toBe(
       "Supplier products",
     );

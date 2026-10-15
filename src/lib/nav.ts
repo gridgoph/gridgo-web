@@ -71,6 +71,7 @@ export type NavIconKey =
   | "surveys"
   | "invoices"
   | "finished-work"
+  | "shop-hours"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -205,6 +206,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody:
             "Show promised dates and capacity commitments for accepted jobs. Built on listJobs / getOrder — no separate schedule endpoint.",
+        },
+        {
+          id: "supplier-shop-hours",
+          href: "/supplier/shop-hours",
+          label: "Shop hours",
+          title: "Shop hours",
+          icon: "shop-hours",
+          ready: true,
+          placeholderBody: "",
         },
         {
           id: "supplier-capacity",
@@ -377,6 +387,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Shop rankings",
           title: "Shop rankings",
           icon: "rankings",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "ops-shop-hours",
+          href: "/ops/shop-hours",
+          label: "Shop hours",
+          title: "Shop hours",
+          icon: "shop-hours",
           ready: true,
           placeholderBody: "",
         },
@@ -647,6 +666,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Supplier products",
           title: "Supplier products",
           icon: "products",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-shop-hours",
+          href: "/admin/shop-hours",
+          label: "Shop hours",
+          title: "Shop hours",
+          icon: "shop-hours",
           ready: true,
           placeholderBody: "",
         },
@@ -994,6 +1022,7 @@ export function contextTitleForPath(
   ) {
     return "Shop's late jobs";
   }
+  if (/^\/(ops|admin)\/shop-hours\/[^/]+/.test(pathname)) return "Shop's hours";
   if (pathname === "/admin/escalations" || pathname.startsWith("/admin/escalations/")) {
     return "Pickup escalations";
   }

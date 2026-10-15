@@ -45,6 +45,14 @@ describe("notificationHref", () => {
     expect(notificationHref("supplier", note({ type }))).toBeNull();
   });
 
+  it("opens Shop hours in each role's own tree for an hours change", () => {
+    const type = "supplier_hours_updated";
+    expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/shop-hours");
+    expect(notificationHref("super_admin", note({ type }))).toBe("/admin/shop-hours");
+    expect(notificationHref("supplier", note({ type }))).toBe("/supplier/shop-hours");
+    expect(notificationHref("client", note({ type }))).toBeNull();
+  });
+
   it("lands a listing-review notice on each role's own desk or board", () => {
     for (const type of ["catalog_review_pending", "catalog_review_decided"]) {
       expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/listing-reviews");

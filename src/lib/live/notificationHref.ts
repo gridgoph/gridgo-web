@@ -1,4 +1,5 @@
 import type { Notification, Role } from "@/lib/api/types";
+import { SHOP_HOURS_NOTICE } from "@/lib/shop-hours";
 
 /**
  * Where the inbox row should land.
@@ -32,6 +33,15 @@ export function notificationHref(role: Role, notification: Notification): string
         ? `/supplier/catalogue/${encodeURIComponent(notification.catalogItemId)}`
         : "/supplier/catalogue";
     }
+    return null;
+  }
+
+  // A shop's hours or temporary closure changed (gridgo-api#219). The notice
+  // names no shop, so staff land on the list, sorted closed-for-now first.
+  if (type === SHOP_HOURS_NOTICE) {
+    if (role === "super_admin") return "/admin/shop-hours";
+    if (role === "ops_admin") return "/ops/shop-hours";
+    if (role === "supplier") return "/supplier/shop-hours";
     return null;
   }
 

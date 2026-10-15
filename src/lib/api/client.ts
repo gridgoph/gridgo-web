@@ -123,6 +123,8 @@ import type {
   RescheduleQueue,
   RescheduleRequest,
   ShopFailureEvent,
+  ShopHours,
+  ShopHoursPatch,
   ShopRecovery,
   SupplierProductionLapses,
   SupplierInvoiceEnvelope,
@@ -130,6 +132,11 @@ import type {
   WebPushSubscriptionInput,
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
+import {
+  normalizeShopHours,
+  normalizeShopHoursList,
+  type ShopHoursRow,
+} from "@/lib/shop-hours";
 
 const DEFAULT_API_BASE = "http://127.0.0.1:8787";
 
@@ -996,6 +1003,71 @@ export async function previewServiceFee(
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+// ---------------------------------------------------------------------------
+// Shop hours (gridgo-api docs/SHOP_HOURS_API.md)
+//
+// Every write carries the shop's shared profile version (`expectedVersion`);
+// a stale one is `409 supplier_profile_stale`. Answers are read through
+// `normalizeShopHours`, so a field the API adds later never breaks a screen.
+// ---------------------------------------------------------------------------
+
+function shopHoursOf(path: string, raw: unknown): ShopHours {
+  const hours = normalizeShopHours(
+    raw && typeof raw === "object" ? (raw as { hours?: unknown }).hours : null,
+  );
+  if (!hours) throw failed(path, 502, { error: "invalid_shop_hours_response" });
+  return hours;
+}
+
+/** Supplier. The signed-in shop's own hours. */
+export async function getMyShopHours(): Promise<ShopHours> {
+  return shopHoursOf("/me/shop-hours", await request<unknown>("/me/shop-hours"));
+}
+
+/**
+ * Supplier. Change the week and closures (`schedule`, which clears today's
+ * extension), Temporarily closed, or today's extension (`null` ends it).
+ */
+export async function updateMyShopHours(
+  expectedVersion: number,
+  patch: ShopHoursPatch,
+): Promise<ShopHours> {
+  return shopHoursOf(
+    "/me/shop-hours",
+    await request<unknown>("/me/shop-hours", {
+      method: "PATCH",
+      body: JSON.stringify({ ...patch, expectedVersion }),
+    }),
+  );
+}
+
+/** Ops / Super Admin. Every shop's hours and open status. */
+export async function listShopHours(): Promise<ShopHoursRow[]> {
+  return normalizeShopHoursList(await request<unknown>("/ops/shops/hours"));
+}
+
+/** Ops / Super Admin. One shop's hours; `404 supplier_profile_not_found` for an unknown shop. */
+export async function getShopHours(supplierId: string): Promise<ShopHours> {
+  const path = `/ops/shops/${encodeURIComponent(supplierId)}/hours`;
+  return shopHoursOf(path, await request<unknown>(path));
+}
+
+/**
+ * Ops / Super Admin. Staff may switch Temporarily closed only, with a reason
+ * (1–2,000 characters, `400 reason_required`) kept in the audit log. Hours
+ * and extensions are the shop's (`403 forbidden`).
+ */
+export async function setShopTemporarilyClosed(
+  supplierId: string,
+  input: { expectedVersion: number; temporarilyClosed: boolean; reason: string },
+): Promise<ShopHours> {
+  const path = `/ops/shops/${encodeURIComponent(supplierId)}/hours`;
+  return shopHoursOf(
+    path,
+    await request<unknown>(path, { method: "PATCH", body: JSON.stringify(input) }),
+  );
 }
 
 // ---------------------------------------------------------------------------
