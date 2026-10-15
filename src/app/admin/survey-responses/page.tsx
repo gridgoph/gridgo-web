@@ -2,13 +2,13 @@
 
 import { Suspense } from "react";
 
-import { SurveyResponsesDesk } from "@/components/survey-responses/SurveyResponsesDesk";
+import { SurveyDesk } from "@/components/survey-responses/SurveyDesk";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
 
 export default function AdminSurveyResponsesPage() {
   return (
     <Suspense fallback={<LoadingBlock label="Loading survey responses…" />}>
-      <SurveyResponsesDesk />
+      <SurveyDesk />
     </Suspense>
   );
 }

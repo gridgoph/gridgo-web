@@ -9,12 +9,16 @@
 
 import { isApiError } from "@/lib/api/client";
 import type {
+  ClientAccountType,
+  OrderSizeBracket,
+  PricingFeedbackFilter,
   SurveyFulfillmentKind,
   SurveyResponse,
   SurveyResponsesFilter,
   SurveyRewardStatus,
   SurveyScoreKey,
 } from "@/lib/api/types";
+import { isAccountType, isOrderSize } from "@/lib/pricing-feedback";
 import { manilaDayEnd, manilaDayStart } from "@/lib/vouchers";
 
 export const DELIVERY_TAGS = [
@@ -224,6 +228,10 @@ export type SurveyFilterState = {
   /** Manila calendar days, YYYY-MM-DD. */
   from: string;
   to: string;
+  /** Shared with pricing results and checkout exits (PRICING_FEEDBACK_API.md). */
+  categoryCode: string;
+  orderSize: "" | OrderSizeBracket;
+  accountType: "" | ClientAccountType;
   clientId: string;
   orderId: string;
   fulfillmentStars: string;
@@ -240,6 +248,9 @@ export const EMPTY_SURVEY_FILTERS: SurveyFilterState = {
   tag: "",
   from: "",
   to: "",
+  categoryCode: "",
+  orderSize: "",
+  accountType: "",
   clientId: "",
   orderId: "",
   fulfillmentStars: "",
@@ -257,6 +268,9 @@ const PARAM: Record<keyof SurveyFilterState, string> = {
   tag: "tag",
   from: "from",
   to: "to",
+  categoryCode: "category",
+  orderSize: "size",
+  accountType: "account",
   clientId: "client",
   orderId: "order",
   fulfillmentStars: "fulfillmentStars",
@@ -312,6 +326,9 @@ export function filtersFromParams(params: URLSearchParams): SurveyFilterState {
   const reward = get("reward");
   const from = get("from") ?? "";
   const to = get("to") ?? "";
+  const category = (get("categoryCode") ?? "").trim();
+  const size = get("orderSize");
+  const account = get("accountType");
   return {
     followUp: followUp === "true" || followUp === "false" ? followUp : "",
     kind: kind === "delivery" || kind === "pickup" ? kind : "",
@@ -319,6 +336,9 @@ export function filtersFromParams(params: URLSearchParams): SurveyFilterState {
     tag: (get("tag") ?? "").trim(),
     from: DAY.test(from) ? from : "",
     to: DAY.test(to) ? to : "",
+    categoryCode: /^[a-z][a-z0-9_]*$/.test(category) ? category : "",
+    orderSize: isOrderSize(size) ? size : "",
+    accountType: isAccountType(account) ? account : "",
     clientId: (get("clientId") ?? "").trim(),
     orderId: (get("orderId") ?? "").trim(),
     fulfillmentStars: scoreParam(get("fulfillmentStars"), 1, 5),
@@ -347,16 +367,36 @@ export function datesBackwards(filters: SurveyFilterState): boolean {
   return Boolean(filters.from && filters.to && filters.from > filters.to);
 }
 
+/**
+ * The filters every tab shares: the dates, category, order size and account
+ * type. Dates are whole Manila days, both included.
+ */
+export function pricingQuery(filters: SurveyFilterState): PricingFeedbackFilter {
+  return {
+    from: manilaDayStart(filters.from),
+    to: manilaDayEnd(filters.to),
+    categoryCode: filters.categoryCode || undefined,
+    orderSize: filters.orderSize || undefined,
+    accountType: filters.accountType || undefined,
+  };
+}
+
+/** Keys of the shared filters, so a tab can clear only its own. */
+export const SHARED_FILTER_KEYS = ["from", "to", "categoryCode", "orderSize", "accountType"] as const;
+
+export function sharedFilterCount(filters: SurveyFilterState): number {
+  return SHARED_FILTER_KEYS.filter((key) => filters[key] !== "").length;
+}
+
 /** The API query for these filters. Dates are whole Manila days, both included. */
 export function surveyQuery(filters: SurveyFilterState): SurveyResponsesFilter {
   const score = (value: string) => (value === "" ? undefined : Number(value));
   return {
+    ...pricingQuery(filters),
     needsFollowUp: filters.followUp === "" ? undefined : filters.followUp === "true",
     fulfillmentKind: filters.kind || undefined,
     rewardStatus: filters.reward || undefined,
     tag: filters.tag || undefined,
-    from: manilaDayStart(filters.from),
-    to: manilaDayEnd(filters.to),
     clientId: filters.clientId || undefined,
     orderId: filters.orderId || undefined,
     fulfillmentStars: score(filters.fulfillmentStars),

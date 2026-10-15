@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ChevronRight, Download, PanelRightOpen, Star, X } from "lucide-react";
 
+import { saveCsv } from "@/components/survey-responses/save-csv";
 import { SurveyPulse } from "@/components/survey-responses/SurveyPulse";
 import { SurveyResponseSheet, TagList } from "@/components/survey-responses/SurveyResponseSheet";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,6 @@ import { DataTable, DataTableRowAction, type DataTableColumn } from "@/component
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -29,9 +29,11 @@ import { downloadSurveyResponses, listOrders, listSurveyResponses } from "@/lib/
 import type { SurveyAggregates, SurveyResponse } from "@/lib/api/types";
 import { formatPhp } from "@/lib/format";
 import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
+import { directShopLabel, orderAgainLabel } from "@/lib/pricing-feedback";
 import {
   EMPTY_SURVEY_FILTERS,
   NPS_GROUP_LABEL,
+  SHARED_FILTER_KEYS,
   SCORE_FILTERS,
   TAG_GROUPS,
   type SurveyFilterState,
@@ -54,17 +56,20 @@ const PAGE = 100;
 /** The API's largest page; a live refresh re-reads what is loaded, up to this. */
 const MAX_PAGE = 500;
 const ANY = "__any__";
+const NO_NAMES: ReadonlyMap<string, string> = new Map();
 const MEDIUM = { fontFamily: "var(--font-medium)" } as const;
 
 /**
  * Super Admin's post-order survey responses (SURVEY_API.md): the figures over
  * everything the filters match, then each response with its scores, tags and
- * note, newest first. Filters live in the URL; the CSV holds every match.
+ * note, newest first. Filters live in the URL; the CSV holds every match. The
+ * dates, category, order size and account type are set above the tabs
+ * (`SurveyDesk`), because the pricing results share them.
  *
  * Clients are named by account ID only, as the order screens do; the order
  * title comes from the order list when it has the order.
  */
-export function SurveyResponsesDesk() {
+export function SurveyResponsesDesk({ categoryNames = NO_NAMES }: { categoryNames?: ReadonlyMap<string, string> }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -159,15 +164,7 @@ export function SurveyResponsesDesk() {
     setExporting(true);
     setExportError(null);
     try {
-      const blob = await downloadSurveyResponses(query);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "survey-responses.csv";
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      saveCsv(await downloadSurveyResponses(query), "survey-responses.csv");
     } catch (err) {
       setExportError(surveyErrorMessage(err, "The CSV could not be downloaded. Try again."));
     } finally {
@@ -190,10 +187,13 @@ export function SurveyResponsesDesk() {
     [replaceParams, params, filters],
   );
 
-  function clearFilters(keepFollowUp: boolean) {
+  /** Clears this tab's filters; with `everything`, the shared ones above the tabs too. */
+  function clearFilters(keepFollowUp: boolean, everything = true) {
+    const shared = Object.fromEntries(SHARED_FILTER_KEYS.map((key) => [key, filters[key]]));
     replaceParams(
       writeFilterParams(params, {
         ...EMPTY_SURVEY_FILTERS,
+        ...(everything ? {} : shared),
         followUp: keepFollowUp ? filters.followUp : "",
       }),
     );
@@ -301,6 +301,7 @@ export function SurveyResponsesDesk() {
         id: "price",
         header: "Price",
         hideOnMobile: true,
+        className: "whitespace-normal min-w-32 max-w-36",
         sortValue: (row) => row.priceFeeling,
         cell: (row) => (
           <div className="flex flex-col">
@@ -308,6 +309,16 @@ export function SurveyResponsesDesk() {
             {row.expectedPriceMinor != null ? (
               <span className="text-caption text-text-muted whitespace-nowrap">
                 Expected {formatPhp(row.expectedPriceMinor)}
+              </span>
+            ) : null}
+            {row.directShopComparison ? (
+              <span className="text-caption text-text-muted">
+                vs. a shop: {directShopLabel(row.directShopComparison).toLowerCase()}
+              </span>
+            ) : null}
+            {row.orderAgainAtPrice ? (
+              <span className="text-caption text-text-muted">
+                Order again: {orderAgainLabel(row.orderAgainAtPrice).toLowerCase()}
               </span>
             ) : null}
           </div>
@@ -332,6 +343,7 @@ export function SurveyResponsesDesk() {
   );
 
   const narrowed = hasNarrowing(filters);
+  const ownNarrowing = hasNarrowing({ ...filters, ...Object.fromEntries(SHARED_FILTER_KEYS.map((key) => [key, ""])) });
   const scoreCount = scoreFilterCount(filters);
   const followOnly = filters.followUp === "true";
   const allCount = filters.followUp === "" ? total : null;
@@ -339,10 +351,10 @@ export function SurveyResponsesDesk() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <p className="text-body text-text-secondary m-0 max-w-prose">
-          What clients said after an order reached them. Each answer earns the same voucher whatever
-          it says, and nothing here changes an order, a payout or a shop&apos;s standing.
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-caption text-text-muted m-0 max-w-prose">
+          Each answer earns the same voucher whatever it says. Figures and the CSV cover every
+          response the filters match.
         </p>
         <Button variant="outline" disabled={exporting || !total || backwards} onClick={() => void exportCsv()}>
           <Download aria-hidden />
@@ -372,10 +384,6 @@ export function SurveyResponsesDesk() {
             {followCount != null && !loading ? <Count value={followCount} /> : null}
           </ToggleGroupItem>
         </ToggleGroup>
-        <p className="text-caption text-text-muted m-0 max-w-prose">
-          Figures and the CSV cover every response the filters match. Dates are Philippine time and
-          include both days.
-        </p>
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
@@ -443,28 +451,8 @@ export function SurveyResponsesDesk() {
             </SelectContent>
           </Select>
         </Field>
-        <Field className="w-[calc(50%-0.375rem)] sm:w-44">
-          <FieldLabel htmlFor="survey-from">From</FieldLabel>
-          <Input
-            id="survey-from"
-            type="date"
-            value={filters.from}
-            max={filters.to || undefined}
-            onChange={(event) => setFilter("from", event.target.value)}
-          />
-        </Field>
-        <Field className="w-[calc(50%-0.375rem)] sm:w-44">
-          <FieldLabel htmlFor="survey-to">To</FieldLabel>
-          <Input
-            id="survey-to"
-            type="date"
-            value={filters.to}
-            min={filters.from || undefined}
-            onChange={(event) => setFilter("to", event.target.value)}
-          />
-        </Field>
-        {narrowed ? (
-          <Button variant="ghost" onClick={() => clearFilters(true)}>
+        {ownNarrowing ? (
+          <Button variant="ghost" onClick={() => clearFilters(true, false)}>
             Clear filters
           </Button>
         ) : null}
@@ -535,11 +523,6 @@ export function SurveyResponsesDesk() {
         </div>
       ) : null}
 
-      {backwards ? (
-        <p className="text-body text-error m-0" role="alert">
-          The From date is after the To date.
-        </p>
-      ) : null}
       {exportError ? (
         <p className="text-body text-error m-0" role="alert">
           {exportError}
@@ -622,6 +605,7 @@ export function SurveyResponsesDesk() {
       <SurveyResponseSheet
         response={selected}
         orderTitle={selected ? titleOf(selected.orderId) : null}
+        categoryNames={categoryNames}
         onClose={() => openResponse(null)}
         onShowClient={(clientId) => {
           const next = writeFilterParams(params, { ...filters, clientId });
@@ -653,6 +637,12 @@ function ScoreLine({ row }: { row: SurveyResponse }) {
     { label: "Handover", value: `${row.fulfillmentStars}★`, low: isLowStars(row.fulfillmentStars) },
     { label: "Ordering", value: `${row.easeStars}★`, low: isLowStars(row.easeStars) },
     { label: "Price", value: priceFeelingLabel(row.priceFeeling), low: false },
+    ...(row.directShopComparison
+      ? [{ label: "Against a shop", value: directShopLabel(row.directShopComparison), low: false }]
+      : []),
+    ...(row.orderAgainAtPrice
+      ? [{ label: "Order again", value: orderAgainLabel(row.orderAgainAtPrice), low: false }]
+      : []),
     { label: "Quality", value: row.qualityStars == null ? "—" : `${row.qualityStars}★`, low: isLowStars(row.qualityStars) },
     {
       label: "Recommend",

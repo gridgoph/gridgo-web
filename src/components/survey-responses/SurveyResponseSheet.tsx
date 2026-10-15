@@ -10,6 +10,18 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import type { SurveyResponse } from "@/lib/api/types";
 import { formatPhp } from "@/lib/format";
 import {
+  DIRECT_SHOP_QUESTION,
+  NOT_WORTH_IT,
+  ORDER_AGAIN_QUESTION,
+  PRICE_WORTH_QUESTION,
+  accountTypeLabel,
+  categoryLabel,
+  directShopLabel,
+  orderAgainLabel,
+  orderSizeLabel,
+  priceWorthLabel,
+} from "@/lib/pricing-feedback";
+import {
   NPS_GROUP_LABEL,
   followUpReasons,
   fulfillmentLabel,
@@ -27,6 +39,8 @@ type Props = {
   response: SurveyResponse | null;
   /** The order's title, when the order list has it. */
   orderTitle: string | null;
+  /** Taxonomy names by category code; a code without one reads as words. */
+  categoryNames?: ReadonlyMap<string, string>;
   onClose: () => void;
   onShowClient: (clientId: string) => void;
 };
@@ -36,7 +50,9 @@ type Props = {
  * it, their tags and note, why it was flagged, the reward, and the dates.
  * Read-only: the API has no edit, and the flag cannot be cleared.
  */
-export function SurveyResponseSheet({ response, orderTitle, onClose, onShowClient }: Props) {
+const NO_NAMES: ReadonlyMap<string, string> = new Map();
+
+export function SurveyResponseSheet({ response, orderTitle, categoryNames = NO_NAMES, onClose, onShowClient }: Props) {
   return (
     <Sheet
       open={response !== null}
@@ -49,7 +65,12 @@ export function SurveyResponseSheet({ response, orderTitle, onClose, onShowClien
         className="w-full gap-0 overflow-y-auto data-[side=right]:w-full data-[side=right]:sm:max-w-xl"
       >
         {response ? (
-          <Body response={response} orderTitle={orderTitle} onShowClient={onShowClient} />
+          <Body
+            response={response}
+            orderTitle={orderTitle}
+            categoryNames={categoryNames}
+            onShowClient={onShowClient}
+          />
         ) : null}
       </SheetContent>
     </Sheet>
@@ -62,12 +83,16 @@ const BOLD = { fontFamily: "var(--font-bold)" } as const;
 function Body({
   response,
   orderTitle,
+  categoryNames,
   onShowClient,
 }: {
   response: SurveyResponse;
   orderTitle: string | null;
+  categoryNames: ReadonlyMap<string, string>;
   onShowClient: (clientId: string) => void;
 }) {
+  // An API from before the pricing questions sends none of these fields.
+  const asksPricing = "priceWorthTags" in response || "directShopComparison" in response;
   const reasons = followUpReasons(response);
   const group = npsGroup(response.recommendScore);
   const kind = response.fulfillmentKind;
@@ -126,6 +151,36 @@ function Body({
               : "No expected price given"}
           </p>
         </Answer>
+        {asksPricing ? (
+          <>
+            <Answer question={DIRECT_SHOP_QUESTION}>
+              <OptionalChoice value={response.directShopComparison ? directShopLabel(response.directShopComparison) : null} />
+            </Answer>
+            <Answer question={PRICE_WORTH_QUESTION}>
+              {response.priceWorthTags?.length ? (
+                <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0" aria-label="Reasons">
+                  {response.priceWorthTags.map((code) => (
+                    <li
+                      key={code}
+                      className={
+                        code === NOT_WORTH_IT
+                          ? "border-error text-caption text-error inline-flex items-center rounded-full border px-2 py-0.5"
+                          : "border-outline text-caption text-text-secondary inline-flex items-center rounded-full border px-2 py-0.5"
+                      }
+                    >
+                      {priceWorthLabel(code)}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <OptionalChoice value={null} />
+              )}
+            </Answer>
+            <Answer question={ORDER_AGAIN_QUESTION}>
+              <OptionalChoice value={response.orderAgainAtPrice ? orderAgainLabel(response.orderAgainAtPrice) : null} />
+            </Answer>
+          </>
+        ) : null}
         <StarAnswer question={questionLabel("qualityStars")} value={response.qualityStars} optional />
         <Answer question={questionLabel("recommendScore")}>
           {response.recommendScore == null ? (
@@ -177,6 +232,33 @@ function Body({
         <p className="text-caption text-text-muted m-0">Philippine time.</p>
       </section>
 
+      {"orderTotalMinor" in response || "accountType" in response ? (
+        <section className="flex flex-col gap-2" aria-labelledby="survey-order-facts">
+          <h3 id="survey-order-facts" className={HEADING} style={BOLD}>
+            What the filters read
+          </h3>
+          <dl className="m-0 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+            <dt className="text-caption text-text-muted">Order total</dt>
+            <dd className="text-caption text-text-primary m-0">
+              {response.orderTotalMinor != null
+                ? `${formatPhp(response.orderTotalMinor)} (${orderSizeLabel(response.orderSize)})`
+                : "—"}
+            </dd>
+            <dt className="text-caption text-text-muted">
+              {(response.categoryCodes?.length ?? 0) > 1 ? "Categories" : "Category"}
+            </dt>
+            <dd className="text-caption text-text-primary m-0">
+              {response.categoryCodes?.length
+                ? response.categoryCodes.map((code) => categoryLabel(code, categoryNames)).join(", ")
+                : "—"}
+            </dd>
+            <dt className="text-caption text-text-muted">Account type</dt>
+            <dd className="text-caption text-text-primary m-0">{accountTypeLabel(response.accountType)}</dd>
+          </dl>
+          <p className="text-caption text-text-muted m-0">The account type is the client&apos;s today.</p>
+        </section>
+      ) : null}
+
       <section className="flex flex-col gap-2" aria-labelledby="survey-links">
         <h3 id="survey-links" className={HEADING} style={BOLD}>
           Order and client
@@ -200,6 +282,14 @@ function Body({
         </div>
       </section>
     </div>
+  );
+}
+
+function OptionalChoice({ value }: { value: string | null }) {
+  return value ? (
+    <p className="text-body text-text-primary m-0">{value}</p>
+  ) : (
+    <p className="text-body text-text-muted m-0">Not answered (optional)</p>
   );
 }
 
