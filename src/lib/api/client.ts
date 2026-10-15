@@ -23,6 +23,10 @@ import type {
   VoucherLedgerFilter,
   SurveyResponsesFilter,
   SurveyResponsesPage,
+  PricingFeedbackFilter,
+  PricingFeedbackReport,
+  CheckoutExitFeedbackFilter,
+  CheckoutExitFeedbackPage,
   VoucherLedgerPage,
   VoucherTab,
   LegalAcceptance,
@@ -3367,6 +3371,39 @@ export async function downloadSurveyResponses(filter: SurveyResponsesFilter = {}
     `/admin/survey-responses${buildQuery({ ...filter, format: "csv" })}`,
     { headers: { Accept: "text/csv" } },
   );
+}
+
+// ---------------------------------------------------------------------------
+// Pricing feedback (PRICING_FEEDBACK_API.md)
+// ---------------------------------------------------------------------------
+
+/** Super Admin. Counts and percentages for every pricing question and the checkout exit question. */
+export async function getPricingFeedback(filter: PricingFeedbackFilter = {}): Promise<PricingFeedbackReport> {
+  return request<PricingFeedbackReport>(`/admin/pricing-feedback${buildQuery({ ...filter })}`);
+}
+
+/** Super Admin. `pricing-feedback.csv`: one row per option of every question. */
+export async function downloadPricingFeedback(filter: PricingFeedbackFilter = {}): Promise<Blob> {
+  return requestBlob(`/admin/pricing-feedback${buildQuery({ ...filter, format: "csv" })}`, {
+    headers: { Accept: "text/csv" },
+  });
+}
+
+/** Super Admin. Each checkout exit question, newest asked first; `limit` 1–500. */
+export async function listCheckoutExitFeedback(
+  filter: CheckoutExitFeedbackFilter = {},
+  page: { offset?: number; limit?: number } = {},
+): Promise<CheckoutExitFeedbackPage> {
+  return request<CheckoutExitFeedbackPage>(
+    `/admin/checkout-exit-feedback${buildQuery({ ...filter, offset: page.offset, limit: page.limit })}`,
+  );
+}
+
+/** Super Admin. Every matching exit answer as `checkout-exit-feedback.csv` (no paging). */
+export async function downloadCheckoutExitFeedback(filter: CheckoutExitFeedbackFilter = {}): Promise<Blob> {
+  return requestBlob(`/admin/checkout-exit-feedback${buildQuery({ ...filter, format: "csv" })}`, {
+    headers: { Accept: "text/csv" },
+  });
 }
 
 // ---------------------------------------------------------------------------

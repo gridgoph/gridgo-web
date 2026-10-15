@@ -3462,6 +3462,105 @@ export type SurveyResponse = {
   needsFollowUp: boolean;
   rewardStatus: SurveyRewardStatus | null;
   rewardVoucherId: string | null;
+  // Pricing feedback (PRICING_FEEDBACK_API.md). Optional: an older API sends none.
+  /** One code, or null when skipped. */
+  directShopComparison?: string | null;
+  /** Choose any; `not_worth_it` only ever alone. `[]` when skipped. */
+  priceWorthTags?: string[];
+  orderAgainAtPrice?: string | null;
+  /** The order's client total, delivery included. */
+  orderTotalMinor?: number | null;
+  orderSize?: OrderSizeBracket | null;
+  categoryCodes?: string[];
+  /** The client's account type now, not when they ordered. */
+  accountType?: ClientAccountType | null;
+};
+
+// ---- Pricing feedback (gridgo-api `docs/PRICING_FEEDBACK_API.md`) ----
+// Super Admin only; words and rules live in `src/lib/pricing-feedback.ts`.
+
+export type OrderSizeBracket = "under_500" | "500_to_1999" | "2000_to_4999" | "5000_to_19999" | "20000_and_up";
+export type ClientAccountType = "individual" | "business" | "organization";
+
+/** Category, order size and account type; shared by every survey and pricing read. */
+export type PricingFeedbackFilter = {
+  /** Inclusive ISO instants. Survey answers use submission time; exit answers the time asked. */
+  from?: string;
+  to?: string;
+  categoryCode?: string;
+  orderSize?: OrderSizeBracket;
+  accountType?: ClientAccountType;
+};
+
+export type PricingOptionCount = {
+  code: string;
+  count: number;
+  /** `100 × count / answered`, one decimal; null when nobody answered. */
+  percent: number | null;
+};
+
+export type PricingQuestionTally = {
+  /** Answers to this question; a skipped optional question is not counted. */
+  answered: number;
+  /** Every option in the API's order, zero counts included. */
+  options: PricingOptionCount[];
+};
+
+export type PricingQuestionKey =
+  | "priceFeeling"
+  | "expectedPrice"
+  | "directShopComparison"
+  | "priceWorthTags"
+  | "orderAgainAtPrice";
+
+export type CheckoutExitStatus = "answered" | "skipped" | "unanswered";
+
+export type PricingFeedbackReport = {
+  serverTime: string;
+  survey: {
+    responses: number;
+    questions: Record<PricingQuestionKey, PricingQuestionTally>;
+  };
+  checkoutExit: {
+    asked: number;
+    answered: number;
+    skipped: number;
+    unanswered: number;
+    reasons: PricingQuestionTally;
+  };
+  orderSizeBrackets: { code: OrderSizeBracket; minMinor: number; maxMinor: number | null }[];
+};
+
+/** One checkout exit question as asked, newest first. */
+export type CheckoutExitAnswer = {
+  id: string;
+  clientId: string;
+  cartId: string;
+  reachedAt: string;
+  askedAt: string;
+  status: CheckoutExitStatus;
+  reason: string | null;
+  /** Only with `reason: "other"`. The client's own words. */
+  otherText: string | null;
+  answeredAt: string | null;
+  skippedAt: string | null;
+  /** The cart's quote at the last checkout visit; null when it had no price. */
+  cartTotalMinor: number | null;
+  orderSize: OrderSizeBracket | null;
+  categoryCodes: string[];
+  accountType: ClientAccountType | null;
+};
+
+export type CheckoutExitFeedbackFilter = PricingFeedbackFilter & {
+  clientId?: string;
+  status?: CheckoutExitStatus;
+  reason?: string;
+};
+
+export type CheckoutExitFeedbackPage = {
+  serverTime: string;
+  prompts: CheckoutExitAnswer[];
+  total: number;
 };
 
 export type SurveyScoreKey =
@@ -3490,7 +3589,7 @@ export type SurveyResponsesPage = {
 };
 
 /** Filters combine with AND. Score filters are exact values. */
-export type SurveyResponsesFilter = {
+export type SurveyResponsesFilter = PricingFeedbackFilter & {
   clientId?: string;
   orderId?: string;
   fulfillmentKind?: SurveyFulfillmentKind;

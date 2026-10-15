@@ -68,10 +68,30 @@ const unhappy: SurveyResponse = {
   needsFollowUp: true,
   rewardStatus: "cooldown",
   rewardVoucherId: null,
+  directShopComparison: "more_expensive",
+  priceWorthTags: ["not_worth_it"],
+  orderAgainAtPrice: "no",
+  orderTotalMinor: 180000,
+  orderSize: "500_to_1999",
+  categoryCodes: ["marketing_collateral", "retired_code"],
+  accountType: "business",
 };
 
+const PRICING_KEYS = [
+  "directShopComparison",
+  "priceWorthTags",
+  "orderAgainAtPrice",
+  "orderTotalMinor",
+  "orderSize",
+  "categoryCodes",
+  "accountType",
+] as const;
+const beforePricing: SurveyResponse = { ...unhappy };
+for (const key of PRICING_KEYS) delete beforePricing[key];
+
+/** A response as an API from before the pricing questions sends it. */
 const happy: SurveyResponse = {
-  ...unhappy,
+  ...beforePricing,
   orderId: "ord_ok",
   clientId: "usr_b",
   fulfillmentKind: "pickup",
@@ -170,6 +190,30 @@ describe("SurveyResponsesDesk", () => {
     expect(within(sheet).getByText("Expected to pay ₱250.00")).toBeInTheDocument();
     expect(within(sheet).getByText("No voucher, had one this week")).toBeInTheDocument();
     expect(within(sheet).getByText("Open order").closest("a")).toHaveAttribute("href", "/admin/orders/ord_late");
+  });
+
+  it("shows the pricing answers on the row and in the response", async () => {
+    nav.params = new URLSearchParams("response=ord_late");
+    render(<SurveyResponsesDesk categoryNames={new Map([["marketing_collateral", "Marketing & Promotional Collateral"]])} />);
+    expect((await screen.findAllByText("vs. a shop: more expensive")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Order again: no").length).toBeGreaterThan(0);
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).getByText("Compared with ordering directly from a print shop, GRIDGO was…")).toBeInTheDocument();
+    expect(within(sheet).getByText("More expensive")).toBeInTheDocument();
+    expect(within(sheet).getByText("It was not worth it")).toBeInTheDocument();
+    expect(within(sheet).getByText("Would you order again at this price?")).toBeInTheDocument();
+    expect(within(sheet).getByText("₱1,800.00 (₱500 to ₱1,999)")).toBeInTheDocument();
+    expect(within(sheet).getByText("Marketing & Promotional Collateral, Retired code")).toBeInTheDocument();
+    expect(within(sheet).getByText("Business")).toBeInTheDocument();
+  });
+
+  it("leaves the pricing questions out for a response from an older API", async () => {
+    nav.params = new URLSearchParams("response=ord_ok");
+    render(<SurveyResponsesDesk />);
+    const sheet = await screen.findByRole("dialog");
+    expect(within(sheet).getByText("How did the price feel?")).toBeInTheDocument();
+    expect(within(sheet).queryByText("Would you order again at this price?")).not.toBeInTheDocument();
+    expect(within(sheet).queryByText("What the filters read")).not.toBeInTheDocument();
   });
 
   it("reads a linked response that is not on the first page", async () => {
