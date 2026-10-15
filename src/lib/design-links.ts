@@ -101,11 +101,20 @@ export function safeLinkHref(url: string): string | null {
   }
 }
 
-/** Links on one checkout line. An API without the field sends none. */
+/**
+ * Links on one checkout line. The ordered attachments are read first, so a
+ * link keeps the label the client gave it; an API without the field sends none.
+ */
 export function lineArtworkLinks(
-  line: Pick<ProductionItem, "artworkLinks"> | null | undefined,
+  line: Pick<ProductionItem, "artworkLinks" | "artworkAttachments"> | null | undefined,
 ): ArtworkLink[] {
-  const links = line?.artworkLinks;
+  const links: ArtworkLink[] | undefined = Array.isArray(line?.artworkAttachments)
+    ? line.artworkAttachments.flatMap((entry) =>
+        entry && entry.kind === "link"
+          ? [{ formatCode: entry.formatCode, url: entry.url, label: entry.label ?? null }]
+          : [],
+      )
+    : line?.artworkLinks;
   if (!Array.isArray(links)) return [];
   return links.filter(
     (link): link is ArtworkLink =>
