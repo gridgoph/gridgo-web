@@ -13,6 +13,7 @@ import {
   CircleDot,
   Lock,
   MapPin,
+  ScrollText,
   ShieldAlert,
   TriangleAlert,
   type LucideIcon,
@@ -161,6 +162,11 @@ import {
   rescheduleNeedsOperations,
 } from "@/lib/shop-changes";
 import { cn } from "@/lib/utils";
+import {
+  OrderAuditPanel,
+  orderAuditSummary,
+  useOrderAudit,
+} from "@/components/audit/OrderAuditPanel";
 
 type Props = {
   /** Parent queue the back link returns to. Super Admin has no orders rail. */
@@ -183,7 +189,8 @@ type SectionId =
   | "payout"
   | "refund"
   | "physical-invoice"
-  | "history";
+  | "history"
+  | "audit";
 
 /**
  * One order, as a sequence of steps with everything about it beside them.
@@ -242,6 +249,8 @@ export function OrderWorkspace({
   const fileKey = useRef<{ signature: string; key: string } | null>(null);
   // The mount point says which tree this is; links stay inside it.
   const tree = queueHref.startsWith("/admin") ? "admin" : "ops";
+  // Read the first time the Audit row opens, never on every refresh.
+  const audit = useOrderAudit(orderId, open.includes("audit"));
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -841,6 +850,15 @@ export function OrderWorkspace({
               marker={{ icon: CircleDot, tone: "muted" }}
             >
               <Timeline entries={order.timeline} order={order} />
+            </SectionRow>
+
+            <SectionRow
+              id="audit"
+              heading="Audit"
+              summary={orderAuditSummary(audit, tree)}
+              marker={{ icon: ScrollText, tone: "muted" }}
+            >
+              <OrderAuditPanel orderId={order.id} tree={tree} state={audit} names={names} />
             </SectionRow>
           </Accordion>
 

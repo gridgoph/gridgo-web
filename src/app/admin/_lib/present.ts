@@ -267,48 +267,8 @@ export function presentLedgerType(type: string): string {
   }
 }
 
-/** Map audit action codes to sentence-case labels. */
-export function presentAuditAction(action: string): string {
-  const map: Record<string, string> = {
-    "credits.grant": "Granted Pilot Credits",
-    "user.role_update": "Changed user role",
-    "user.role": "Changed user role",
-    "user.verification": "Updated verification",
-    "zone.create": "Created delivery zone",
-    "zone.update": "Updated delivery zone",
-    "taxonomy.category.create": "Created category",
-    "taxonomy.category.update": "Updated category",
-    "taxonomy.material.create": "Created material",
-    "taxonomy.material.update": "Updated material",
-    "taxonomy.finish.create": "Created finish",
-    "taxonomy.finish.update": "Updated finish",
-    "supplier_service.verify": "Verified supplier service",
-    "supplier_service.suspend": "Suspended supplier service",
-    "issue.report": "Client reported issue",
-    "issue.resolve": "Resolved issue",
-    "claim.create": "Raised claim",
-    "claim.hold": "Held payout",
-    "claim.release": "Released payout hold",
-    "tracker.status": "Changed tracker status",
-    "tracker.decision": "Recorded tracker decision",
-    "legal.created": "Created legal document",
-    "legal.edited": "Edited legal document draft",
-    "legal.published": "Published legal document",
-    "legal.deleted": "Deleted legal document",
-    "legal.accepted": "Accepted legal documents",
-    "privacy.requested": "Privacy request received",
-    "privacy.updated": "Updated privacy request",
-    "settings.operational_update": "Changed operational settings",
-  };
-  if (map[action]) return map[action];
-
-  // Fallback: dots/underscores → words, never raw snake_case
-  return action
-    .replace(/[._]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/^\w/, (c) => c.toUpperCase());
-}
+/** Audit action codes in plain words; one vocabulary with the Audit log screen. */
+export { presentAuditAction } from "@/lib/audit";
 
 /**
  * One line of what a legal or privacy audit row recorded (LEGAL_API.md):
