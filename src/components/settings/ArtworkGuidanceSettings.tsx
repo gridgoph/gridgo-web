@@ -231,6 +231,7 @@ export function ArtworkGuidanceSettings({
                         canEdit={canEdit}
                         locked={locked}
                         onChange={(patch) => editTarget(row.code, patch)}
+                        sameAsDefault={sameDraft(own, current.base)}
                         onUseDefault={() =>
                           edit((value) => {
                             const rest = { ...value.own };
@@ -359,8 +360,14 @@ function RowName({
   );
 }
 
+// Name, resolution, colour, then the way back to the default, kept together
+// so a wide screen does not strand the controls far from the name they set.
 const ROW_GRID =
-  "grid gap-2 py-2.5 md:grid-cols-[minmax(0,1fr)_14rem_15rem_8.5rem] md:items-center";
+  "grid gap-2 py-2.5 md:grid-cols-[minmax(0,17rem)_13rem_15rem_minmax(0,1fr)] md:items-center";
+
+// The chosen colour reads as filled, not as a faint wash beside its twin.
+const COLOUR_CHOICE =
+  "aria-pressed:bg-primary aria-pressed:text-primary-foreground hover:aria-pressed:bg-primary hover:aria-pressed:text-primary-foreground";
 
 function TargetRow({
   name,
@@ -373,6 +380,7 @@ function TargetRow({
   locked,
   onChange,
   onUseDefault,
+  sameAsDefault = false,
   emphasis = false,
 }: {
   name: string;
@@ -385,6 +393,8 @@ function TargetRow({
   locked: boolean;
   onChange: (patch: Partial<TargetDraft>) => void;
   onUseDefault?: () => void;
+  /** Its own entry already matches the default: nothing to go back to. */
+  sameAsDefault?: boolean;
   emphasis?: boolean;
 }) {
   const id = `ag-${slug(name)}`;
@@ -401,7 +411,7 @@ function TargetRow({
         <span className="text-body text-text-primary">
           {draft.acceptsRgb ? "RGB accepted" : "Expects CMYK"}
         </span>
-        <span className="text-caption text-text-muted">{emphasis ? null : "Own target"}</span>
+        <span />
       </div>
     );
   }
@@ -458,11 +468,15 @@ function TargetRow({
         aria-label={`Colour for ${name}`}
         className="flex"
       >
-        <ToggleGroupItem value="cmyk">Expects CMYK</ToggleGroupItem>
-        <ToggleGroupItem value="rgb">RGB accepted</ToggleGroupItem>
+        <ToggleGroupItem value="cmyk" className={COLOUR_CHOICE}>
+          Expects CMYK
+        </ToggleGroupItem>
+        <ToggleGroupItem value="rgb" className={COLOUR_CHOICE}>
+          RGB accepted
+        </ToggleGroupItem>
       </ToggleGroup>
-      <div className="flex md:justify-end">
-        {onUseDefault ? (
+      <div className="flex">
+        {onUseDefault && !sameAsDefault ? (
           <Button
             variant="ghost"
             size="sm"
@@ -506,7 +520,7 @@ function InheritedRow({
       <span className="text-body text-text-secondary md:col-span-2">
         Uses the default{line ? ` (${line})` : ""}
       </span>
-      <div className="flex md:justify-end">
+      <div className="flex">
         {canEdit ? (
           <Button
             variant="ghost"
