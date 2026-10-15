@@ -26,6 +26,7 @@ import {
 } from "@/lib/production-progress";
 import { finishedReviewStatus } from "@/lib/shop-handover";
 import { pinPaymentAwaitingOperations } from "@/lib/delivery-pin";
+import { changePaymentAwaitingStaff } from "@/lib/order-changes";
 
 export type Stage = "payment" | "qa" | "production" | "delivery" | "done";
 
@@ -107,6 +108,8 @@ export function stageNeedsOperations(order: Order): boolean {
   // A client's QR transfer for a dearer delivery pin waits on a person here,
   // and no rider can be assigned until it is decided.
   if (pinPaymentAwaitingOperations(order)) return true;
+  // So does a client's QR transfer for an approved change to the job.
+  if (changePaymentAwaitingStaff(order)) return true;
   const stage = stageOf(order);
   if (stage === "payment") {
     return paymentOf(order, "downpayment")?.status === "pending_confirmation";

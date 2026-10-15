@@ -41,6 +41,7 @@ import type {
 import { milestoneIsClosed, milestoneReleaseBlocker } from "@/lib/api/constraints";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { milestoneName, milestoneProofSource } from "@/lib/order-state";
+import { changeExtrasOnStage } from "@/lib/order-changes";
 import { stageNeedsProof } from "@/lib/payout-plan";
 import {
   describeProof,
@@ -130,6 +131,8 @@ export function PayoutMilestones({
             released || superseded ? null : blockerFor(readiness, order, milestone);
           const name = milestoneName(milestone);
           const needsProof = stageNeedsProof(order, milestone);
+          // Agreed change extras ride on the final share as one transfer.
+          const extrasMinor = released || superseded ? 0 : changeExtrasOnStage(order, milestone);
 
           return (
             <AccordionItem key={milestone.code} value={milestone.code}>
@@ -170,6 +173,11 @@ export function PayoutMilestones({
                         data-testid={`stage-deduction-${milestone.code}`}
                       >
                         After {formatPhp(milestone.productionDeductionMinor)} late deduction
+                      </span>
+                    ) : null}
+                    {extrasMinor ? (
+                      <span className="text-caption text-text-muted tabular-nums">
+                        Plus {formatPhp(extrasMinor)} change extra
                       </span>
                     ) : null}
                     <StatusChip
@@ -263,7 +271,7 @@ export function PayoutMilestones({
                         {releasing === milestone.code
                           ? "Releasing…"
                           : milestone.amountMinor !== undefined
-                            ? `Release ${formatPhp(milestone.amountMinor)}`
+                            ? `Release ${formatPhp(milestone.amountMinor + extrasMinor)}`
                             : "Release this share"}
                       </Button>
                     </div>

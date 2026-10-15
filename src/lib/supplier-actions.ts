@@ -88,8 +88,22 @@ type ShopOrder = Pick<Order, "state" | "payoutMilestones" | "payoutHold"> &
       | "productionProgress"
       | "packingProgress"
       | "transitionReadiness"
+      | "shopAcceptance"
     >
   >;
+
+/**
+ * The shop answered no, or the hour ran out: GRIDGO keeps the order at
+ * `supplier_assigned` while it finds another shop (SHOP_RECOVERY_API.md), so
+ * the offer must stop being offered here.
+ */
+export function shopLetJobGo(order: Pick<Order, "state"> & Partial<Pick<Order, "shopAcceptance">>): boolean {
+  const status = order.shopAcceptance?.status;
+  return (
+    order.state === "supplier_assigned" &&
+    (status === "declined" || status === "timed_out" || status === "cancelled")
+  );
+}
 
 /** States where a shop may still attach a production or packing photo. */
 const PHOTO_OPEN_STATES = new Set(["production", "supplier_self_qc"]);
@@ -238,6 +252,7 @@ function packageStep(order: ShopOrder): SupplierAction {
 }
 
 export function actionsForJob(order: ShopOrder): SupplierAction[] {
+  if (shopLetJobGo(order)) return [];
   const owed = nextShopProof(order);
 
   switch (order.state) {
@@ -306,8 +321,13 @@ export function shopProofOutstanding(order: ShopOrder): boolean {
  */
 export function supplierWaitingOn(
   state: string,
-  order: Partial<Pick<Order, "payoutPlanVersion" | "payoutMilestones">> = {},
+  order: Partial<Pick<Order, "payoutPlanVersion" | "payoutMilestones" | "shopAcceptance">> = {},
 ): string | null {
+  if (shopLetJobGo({ state, shopAcceptance: order.shopAcceptance })) {
+    return order.shopAcceptance?.status === "timed_out"
+      ? "The hour to answer this offer passed, so GRIDGO is giving it to another shop."
+      : "You declined this job. GRIDGO is giving it to another shop.";
+  }
   switch (state) {
     case "awaiting_downpayment":
       return "The client has been told the final price and is sending their payment.";
