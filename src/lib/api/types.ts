@@ -1696,9 +1696,13 @@ export type SupplierService = {
   id: string;
   supplierId: string;
   categoryCode: string;
-  materialCodes: string[];
-  finishCodes: string[];
-  productFamilyIds: string[];
+  /**
+   * Absent on a line the shop created in the supplier app
+   * (`POST /me/supplier-services` stores none of these). Read with `?? []`.
+   */
+  materialCodes?: string[];
+  finishCodes?: string[];
+  productFamilyIds?: string[];
   sizeMin: string | null;
   sizeMax: string | null;
   qtyMin: number | null;
@@ -1717,7 +1721,7 @@ export type SupplierService = {
   productionDayMinutes?: number | null;
   capacityDaily: number | null;
   capacityWeekly: number | null;
-  zones: string[];
+  zones?: string[];
   equipmentNotes: string;
   state: SupplierServiceState;
   verifiedAt: string | null;
