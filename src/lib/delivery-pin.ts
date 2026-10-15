@@ -238,12 +238,24 @@ export function pinRowSummary(order: Pick<Order, "deliveryPin">): string {
       ? `Confirmed ${formatDateTime(pin.confirmedAt)}`
       : "Not confirmed yet";
   if (change?.status === "applied") {
-    return `${confirmed}. Pin changed once: ${pinFeeDifferenceLine(change.feeDifferenceMinor).toLowerCase()}.`;
+    const diff = change.feeDifferenceMinor;
+    if (diff > 0) return `${confirmed}. Pin changed once, ${formatPhp(diff)} more paid by QR.`;
+    if (diff < 0) return `${confirmed}. Pin changed once, ${formatPhp(-diff)} back to the client as a credit.`;
+    return `${confirmed}. Pin changed once, same delivery fee.`;
   }
   if (change?.status === "pending_payment" && pin.canChange) {
     return `${confirmed}. A new pin waits on the client's payment of ${formatPhp(change.feeDifferenceMinor)}.`;
   }
   return `${confirmed}.`;
+}
+
+/** What the client paid by QR for a dearer pin, once Operations verified it. */
+export function pinPaymentCollectedMinor(
+  order: Pick<Order, "deliveryPin"> | null | undefined,
+): number | null {
+  const change = appliedPinChange(order);
+  if (!change || change.feeDifferenceMinor <= 0) return null;
+  return change.payment?.amountMinor ?? null;
 }
 
 /** What the dispatch board's Pin cell says. */

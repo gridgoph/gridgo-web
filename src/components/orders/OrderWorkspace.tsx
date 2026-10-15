@@ -91,6 +91,7 @@ import { counterRow, counterStep } from "@/lib/counter-check";
 import { deliveryEvidenceItems } from "@/lib/evidence";
 import {
   pinPaymentAwaitingOperations,
+  pinPaymentCollectedMinor,
   pinReceiverLine,
   pinRowSummary,
   presentPinConfirmation,
@@ -2111,6 +2112,15 @@ function SpecRail({
           <dd className="text-body text-text-secondary m-0 tabular-nums">
             {paidMinor != null ? formatPhp(paidMinor) : "—"}
           </dd>
+          {/* A dearer pin's top-up is its own collection, never an installment. */}
+          {pinPaymentCollectedMinor(order) !== null ? (
+            <>
+              <dt className="text-caption text-text-muted">Paid for the pin change</dt>
+              <dd className="text-body text-text-secondary m-0 tabular-nums">
+                {formatPhp(pinPaymentCollectedMinor(order)!)}
+              </dd>
+            </>
+          ) : null}
           <dt className="text-caption text-text-muted">Remaining</dt>
           <dd className="text-body text-text-secondary m-0 tabular-nums">
             {remainingMinor != null ? formatPhp(remainingMinor) : "—"}

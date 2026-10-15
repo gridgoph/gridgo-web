@@ -327,7 +327,7 @@ export default function OpsDispatchPage() {
           }
           const blocker = pinDispatchBlocker(o);
           return (
-            <div className="flex max-w-64 flex-col items-start gap-1">
+            <div className="flex max-w-64 flex-col items-start gap-1 whitespace-normal">
               <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} />
               {blocker ? (
                 <Link

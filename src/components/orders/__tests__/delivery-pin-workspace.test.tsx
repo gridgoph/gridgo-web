@@ -235,6 +235,8 @@ describe("the order workspace's delivery pin row", { timeout: 20_000 }, () => {
       await screen.findByText("Payment verified. The new pin is saved and the rider will go there."),
     ).toBeInTheDocument();
     expect(await screen.findByText(/Collected ₱60\.00 by QR, verified .* by Rina Ops/)).toBeInTheDocument();
+    const rail = screen.getByRole("complementary", { name: "Order details" });
+    expect(within(rail).getByText("Paid for the pin change")).toBeInTheDocument();
   });
 
   it("rejects with a reason the client reads, and never sends money back", async () => {

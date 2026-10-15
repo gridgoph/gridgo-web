@@ -10,6 +10,7 @@ import {
   pinDispatchBlocker,
   pinFeeDifferenceLine,
   pinMapPoints,
+  pinPaymentCollectedMinor,
   pinReceiverLine,
   pinRowSummary,
   pinZoneLabel,
@@ -156,6 +157,36 @@ describe("a dearer pin's payment", () => {
     expect(pinRowSummary(waiting)).toBe(
       "The client sent ₱60.00 for a new pin. Verify it before dispatch.",
     );
+  });
+});
+
+describe("an applied change", () => {
+  it("says what it did to the delivery fee, in plain words", () => {
+    const applied = (feeDifferenceMinor: number) =>
+      order({
+        deliveryPin: pin({
+          status: "confirmed",
+          confirmedAt: "2026-10-15T06:30:00.000Z",
+          changeUsed: true,
+          change: change({
+            status: "applied",
+            feeDifferenceMinor,
+            payment: {
+              proofFileId: "file_p",
+              reference: "W-1",
+              submittedAt: "2026-10-15T06:20:00.000Z",
+              amountMinor: feeDifferenceMinor > 0 ? feeDifferenceMinor : undefined,
+            },
+          }),
+        }),
+      });
+    expect(pinRowSummary(applied(6_000))).toMatch(/Pin changed once, ₱60\.00 more paid by QR\.$/);
+    expect(pinRowSummary(applied(-4_000))).toMatch(
+      /Pin changed once, ₱40\.00 back to the client as a credit\.$/,
+    );
+    expect(pinRowSummary(applied(0))).toMatch(/Pin changed once, same delivery fee\.$/);
+    expect(pinPaymentCollectedMinor(applied(6_000))).toBe(6_000);
+    expect(pinPaymentCollectedMinor(applied(-4_000))).toBeNull();
   });
 });
 
