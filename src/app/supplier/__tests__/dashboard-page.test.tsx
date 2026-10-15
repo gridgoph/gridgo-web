@@ -19,6 +19,9 @@ class FakePointerEvent extends MouseEvent {
 }
 vi.stubGlobal("PointerEvent", FakePointerEvent);
 
+// The phone app invite has its own tests; these are about the figures.
+vi.mock("@/components/pwa/PhoneApp", () => ({ PhoneAppInvite: () => null }));
+
 vi.mock("@/lib/api/client", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api/client")>(
     "@/lib/api/client",
@@ -70,7 +73,7 @@ function job(partial: Partial<Order> & Pick<Order, "id" | "state" | "title">): O
 async function figure(label: string): Promise<string> {
   const heading = await screen.findByText(label);
   const card = heading.parentElement as HTMLElement;
-  return within(card).getByText(/./, { selector: "p.text-h2" }).textContent ?? "";
+  return within(card).getByText(/./, { selector: '[data-slot="stat-value"]' }).textContent ?? "";
 }
 
 describe("SupplierDashboardPage", () => {

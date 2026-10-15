@@ -640,7 +640,10 @@ export function DataTable<T>({
   return (
     <div className={cn("flex w-full flex-col gap-3", className)}>
       {showToolbar ? (
-        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        // One wrapping row at every width: on a phone the search takes its own
+        // line and the filters and toolbar buttons share the next, instead of
+        // each claiming a full-width row above the first record.
+        <div className="flex flex-wrap items-center gap-2">
           {filterPlaceholder ? (
             <div className="relative w-full sm:max-w-xs">
               <label className="sr-only" htmlFor="data-table-filter">

@@ -195,8 +195,10 @@ export default function SupplierSchedulePage() {
           <ChevronRight aria-hidden />
         </Button>
 
+        {/* On a phone the range reads first, on its own line, so the mode,
+            arrows and Today share one row instead of wrapping into three. */}
         <p
-          className="text-body text-text-primary m-0 min-w-[12rem]"
+          className="text-body text-text-primary order-first m-0 basis-full md:order-none md:min-w-[12rem] md:basis-auto"
           style={{ fontFamily: "var(--font-medium)" }}
           aria-live="polite"
         >

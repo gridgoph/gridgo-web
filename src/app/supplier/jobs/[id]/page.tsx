@@ -22,6 +22,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { TakePhotoButton } from "@/components/ui/TakePhotoButton";
 import {
   Dialog,
   DialogContent,
@@ -588,7 +589,12 @@ export default function SupplierJobDetailPage() {
               >
                 Choose file
               </Button>
-              <span className="text-caption text-text-secondary min-w-0 truncate">
+              <TakePhotoButton
+                disabled={acting !== null}
+                inputLabel="Take a photo for this proof"
+                onFile={(file) => void onProofFile(file)}
+              />
+              <span className="text-caption text-text-secondary min-w-0 basis-full truncate sm:basis-auto">
                 {proofFileName ?? "No file chosen"}
               </span>
             </div>
@@ -652,7 +658,12 @@ export default function SupplierJobDetailPage() {
               >
                 Choose photo
               </Button>
-              <span className="text-caption text-text-secondary min-w-0 truncate">
+              <TakePhotoButton
+                disabled={acting !== null}
+                inputLabel="Take a progress photo"
+                onFile={(file) => void onPhotoFile(file)}
+              />
+              <span className="text-caption text-text-secondary min-w-0 basis-full truncate sm:basis-auto">
                 {photoFileName ?? "No photo chosen"}
               </span>
             </div>
