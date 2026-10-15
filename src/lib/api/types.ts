@@ -1868,6 +1868,13 @@ export type SeasonPushDryRun = {
   windows: SeasonPushDryRunWindow[];
 };
 
+/** A browser push subscription as `PushSubscription.toJSON()` gives it. */
+export type WebPushSubscriptionInput = {
+  endpoint: string;
+  expirationTime?: number | null;
+  keys: { p256dh: string; auth: string };
+};
+
 export type PostAnnouncementInput = {
   audience: AnnouncementAudience;
   title: string;
