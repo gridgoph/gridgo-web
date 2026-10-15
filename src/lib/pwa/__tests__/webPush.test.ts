@@ -210,6 +210,7 @@ describe("Turn on notifications", () => {
 describe("keeping the API copy right", () => {
   it("re-sends a subscription the browser already holds, once per load, never asking", async () => {
     const api = installNotification("granted", "granted");
+    window.localStorage.setItem(WEB_PUSH_OWNER_KEY, "shop_1");
     registration.pushManager.getSubscription.mockResolvedValue(fakeSubscription());
     await syncWebPush("shop_1");
     await syncWebPush("shop_1");
@@ -273,5 +274,44 @@ describe("keeping the API copy right", () => {
     registration.pushManager.getSubscription.mockResolvedValueOnce(fakeSubscription());
     await releaseWebPushForSignOut();
     expect(order).toEqual(["browser", "api"]);
+  });
+
+  it("drops a subscription whose owner it cannot tell, instead of adopting it", async () => {
+    installNotification("granted", "granted");
+    registration.pushManager.getSubscription.mockResolvedValue(fakeSubscription());
+    await syncWebPush("shop_1");
+    expect(subscribeWebPush).not.toHaveBeenCalled();
+    expect(unsubscribe).toHaveBeenCalled();
+  });
+
+  it("turning on for a different account ends the old subscription first", async () => {
+    installNotification("granted", "granted");
+    window.localStorage.setItem(WEB_PUSH_OWNER_KEY, "shop_1");
+    registration.pushManager.getSubscription.mockResolvedValueOnce(fakeSubscription());
+    await turnOnWebPush(
+      "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U",
+      "shop_2",
+    );
+    expect(unsubscribe).toHaveBeenCalled();
+    expect(unsubscribeWebPush).toHaveBeenCalledWith("https://push.example/abc");
+    expect(registration.pushManager.subscribe).toHaveBeenCalled();
+    expect(window.localStorage.getItem(WEB_PUSH_OWNER_KEY)).toBe("shop_2");
+  });
+
+  it("keeps the owner record until a slow browser has really dropped it", async () => {
+    installNotification("granted", "granted");
+    window.localStorage.setItem(WEB_PUSH_OWNER_KEY, "shop_1");
+    let answer: (value: PushSubscription) => void = () => undefined;
+    registration.pushManager.getSubscription.mockReturnValueOnce(
+      new Promise((resolve) => {
+        answer = resolve;
+      }),
+    );
+    await releaseWebPushForSignOut(10);
+    expect(window.localStorage.getItem(WEB_PUSH_OWNER_KEY)).toBe("shop_1");
+    answer(fakeSubscription());
+    await vi.waitFor(() =>
+      expect(window.localStorage.getItem(WEB_PUSH_OWNER_KEY)).toBeNull(),
+    );
   });
 });

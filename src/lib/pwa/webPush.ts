@@ -39,8 +39,8 @@ import { iosSupportsWebPush, readDevice, type DeviceKind } from "@/lib/pwa/insta
  * - `off`: allowed, but this browser holds no subscription.
  * - `on`: subscribed.
  */
-/** The API holds this browser's subscription for this page load. */
-let synced = false;
+/** The account whose subscription the API holds, as of this page load. */
+let syncedFor: string | null = null;
 
 /**
  * Which account turned notifications on in this browser. A different account
@@ -239,6 +239,14 @@ export async function turnOnWebPush(
     if (!ready) throw new Error("no worker");
     const key = applicationServerKey(publicKey ?? (await getWebPushPublicKey()));
     let subscription = await ready.pushManager.getSubscription();
+    if (subscription && readOwner() !== userId) {
+      // Another account's (or an unknown owner's): end it everywhere, then
+      // start one that belongs to this account.
+      const endpoint = subscription.endpoint;
+      await subscription.unsubscribe().catch(() => undefined);
+      await unsubscribeWebPush(endpoint).catch(() => undefined);
+      subscription = null;
+    }
     if (subscription && !sameKey(subscription.options.applicationServerKey, key)) {
       // The server's keys changed: an old subscription can no longer be sent to.
       await subscription.unsubscribe().catch(() => undefined);
@@ -252,7 +260,7 @@ export async function turnOnWebPush(
     if (!input) throw new Error("incomplete subscription");
     await subscribeWebPush(input);
     writeOwner(userId);
-    synced = true;
+    syncedFor = userId;
     await ready
       .showNotification("Notifications are on", {
         body: "New jobs and order updates will show here, even with GRIDGO closed.",
@@ -287,27 +295,24 @@ export async function turnOffWebPush(): Promise<WebPushStatus> {
  * browser rotated, or a database restore. Never asks for permission.
  */
 export async function syncWebPush(userId: string): Promise<void> {
-  if (synced) return;
-  synced = true;
+  if (syncedFor === userId) return;
+  syncedFor = userId;
   if (readDesktopAlertPermission() !== "granted") return;
   const subscription = await currentSubscription();
   if (!subscription) return;
-  const owner = readOwner();
-  if (owner !== null && owner !== userId) {
-    // Another account turned this on and its session ended without signing
-    // out. Drop it rather than move it: this account never asked.
+  if (readOwner() !== userId) {
+    // Another account turned this on (its session ended without signing out),
+    // or the owner record is gone. Drop it rather than move it: this account
+    // never asked, and turning it back on is one tap.
     await subscription.unsubscribe().catch(() => undefined);
     writeOwner(null);
     return;
   }
   const input = subscriptionInput(subscription);
   if (!input) return;
-  await subscribeWebPush(input).then(
-    () => writeOwner(userId),
-    () => {
-      synced = false;
-    },
-  );
+  await subscribeWebPush(input).catch(() => {
+    syncedFor = null;
+  });
 }
 
 let keyPromise: Promise<string | null> | null = null;
@@ -338,9 +343,15 @@ export async function releaseWebPushForSignOut(timeoutMs = 3_000): Promise<void>
   if (subscription === timedOut) {
     // Too slow to wait for, but never skipped: the browser drops it as soon
     // as it answers, and the push service then reports the endpoint dead.
-    void pending.then((late) => late?.unsubscribe()).catch(() => undefined);
-    writeOwner(null);
-    synced = false;
+    // The owner record stays until it is actually gone, so the next sign-in
+    // here can still tell it was someone else's.
+    void pending
+      .then(async (late) => {
+        if (late) await late.unsubscribe();
+        writeOwner(null);
+      })
+      .catch(() => undefined);
+    syncedFor = null;
     return;
   }
   if (!subscription) return;
@@ -349,7 +360,7 @@ export async function releaseWebPushForSignOut(timeoutMs = 3_000): Promise<void>
   const endpoint = subscription.endpoint;
   await subscription.unsubscribe().catch(() => undefined);
   writeOwner(null);
-  synced = false;
+  syncedFor = null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -363,6 +374,6 @@ export async function releaseWebPushForSignOut(timeoutMs = 3_000): Promise<void>
 
 /** Test seam. */
 export function resetWebPushForTests(): void {
-  synced = false;
+  syncedFor = null;
   keyPromise = null;
 }
