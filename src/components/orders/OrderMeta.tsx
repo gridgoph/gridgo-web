@@ -19,6 +19,7 @@ import { ArtworkGuidanceRecord } from "@/components/orders/ArtworkGuidanceRecord
 import { DesignLinkLead, DesignLinkList } from "@/components/orders/DesignLinks";
 import { PrintLayoutRecord } from "@/components/orders/PrintLayoutRecord";
 import { EvidencePlate } from "@/components/orders/EvidencePreview";
+import { ExactColoursRecord } from "@/components/orders/ExactColours";
 import { showsAttachmentList } from "@/lib/artwork-attachments";
 import { orderDesignLinks } from "@/lib/design-links";
 import { jobFileEvidence } from "@/lib/evidence";
@@ -143,6 +144,15 @@ export function OrderMeta({ order, showMoney = true, fromJobDetails = false }: P
         Only on products whose shop offers the choice.
       */}
       <PrintLayoutRecord order={order} />
+      {/*
+        The client's exact colours, beside the colours GRIDGO read from each
+        released file. Nothing on a job without colours.
+      */}
+      <ExactColoursRecord
+        order={order}
+        audience="shop"
+        className="border-t border-outline-subtle pt-4"
+      />
       <div className="grid grid-cols-1 gap-3 border-t border-outline-subtle pt-4 sm:grid-cols-2">
         {/*
           A design link is artwork too: the file is behind it. A link-only
