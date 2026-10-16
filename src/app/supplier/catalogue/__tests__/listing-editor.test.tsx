@@ -1347,6 +1347,19 @@ describe("listing editor colour pricing (report 0BE07331)", { timeout: 30_000 },
     expect(body).not.toHaveProperty("colourPricing");
   });
 
+  it("never previews option add-ons on a colour-priced listing, since none apply", async () => {
+    const listing = documentListing({
+      pricedByColour: true,
+      colourPricing: { sizes: [{ paperSize: "A3", tierSet: "a3", prices: { monochrome: 1000 }, widthMilli: 297000, heightMilli: 420000 }] },
+    });
+    listing.item.optionGroups[0].options[1].priceModifierMinor = 1000;
+    stubLoad(listing);
+    render(<ListingEditorPage />);
+    await openEditorStep("Price");
+    expect(screen.getByText(/whole rate for a sheet/)).toBeVisible();
+    expect(screen.queryByText("+₱10.00")).not.toBeInTheDocument();
+  });
+
   it("shows nothing about colour against an API that predates it", async () => {
     stubLoad(catalogItem({ pricingUnit: "per_page", packageQty: null }));
     render(<ListingEditorPage />);

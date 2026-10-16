@@ -1196,6 +1196,12 @@ export default function ListingEditorPage() {
                           pay.
                         </p>
                       ) : null}
+                      <p className="text-caption text-text-muted m-0 max-w-prose">
+                        Each price here is the whole rate for a sheet: option add-ons,
+                        quantity discounts and rush prices are not added on top. If another
+                        choice, such as a different stock, changes your rate, make it a
+                        separate listing.
+                      </p>
                     </>
                   ) : (
                   <Field className="max-w-sm">
