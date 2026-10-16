@@ -17,6 +17,7 @@ import {
 import { ArtworkAttachments } from "@/components/orders/ArtworkAttachments";
 import { ArtworkGuidanceRecord } from "@/components/orders/ArtworkGuidanceRecord";
 import { DesignLinkLead, DesignLinkList } from "@/components/orders/DesignLinks";
+import { PrintLayoutRecord } from "@/components/orders/PrintLayoutRecord";
 import { EvidencePlate } from "@/components/orders/EvidencePreview";
 import { showsAttachmentList } from "@/lib/artwork-attachments";
 import { orderDesignLinks } from "@/lib/design-links";
@@ -136,6 +137,12 @@ export function OrderMeta({ order, showMoney = true, fromJobDetails = false }: P
           );
         })}
       </dl>
+      {/*
+        How the client asked for the file to sit on the paper: the paper, the
+        page, and whether anything is cut off or the drawing scale changes.
+        Only on products whose shop offers the choice.
+      */}
+      <PrintLayoutRecord order={order} />
       <div className="grid grid-cols-1 gap-3 border-t border-outline-subtle pt-4 sm:grid-cols-2">
         {/*
           A design link is artwork too: the file is behind it. A link-only

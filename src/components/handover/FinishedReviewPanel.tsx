@@ -17,6 +17,7 @@
 import { useEffect, useId, useState } from "react";
 
 import { WaitMark } from "@/components/orders/FileCheckQueue";
+import { LayoutGlyph } from "@/components/orders/PrintLayoutRecord";
 import { OrderArtwork } from "@/components/orders/DesignLinks";
 import { ProgressGallery } from "@/components/orders/ProductionProgress";
 import { SendBackDialog } from "@/components/listing-reviews/SendBackDialog";
@@ -32,6 +33,7 @@ import {
 import type { Order, ProductionItem } from "@/lib/api/types";
 import { artworkSource } from "@/lib/design-links";
 import { formatDateTime } from "@/lib/format";
+import { isKnownLayout, layoutSpec, ticketLayoutLine } from "@/lib/print-layout";
 import { describeQuantity } from "@/lib/quantity";
 import {
   FINISHED_REVIEW_CHECKS,
@@ -238,6 +240,28 @@ function lineSummary(item: ProductionItem): string {
 }
 
 /**
+ * The client's print layout on a ticket line: a print at the wrong scale or
+ * with its edges missing is only the shop's fault when the layout says so.
+ */
+function TicketLayout({ item }: { item: ProductionItem }) {
+  const spec = layoutSpec(item);
+  if (!spec) return null;
+  const flagged =
+    item.printLayoutCheck?.cutOff === true ||
+    (spec.code === "fit_to_paper" && item.printLayoutCheck?.scaleChanges === true);
+  return (
+    <span className="text-caption text-text-secondary inline-flex items-center gap-2">
+      {isKnownLayout(spec.code) ? (
+        <LayoutGlyph layout={spec.code} selected className="h-4 w-3" />
+      ) : null}
+      <span className={flagged ? "text-text-primary" : undefined}>
+        {ticketLayoutLine(spec, item)}
+      </span>
+    </span>
+  );
+}
+
+/**
  * What the work was printed to. A comparison needs both halves in view, so
  * the ticket stays beside the photos on a wide screen and follows them on a
  * narrow one.
@@ -277,6 +301,7 @@ export function JobTicket({ order }: { order: Order }) {
                     .join(", ")}
                 </span>
               ) : null}
+              <TicketLayout item={item} />
             </li>
           ))}
         </ul>

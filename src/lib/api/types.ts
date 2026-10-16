@@ -614,6 +614,60 @@ export type ProductionItem = {
    * API. Read through `@/lib/artwork-guidance`.
    */
   artworkGuidance?: ArtworkGuidanceRecord | null;
+  /**
+   * How the client asked for the file to sit on the paper. `null` on products
+   * without a layout choice and on older orders, absent on an older API.
+   * Read through `@/lib/print-layout`.
+   */
+  printLayout?: PrintLayoutCode | null;
+  /** The fit check as the client saw it at checkout, frozen with the order. */
+  printLayoutCheck?: PrintLayoutCheck | null;
+};
+
+// ---- Print layout ----
+// Contract: gridgo-api docs/PRINT_LAYOUT_API.md.
+
+/** A layout code; a code added after this build reads as itself, tidied. */
+export type PrintLayoutCode =
+  | "fit_to_paper"
+  | "actual_size_centered"
+  | "actual_size_original_position"
+  | (string & {});
+
+/** A paper option of the listing, measured in thousandths of a millimetre. */
+export type PrintLayoutPaper = {
+  optionId: string;
+  label: string;
+  widthMilli: number;
+  heightMilli: number;
+  pageSize: string | null;
+};
+
+export type PrintLayoutFilePage = {
+  widthMilli: number;
+  heightMilli: number;
+  pageSize: string | null;
+  orientation?: string | null;
+  largestShortSideMilli?: number | null;
+  largestLongSideMilli?: number | null;
+  mixedPageSizes?: boolean | null;
+};
+
+/** The fit check: the file's page against the chosen paper. */
+export type PrintLayoutCheck = {
+  supportedLayouts: PrintLayoutCode[];
+  layout: PrintLayoutCode | null;
+  paper: PrintLayoutPaper | null;
+  files: Array<{
+    fileId: string;
+    page: PrintLayoutFilePage | null;
+    exceedsPaper: boolean | null;
+  }>;
+  exceedsPaper: boolean | null;
+  cutOff: boolean | null;
+  scaleChanges: boolean | null;
+  suggestedPaper: PrintLayoutPaper | null;
+  unknown: Array<{ code: string; fileId?: string | null }>;
 };
 
 // ---- Artwork guidance ----

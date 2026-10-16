@@ -1084,3 +1084,75 @@ it.each([false, true])(
     expect(price).toHaveValue("15.00");
   },
 );
+
+describe("listing editor print layouts (gridgo-client#245)", () => {
+  it("marks layouts, says clients must choose one, and saves the whole set", async () => {
+    stubLoad(catalogItem({ printLayouts: [], reviewStatus: "approved" }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+
+    const group = screen.getByRole("group", { name: "Print layouts you can print" });
+    const boxes = within(group).getAllByRole("checkbox");
+    expect(boxes.map((box) => box.textContent)).toEqual([
+      expect.stringContaining("Fit to paper"),
+      expect.stringContaining("Actual size, centred"),
+      expect.stringContaining("Actual size, in its original position"),
+    ]);
+    expect(boxes.every((box) => box.getAttribute("aria-checked") === "false")).toBe(true);
+    expect(screen.getByText(/No layout marked: clients are not asked/)).toBeVisible();
+    expect(screen.getByText(/A change goes to the GRIDGO Team for review/)).toBeVisible();
+
+    // Ticked out of order, sent in the canonical order.
+    fireEvent.click(within(group).getByRole("checkbox", { name: /Actual size, centred/ }));
+    fireEvent.click(within(group).getByRole("checkbox", { name: /Fit to paper/ }));
+    expect(
+      screen.getByText("Clients must choose one of these before they can order this listing. Nothing is chosen for them."),
+    ).toBeVisible();
+    // The client reading beside the editor asks for a layout too.
+    expect(within(screen.getByTestId("listing-preview-layout")).getByText("Step 2 · Layout")).toBeVisible();
+
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalledTimes(1), AUTOSAVE_WAIT);
+    const [, version, body] = mocks.updateCatalogItem.mock.calls[0];
+    expect(version).toBe(3);
+    expect(body).toMatchObject({ printLayouts: ["fit_to_paper", "actual_size_centered"] });
+  });
+
+  it("leaves an unchanged set out of other saves, so a text edit opens no review", async () => {
+    stubLoad(catalogItem({ printLayouts: ["fit_to_paper"] }));
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Plans" } });
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalledTimes(1), AUTOSAVE_WAIT);
+    expect(mocks.updateCatalogItem.mock.calls[0][2]).not.toHaveProperty("printLayouts");
+  });
+
+  it("shows no layout section against an API without layouts", async () => {
+    stubLoad(catalogItem());
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+    expect(screen.queryByRole("group", { name: "Print layouts you can print" })).not.toBeInTheDocument();
+  });
+});
+
+describe("listing editor section numbers", () => {
+  it("gives every section its own number, Print layouts included", async () => {
+    stubLoad(catalogItem({ printLayouts: [] }));
+    render(<ListingEditorPage />);
+    const seen: string[] = [];
+    for (const label of ["Pick", "About", "Price", "Speed", "Steps", "Artwork", "Review"]) {
+      await openEditorStep(label);
+      const panel = document.getElementById("listing-step-panel")!;
+      for (const section of panel.querySelectorAll("section[id^='section-']")) {
+        seen.push(section.querySelector("p")!.textContent ?? "");
+      }
+    }
+    expect(new Set(seen).size).toBe(seen.length);
+    await openEditorStep("Artwork");
+    const eyebrow = (id: string) => document.getElementById(id)!.querySelector("p")!.textContent;
+    expect(["section-prep", "section-artwork", "section-print-layouts"].map(eyebrow)).toEqual([
+      "06.1",
+      "06.2",
+      "06.3",
+    ]);
+  });
+});

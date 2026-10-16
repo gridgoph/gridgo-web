@@ -11,6 +11,8 @@ import { Check, Trash2 } from "lucide-react";
 
 import { ListingPreviewBody } from "@/app/supplier/_components/ListingPreviewBody";
 import { PrinterMaxWidthField } from "@/app/supplier/_components/PrinterMaxWidthField";
+import { PrintLayoutsField } from "@/app/supplier/_components/PrintLayoutsField";
+import { sectionNumber } from "@/app/supplier/_components/editor-sections";
 import {
   PRODUCTION_TIME_HINT,
   ProductionTimeField,
@@ -121,6 +123,7 @@ import {
   workingDays,
   type ProductionTime,
 } from "@/lib/production-time";
+import { PRINT_LAYOUTS_HELP, sameLayouts, type KnownLayout } from "@/lib/print-layout";
 import { cn } from "@/lib/utils";
 
 type Draft = {
@@ -137,6 +140,8 @@ type Draft = {
   minimumTurnaround: ProductionTime;
   subcategoryCode: string;
   printerMaxWidthFeet: number | null;
+  /** Null on an API without layouts: nothing is shown or sent. */
+  printLayouts: KnownLayout[] | null;
 };
 
 /** Section and field ids; the readiness checklist scrolls to these. */
@@ -170,6 +175,19 @@ const EDITOR_STEPS = [
 ] as const;
 
 type EditorStepId = (typeof EDITOR_STEPS)[number]["id"];
+
+/** Each step's sections, top to bottom; their numbers are derived from this. */
+const STEP_SECTIONS: Record<EditorStepId, readonly string[]> = {
+  pick: ["section-kind"],
+  about: ["section-photos", "section-what"],
+  price: ["section-price"],
+  speed: ["section-ready-in"],
+  steps: ["section-picks", "section-addons"],
+  artwork: ["section-prep", "section-artwork", "section-print-layouts"],
+  review: ["section-review"],
+};
+
+const SECTION_ORDER = EDITOR_STEPS.map((entry) => STEP_SECTIONS[entry.id]);
 
 const STEP_OF_FIELD: Record<BoardField, EditorStepId> = {
   photos: "about",
@@ -215,6 +233,7 @@ function draftFrom(listing: Listing): Draft {
     minimumTurnaround: listing.minimumTurnaround ?? listing.turnaround ?? DEFAULT_LISTING_TIME,
     subcategoryCode: listing.subcategoryCode,
     printerMaxWidthFeet: listing.printerMaxWidthFeet,
+    printLayouts: listing.printLayouts,
   };
 }
 
@@ -262,6 +281,7 @@ function payloadOf(draft: Draft) {
       draft.printerMaxWidthFeet,
       "update",
     ),
+    ...(draft.printLayouts ? { printLayouts: draft.printLayouts } : {}),
   };
 }
 
@@ -271,6 +291,9 @@ function savePayload(draft: Draft, listing: Listing) {
   if (!timeChanged(draft, listing)) {
     for (const key of Object.keys(timePayload(draft))) delete payload[key];
   }
+  // The set is replaced whole and a change opens review, so it is sent only
+  // when the shop changed it.
+  if (sameLayouts(draft.printLayouts, listing.printLayouts)) delete payload.printLayouts;
   return payload;
 }
 
@@ -411,6 +434,7 @@ export default function ListingEditorPage() {
           printerMaxWidthFeet: needsPrinterMaxWidth(working.subcategoryCode)
             ? working.printerMaxWidthFeet
             : null,
+          printLayouts: working.printLayouts,
         }
       : listing;
   const checklist = merged && context ? boardChecklist(merged, context) : [];
@@ -915,7 +939,6 @@ export default function ListingEditorPage() {
             {step === "pick" ? (
               <Section
                 id="section-kind"
-                step="01"
                 title="Pick printing category"
                 help={`Filed under ${subcategoryName(taxonomy, working.subcategoryCode)}. You can move it within that category, not out of it.`}
               >
@@ -950,7 +973,6 @@ export default function ListingEditorPage() {
               <>
                 <Section
                   id="section-photos"
-                  step="02"
                   title="Sample photos"
                   help="Up to eight samples of this kind of work. The wide sample is the one clients see first. Use Edit on a photo to replace it, remove it, or make it the wide sample."
                 >
@@ -969,7 +991,6 @@ export default function ListingEditorPage() {
                 </Section>
                 <Section
                   id="section-what"
-                  step="02"
                   title="Describe your product"
                   help="Name it the way a client would ask for it."
                 >
@@ -1006,7 +1027,6 @@ export default function ListingEditorPage() {
             {step === "price" ? (
               <Section
                 id="section-price"
-                step="03"
                 title="Set your product price"
                 help="Your own asking price. What GRIDGO charges the client on top is not yours to set."
               >
@@ -1052,7 +1072,6 @@ export default function ListingEditorPage() {
             {step === "speed" ? (
               <Section
                 id="section-ready-in"
-                step="04"
                 title="Set your capacity & speed"
                 help="How many you will take, and how long a client waits from paying to pickup."
               >
@@ -1141,7 +1160,6 @@ export default function ListingEditorPage() {
               <>
                 <Section
                   id="section-picks"
-                  step="05"
                   title="How will the client choose?"
                   help="In this order, the way they will see it. Each one saves as you add it."
                 >
@@ -1168,7 +1186,6 @@ export default function ListingEditorPage() {
                 </Section>
                 <Section
                   id="section-addons"
-                  step="05"
                   title="Add-ons"
                   help="Priced extras a client can add. Rush, grommets, lamination."
                 >
@@ -1199,7 +1216,6 @@ export default function ListingEditorPage() {
               <>
                 <Section
                   id="section-prep"
-                  step="06"
                   title="How can the client help you?"
                   help="What a client should do before sending work. Numbered — they read it in order."
                 >
@@ -1249,7 +1265,6 @@ export default function ListingEditorPage() {
                 </Section>
                 <Section
                   id="section-artwork"
-                  step="06"
                   title="Artwork you accept"
                   help="What a client may send you for this listing."
                 >
@@ -1299,13 +1314,25 @@ export default function ListingEditorPage() {
                     )}
                   </FieldGroup>
                 </Section>
+                {working.printLayouts ? (
+                  <Section
+                    id="section-print-layouts"
+                    title="Print layouts"
+                    help={PRINT_LAYOUTS_HELP}
+                  >
+                    <PrintLayoutsField
+                      value={working.printLayouts}
+                      onChange={(printLayouts) => setDraft({ ...working, printLayouts })}
+                      inReview={listing.reviewStatus != null}
+                    />
+                  </Section>
+                ) : null}
               </>
             ) : null}
 
             {step === "review" ? (
               <Section
                 id="section-review"
-                step="07"
                 title="Finalize your product"
                 help="The reading beside this is what a client sees, including a price or sample you have not saved yet. It goes on the board only when the list below is clear."
               >
@@ -1338,8 +1365,8 @@ export default function ListingEditorPage() {
                 )}
                 {listing.reviewStatus ? (
                   <p className="text-caption text-text-secondary m-0 max-w-prose">
-                    Operations reviews every new listing, and any change to its price, specs,
-                    artwork formats or photos, before clients see it. Photos must not show a
+                    The GRIDGO Team reviews every new listing, and any change to its price,
+                    specs, print layouts, artwork formats or photos, before clients see it. Photos must not show a
                     watermark, logo or shop branding.
                   </p>
                 ) : null}
@@ -1418,13 +1445,11 @@ export default function ListingEditorPage() {
  */
 function Section({
   id,
-  step,
   title,
   help,
   children,
 }: {
   id: string;
-  step: string;
   title: string;
   help: string;
   children: ReactNode;
@@ -1432,7 +1457,9 @@ function Section({
   return (
     <section id={id} aria-labelledby={`${id}-title`} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <p className="text-overline text-text-muted m-0 uppercase">{step}</p>
+        <p className="text-overline text-text-muted m-0 uppercase">
+          {sectionNumber(SECTION_ORDER, id)}
+        </p>
         <h3
           id={`${id}-title`}
           className="text-body-lg text-text-primary m-0"
