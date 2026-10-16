@@ -1875,15 +1875,18 @@ function ProductionStep({
   // The photos under review are shown large in the review; not twice.
   const underReview = new Set(pending ? (currentSubmission(order)?.photoFileIds ?? []) : []);
   // Shop proof pictures are drawn once, under Supplier payout, as the full set
-  // for each stage; the gallery says how many it leaves to that row.
+  // for each stage; a line below says how many are there.
   const proofIds = shopProofFileIds(order);
   const photos = progressPhotos(order).filter(
     (photo) => !underReview.has(photo.fileId) && !proofIds.has(photo.fileId),
   );
   // A rider-packs order owes no progress photo: no empty frame asks for one.
   const photoMissing = !riderPacks && productionPhotoMissing(order);
+  // Nothing left to draw when every photo is a proof shown under Supplier payout.
   const showProgress =
-    progress !== null && progressReached(order) && (!riderPacks || photos.length > 0);
+    progress !== null &&
+    progressReached(order) &&
+    (photos.length > 0 || photoMissing);
   const finishedNotes = finishedPhotoNotes(order);
   // An API that predates the gallery does not take the correction either.
   const correctable = progress !== null && canCorrectProduction(order);

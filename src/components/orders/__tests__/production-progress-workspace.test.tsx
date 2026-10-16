@@ -136,6 +136,32 @@ describe("progress photos on the order workspace", () => {
     expect(screen.queryByText("Proof file_start")).toBeNull();
   });
 
+  it("draws no empty gallery when every photo is a payout proof", async () => {
+    order = base({
+      payoutMilestones: escrowStages({ production_started: proofOnFile("file_start") }),
+      productionProgress: {
+        status: "photos_available",
+        photos: [
+          {
+            fileId: "file_start",
+            contentType: "image/jpeg",
+            at: "2026-09-28T02:00:00Z",
+            downloadUrl: "https://files.test/start.jpg",
+            downloadUrlExpiresAt: "2999-01-01T00:00:00Z",
+          },
+        ],
+      },
+    });
+    render(<OrderWorkspace queueHref="/ops/orders" payoutsHref="/ops/payouts" />);
+
+    const row = await waitFor(() => productionRow());
+    expect(
+      await within(row).findByText(/1 proof on file, shown under Supplier payout/),
+    ).toBeInTheDocument();
+    expect(within(row).queryByText("Progress photos")).toBeNull();
+    expect(within(row).queryByRole("button", { name: /Open progress photo/ })).toBeNull();
+  });
+
   it("points to a PDF start proof beside the waiting frame", async () => {
     order = base({
       payoutMilestones: escrowStages({ production_started: proofOnFile("file_pdf") }),
