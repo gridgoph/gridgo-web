@@ -154,9 +154,11 @@ export function QualityReview({
     };
   }, [idKey]);
 
+  // A new pin reloads the map, so its tick waits again.
+  const pinKey = place.pin ? `${place.pin.lat},${place.pin.lng}` : "";
   useEffect(() => {
-    setMapStatus(place.pin ? "loading" : "ready");
-  }, [place.pin?.lat, place.pin?.lng]);
+    setMapStatus(pinKey ? "loading" : "ready");
+  }, [pinKey]);
 
   const loadedFiles = files ?? [];
   const facts = fileDetailFacts(loadedFiles, order);

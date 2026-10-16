@@ -146,7 +146,7 @@ beforeEach(() => {
         id: "svc_1",
         categoryCode: "marketing",
         state: "live",
-        turnaroundHours: 48,
+        turnaroundDays: 2,
         formatCodes: ["pdf"],
       },
     ],
@@ -335,7 +335,7 @@ describe("supplier Catalogues standings (gridgo-web#111)", () => {
     expect(within(tile).queryByText("Changes in review")).not.toBeInTheDocument();
     expect(within(tile).getAllByRole("status")).toHaveLength(1);
     expect(within(tile).getByText("₱400.00 per piece")).toBeVisible();
-    expect(within(tile).getByText("Ready in 2 days")).toBeVisible();
+    expect(within(tile).getByText("Ready in 2 working days")).toBeVisible();
   });
 
   it("edits, hides, and previews from the card without a review or a take-down clear", async () => {

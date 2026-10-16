@@ -247,7 +247,9 @@ it("uses the existing pickup and design-link check wording", async () => {
   expect(
     qa.getByText("Client collects at the GRIDGO counter (Pick-up)"),
   ).toBeInTheDocument();
-  expect(qa.getByText("Artwork is print-ready")).toBeInTheDocument();
+  expect(
+    qa.getByText("Design link opens without signing in, and the design is high enough resolution"),
+  ).toBeInTheDocument();
   expect(qa.getByText("Design link: open it to get the file")).toBeInTheDocument();
   capture("pickup-link");
 });
