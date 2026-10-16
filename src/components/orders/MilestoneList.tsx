@@ -8,7 +8,10 @@
  * from an Operations surface — the API refuses anyone else.
  */
 
+import { ImagePlus } from "lucide-react";
+
 import { EvidenceStrip } from "@/components/orders/EvidencePreview";
+import { ProofGallery } from "@/components/orders/ProofGallery";
 import { SettlementPayouts } from "@/components/orders/SettlementPayouts";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Button } from "@/components/ui/button";
@@ -22,6 +25,7 @@ import {
   type StatePresentation,
 } from "@/lib/order-state";
 import { stageNeedsProof } from "@/lib/payout-plan";
+import { proofCountLabel, shopProofAccess, stageProofIds } from "@/lib/payout-proofs";
 
 const READY_FOR_OPERATIONS: StatePresentation = {
   label: "Ready for Operations",
@@ -35,9 +39,18 @@ type Props = {
   onRelease?: (milestone: PayoutMilestone) => void;
   /** Milestone code currently being released. */
   releasing?: string | null;
+  /** The shop's job page: add proof photos to a stage the shop files for. */
+  onAddProof?: (milestone: PayoutMilestone) => void;
+  addDisabled?: boolean;
 };
 
-export function MilestoneList({ order, onRelease, releasing }: Props) {
+export function MilestoneList({
+  order,
+  onRelease,
+  releasing,
+  onAddProof,
+  addDisabled = false,
+}: Props) {
   const milestones = order.payoutMilestones;
 
   if (!milestones?.length) {
@@ -82,7 +95,9 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
               ? READY_FOR_OPERATIONS
               : presentMilestoneStatus(milestone.status, { needsProof });
           const released = milestone.status === "released";
-          const proofCount = milestone.pofFileIds.length;
+          const proofIds = stageProofIds(milestone);
+          const proofCount = proofIds.length;
+          const access = onAddProof ? shopProofAccess(order, milestone) : null;
 
           return (
             <li
@@ -128,13 +143,9 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
                 <span className="text-caption text-text-muted">
-                  {proofCount === 0
-                    ? needsProof
-                      ? "No proof on file"
-                      : "No proof needed"
-                    : proofCount === 1
-                      ? "1 proof on file"
-                      : `${proofCount} proofs on file`}
+                  {proofCount === 0 && !needsProof
+                    ? "No proof needed"
+                    : proofCountLabel(proofCount)}
                 </span>
                 {released ? (
                   <span className="text-caption text-text-muted">
@@ -161,17 +172,23 @@ export function MilestoneList({ order, onRelease, releasing }: Props) {
 
               {proofCount > 0 ? (
                 <div className="mt-3">
-                  <EvidenceStrip
-                    items={milestone.pofFileIds.map((fileId, index) => ({
-                      fileId,
-                      kind: "pof" as const,
-                      label:
-                        milestone.pofFileIds.length > 1
-                          ? `Proof ${index + 1}`
-                          : "Proof of fulfilment",
-                    }))}
-                  />
+                  <ProofGallery fileIds={proofIds} label={`${milestoneName(milestone)} proof`} />
                 </div>
+              ) : null}
+
+              {access?.allowed && onAddProof ? (
+                <div className="mt-3">
+                  <Button
+                    variant="secondary"
+                    disabled={addDisabled}
+                    onClick={() => onAddProof(milestone)}
+                  >
+                    <ImagePlus data-icon="inline-start" strokeWidth={1.75} aria-hidden />
+                    {proofCount === 0 ? "Add proof photos" : "Add more proof photos"}
+                  </Button>
+                </div>
+              ) : access && !access.allowed && access.reason ? (
+                <p className="text-caption text-text-secondary m-0 mt-2">{access.reason}</p>
               ) : null}
 
               {!released && blocker && blocker !== sharedBlocker ? (

@@ -18,6 +18,7 @@ import {
 import { ChangeRequestCard } from "@/app/supplier/_components/ChangeRequestCard";
 import { DeclineJobDialog } from "@/app/supplier/_components/DeclineJobDialog";
 import { FinishedWorkDialog } from "@/app/supplier/_components/FinishedWorkDialog";
+import { ProofUploadDialog } from "@/app/supplier/_components/ProofUploadDialog";
 import { PackagingChecklist } from "@/app/supplier/_components/PackagingChecklist";
 import { RequestChangeDialog } from "@/app/supplier/_components/RequestChangeDialog";
 import { SpecialInstructionsCard } from "@/app/supplier/_components/SpecialInstructionsCard";
@@ -42,13 +43,11 @@ import { SkeletonDetail } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import {
   ApiError,
-  attachFulfilmentProof,
   attachPackingPhoto,
   attachProductionPhoto,
   declineJob,
   getOrder,
   transitionOrder,
-  uploadFulfilmentProof,
   uploadPackingPhoto,
   uploadProductionPhoto,
 } from "@/lib/api/client";
@@ -76,6 +75,7 @@ import {
   progressPhotos,
   progressReached,
 } from "@/lib/production-progress";
+import { shopProofFileIds } from "@/lib/payout-proofs";
 import { uploadErrorMessage } from "@/lib/upload-errors";
 import {
   DO_NOT_PACK_YET,
@@ -91,6 +91,7 @@ import {
   productionPhotoOwed,
   shopLetJobGo,
   shopProofOutstanding,
+  shopProofWords,
   supplierWaitingOn,
   type SupplierAction,
 } from "@/lib/supplier-actions";
@@ -167,11 +168,8 @@ export default function SupplierJobDetailPage() {
   const [instructionsRead, setInstructionsRead] = useState(false);
   const [tickMissing, setTickMissing] = useState(false);
   const [changeOpen, setChangeOpen] = useState(false);
-  const [proofOpen, setProofOpen] = useState(false);
-  const [proofFileId, setProofFileId] = useState<string | null>(null);
-  const [proofFileName, setProofFileName] = useState<string | null>(null);
-  const proofInput = useRef<HTMLInputElement>(null);
-  const [proofError, setProofError] = useState<string | null>(null);
+  // The payout stage whose proof photos are being added, if any.
+  const [proofStage, setProofStage] = useState<string | null>(null);
   const [filedNote, setFiledNote] = useState<string | null>(null);
   const [photoOpen, setPhotoOpen] = useState(false);
   const [photoKind, setPhotoKind] = useState<PhotoKind>("progress");
@@ -213,15 +211,6 @@ export default function SupplierJobDetailPage() {
     void load();
   }, [load]);
 
-  function closeProof() {
-    setProofOpen(false);
-    setProofFileId(null);
-    setProofFileName(null);
-    setProofError(null);
-    if (proofInput.current) proofInput.current.value = "";
-    setActing(null);
-  }
-
   function openPhoto(kind: PhotoKind = "progress") {
     setActionError(null);
     setPhotoRefused(null);
@@ -260,10 +249,8 @@ export default function SupplierJobDetailPage() {
     }
     if (action.kind === "add_proof" || action.targetState === null) {
       setActionError(null);
-      setProofError(null);
-      setProofFileId(null);
-      setProofFileName(null);
-      setProofOpen(true);
+      setFiledNote(null);
+      setProofStage(action.milestoneCode ?? null);
       return;
     }
     if (action.blockedReason) return;
@@ -386,43 +373,6 @@ export default function SupplierJobDetailPage() {
     }
   }
 
-  async function onProofFile(file: File | undefined) {
-    if (!file) return;
-    setActing("add_proof");
-    setProofError(null);
-    setProofFileId(null);
-    setProofFileName(file.name);
-    try {
-      const stored = await uploadFulfilmentProof(file);
-      setProofFileId(stored.fileId);
-    } catch (err) {
-      setProofError(
-        uploadErrorMessage(err, { what: "this evidence", notSent: "was not filed" }),
-      );
-    } finally {
-      setActing(null);
-    }
-  }
-
-  async function fileProof(action: SupplierAction) {
-    if (!job || !proofFileId || !action.milestoneCode) return;
-    setActing("add_proof");
-    setProofError(null);
-    try {
-      await attachFulfilmentProof(proofFileId, job.id, action.milestoneCode);
-      const reloaded = await getOrder(job.id);
-      setJob(reloaded);
-      const part = action.proofNoun ?? "stage";
-      setFiledNote(
-        `GRIDGO has your ${part} evidence. Operations reviews it before that part is paid.`,
-      );
-      closeProof();
-    } catch (err) {
-      setProofError(supplierErrorMessage(err));
-      setActing(null);
-    }
-  }
-
   if (loading && !job) {
     return <SkeletonDetail label="Loading order workspace" panels={3} />;
   }
@@ -447,14 +397,20 @@ export default function SupplierJobDetailPage() {
   const status = shopHandoverChip(job) ?? presentOrderState(job.state);
   const activity = jobActivity(job);
   const actions = actionsForJob(job);
-  const proofAction = actions.find((action) => action.kind === "add_proof") ?? null;
+  const proofMilestone =
+    job.payoutMilestones?.find((milestone) => milestone.code === proofStage) ?? null;
   const primary = actions.find((a) => a.primary);
   const secondary = actions.filter((a) => !a.primary);
   const waiting = supplierWaitingOn(job.state, job);
   const confirmedMinor = job.supplierSubtotalMinor ?? job.supplierPriceMinor;
   const confirmedDate = job.readyBy ?? job.promisedDate ?? job.deadline;
   const progress = productionProgressOf(job);
-  const photos = progressPhotos(job);
+  // A shop proof photo is also a progress photo; it is shown once, under
+  // Your payout, where it counts.
+  const proofIds = shopProofFileIds(job);
+  const allPhotos = progressPhotos(job);
+  const photos = allPhotos.filter((photo) => !proofIds.has(photo.fileId));
+  const proofPhotos = allPhotos.length - photos.length;
   const photoMissing = productionPhotoMissing(job);
   const photoOpenState = canAddProgressPhoto(job);
   const check = packagingCheck(job);
@@ -656,7 +612,7 @@ export default function SupplierJobDetailPage() {
           {filedNote ? (
             <p className="text-body text-text-secondary m-0">{filedNote}</p>
           ) : null}
-          {actionError && !declineOpen && !proofOpen && !photoOpen && !changeOpen ? (
+          {actionError && !declineOpen && proofStage === null && !photoOpen && !changeOpen ? (
             <div className="flex flex-col items-start gap-2" role="alert">
               <p className="text-body text-error m-0">{actionError}</p>
               {photoRefused === "progress" &&
@@ -738,6 +694,9 @@ export default function SupplierJobDetailPage() {
                 {photoMissing
                   ? "The client sees these on their order."
                   : `${progressPhotoCount(photos.length)} on this job. The client sees these on their order.`}
+                {proofPhotos > 0
+                  ? ` Your ${proofPhotos === 1 ? "proof photo is" : `${proofPhotos} proof photos are`} under Your payout, not repeated here.`
+                  : ""}
               </p>
               {photoMissing ? (
                 <WaitingForPhoto
@@ -818,7 +777,7 @@ export default function SupplierJobDetailPage() {
               <Wallet size={18} strokeWidth={1.75} aria-hidden />
               Your payout
             </h3>
-            <p className="text-body text-text-secondary m-0 mt-1 mb-3 max-w-prose">
+            <p className="text-body text-text-secondary m-0 mt-1 mb-1 max-w-prose">
               {/*
                 Counted, not asserted. Orders placed under the escrow plan have
                 three stages and older ones four, so a hardcoded count is wrong
@@ -828,82 +787,35 @@ export default function SupplierJobDetailPage() {
                 ? "One release of your own price, paid by Operations once they have seen the proof."
                 : `${job.payoutMilestones.length} parts of your own price, each released by Operations once they have seen the proof for that stage.`}
             </p>
-            <MilestoneList order={job} />
+            <p className="text-caption text-text-muted m-0 mb-3 max-w-prose">
+              Add as many proof photos as you like to your own stages, even after a
+              part is paid. The client sees your photos on their order too.
+            </p>
+            <MilestoneList
+              order={job}
+              onAddProof={(milestone) => {
+                setActionError(null);
+                setFiledNote(null);
+                setProofStage(milestone.code);
+              }}
+              addDisabled={acting !== null}
+            />
           </section>
         ) : null}
       </div>
 
-      <Dialog
-        open={proofOpen && proofAction !== null}
-        onOpenChange={(open) => {
-          if (!open) closeProof();
+      <ProofUploadDialog
+        open={proofMilestone !== null}
+        order={job}
+        milestone={proofMilestone}
+        words={proofMilestone ? shopProofWords(proofMilestone) : null}
+        countsAsProgress={Boolean(progress && !riderPacks)}
+        onOrder={setJob}
+        onClose={(note) => {
+          setProofStage(null);
+          if (note) setFiledNote(note);
         }}
-      >
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>{proofAction?.proofLabel ?? "Proof"}</DialogTitle>
-            <DialogDescription>{proofAction?.proofHint ?? ""}</DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-2">
-            <p className="text-caption text-text-muted m-0">
-              JPEG, PNG, WebP, or PDF.
-              {progress && !riderPacks
-                ? " A photo also counts as the progress photo you need before packing; a PDF does not."
-                : ""}
-            </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={acting !== null}
-                onClick={() => proofInput.current?.click()}
-              >
-                Choose file
-              </Button>
-              <TakePhotoButton
-                disabled={acting !== null}
-                inputLabel="Take a photo for this proof"
-                onFile={(file) => void onProofFile(file)}
-              />
-              <span className="text-caption text-text-secondary min-w-0 basis-full truncate sm:basis-auto">
-                {proofFileName ?? "No file chosen"}
-              </span>
-            </div>
-            <input
-              ref={proofInput}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,application/pdf"
-              className="sr-only"
-              tabIndex={-1}
-              disabled={acting !== null}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = "";
-                void onProofFile(file);
-              }}
-            />
-          </div>
-          {proofError ? (
-            <p className="text-body text-error m-0" role="alert">
-              {proofError}
-            </p>
-          ) : null}
-          <DialogFooter>
-            <Button variant="secondary" disabled={acting !== null} onClick={closeProof}>
-              Not yet
-            </Button>
-            <Button
-              variant="primary"
-              disabled={acting !== null || !proofFileId || !proofAction}
-              onClick={() => {
-                if (proofAction) void fileProof(proofAction);
-              }}
-            >
-              {acting === "add_proof" ? "Filing…" : "File this evidence"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      />
 
       <Dialog
         open={photoOpen}

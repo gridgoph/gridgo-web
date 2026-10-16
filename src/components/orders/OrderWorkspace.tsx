@@ -54,7 +54,7 @@ import {
 } from "@/components/orders/ShopChanges";
 import { useFileDeletionAccess } from "@/components/files/FileDeletionAccess";
 import { OrderFileDeletions } from "@/components/files/OrderFileDeletions";
-import { EvidencePlate, EvidenceStrip } from "@/components/orders/EvidencePreview";
+import { EvidenceStrip } from "@/components/orders/EvidencePreview";
 import {
   DesignLinkLead,
   DesignLinkList,
@@ -165,9 +165,9 @@ import {
 } from "@/lib/physicalInvoiceDesk";
 import { milestoneName, presentOrderState } from "@/lib/order-state";
 import { shopProofStages } from "@/lib/payout-plan";
+import { proofCountLabel, shopProofFileIds, stageProofIds } from "@/lib/payout-proofs";
 import { paymentOf, paymentPlanLabel, paymentProgress } from "@/lib/payments";
 import {
-  milestoneProofs,
   payoutProgress,
   payoutSummary,
   releasableMilestones,
@@ -1874,7 +1874,12 @@ function ProductionStep({
   const pending = awaitingFinishedReview(order);
   // The photos under review are shown large in the review; not twice.
   const underReview = new Set(pending ? (currentSubmission(order)?.photoFileIds ?? []) : []);
-  const photos = progressPhotos(order).filter((photo) => !underReview.has(photo.fileId));
+  // Shop proof pictures are drawn once, under Supplier payout, as the full set
+  // for each stage; the gallery says how many it leaves to that row.
+  const proofIds = shopProofFileIds(order);
+  const photos = progressPhotos(order).filter(
+    (photo) => !underReview.has(photo.fileId) && !proofIds.has(photo.fileId),
+  );
   // A rider-packs order owes no progress photo: no empty frame asks for one.
   const photoMissing = !riderPacks && productionPhotoMissing(order);
   const showProgress =
@@ -1882,27 +1887,9 @@ function ProductionStep({
   const finishedNotes = finishedPhotoNotes(order);
   // An API that predates the gallery does not take the correction either.
   const correctable = progress !== null && canCorrectProduction(order);
-  const shopProofs = shopProofStages(order).map((milestone) => ({
-    milestone,
-    proofs: milestoneProofs(order, milestone),
-  }));
-
-  // A start-of-production photo is both a gallery photo and a payout proof.
-  // Say so under the photo, and do not show the same picture twice.
-  const galleryIds = new Set(photos.map((photo) => photo.fileId));
-  const proofOf = new Map<string, string>();
-  for (const { milestone, proofs } of shopProofs) {
-    for (const proof of proofs) {
-      if (galleryIds.has(proof.fileId))
-        proofOf.set(proof.fileId, milestoneName(milestone));
-    }
-  }
-  const filed = shopProofs
-    .map(({ milestone, proofs }) => ({
-      milestone,
-      proofs: proofs.filter((proof) => !galleryIds.has(proof.fileId)),
-    }))
-    .filter((entry) => entry.proofs.length > 0);
+  const filed = shopProofStages(order)
+    .map((milestone) => ({ milestone, count: stageProofIds(milestone).length }))
+    .filter((entry) => entry.count > 0);
 
   const finishedWork = riderPacks ? (
     <FinishedWorkStep
@@ -1956,12 +1943,7 @@ function ProductionStep({
           ) : (
             <ProgressGallery
               photos={photos}
-              noteFor={(photo) => {
-                const finished = finishedNotes.get(photo.fileId);
-                if (finished) return finished;
-                const stage = proofOf.get(photo.fileId);
-                return stage ? `Also the payout proof for ${stage.toLowerCase()}` : null;
-              }}
+              noteFor={(photo) => finishedNotes.get(photo.fileId) ?? null}
             />
           )}
         </div>
@@ -1973,28 +1955,14 @@ function ProductionStep({
         <CorrectionNote key={correction.id} order={order} correction={correction} names={names} />
       ))}
 
-      {filed.map(({ milestone, proofs }) => (
-        <div key={milestone.code}>
-          <p
-            className="text-body text-text-primary m-0 mb-2"
-            style={{ fontFamily: "var(--font-medium)" }}
-          >
-            {shopProofHeading(milestone)}
-          </p>
-          <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2">
-            {proofs.map((proof) => (
-              <li key={proof.fileId} className="min-w-0">
-                <EvidencePlate fileId={proof.fileId} label={proof.label} deletable />
-                {proof.attachedAt ? (
-                  <p className="text-caption text-text-muted m-0 mt-1">
-                    Filed {formatDateTime(proof.attachedAt)}
-                    {proof.attachedBy ? ` by ${proof.attachedBy}` : ""}
-                  </p>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </div>
+      {filed.map(({ milestone, count }) => (
+        <p key={milestone.code} className="text-caption text-text-secondary m-0">
+          <span className="text-text-primary" style={{ fontFamily: "var(--font-medium)" }}>
+            {shopProofHeading(milestone)}:
+          </span>{" "}
+          {proofCountLabel(count).toLowerCase()}, shown under Supplier payout. The client
+          sees the photos among their progress photos.
+        </p>
       ))}
 
       {correctable ? (
