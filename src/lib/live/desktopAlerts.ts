@@ -26,7 +26,8 @@ import { notificationHref } from "@/lib/live/notificationHref";
  * Alerts go through a service worker registration (`public/desk-alerts-sw.js`)
  * so a click can still find, focus or reopen the portal; where no worker is
  * available the page raises a plain `Notification` instead. With the browser
- * closed nothing arrives: that needs Web Push, which the API does not send yet.
+ * closed nothing arrives here; shops get that case from Web Push through the
+ * same worker (`src/lib/pwa/webPush.ts`).
  */
 
 export const DESKTOP_ALERTS_PREFERENCE_KEY = "gridgo-web.desktop-alerts";

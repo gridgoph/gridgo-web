@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
@@ -27,17 +28,20 @@ import {
   listRescheduleRequests,
   listShopFailures,
   listUsers,
+  listPrivacyRequests,
   isApiError,
 } from "@/lib/api/client";
 import { claimBlocksPayout } from "@/lib/api/constraints";
 import { normalizeProductTypeRequests, normalizeReviewPage } from "@/lib/listing-review";
 import { listSupportChatThreads } from "@/lib/api/support-chat";
-import type { InvalidateResource } from "@/lib/api/types";
+import type { InvalidateResource, Order } from "@/lib/api/types";
+import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import type { NavCountKey } from "@/lib/nav";
 import type { NavCounts } from "@/lib/nav-counts";
 import { refundNeedsStaff } from "@/lib/refunds";
+import { finishedReviewWaitingCount } from "@/lib/shop-handover";
 import { buildNeedsOperations } from "@/lib/shop-changes";
 import { needsSupplierAction } from "@/lib/supplier-actions";
 
@@ -49,18 +53,35 @@ type CountSource = {
    * moves between pages (reading a chat thread, say, and walking away).
    */
   refreshOnNavigate?: boolean;
+  /** Re-read when a staff inbox notice of this kind arrives. */
+  inboxPrefix?: "privacy.";
   load: () => Promise<number>;
 };
+
+/**
+ * Counts reduced from the orders list. A rail showing several of them reads
+ * the list once and reduces it for each.
+ */
+const ORDER_COUNTS = {
+  "orders-waiting": { resources: ["orders"], reduce: waitingOnOperationsCount },
+  // The Finished work desk's Waiting tab.
+  "finished-work-waiting": { resources: ["orders", "jobs"], reduce: finishedReviewWaitingCount },
+} satisfies Record<
+  string,
+  { resources: readonly InvalidateResource[]; reduce: (orders: Order[]) => number }
+>;
+
+type OrderCountKey = keyof typeof ORDER_COUNTS;
+
+function isOrderCount(source: NavCountKey): source is OrderCountKey {
+  return source in ORDER_COUNTS;
+}
 
 /**
  * Every count is an existing list read the page itself already makes, reduced
  * the same way the page reduces it. No endpoint exists only for the rail.
  */
-const NAV_COUNT_SOURCES: Record<NavCountKey, CountSource> = {
-  "orders-waiting": {
-    resources: ["orders"],
-    load: async () => waitingOnOperationsCount(await listOrders()),
-  },
+const NAV_COUNT_SOURCES: Record<Exclude<NavCountKey, OrderCountKey>, CountSource> = {
   "signups-waiting": {
     resources: ["approvals"],
     load: async () => {
@@ -149,6 +170,22 @@ const NAV_COUNT_SOURCES: Record<NavCountKey, CountSource> = {
       return listings.entries.length + requests.requests.length;
     },
   },
+  // New and in-progress privacy requests, one page of each (100): past that
+  // the badge is a floor and the queue has the rest. The API's live stream
+  // carries no privacy resource, so it is re-read on each page move and when
+  // a privacy inbox notice arrives.
+  "privacy-requests-open": {
+    resources: [],
+    refreshOnNavigate: true,
+    inboxPrefix: "privacy.",
+    load: async () => {
+      const [waiting, working] = await Promise.all([
+        listPrivacyRequests("pending"),
+        listPrivacyRequests("in_progress"),
+      ]);
+      return waiting.requests.length + working.requests.length;
+    },
+  },
   // GitHub is the source, so no stream covers it. The API caches its GitHub
   // read for 60 s, so re-reading on each page move stays cheap.
   "tracker-needs-decision": {
@@ -174,11 +211,11 @@ function NavCountSource({
   pathname,
   onCount,
 }: {
-  source: NavCountKey;
+  source: Exclude<NavCountKey, OrderCountKey>;
   pathname: string;
   onCount: (source: NavCountKey, count: number) => void;
 }) {
-  const { resources, refreshOnNavigate, load: read } = NAV_COUNT_SOURCES[source];
+  const { resources, refreshOnNavigate, inboxPrefix, load: read } = NAV_COUNT_SOURCES[source];
   const load = useSerializedLoad(
     useCallback(async () => {
       try {
@@ -190,11 +227,48 @@ function NavCountSource({
   );
 
   useLiveReload(resources, load);
+  useLegalInboxReload(inboxPrefix ?? null, load);
 
   const navigateKey = refreshOnNavigate ? pathname : null;
   useEffect(() => {
     void load();
   }, [load, navigateKey]);
+
+  return null;
+}
+
+/** One orders read for every orders count this rail shows. */
+function OrderCountsSource({
+  sources,
+  onCount,
+}: {
+  sources: readonly OrderCountKey[];
+  onCount: (source: NavCountKey, count: number) => void;
+}) {
+  const key = sources.join(",");
+  const resources = useMemo(
+    () => [...new Set(sources.flatMap((source) => ORDER_COUNTS[source].resources))],
+    // `key` stands for the list's contents.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [key],
+  );
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      try {
+        const orders = await listOrders();
+        for (const source of key.split(",") as OrderCountKey[]) {
+          onCount(source, ORDER_COUNTS[source].reduce(orders));
+        }
+      } catch {
+        /* Keep the last good counts. */
+      }
+    }, [key, onCount]),
+  );
+
+  useLiveReload(resources, load);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   return null;
 }
@@ -214,20 +288,21 @@ export function NavCountsProvider({
   children: ReactNode;
 }) {
   const [counts, setCounts] = useState<NavCounts>({});
+  const orderSources = sources.filter(isOrderCount);
   const onCount = useCallback((source: NavCountKey, count: number) => {
     setCounts((prev) => (prev[source] === count ? prev : { ...prev, [source]: count }));
   }, []);
 
   return (
     <NavCountsContext.Provider value={counts}>
-      {sources.map((source) => (
-        <NavCountSource
-          key={source}
-          source={source}
-          pathname={pathname}
-          onCount={onCount}
-        />
-      ))}
+      {orderSources.length ? (
+        <OrderCountsSource sources={orderSources} onCount={onCount} />
+      ) : null}
+      {sources.map((source) =>
+        isOrderCount(source) ? null : (
+          <NavCountSource key={source} source={source} pathname={pathname} onCount={onCount} />
+        ),
+      )}
       {children}
     </NavCountsContext.Provider>
   );

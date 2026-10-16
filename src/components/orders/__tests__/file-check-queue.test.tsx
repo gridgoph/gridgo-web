@@ -14,6 +14,7 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
+import { tarpaulinRecord } from "@/test/artwork-guidance";
 
 vi.stubGlobal("React", React);
 const transitionOrder = vi.hoisted(() => vi.fn());
@@ -217,4 +218,30 @@ it("never makes a non-HTTPS design link clickable", () => {
   const { container } = render(<FileCheckQueue orders={[unsafe]} onChanged={() => {}} />);
   expect(container.querySelector('a[href^="javascript"]')).toBeNull();
   expect(screen.getAllByText(/not a secure link/).length).toBeGreaterThan(0);
+});
+
+it("shows the artwork warnings on the row and the full record before passing", async () => {
+  const tarp = order("o-tarp", "Store tarpaulin", "needs_qa", 12, {
+    artworkFileIds: ["file_tarp"],
+    productionItems: [
+      {
+        id: "o-tarp-l",
+        itemName: "Tarpaulin",
+        quantity: 1,
+        measurement: null,
+        artworkFileId: "file_tarp",
+        artworkLinks: [],
+        artworkGuidance: tarpaulinRecord(),
+      },
+    ] as Order["productionItems"],
+  });
+  render(<FileCheckQueue orders={[tarp]} onChanged={() => {}} />);
+  expect(
+    screen.getAllByText("2 artwork warnings, 1 accepted by the client").length,
+  ).toBeGreaterThan(0);
+  fireEvent.click(screen.getAllByRole("button", { name: "Pass" })[0]);
+  const dialog = await screen.findByRole("dialog");
+  const record = within(dialog).getByTestId("artwork-guidance-record");
+  expect(record).toHaveTextContent(/Client accepted on/);
+  expect(record).toHaveTextContent("Not accepted by the client");
 });

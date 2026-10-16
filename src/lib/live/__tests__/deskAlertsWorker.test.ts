@@ -54,7 +54,7 @@ function loadWorker(windows: FakeClient[]) {
       handlers.set(type, handler);
     },
   };
-  vm.runInNewContext(source, { self, URL });
+  vm.runInNewContext(source, { self, URL, URLSearchParams });
   async function dispatch(type: string, event: Record<string, unknown>) {
     let pending: Promise<unknown> = Promise.resolve();
     handlers.get(type)?.({
@@ -65,7 +65,7 @@ function loadWorker(windows: FakeClient[]) {
     });
     await pending;
   }
-  return { dispatch, showNotification, openWindow };
+  return { dispatch, showNotification, openWindow, handlers };
 }
 
 const alert = {
@@ -163,4 +163,108 @@ it("opens the workspace for a burst alert with no single row", async () => {
     },
   });
   expect(worker.openWindow).toHaveBeenCalledWith("/admin/");
+});
+
+/* ----------------------------------------------------------------------------
+   Web Push for the installed supplier app
+   ------------------------------------------------------------------------- */
+
+function pushData(value: unknown) {
+  return {
+    json: () => (typeof value === "string" ? JSON.parse(value) : value),
+    text: () => (typeof value === "string" ? value : JSON.stringify(value)),
+  };
+}
+
+it("never handles fetch, so no API response is ever cached by the worker", () => {
+  const worker = loadWorker([]);
+  expect(worker.handlers.has("fetch")).toBe(false);
+  expect(worker.handlers.has("push")).toBe(true);
+});
+
+it("shows a pushed slip under the Desk's tag and opens it through the notice page", async () => {
+  const worker = loadWorker([]);
+  await worker.dispatch("push", {
+    data: pushData({
+      title: "New job offer",
+      body: "Flyers A5, 500 pcs",
+      data: {
+        notificationId: "n7",
+        type: "shop_job_offered",
+        orderId: "ord_9",
+        at: "2026-10-15T00:00:00Z",
+      },
+      url: "/supplier",
+    }),
+  });
+  expect(worker.showNotification).toHaveBeenCalledWith("New job offer", {
+    body: "Flyers A5, 500 pcs",
+    tag: "gridgo-desk:n7",
+    icon: "/pwa/icon-192.png",
+    badge: "/pwa/badge-96.png",
+    data: {
+      href: "/supplier/notice?id=n7&type=shop_job_offered&orderId=ord_9",
+      notificationId: "n7",
+      tree: "/supplier/",
+    },
+  });
+});
+
+it("shows every push, even with a focused window, because the browser requires it", async () => {
+  const worker = loadWorker([
+    client("/supplier/jobs", { focused: true, visibilityState: "visible" }),
+  ]);
+  await worker.dispatch("push", {
+    data: pushData({ title: "Payout released", body: "" }),
+  });
+  expect(worker.showNotification).toHaveBeenCalledTimes(1);
+});
+
+it("falls back to the payload's own path, never a foreign one, and to plain text", async () => {
+  const worker = loadWorker([]);
+  await worker.dispatch("push", {
+    data: pushData({ title: "Update", body: "Hi", url: "/supplier/payouts" }),
+  });
+  expect(worker.showNotification).toHaveBeenLastCalledWith(
+    "Update",
+    expect.objectContaining({
+      tag: "gridgo-push",
+      data: { href: "/supplier/payouts", notificationId: null, tree: "/supplier/" },
+    }),
+  );
+  await worker.dispatch("push", {
+    data: pushData({ title: "Odd", url: "https://evil.test" }),
+  });
+  expect(worker.showNotification).toHaveBeenLastCalledWith(
+    "Odd",
+    expect.objectContaining({ data: expect.objectContaining({ href: "/supplier/" }) }),
+  );
+  await worker.dispatch("push", {
+    data: {
+      json: () => {
+        throw new Error("not json");
+      },
+      text: () => "Plain words",
+    },
+  });
+  expect(worker.showNotification).toHaveBeenLastCalledWith(
+    "GRIDGO",
+    expect.objectContaining({ body: "Plain words" }),
+  );
+  await worker.dispatch("push", { data: null });
+  expect(worker.showNotification).toHaveBeenLastCalledWith(
+    "GRIDGO",
+    expect.objectContaining({ body: "", tag: "gridgo-push" }),
+  );
+});
+
+it("opens a pushed slip in a fresh window when the app is closed", async () => {
+  const worker = loadWorker([]);
+  await worker.dispatch("notificationclick", {
+    notification: {
+      close: vi.fn(),
+      data: { href: "/supplier/notice?id=n7", notificationId: "n7", tree: "/supplier/" },
+    },
+  });
+  expect(worker.openWindow).toHaveBeenCalledWith("/supplier/notice?id=n7");
 });

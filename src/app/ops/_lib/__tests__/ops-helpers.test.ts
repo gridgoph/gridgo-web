@@ -2,12 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Claim, Issue, Order } from "@/lib/api/types";
 
-import {
-  filterDispatchOrders,
-  presentLocation,
-  presentRouteAction,
-  LOCATION_STALE_MS,
-} from "../dispatch";
+import { filterDispatchOrders, presentRouteAction } from "../dispatch";
 import {
   buildOverviewBuckets,
   isSlaAtRisk,
@@ -181,44 +176,7 @@ describe("recovery", () => {
   });
 });
 
-describe("dispatch location freshness", () => {
-  const now = Date.parse("2026-08-08T12:00:00.000Z");
-
-  it("never labels a stale ping as live", () => {
-    const stale = presentLocation(
-      {
-        id: "p1",
-        orderId: "o",
-        riderId: "r",
-        lat: 7.1,
-        lng: 125.6,
-        accuracy: 10,
-        at: new Date(now - LOCATION_STALE_MS - 1000).toISOString(),
-      },
-      "out_for_delivery",
-      now,
-    );
-    expect(stale.freshness).toBe("stale");
-    expect(stale.label.toLowerCase()).not.toContain("live");
-  });
-
-  it("labels a recent ping as live", () => {
-    const live = presentLocation(
-      {
-        id: "p2",
-        orderId: "o",
-        riderId: "r",
-        lat: 7.1,
-        lng: 125.6,
-        accuracy: 10,
-        at: new Date(now - 30_000).toISOString(),
-      },
-      "out_for_delivery",
-      now,
-    );
-    expect(live.freshness).toBe("live");
-  });
-
+describe("dispatch board", () => {
   it("filters dispatch orders and ranks ready first", () => {
     const list = filterDispatchOrders([
       order({ id: "a", state: "out_for_delivery" }),
@@ -228,55 +186,28 @@ describe("dispatch location freshness", () => {
     expect(list.map((o) => o.id)).toEqual(["b", "a"]);
   });
 
-  it("enables Show route when coordinates exist and disables it with the location label when they do not", () => {
-    const ping = {
-      id: "p",
-      orderId: "o",
-      riderId: "rider_1",
-      lat: 7.07,
-      lng: 125.61,
-      accuracy: 12,
-      at: new Date(now - LOCATION_STALE_MS - 1000).toISOString(),
-    };
-    const stale = presentLocation(ping, "out_for_delivery", now);
-    expect(stale.freshness).toBe("stale");
-    expect(presentRouteAction(stale, "rider_1")).toEqual({
-      enabled: true,
+  it("opens Show route on any known position and disables it with the location label otherwise", () => {
+    expect(presentRouteAction("rider_1", { hasPosition: true, freshness: "live" }, "Live")).toEqual({
       href: "/ops/riders?rider=rider_1",
+      label: "Show route on map",
       reason: null,
     });
-
-    const live = presentLocation(
-      { ...ping, at: new Date(now - 30_000).toISOString() },
-      "picked_up",
-      now,
-    );
-    expect(presentRouteAction(live, "rider_1").enabled).toBe(true);
-
-    expect(presentRouteAction(presentLocation(null, "ready_for_dispatch", now), null)).toEqual({
-      enabled: false,
+    // A rider gone quiet still has a last position to find them by.
+    expect(
+      presentRouteAction("rider_1", { hasPosition: true, freshness: "silent" }, "Gone quiet"),
+    ).toEqual({
+      href: "/ops/riders?rider=rider_1",
+      label: "Show last position on map",
+      reason: null,
+    });
+    expect(presentRouteAction(null, null, "No rider yet")).toEqual({
       href: null,
+      label: "Show route on map",
       reason: "No rider yet",
     });
     expect(
-      presentRouteAction(presentLocation(null, "rider_assigned", now), "rider_1"),
-    ).toEqual({
-      enabled: false,
-      href: null,
-      reason: "Tracking starts at pickup",
-    });
-    expect(presentRouteAction(presentLocation(null, "picked_up", now), "rider_1")).toEqual({
-      enabled: false,
-      href: null,
-      reason: "No location yet",
-    });
-    expect(
-      presentRouteAction(presentLocation(null, "awaiting_collection", now), null),
-    ).toEqual({
-      enabled: false,
-      href: null,
-      reason: "No location",
-    });
+      presentRouteAction("rider_1", { hasPosition: false, freshness: "waiting" }, "Waiting for a first ping"),
+    ).toMatchObject({ href: null, reason: "Waiting for a first ping" });
   });
 
   it("keeps a collected order on the board until the counter releases it", () => {

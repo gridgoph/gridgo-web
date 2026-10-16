@@ -18,7 +18,13 @@
  * Pure functions: no React, no fetch.
  */
 
-import type { AuditEntry, Order, ProductionPhoto, ProductionProgress } from "@/lib/api/types";
+import type {
+  AuditEntry,
+  ForcedStep,
+  Order,
+  ProductionPhoto,
+  ProductionProgress,
+} from "@/lib/api/types";
 
 /** The audit action every staff production correction writes. */
 export const PRODUCTION_OVERRIDE_ACTION = "order.production_override";
@@ -104,6 +110,10 @@ export type ProductionCorrection = {
   to: string | null;
   /** Whether the job had no progress photo when it was moved on. */
   photoMissing: boolean;
+  /** Why, as the API's reason code; null on a correction made before codes. */
+  reasonCode: string | null;
+  /** The checks the API recorded as skipped; empty before it recorded them. */
+  skippedChecks: string[];
 };
 
 function text(value: unknown): string | null {
@@ -135,8 +145,42 @@ export function productionCorrections(
       from: text(entry.detail?.from),
       to: text(entry.detail?.to),
       photoMissing: entry.detail?.photoMissing === true,
+      reasonCode: text(entry.detail?.reasonCode),
+      skippedChecks: Array.isArray(entry.detail?.skippedChecks)
+        ? (entry.detail.skippedChecks as unknown[]).filter(
+            (code): code is string => typeof code === "string",
+          )
+        : [],
     }))
     .sort((a, b) => a.at.localeCompare(b.at));
+}
+
+/**
+ * Every staff correction on the order, oldest first. The order's own
+ * `forcedSteps` (SHOP_HANDOVER_API.md) is the record from the day reason
+ * codes arrived; the audit log keeps the corrections made before it, which
+ * carry no reason code. A coded audit entry duplicates a forced step, so
+ * only the uncoded ones are added.
+ */
+export function staffCorrections(
+  forced: readonly ForcedStep[] | null | undefined,
+  audited: readonly ProductionCorrection[],
+): ProductionCorrection[] {
+  const fromOrder: ProductionCorrection[] = (forced ?? []).map((step, index) => ({
+    id: `forced-${index}-${step.at}`,
+    at: step.at,
+    actorId: step.by || null,
+    actorRole: step.role || null,
+    reason: step.note ?? "",
+    from: step.from || null,
+    to: step.to || null,
+    photoMissing: (step.skippedChecks ?? []).includes("production_photo_required"),
+    reasonCode: step.reasonCode || null,
+    skippedChecks: [...(step.skippedChecks ?? [])],
+  }));
+  return [...fromOrder, ...audited.filter((correction) => !correction.reasonCode)].sort(
+    (a, b) => a.at.localeCompare(b.at),
+  );
 }
 
 /**

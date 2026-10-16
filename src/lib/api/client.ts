@@ -14,6 +14,27 @@ import { withRequestDeadline } from "@/lib/api/requestDeadline";
 
 import type {
   AccountDeletionRequest,
+  Voucher,
+  VoucherCampaign,
+  VoucherCampaignInput,
+  VoucherCampaignStatus,
+  VoucherIssueRecipient,
+  VoucherIssueReport,
+  VoucherLedgerFilter,
+  SurveyResponsesFilter,
+  SurveyResponsesPage,
+  PricingFeedbackFilter,
+  PricingFeedbackReport,
+  CheckoutExitFeedbackFilter,
+  CheckoutExitFeedbackPage,
+  VoucherLedgerPage,
+  VoucherTab,
+  LegalAcceptance,
+  LegalDocument,
+  LegalDraft,
+  LegalVersion,
+  PrivacyRequest,
+  PrivacyRequestStatus,
   Announcement,
   HubCodeMismatch,
   HubHandoutLog,
@@ -31,6 +52,7 @@ import type {
   StatementPeriod,
   AuthMe,
   AuditEntry,
+  AuditPage,
   CatalogItem,
   Claim,
   CreateSupplierServiceInput,
@@ -41,6 +63,7 @@ import type {
   Escalation,
   HealthResult,
   Issue,
+  LocationDiagnostics,
   LocationPing,
   RiderLocation,
   Notification,
@@ -49,6 +72,7 @@ import type {
   PhysicalInvoiceRequest,
   PayoutMilestone,
   PayoutMilestoneCode,
+  OperatingTiming,
   PlatformSettings,
   PortalRole,
   PortalRoleProjection,
@@ -66,6 +90,8 @@ import type {
   TaxonomyMaterial,
   TaxonomySubcategory,
   UpdateSettingsInput,
+  ServiceFeePreview,
+  ServiceFeePreviewInput,
   UpdateSupplierServiceInput,
   UpdateZoneInput,
   ApprovalCaseDetail,
@@ -85,7 +111,9 @@ import type {
   TrackerItem,
   TrackerStatus,
   RefundDestination,
-  RefundKind,
+  DeliveryPin,
+  OrderChangeRequest,
+  FileableRefundKind,
   RefundPreview,
   RefundRequest,
   RefundStatus,
@@ -99,10 +127,20 @@ import type {
   RescheduleQueue,
   RescheduleRequest,
   ShopFailureEvent,
+  ShopHours,
+  ShopHoursPatch,
   ShopRecovery,
   SupplierProductionLapses,
+  SupplierInvoiceEnvelope,
+  SupplierInvoiceMonth,
+  WebPushSubscriptionInput,
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
+import {
+  normalizeShopHours,
+  normalizeShopHoursList,
+  type ShopHoursRow,
+} from "@/lib/shop-hours";
 
 const DEFAULT_API_BASE = "http://127.0.0.1:8787";
 
@@ -446,6 +484,12 @@ export type TransitionExtra = {
   promisedDate?: string | null;
   reason?: string;
   note?: string;
+  /**
+   * The shop's tick that it read the client's special instructions. Required
+   * on acceptance when any note is nonempty
+   * (`409 special_instructions_acknowledgement_required`).
+   */
+  specialInstructionsRead?: boolean;
   [key: string]: unknown;
 };
 
@@ -494,6 +538,28 @@ export async function postQaClientAction(
     method: "POST",
     body: JSON.stringify({ action, note }),
   });
+}
+
+/** GRIDGO's answer to the shop's finished, unpacked product photos. */
+export type FinishedProductsDecision =
+  | { decision: "approved" }
+  | { decision: "rejected"; note: string };
+
+/**
+ * Approve or send back a rider-packs order's finished-product photos
+ * (Operations / Super Admin; `gridgo-api/docs/SHOP_HANDOVER_API.md`).
+ * Approval lets the shop call a rider; sending back returns the job to
+ * production and the shop reads `note` word for word.
+ */
+export async function reviewFinishedProducts(
+  orderId: string,
+  review: FinishedProductsDecision,
+): Promise<Order> {
+  const result = await request<{ order: Order }>(
+    `/orders/${encodeURIComponent(orderId)}/production-review`,
+    { method: "POST", body: JSON.stringify(review) },
+  );
+  return normalizeOrder(result.order);
 }
 
 /**
@@ -742,6 +808,13 @@ export type ReleaseMilestoneInput = {
   reference?: string;
   /** A ready `payout_receipt` upload from `uploadPayoutReceipt`. Optional. */
   receiptFileId?: string;
+  /**
+   * The whole transfer, sent only on a final stage that carries paid change
+   * extras: the stage's amount plus every unreleased extra
+   * (`409 supplement_payout_amount_mismatch` otherwise). Such a release also
+   * needs `reference` and `receiptFileId`.
+   */
+  amountMinor?: number;
 };
 
 /**
@@ -835,6 +908,33 @@ export async function attachProductionPhoto(
 }
 
 /**
+ * Store a packing photo: the finished prints packed and ready for a rider.
+ * Separate evidence from the progress photo; neither counts for the other.
+ */
+export async function uploadPackingPhoto(file: File): Promise<StoredFile> {
+  const body = new FormData();
+  body.append("purpose", "packing_photo");
+  body.append("file", file);
+  const uploaded = await request<{ file: StoredFile }>("/files", {
+    method: "POST",
+    body,
+  });
+  return uploaded.file;
+}
+
+/**
+ * Bind a packing photo to the order while it is `production` or
+ * `supplier_self_qc`. It lets the job be marked Ready for dispatch and tells
+ * the client their order is packed; it changes no state or payout stage.
+ */
+export async function attachPackingPhoto(
+  fileId: string,
+  orderId: string,
+): Promise<{ file: StoredFile; order?: Order }> {
+  return attachProductionPhoto(fileId, orderId);
+}
+
+/**
  * Ops / Super Admin. Stores the receipt screenshot first, then releases the
  * share with its id and the reference, so a refused screenshot never leaves
  * a released share with no proof behind it.
@@ -842,13 +942,14 @@ export async function attachProductionPhoto(
 export async function releaseMilestoneWithReceipt(
   orderId: string,
   code: PayoutMilestoneCode | string,
-  decision: { note: string; reference: string; receipt: File | null },
+  decision: { note: string; reference: string; receipt: File | null; amountMinor?: number },
 ): Promise<{ order: Order; milestone: PayoutMilestone }> {
   const receipt = decision.receipt ? await uploadPayoutReceipt(decision.receipt) : null;
   return releaseMilestone(orderId, code, {
     note: decision.note,
     ...(decision.reference ? { reference: decision.reference } : {}),
     ...(receipt ? { receiptFileId: receipt.fileId } : {}),
+    ...(decision.amountMinor !== undefined ? { amountMinor: decision.amountMinor } : {}),
   });
 }
 
@@ -894,10 +995,19 @@ export async function health(): Promise<HealthResult> {
  * settings object because every write has to quote it back: `PATCH /settings`
  * is a compare-and-swap and refuses a stale `expectedVersion` with 409.
  */
-type SettingsEnvelope = { version: number; settings: Omit<PlatformSettings, "version"> };
+type SettingsEnvelope = {
+  version: number;
+  settings: Omit<PlatformSettings, "version" | "operatingStatus">;
+  operatingStatus?: OperatingTiming;
+};
 
+/** The settings with their version and, when the API sends it, today's operating status. */
 function withVersion(result: SettingsEnvelope): PlatformSettings {
-  return { ...result.settings, version: result.version };
+  return {
+    ...result.settings,
+    version: result.version,
+    ...(result.operatingStatus ? { operatingStatus: result.operatingStatus } : {}),
+  };
 }
 
 export type PricingFigure = { known: boolean; minor?: number };
@@ -971,6 +1081,85 @@ export async function updateSettings(
       method: "PATCH",
       body: JSON.stringify(input),
     }),
+  );
+}
+
+/**
+ * Ops / Super Admin, read-only. The six reference shop prices under today's
+ * service fee table and under `serviceFeeBrackets`. Writes nothing. A stale
+ * `expectedVersion` is `409 settings_version_conflict`, as on save.
+ */
+export async function previewServiceFee(
+  input: ServiceFeePreviewInput,
+): Promise<ServiceFeePreview> {
+  return request<ServiceFeePreview>("/settings/service-fee/preview", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Shop hours (gridgo-api docs/SHOP_HOURS_API.md)
+//
+// Every write carries the shop's shared profile version (`expectedVersion`);
+// a stale one is `409 supplier_profile_stale`. Answers are read through
+// `normalizeShopHours`, so a field the API adds later never breaks a screen.
+// ---------------------------------------------------------------------------
+
+function shopHoursOf(path: string, raw: unknown): ShopHours {
+  const hours = normalizeShopHours(
+    raw && typeof raw === "object" ? (raw as { hours?: unknown }).hours : null,
+  );
+  if (!hours) throw failed(path, 502, { error: "invalid_shop_hours_response" });
+  return hours;
+}
+
+/** Supplier. The signed-in shop's own hours. */
+export async function getMyShopHours(): Promise<ShopHours> {
+  return shopHoursOf("/me/shop-hours", await request<unknown>("/me/shop-hours"));
+}
+
+/**
+ * Supplier. Change the week and closures (`schedule`, which clears today's
+ * extension), Temporarily closed, or today's extension (`null` ends it).
+ */
+export async function updateMyShopHours(
+  expectedVersion: number,
+  patch: ShopHoursPatch,
+): Promise<ShopHours> {
+  return shopHoursOf(
+    "/me/shop-hours",
+    await request<unknown>("/me/shop-hours", {
+      method: "PATCH",
+      body: JSON.stringify({ ...patch, expectedVersion }),
+    }),
+  );
+}
+
+/** Ops / Super Admin. Every shop's hours and open status. */
+export async function listShopHours(): Promise<ShopHoursRow[]> {
+  return normalizeShopHoursList(await request<unknown>("/ops/shops/hours"));
+}
+
+/** Ops / Super Admin. One shop's hours; `404 supplier_profile_not_found` for an unknown shop. */
+export async function getShopHours(supplierId: string): Promise<ShopHours> {
+  const path = `/ops/shops/${encodeURIComponent(supplierId)}/hours`;
+  return shopHoursOf(path, await request<unknown>(path));
+}
+
+/**
+ * Ops / Super Admin. Staff may switch Temporarily closed only, with a reason
+ * (1–2,000 characters, `400 reason_required`) kept in the audit log. Hours
+ * and extensions are the shop's (`403 forbidden`).
+ */
+export async function setShopTemporarilyClosed(
+  supplierId: string,
+  input: { expectedVersion: number; temporarilyClosed: boolean; reason: string },
+): Promise<ShopHours> {
+  const path = `/ops/shops/${encodeURIComponent(supplierId)}/hours`;
+  return shopHoursOf(
+    path,
+    await request<unknown>(path, { method: "PATCH", body: JSON.stringify(input) }),
   );
 }
 
@@ -1255,6 +1444,38 @@ export async function grantCredits(input: {
   return request("/credits/grant", {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Web Push for the installed supplier app (contract: gridgo-api
+// docs/WEB_PUSH_API.md). Supplier only; `503 web_push_unavailable` means the
+// server has no VAPID keys yet. The browser side lives in `src/lib/pwa/`.
+// ---------------------------------------------------------------------------
+
+/** The server's VAPID application server key (base64url). */
+export async function getWebPushPublicKey(): Promise<string> {
+  const result = await request<{ publicKey: string }>("/web-push/public-key");
+  return result.publicKey;
+}
+
+/** Saves (or refreshes) this browser's subscription for the signed-in shop. */
+export async function subscribeWebPush(subscription: WebPushSubscriptionInput): Promise<void> {
+  await request<{ ok: true }>("/web-push/subscribe", {
+    method: "POST",
+    body: JSON.stringify({ subscription }),
+  });
+}
+
+/** Stops pushes to this browser. Unknown endpoints succeed too. */
+export async function unsubscribeWebPush(
+  endpoint: string,
+  init: Pick<RequestInit, "signal"> = {},
+): Promise<void> {
+  await request<{ ok: true }>("/web-push/unsubscribe", {
+    method: "POST",
+    body: JSON.stringify({ endpoint }),
+    signal: init.signal,
   });
 }
 
@@ -2031,22 +2252,18 @@ export async function resolveIssue(
 // ---------------------------------------------------------------------------
 
 /**
- * The full log is Super Admin only. Operations may read one order (`orderId`),
- * one file (`entityType: "file"` with `entityId`), or `action` of
- * `order.production_override`, `file.early_delete`, or `file.retention_delete`.
- * Any other scope is `403`. `__tests__/ops-audit-scope.test.ts` holds the call
- * sites outside the admin tree to that.
+ * The full log is Super Admin only. Operations may read only its workspace
+ * records: `action` of `order.production_override`, `order.transition_refused`,
+ * `file.early_delete` or `file.retention_delete`, or `entityType: "file"` with
+ * an `entityId`; any other scope is `403`. `__tests__/ops-audit-scope.test.ts`
+ * holds the call sites outside the admin tree to that.
  */
 export async function listAudit(filters?: {
   entityType?: string;
   entityId?: string;
   orderId?: string;
   actorId?: string;
-  actor?: string;
   action?: string;
-  actionQuery?: string;
-  from?: string;
-  to?: string;
   limit?: number;
 }): Promise<AuditEntry[]> {
   const q = buildQuery({
@@ -2054,15 +2271,101 @@ export async function listAudit(filters?: {
     entityId: filters?.entityId,
     orderId: filters?.orderId,
     actorId: filters?.actorId,
-    actor: filters?.actor,
     action: filters?.action,
-    actionQuery: filters?.actionQuery,
-    from: filters?.from,
-    to: filters?.to,
     limit: filters?.limit,
   });
   const result = await request<{ audit: AuditEntry[] }>(`/audit${q}`);
   return result.audit;
+}
+
+/** Search, filters and paging the permanent log accepts (AUDIT_API.md). */
+export type AuditPageQuery = {
+  q?: string;
+  person?: string;
+  actorId?: string;
+  action?: string;
+  orderId?: string;
+  entityType?: string;
+  entityId?: string;
+  /** UTC date or timestamp; inclusive. */
+  from?: string;
+  /** UTC date or timestamp; inclusive. */
+  to?: string;
+  limit?: number;
+  offset?: number;
+};
+
+function auditPage(
+  body: { audit?: AuditEntry[]; limit?: number; offset?: number; nextOffset?: number | null },
+  query: AuditPageQuery,
+): AuditPage {
+  const legacy = !("nextOffset" in body);
+  return {
+    audit: body.audit ?? [],
+    limit: body.limit ?? query.limit ?? 100,
+    offset: body.offset ?? query.offset ?? 0,
+    nextOffset: legacy ? null : (body.nextOffset ?? null),
+    legacy,
+  };
+}
+
+/**
+ * Super Admin. One page of the whole log, newest first, with every filter
+ * applied by the API. The Audit log screen only; Operations is refused.
+ */
+export async function listAuditPage(query: AuditPageQuery = {}): Promise<AuditPage> {
+  const body = await request<Parameters<typeof auditPage>[0]>(
+    `/audit${buildQuery({ ...query })}`,
+  );
+  return auditPage(body, query);
+}
+
+/**
+ * Ops / Super Admin. One order's entries, including shared basket payment
+ * and file records. The API scopes Operations to the correction and deletion
+ * records, so this is safe from either tree. Unknown order: `404 order_not_found`.
+ */
+export async function listOrderAudit(
+  orderId: string,
+  query: Omit<AuditPageQuery, "orderId"> = {},
+): Promise<AuditPage> {
+  const body = await request<Parameters<typeof auditPage>[0]>(
+    `/orders/${encodeURIComponent(orderId)}/audit${buildQuery({ ...query })}`,
+  );
+  return auditPage(body, query);
+}
+
+/**
+ * The log as the API's CSV (its quoting and formula escaping), every page.
+ * `to` must be pinned by the caller so new entries cannot move the pages;
+ * pages follow `X-Next-Offset`, and each repeats the header, so later headers
+ * are dropped. `onPage` hears how many pages have arrived.
+ */
+export async function downloadAuditCsv(
+  query: AuditPageQuery & { to: string },
+  options: { orderId?: string; onPage?: (pages: number) => void } = {},
+): Promise<Blob> {
+  const base = options.orderId ? `/orders/${encodeURIComponent(options.orderId)}/audit` : "/audit";
+  const parts: string[] = [];
+  let offset: number | null = 0;
+  while (offset !== null) {
+    const path = `${base}${buildQuery({ ...query, limit: 5000, offset, format: "csv" })}`;
+    const page: { text: string; next: number | null } = await withRequestDeadline(
+      undefined,
+      async (signal) => {
+        const res = await send(path, {}, signal, "text/csv");
+        const text = await res.text();
+        if (!res.ok) throw failed(path, res.status, parseBody(text));
+        const header = res.headers.get("X-Next-Offset");
+        const next = header === null || header === "" ? null : Number(header);
+        return { text, next: Number.isSafeInteger(next) ? next : null };
+      },
+    );
+    parts.push(parts.length === 0 ? page.text : page.text.replace(/^[^\n]*\n/, ""));
+    options.onPage?.(parts.length);
+    offset = page.next !== null && page.next > offset ? page.next : null;
+  }
+  return new Blob(parts, { type: "text/csv;charset=utf-8" });
 }
 
 // ---------------------------------------------------------------------------
@@ -2084,6 +2387,16 @@ export async function getDispatchLocation(orderId: string): Promise<LocationPing
 export async function listRiderLocations(): Promise<RiderLocation[]> {
   const result = await request<{ riders: RiderLocation[] }>("/ops/riders/locations");
   return result.riders;
+}
+
+/**
+ * Ops/Super Admin. The current assignment's freshness and up to 100 recent
+ * receive gaps, coordinate-free (gridgo-api#229).
+ */
+export async function getLocationDiagnostics(orderId: string): Promise<LocationDiagnostics> {
+  return request<LocationDiagnostics>(
+    `/ops/orders/${encodeURIComponent(orderId)}/location-diagnostics`,
+  );
 }
 
 /** Rider only — included so the client surface is complete. */
@@ -2263,6 +2576,27 @@ export async function listProductTypeRequests(
   if (after) params.set("after", after);
   const search = params.toString();
   return request<unknown>(`/ops/product-type-requests${search ? `?${search}` : ""}`);
+}
+
+// ---------------------------------------------------------------------------
+// Featured Prints, the client Home row (gridgo-client#239). Contract: gridgo-api
+// docs/FEATURED_PRINTS_API.md. Operations and Super Admin read and replace it.
+// ---------------------------------------------------------------------------
+
+export async function getFeaturedPrints(): Promise<unknown> {
+  return request<unknown>("/admin/featured-prints");
+}
+
+/** Replaces the whole ordered list; a stale `expectedVersion` is `409`. */
+export async function saveFeaturedPrints(input: {
+  expectedVersion: number;
+  catalogItemIds: string[];
+  reason: string;
+}): Promise<unknown> {
+  return request<unknown>("/admin/featured-prints", {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
 }
 
 export type ProductTypeDecision =
@@ -2531,21 +2865,23 @@ export async function reorderCatalogPhotos(
  * already shown) page the list; `counts` are always the totals per status.
  */
 export async function listIssueReports(
-  status: IssueReportStatus,
+  status: IssueReportStatus | "priorities",
   page: { limit?: number; before?: string | null } = {},
 ): Promise<{ reports: IssueReport[]; counts: IssueReportCounts }> {
   return request(
-    `/ops/issue-reports${buildQuery({ status, limit: page.limit, before: page.before })}`,
+    `/ops/issue-reports${buildQuery({ status: status === "priorities" ? undefined : status, priority: status === "priorities" ? "true" : undefined, limit: page.limit, before: page.before })}`,
   );
 }
 
 export async function updateIssueReport(
   id: string,
-  input: {
-    status: IssueReportStatus;
-    publishedIn?: string | null;
-    trackerIssueUrl?: string | null;
-  },
+  input:
+    | {
+        status: IssueReportStatus;
+        publishedIn?: string | null;
+        trackerIssueUrl?: string | null;
+      }
+    | { priority: boolean },
 ): Promise<IssueReport> {
   return request<IssueReport>(`/ops/issue-reports/${encodeURIComponent(id)}`, {
     method: "PATCH",
@@ -2575,6 +2911,19 @@ function unwrapTrackerItem(result: TrackerItem | { item: TrackerItem }): Tracker
 export async function getTracker(options?: { refresh?: boolean }): Promise<TrackerBoard> {
   return request<TrackerBoard>(
     `/admin/tracker${buildQuery({ refresh: options?.refresh ? 1 : undefined })}`,
+  );
+}
+
+/** Sets a shared priority label without changing workflow state. */
+export async function setTrackerPriority(
+  item: Pick<TrackerItem, "repo" | "number">,
+  priority: boolean,
+): Promise<TrackerItem> {
+  return unwrapTrackerItem(
+    await request<TrackerItem | { item: TrackerItem }>(
+      `${trackerItemPath(item)}/priority`,
+      { method: "PATCH", body: JSON.stringify({ priority }) },
+    ),
   );
 }
 
@@ -2666,6 +3015,122 @@ async function refundWrite(
   return result.refund;
 }
 
+// ---------------------------------------------------------------------------
+// Delivery pin (gridgo-api docs/DELIVERY_PIN_API.md)
+//
+// Operations' only writes on a pin: verifying or rejecting the client's QR
+// transfer for a dearer pin. Each carries an `Idempotency-Key` and the
+// `expectedVersion` of the pin on screen (`409 delivery_pin_stale` otherwise).
+// A cheaper pin's credit is paid through the refund case, never `/settle`.
+// ---------------------------------------------------------------------------
+
+async function deliveryPinWrite(
+  orderId: string,
+  action: "confirm" | "reject",
+  key: string,
+  body: Record<string, unknown>,
+): Promise<DeliveryPin> {
+  const result = await request<{ deliveryPin: DeliveryPin }>(
+    `/orders/${encodeURIComponent(orderId)}/delivery-pin/payment/${action}`,
+    refundCommand(key, body),
+  );
+  return result.deliveryPin;
+}
+
+/** Verify the exact surcharge: applies the new pin in the same step. */
+export async function confirmDeliveryPinPayment(
+  orderId: string,
+  input: { expectedVersion: number; amountMinor: number; reason: string },
+  key: string,
+): Promise<DeliveryPin> {
+  return deliveryPinWrite(orderId, "confirm", key, input);
+}
+
+/** No matching transfer: the original pin stays and the client may send a new proof. */
+export async function rejectDeliveryPinPayment(
+  orderId: string,
+  input: { expectedVersion: number; reason: string },
+  key: string,
+): Promise<DeliveryPin> {
+  return deliveryPinWrite(orderId, "reject", key, input);
+}
+
+// ---------------------------------------------------------------------------
+// Special instructions and change requests (gridgo-api docs/ORDER_CHANGES_API.md)
+//
+// The shop asks; the client answers and pays; Operations and Super Admin
+// verify or reject the client's transfer. Every write carries an
+// `Idempotency-Key` (one per body: a retry replays the first answer) and every
+// action on an existing request its `expectedVersion`.
+// ---------------------------------------------------------------------------
+
+export type OrderChangeInput = {
+  /** Omitted only on an older order without lines. */
+  lineItemId?: string;
+  reason: string;
+  proposedSpec: string;
+  extraPrincipalMinor: number;
+};
+
+/** Supplier. Ask the client to approve a change to the job. */
+export async function requestOrderChange(
+  orderId: string,
+  input: OrderChangeInput,
+  key: string,
+): Promise<OrderChangeRequest> {
+  const result = await request<{ changeRequest: OrderChangeRequest }>(
+    `/orders/${encodeURIComponent(orderId)}/change-requests`,
+    refundCommand(key, input),
+  );
+  return result.changeRequest;
+}
+
+async function changePaymentWrite(
+  orderId: string,
+  changeId: string,
+  action: "confirm" | "reject",
+  key: string,
+  body: Record<string, unknown>,
+): Promise<OrderChangeRequest> {
+  const result = await request<{ changeRequest: OrderChangeRequest }>(
+    `/orders/${encodeURIComponent(orderId)}/change-requests/${encodeURIComponent(changeId)}/payment/${action}`,
+    refundCommand(key, body),
+  );
+  return result.changeRequest;
+}
+
+/** Ops / Super Admin. Verify the exact transfer: applies the change in the same step. */
+export async function confirmChangePayment(
+  orderId: string,
+  changeId: string,
+  input: { expectedVersion: number; amountMinor: number; reason: string },
+  key: string,
+): Promise<OrderChangeRequest> {
+  return changePaymentWrite(orderId, changeId, "confirm", key, input);
+}
+
+/** Ops / Super Admin. No matching transfer: back to waiting for payment; the client reads `reason`. */
+export async function rejectChangePayment(
+  orderId: string,
+  changeId: string,
+  input: { expectedVersion: number; reason: string },
+  key: string,
+): Promise<OrderChangeRequest> {
+  return changePaymentWrite(orderId, changeId, "reject", key, input);
+}
+
+/**
+ * Supplier. Decline an offered job with the reason GRIDGO records (≤ 2,000
+ * characters; `400 shop_cancel_reason_required` when blank). The job goes
+ * back for another shop.
+ */
+export async function declineJob(orderId: string, reason: string): Promise<void> {
+  await request(`/orders/${encodeURIComponent(orderId)}/decline`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
 /** Ops / Super Admin see every request; an optional exact status filter. */
 export async function listRefunds(status?: RefundStatus): Promise<RefundRequest[]> {
   const result = await request<{ refunds: RefundRequest[] }>(
@@ -2694,7 +3159,7 @@ export async function getRefund(refundId: string): Promise<RefundRequest> {
  */
 export async function fileRefundRequest(
   orderId: string,
-  input: { kind: RefundKind; reason: string; evidenceFileIds?: string[] },
+  input: { kind: FileableRefundKind; reason: string; evidenceFileIds?: string[] },
   key: string,
 ): Promise<RefundRequest> {
   const result = await request<{ refund: RefundRequest }>(
@@ -2759,6 +3224,8 @@ export async function settleRefund(
     workStopped: true;
     shopAgreement: string;
     deliveryEvidence: string;
+    /** Required on a voucher order: `false` gives the client the voucher back. */
+    clientCaused?: boolean;
   },
   key: string,
 ): Promise<RefundRequest> {
@@ -2852,4 +3319,349 @@ export function listAccountDeletionRequests(status: 'pending' | 'done', offset =
 }
 export function completeAccountDeletionRequest(id: string) {
   return request<{ request: AccountDeletionRequest }>(`/ops/account-deletion-requests/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify({ status: 'done', confirmed: true }) });
+}
+
+// ---------------------------------------------------------------------------
+// GRIDGO-funded vouchers (gridgo-api#204, docs/VOUCHERS_API.md)
+// ---------------------------------------------------------------------------
+
+/** Super Admin. Every campaign, newest last (the API's order). */
+export async function listVoucherCampaigns(): Promise<VoucherCampaign[]> {
+  const result = await request<{ campaigns: VoucherCampaign[] }>("/admin/voucher-campaigns");
+  return result.campaigns ?? [];
+}
+
+export async function getVoucherCampaign(id: string): Promise<VoucherCampaign> {
+  const result = await request<{ campaign: VoucherCampaign }>(
+    `/admin/voucher-campaigns/${encodeURIComponent(id)}`,
+  );
+  return result.campaign;
+}
+
+/** Super Admin. Always starts as a draft. `409 voucher_code_exists`. */
+export async function createVoucherCampaign(
+  input: VoucherCampaignInput,
+): Promise<VoucherCampaign> {
+  const result = await request<{ campaign: VoucherCampaign }>("/admin/voucher-campaigns", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.campaign;
+}
+
+/** Super Admin. Draft terms only: `409 voucher_campaign_immutable` once launched or issued. */
+export async function updateVoucherCampaign(
+  id: string,
+  input: Partial<VoucherCampaignInput>,
+): Promise<VoucherCampaign> {
+  const result = await request<{ campaign: VoucherCampaign }>(
+    `/admin/voucher-campaigns/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return result.campaign;
+}
+
+/** Super Admin. An unissued draft only. */
+export async function deleteVoucherCampaign(id: string): Promise<void> {
+  await request<{ ok: true }>(`/admin/voucher-campaigns/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
+
+/** Super Admin. draft → active/ended; active → paused/ended; paused → active/ended. */
+export async function setVoucherCampaignStatus(
+  id: string,
+  status: Exclude<VoucherCampaignStatus, "draft">,
+): Promise<VoucherCampaign> {
+  const result = await request<{ campaign: VoucherCampaign }>(
+    `/admin/voucher-campaigns/${encodeURIComponent(id)}/status`,
+    { method: "POST", body: JSON.stringify({ status }) },
+  );
+  return result.campaign;
+}
+
+/**
+ * Super Admin. Issue an assigned campaign to 1–1,000 addresses. The report
+ * carries personal information: keep it on screen, never store it.
+ */
+export async function issueVoucherCampaign(
+  id: string,
+  recipients: VoucherIssueRecipient[],
+): Promise<VoucherIssueReport> {
+  return request<VoucherIssueReport>(
+    `/admin/voucher-campaigns/${encodeURIComponent(id)}/issue`,
+    { method: "POST", body: JSON.stringify({ recipients }) },
+  );
+}
+
+/** Super Admin. Available vouchers only; the reason is required (≤ 1,000). */
+export async function voidVoucher(id: string, reason: string): Promise<Voucher> {
+  const result = await request<{ voucher: Voucher }>(
+    `/admin/vouchers/${encodeURIComponent(id)}/void`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
+  return result.voucher;
+}
+
+/** Super Admin. A void, unexpired voucher goes back to available, same expiry. */
+export async function reissueVoucher(id: string, reason: string): Promise<Voucher> {
+  const result = await request<{ voucher: Voucher }>(
+    `/admin/vouchers/${encodeURIComponent(id)}/reissue`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
+  return result.voucher;
+}
+
+/** Operations and Super Admin: one client's wallet, read-only. */
+export async function lookupClientVouchers(
+  clientId: string,
+  tab: VoucherTab = "all",
+): Promise<{ serverTime: string; vouchers: Voucher[] }> {
+  return request<{ serverTime: string; vouchers: Voucher[] }>(
+    `/ops/vouchers${buildQuery({ clientId, tab })}`,
+  );
+}
+
+/** Super Admin. Newest first; `limit` 1–500. */
+export async function listVoucherLedger(
+  filter: VoucherLedgerFilter = {},
+  page: { offset?: number; limit?: number } = {},
+): Promise<VoucherLedgerPage> {
+  return request<VoucherLedgerPage>(
+    `/admin/voucher-redemptions${buildQuery({ ...filter, offset: page.offset, limit: page.limit })}`,
+  );
+}
+
+/** Super Admin. Every matching row as `voucher-ledger.csv` (no paging). */
+export async function downloadVoucherLedger(filter: VoucherLedgerFilter = {}): Promise<Blob> {
+  return requestBlob(
+    `/admin/voucher-redemptions${buildQuery({ ...filter, format: "csv" })}`,
+    { headers: { Accept: "text/csv" } },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Post-order survey responses (SURVEY_API.md)
+// ---------------------------------------------------------------------------
+
+/** Super Admin. Newest submission first; `limit` 1–500. Aggregates cover every match. */
+export async function listSurveyResponses(
+  filter: SurveyResponsesFilter = {},
+  page: { offset?: number; limit?: number } = {},
+): Promise<SurveyResponsesPage> {
+  return request<SurveyResponsesPage>(
+    `/admin/survey-responses${buildQuery({ ...filter, offset: page.offset, limit: page.limit })}`,
+  );
+}
+
+/** Super Admin. Every matching response as `survey-responses.csv` (no paging). */
+export async function downloadSurveyResponses(filter: SurveyResponsesFilter = {}): Promise<Blob> {
+  return requestBlob(
+    `/admin/survey-responses${buildQuery({ ...filter, format: "csv" })}`,
+    { headers: { Accept: "text/csv" } },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pricing feedback (PRICING_FEEDBACK_API.md)
+// ---------------------------------------------------------------------------
+
+/** Super Admin. Counts and percentages for every pricing question and the checkout exit question. */
+export async function getPricingFeedback(filter: PricingFeedbackFilter = {}): Promise<PricingFeedbackReport> {
+  return request<PricingFeedbackReport>(`/admin/pricing-feedback${buildQuery({ ...filter })}`);
+}
+
+/** Super Admin. `pricing-feedback.csv`: one row per option of every question. */
+export async function downloadPricingFeedback(filter: PricingFeedbackFilter = {}): Promise<Blob> {
+  return requestBlob(`/admin/pricing-feedback${buildQuery({ ...filter, format: "csv" })}`, {
+    headers: { Accept: "text/csv" },
+  });
+}
+
+/** Super Admin. Each checkout exit question, newest asked first; `limit` 1–500. */
+export async function listCheckoutExitFeedback(
+  filter: CheckoutExitFeedbackFilter = {},
+  page: { offset?: number; limit?: number } = {},
+): Promise<CheckoutExitFeedbackPage> {
+  return request<CheckoutExitFeedbackPage>(
+    `/admin/checkout-exit-feedback${buildQuery({ ...filter, offset: page.offset, limit: page.limit })}`,
+  );
+}
+
+/** Super Admin. Every matching exit answer as `checkout-exit-feedback.csv` (no paging). */
+export async function downloadCheckoutExitFeedback(filter: CheckoutExitFeedbackFilter = {}): Promise<Blob> {
+  return requestBlob(`/admin/checkout-exit-feedback${buildQuery({ ...filter, format: "csv" })}`, {
+    headers: { Accept: "text/csv" },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Legal documents, acceptance evidence and privacy requests (LEGAL_API.md)
+// ---------------------------------------------------------------------------
+
+/** Ops / Super Admin. Every document with its draft and published versions. */
+export async function listLegalDocuments(): Promise<LegalDocument[]> {
+  const result = await request<{ documents: LegalDocument[] }>("/admin/legal/documents");
+  return result.documents;
+}
+
+/** Ops / Super Admin. One document; `null` when it does not exist. */
+export async function getLegalDocument(documentId: string): Promise<LegalDocument | null> {
+  const result = await request<{ documents: LegalDocument[] }>(
+    `/admin/legal/documents/${encodeURIComponent(documentId)}`,
+  );
+  return result.documents[0] ?? null;
+}
+
+/** Super Admin. `409 document_exists` when the ID is taken. */
+export function createLegalDocument(id: string, draft: LegalDraft) {
+  return request<{ id: string; revision: number; draft: LegalDraft }>("/admin/legal/documents", {
+    method: "POST",
+    body: JSON.stringify({ id, draft }),
+  });
+}
+
+/**
+ * Super Admin. Merges the changed fields into the draft; the published
+ * versions never change. A stale revision is `409 legal_document_changed`.
+ */
+export function updateLegalDraft(
+  documentId: string,
+  expectedRevision: number,
+  draft: Partial<LegalDraft>,
+) {
+  return request<{ id: string; revision: number; draft: LegalDraft }>(
+    `/admin/legal/documents/${encodeURIComponent(documentId)}`,
+    { method: "PATCH", body: JSON.stringify({ expectedRevision, draft }) },
+  );
+}
+
+/** Super Admin. Publishes the stored draft as the next immutable version. */
+export function publishLegalDocument(documentId: string, expectedRevision: number) {
+  return request<{ document: LegalVersion; revision: number }>(
+    `/admin/legal/documents/${encodeURIComponent(documentId)}/publish`,
+    { method: "POST", body: JSON.stringify({ expectedRevision }) },
+  );
+}
+
+/** Super Admin. Only an unpublished, non-launch document (`409 published_document_retained`). */
+export function deleteLegalDocument(documentId: string, expectedRevision: number) {
+  return request<{ ok: true }>(`/admin/legal/documents/${encodeURIComponent(documentId)}`, {
+    method: "DELETE",
+    body: JSON.stringify({ expectedRevision }),
+  });
+}
+
+/** Super Admin. A PDF (20 MiB at most) for a draft; kept as legal evidence once published. */
+export async function uploadLegalPdf(file: File): Promise<StoredFile> {
+  const body = new FormData();
+  body.append("purpose", "legal_document");
+  body.append("file", file);
+  const uploaded = await request<{ file: StoredFile }>("/files", { method: "POST", body });
+  return uploaded.file;
+}
+
+/** Ops / Super Admin. One person's acceptance evidence, 1,000 rows a page, oldest first. */
+export function listLegalAcceptances(userId: string, offset = 0) {
+  return request<{ acceptances: LegalAcceptance[]; nextOffset: number | null }>(
+    `/admin/legal/acceptances${buildQuery({ userId, offset })}`,
+  );
+}
+
+/**
+ * Ops / Super Admin. The person's whole acceptance log as the API's CSV
+ * (its quoting and formula escaping). Pages follow `X-Next-Offset`; each page
+ * repeats the header, so later headers are dropped.
+ */
+export async function downloadLegalAcceptancesCsv(userId: string): Promise<Blob> {
+  const parts: string[] = [];
+  let offset: number | null = 0;
+  while (offset !== null) {
+    const path = `/admin/legal/acceptances${buildQuery({ userId, offset, format: "csv" })}`;
+    const page: { text: string; next: number | null } = await withRequestDeadline(
+      undefined,
+      async (signal) => {
+        const res = await send(path, {}, signal, "text/csv");
+        const text = await res.text();
+        if (!res.ok) throw failed(path, res.status, parseBody(text));
+        const header = res.headers.get("X-Next-Offset");
+        const next = header === null || header === "" ? null : Number(header);
+        return { text, next: Number.isSafeInteger(next) ? next : null };
+      },
+    );
+    parts.push(parts.length === 0 ? page.text : page.text.replace(/^[^\n]*\n/, ""));
+    offset = page.next !== null && page.next > offset ? page.next : null;
+  }
+  return new Blob(parts, { type: "text/csv;charset=utf-8" });
+}
+
+/** Ops / Super Admin. 100 a page, earliest due first. Omit status for every request. */
+export function listPrivacyRequests(status?: PrivacyRequestStatus, offset = 0) {
+  return request<{ requests: PrivacyRequest[]; nextOffset: number | null }>(
+    `/admin/privacy-requests${buildQuery({ status, offset })}`,
+  );
+}
+
+/**
+ * Ops / Super Admin. Completed or rejected needs a resolution
+ * (`400 resolution_required`); a stale revision is `409 privacy_request_changed`.
+ */
+export function updatePrivacyRequest(
+  id: string,
+  input: {
+    expectedRevision: number;
+    status?: PrivacyRequestStatus;
+    dueAt?: string;
+    handlerId?: string | null;
+    resolution?: string;
+  },
+) {
+  return request<{ request: PrivacyRequest }>(
+    `/admin/privacy-requests/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Supplier invoices and monthly paper collection (SUPPLIER_INVOICES_API.md)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ops / Super Admin. One page of a Manila month's invoices, ordered by order
+ * ID; `totals` and `shops` always cover the whole month (and shop, if set).
+ * `limit` 1–100; follow `nextCursor` as `after`.
+ */
+export async function listSupplierInvoices(
+  month: string,
+  page: { supplierId?: string; after?: string | null; limit?: number } = {},
+): Promise<SupplierInvoiceMonth> {
+  return request<SupplierInvoiceMonth>(
+    `/ops/finance/supplier-invoices${buildQuery({
+      month,
+      supplierId: page.supplierId,
+      after: page.after ?? undefined,
+      limit: page.limit,
+    })}`,
+  );
+}
+
+/** Ops / Super Admin. `409 supplier_invoice_not_expected` before readiness. */
+export async function getSupplierInvoice(orderId: string): Promise<SupplierInvoiceEnvelope> {
+  return request<SupplierInvoiceEnvelope>(
+    `/ops/finance/supplier-invoices/${encodeURIComponent(orderId)}`,
+  );
+}
+
+/**
+ * Ops / Super Admin. Records the caller as holding the paper original. Final:
+ * there is no undo, and a repeat returns the first record unchanged.
+ */
+export async function collectSupplierInvoice(
+  orderId: string,
+  expectedVersion: number,
+): Promise<SupplierInvoiceEnvelope> {
+  return request<SupplierInvoiceEnvelope>(
+    `/ops/finance/supplier-invoices/${encodeURIComponent(orderId)}/collect`,
+    { method: "POST", body: JSON.stringify({ expectedVersion }) },
+  );
 }

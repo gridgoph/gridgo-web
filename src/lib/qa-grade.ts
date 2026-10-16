@@ -8,6 +8,7 @@
 
 import type { DetectedArtwork, Order, ProductionItem, StoredFile } from "@/lib/api/types";
 import { formatPhp } from "@/lib/format";
+import { itemInstructions } from "@/lib/order-changes";
 import { describeQuantity } from "@/lib/quantity";
 
 export type Grade = "good" | "warning" | "problem";
@@ -364,7 +365,17 @@ function carries(order: Pick<Order, "productionItems">, keys: string[]): string 
 }
 
 export function specComparison(
-  order: Pick<Order, "size" | "material" | "finish" | "productionItems" | "specialInstructions" | "notes">,
+  order: Pick<
+    Order,
+    | "size"
+    | "material"
+    | "finish"
+    | "title"
+    | "productionItems"
+    | "specialInstructions"
+    | "specialInstructionLines"
+    | "notes"
+  >,
   files: readonly StoredFile[],
 ): { rows: CompareRow[]; instructions: string | null } {
   const detected = primaryDetected(files);
@@ -458,10 +469,17 @@ function bindingOption(order: Pick<Order, "productionItems">): string | null {
 }
 
 function specialInstructions(
-  order: Pick<Order, "productionItems" | "specialInstructions" | "notes">,
+  order: Pick<
+    Order,
+    "title" | "productionItems" | "specialInstructions" | "specialInstructionLines" | "notes"
+  >,
 ): string | null {
+  // Each item's own note and the older single note come from the one reader
+  // the workspace uses (`@/lib/order-changes`); several items are named.
+  const notes = itemInstructions(order).filter((note) => note.text);
+  const named = notes.length > 1;
   const parts = [
-    text(order.specialInstructions),
+    ...notes.map((note) => (named ? `${note.itemName}: ${note.text}` : note.text)),
     text(order.notes),
     specText(order, "specialInstructions"),
     specText(order, "instructions"),

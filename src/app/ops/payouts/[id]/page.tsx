@@ -118,9 +118,10 @@ export default function OpsPayoutReviewPage() {
         decision,
       );
       setData({ ...data, order: result.order });
+      const paidMinor = decision.amountMinor ?? milestone.amountMinor;
       setReleased(
-        milestone.amountMinor !== undefined
-          ? `${formatPhp(milestone.amountMinor)} released to the supplier.`
+        paidMinor !== undefined
+          ? `${formatPhp(paidMinor)} released to the supplier.`
           : "Share released to the supplier.",
       );
       setRelease(null);

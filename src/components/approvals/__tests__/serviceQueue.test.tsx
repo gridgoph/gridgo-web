@@ -129,10 +129,34 @@ it("renders a service line that omits catalogue arrays and pricing basis", async
       withdrawnAt: null,
       createdAt: "2026-09-15T00:00:00Z",
       updatedAt: "2026-09-15T00:00:00Z",
-    } as SupplierService,
+    } as unknown as SupplierService,
   ]);
   render(<ServiceLines />);
   expect(await screen.findByText("flyers")).toBeInTheDocument();
   expect(screen.getByText("user_old_shop")).toBeInTheDocument();
   expect(document.body.textContent).toContain(formatPhp(0));
+});
+
+it("shows a line the shop created in the supplier app, which carries no materials, finishes or zones", async () => {
+  // POST /me/supplier-services (gridgo-api catalog-routes) stores no
+  // materialCodes, finishCodes or zones, and GET /supplier-services passes the
+  // absence through. The queue used to call .map on them and crash the page.
+  list.mockResolvedValue([
+    {
+      id: "service_app",
+      supplierId: "user_app_shop",
+      categoryCode: "tarpaulins_outdoor_banners",
+      state: "draft",
+      pricingBasis: "per_unit",
+      referenceRateMinor: 0,
+      turnaroundDays: 2,
+      turnaroundHours: 20,
+      createdAt: "2026-10-14T00:00:00Z",
+      updatedAt: "2026-10-14T00:00:00Z",
+    } as unknown as SupplierService,
+  ]);
+  render(<OpsApprovals />);
+  expect(await screen.findByText("user_app_shop")).toBeInTheDocument();
+  expect(screen.getByText("tarpaulins outdoor banners")).toBeInTheDocument();
+  expect(screen.getByText(/2 working days/)).toBeInTheDocument();
 });

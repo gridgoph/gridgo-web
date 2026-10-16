@@ -9,24 +9,13 @@
 
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import {
-  Box,
-  Check,
-  Copy,
-  ExternalLink,
-  HardDrive,
-  Link2,
-  Palette,
-  PenTool,
-  Send,
-  TriangleAlert,
-  type LucideIcon,
-} from "lucide-react";
+import { ExternalLink, Link2, TriangleAlert } from "lucide-react";
 
+import { ArtworkAttachments } from "@/components/orders/ArtworkAttachments";
+import { CopyLinkButton, PROVIDER_ICONS } from "@/components/orders/design-link-parts";
 import { EvidenceStrip } from "@/components/orders/EvidencePreview";
-import { Button } from "@/components/ui/button";
 import type { Order } from "@/lib/api/types";
+import { showsAttachmentList } from "@/lib/artwork-attachments";
 import {
   DESIGN_LINK_BESIDE_FILE_COPY,
   DESIGN_LINK_ONLY_COPY,
@@ -34,57 +23,17 @@ import {
   orderDesignLinks,
   providerName,
   safeLinkHref,
-  type LinkProvider,
   type OrderDesignLink,
 } from "@/lib/design-links";
 import { artworkEvidence } from "@/lib/evidence";
 
-/** The same glyphs the client app shows beside its design-link field. */
-const PROVIDER_ICONS: Record<LinkProvider, LucideIcon> = {
-  canva: Palette,
-  google_drive: HardDrive,
-  dropbox: Box,
-  we_transfer: Send,
-  figma: PenTool,
-  other: Link2,
-};
-
-type CopyState = "idle" | "copied" | "failed";
-
-async function copyText(text: string): Promise<boolean> {
-  try {
-    if (!navigator.clipboard?.writeText) return false;
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export function DesignLinkRow({ link }: { link: OrderDesignLink }) {
-  const [copy, setCopy] = useState<CopyState>("idle");
-  const reset = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (reset.current) clearTimeout(reset.current);
-    },
-    [],
-  );
-
   const Icon = PROVIDER_ICONS[link.provider] ?? Link2;
   const name = providerName(link.provider);
   const href = safeLinkHref(link.url);
   const { head, tail } = linkDisplayParts(link.url);
-
-  const copyLabel =
-    copy === "copied" ? "Copied" : copy === "failed" ? "Copy failed" : "Copy link";
-
-  const onCopy = async () => {
-    const ok = await copyText(link.url);
-    setCopy(ok ? "copied" : "failed");
-    if (reset.current) clearTimeout(reset.current);
-    reset.current = setTimeout(() => setCopy("idle"), 2500);
-  };
+  // The client's own name for the link leads; the host follows it.
+  const label = link.label?.trim() || null;
 
   const body = (
     <>
@@ -96,9 +45,14 @@ export function DesignLinkRow({ link }: { link: OrderDesignLink }) {
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
         <span className="text-body text-text-primary" style={{ fontFamily: "var(--font-medium)" }}>
-          {name}
-          {link.lineName ? (
-            <span className="text-caption text-text-muted"> · {link.lineName}</span>
+          {label ?? name}
+          {label || link.lineName ? (
+            <span className="text-caption text-text-muted">
+              {[label ? name : null, link.lineName]
+                .filter(Boolean)
+                .map((part) => ` · ${part}`)
+                .join("")}
+            </span>
           ) : null}
         </span>
         {/*
@@ -137,29 +91,7 @@ export function DesignLinkRow({ link }: { link: OrderDesignLink }) {
           </span>
         </div>
       )}
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="shrink-0"
-        onClick={() => void onCopy()}
-        aria-label={`Copy ${name} link`}
-      >
-        {copy === "copied" ? (
-          <Check aria-hidden />
-        ) : copy === "failed" ? (
-          <TriangleAlert aria-hidden />
-        ) : (
-          <Copy aria-hidden />
-        )}
-        {/* Narrow rows keep the icon; the accessible name always says it. */}
-        <span className="hidden @[26rem]:inline" aria-hidden>
-          {copyLabel}
-        </span>
-      </Button>
-      <span className="sr-only" role="status">
-        {copy === "idle" ? "" : copyLabel}
-      </span>
+      <CopyLinkButton url={link.url} name={name} />
     </li>
   );
 }
@@ -185,14 +117,26 @@ export function DesignLinkLead({ fileToo }: { fileToo: boolean }) {
 }
 
 /**
- * Everything the order carries as artwork: file plates, then design links.
+ * Everything the order carries as artwork: file plates, then design links,
+ * or the attachment list when an item carries several or labelled entries.
  * Renders nothing when there is neither, so a caller keeps its own empty copy.
  */
 export function OrderArtwork({
   order,
+  review = false,
 }: {
-  order: Pick<Order, "artworkFileIds" | "artworkName" | "size" | "productionItems">;
+  order: Pick<
+    Order,
+    "id" | "artworkFileIds" | "artworkName" | "size" | "productionItems"
+  >;
+  /** Count what the GRIDGO Team has opened, where the file check is made. */
+  review?: boolean;
 }) {
+  // Several files or a label on any item: every entry, item by item, in the
+  // client's order. An older one-file order keeps its plates.
+  if (showsAttachmentList(order)) {
+    return <ArtworkAttachments order={order} audience="staff" review={review} />;
+  }
   const files = artworkEvidence(order);
   const links = orderDesignLinks(order);
   if (files.length === 0 && links.length === 0) return null;

@@ -1,17 +1,18 @@
 "use client";
 
 import { SamplePhoto } from "@/app/supplier/_components/SamplePhoto";
+import { LayoutGlyph } from "@/components/orders/PrintLayoutRecord";
 import { formatPhp } from "@/lib/format";
 import {
   addOns,
   boardContextFor,
   effectiveFormatCodes,
-  effectiveTurnaroundHours,
+  effectiveMinimumTurnaround,
+  effectiveTurnaround,
   fromPriceMinor,
   hasPriceRange,
   pickLine,
   printerCapLine,
-  readyInLine,
   specs,
   subcategoryName,
   unitLine,
@@ -21,6 +22,8 @@ import {
   type SpecGroup,
 } from "@/lib/listings";
 import type { Taxonomy } from "@/lib/api/types";
+import { readyInLine } from "@/lib/production-time";
+import { layoutHint, layoutLabel, type KnownLayout } from "@/lib/print-layout";
 
 type FileFormat = {
   code: string;
@@ -48,7 +51,10 @@ export function ListingPreviewBody({
   formats: readonly FileFormat[];
 }) {
   const context = boardContextFor(listing, services);
-  const hours = effectiveTurnaroundHours(listing, context.inheritedTurnaroundHours);
+  const readyIn = readyInLine(
+    effectiveTurnaround(listing, context.inheritedTurnaround),
+    effectiveMinimumTurnaround(listing),
+  );
   const codes = effectiveFormatCodes(listing, context.inheritedFormatCodes);
   const known = new Map(formats.map((format) => [format.code, format]));
   const uploads = codes.filter((code) => {
@@ -106,7 +112,7 @@ export function ListingPreviewBody({
           </span>{" "}
           <span className="text-body text-text-secondary">{unitLine(listing)}</span>
         </p>
-        <p className="text-body text-text-secondary m-0">{readyInLine(hours)}</p>
+        <p className="text-body text-text-secondary m-0">{readyIn}</p>
       </div>
 
       {listing.description ? (
@@ -134,6 +140,10 @@ export function ListingPreviewBody({
       {specs(listing).map((group, index) => (
         <OrderGroup key={group.id} group={group} step={index + 1} />
       ))}
+
+      {listing.printLayouts?.length ? (
+        <LayoutStep layouts={listing.printLayouts} step={specs(listing).length + 1} />
+      ) : null}
 
       {addOns(listing).length ? (
         <div className="flex flex-col gap-3">
@@ -213,6 +223,39 @@ function OrderGroup({ group, step }: { group: SpecGroup; step: number | null }) 
             Nothing to pick here yet, so a client cannot order this.
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The Layout step as the client app draws it: one more required pick, with
+ * nothing chosen, each row showing its placement on the paper.
+ */
+function LayoutStep({ layouts, step }: { layouts: KnownLayout[]; step: number }) {
+  return (
+    <div className="flex flex-col gap-2" data-testid="listing-preview-layout">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-overline text-text-muted m-0 uppercase">{`Step ${step} · Layout`}</p>
+        <span className="text-caption text-text-secondary rounded-pill border border-outline px-2 py-0.5">
+          Pick 1
+        </span>
+      </div>
+      <p className="text-caption text-text-muted m-0">How your file sits on the paper.</p>
+      <div className="rounded-card border-outline flex flex-col gap-3 border p-3">
+        {layouts.map((code) => (
+          <div key={code} className="flex items-center gap-3">
+            <span
+              aria-hidden
+              className="border-outline size-[18px] shrink-0 rounded-full border"
+            />
+            <LayoutGlyph layout={code} />
+            <span className="flex min-w-0 flex-col">
+              <span className="text-body text-text-primary">{layoutLabel(code)}</span>
+              <span className="text-caption text-text-muted">{layoutHint(code)}</span>
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -7,6 +7,9 @@ import {
   recordTrackerDecision,
   setTokenProvider,
   setTrackerStatus,
+  setTrackerPriority,
+  listIssueReports,
+  updateIssueReport,
   uploadTrackerAttachment,
 } from "@/lib/api/client";
 
@@ -89,4 +92,20 @@ describe("tracker client", () => {
     );
     expect(call(fetchMock).url).toBe("/admin/tracker/decisions/dec_1/attachments/file_1");
   });
+});
+
+it("priority writes contain only a boolean and report priority paging uses the server filter", async () => {
+  let fetchMock = respondWith({ key: "gridgo-client#41", priority: true });
+  await setTrackerPriority(item, true);
+  expect(call(fetchMock).url).toBe("/admin/tracker/gridgo-client/41/priority");
+  expect(JSON.parse(String(call(fetchMock).init.body))).toEqual({ priority: true });
+  fetchMock = respondWith({ reports: [], counts: { priorities: 0 } });
+  await listIssueReports("priorities", { limit: 25, before: "older-id" });
+  expect(call(fetchMock).url).toBe(
+    "/ops/issue-reports?priority=true&limit=25&before=older-id",
+  );
+  fetchMock = respondWith({ id: "report-1", priority: false });
+  await updateIssueReport("report-1", { priority: false });
+  expect(call(fetchMock).url).toBe("/ops/issue-reports/report-1");
+  expect(JSON.parse(String(call(fetchMock).init.body))).toEqual({ priority: false });
 });

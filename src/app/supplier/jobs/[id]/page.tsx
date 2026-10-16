@@ -4,24 +4,30 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Camera, Check, History, ListChecks, Scale, Wallet, X } from "lucide-react";
+import {
+  Camera,
+  Check,
+  History,
+  ListChecks,
+  Package,
+  Scale,
+  Wallet,
+  X,
+} from "lucide-react";
 
+import { ChangeRequestCard } from "@/app/supplier/_components/ChangeRequestCard";
+import { DeclineJobDialog } from "@/app/supplier/_components/DeclineJobDialog";
+import { PackagingChecklist } from "@/app/supplier/_components/PackagingChecklist";
+import { RequestChangeDialog } from "@/app/supplier/_components/RequestChangeDialog";
+import { SpecialInstructionsCard } from "@/app/supplier/_components/SpecialInstructionsCard";
 import { JobFilesDialog } from "@/components/orders/JobFilesDialog";
 import { MilestoneList } from "@/components/orders/MilestoneList";
 import { OrderMeta } from "@/components/orders/OrderMeta";
 import { ProgressGallery, WaitingForPhoto } from "@/components/orders/ProductionProgress";
 import { Timeline } from "@/components/orders/Timeline";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Confirmation } from "@/components/refunds/dialogs";
 import { Button } from "@/components/ui/button";
+import { TakePhotoButton } from "@/components/ui/TakePhotoButton";
 import {
   Dialog,
   DialogContent,
@@ -36,16 +42,30 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import {
   ApiError,
   attachFulfilmentProof,
+  attachPackingPhoto,
   attachProductionPhoto,
+  declineJob,
   getOrder,
   transitionOrder,
   uploadFulfilmentProof,
+  uploadPackingPhoto,
   uploadProductionPhoto,
 } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
+import {
+  canRequestChange,
+  changeRequestsOf,
+  currentChangeRequest,
+  hasSpecialInstructions,
+  instructionsReadAt,
+  itemInstructions,
+  shopChangeErrorMessage,
+  type DeclineReasonId,
+} from "@/lib/order-changes";
 import { presentOrderState } from "@/lib/order-state";
+import { packagingCheck, stepRefusal } from "@/lib/packaging-readiness";
 import {
   PRODUCTION_PHOTO_COPY,
   canAddProgressPhoto,
@@ -59,16 +79,45 @@ import { uploadErrorMessage } from "@/lib/upload-errors";
 import {
   CLAIM_HOLD_PACKING_REASON,
   actionsForJob,
+  packingPhotoOwed,
+  productionPhotoOwed,
+  shopLetJobGo,
   shopProofOutstanding,
   supplierWaitingOn,
   type SupplierAction,
 } from "@/lib/supplier-actions";
 import { jobActivity, relativeTime } from "@/app/supplier/_lib/job-activity";
 
+/** The two shop photos a job takes before packing, each with its own words. */
+type PhotoKind = "progress" | "packing";
+
+const PHOTO_WORDS: Record<
+  PhotoKind,
+  { title: string; hint: string; sent: string; fileLabel: string }
+> = {
+  progress: {
+    title: "Progress photo",
+    hint: PRODUCTION_PHOTO_COPY.supplierHint,
+    sent: "Photo sent. The client can see it on their order.",
+    fileLabel: "Progress photo file",
+  },
+  packing: {
+    title: "Packing photo",
+    hint: "Show the finished prints packed and ready for the rider. The client sees it and is told their order is packed.",
+    sent: "Packing photo sent. The client has been told their order is packed.",
+    fileLabel: "Packing photo file",
+  },
+};
+
+const PACKING_PHOTO_TOO_LATE =
+  "This job has moved on, so it no longer takes a packing photo. The page now shows where it stands.";
+
 function supplierErrorMessage(err: unknown): string {
   if (!(err instanceof ApiError)) {
     return "Network error while updating. Try again.";
   }
+  const changeCopy = shopChangeErrorMessage(err);
+  if (changeCopy) return changeCopy;
   switch (err.code) {
     case "transition_not_allowed":
       return "That step is no longer available for this job. Refresh to see where it stands.";
@@ -76,6 +125,8 @@ function supplierErrorMessage(err: unknown): string {
       return PRODUCTION_PHOTO_COPY.supplierRefused;
     case "production_photo_upload_not_allowed":
       return PRODUCTION_PHOTO_COPY.supplierTooLate;
+    case "packing_photo_upload_not_allowed":
+      return PACKING_PHOTO_TOO_LATE;
     case "claim_hold_active":
       return CLAIM_HOLD_PACKING_REASON;
     case "verification_not_approved":
@@ -100,7 +151,14 @@ export default function SupplierJobDetailPage() {
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [confirmDecline, setConfirmDecline] = useState(false);
+  // The decline dialog, opened on a reason when "Not possible?" opened it.
+  const [declineOpen, setDeclineOpen] = useState(false);
+  const [declineReason, setDeclineReason] = useState<DeclineReasonId | null>(null);
+  const [declineError, setDeclineError] = useState<string | null>(null);
+  // Always starts unticked: a box ticked for the shop records nothing it did.
+  const [instructionsRead, setInstructionsRead] = useState(false);
+  const [tickMissing, setTickMissing] = useState(false);
+  const [changeOpen, setChangeOpen] = useState(false);
   const [proofOpen, setProofOpen] = useState(false);
   const [proofFileId, setProofFileId] = useState<string | null>(null);
   const [proofFileName, setProofFileName] = useState<string | null>(null);
@@ -108,12 +166,13 @@ export default function SupplierJobDetailPage() {
   const [proofError, setProofError] = useState<string | null>(null);
   const [filedNote, setFiledNote] = useState<string | null>(null);
   const [photoOpen, setPhotoOpen] = useState(false);
+  const [photoKind, setPhotoKind] = useState<PhotoKind>("progress");
   const [photoFileId, setPhotoFileId] = useState<string | null>(null);
   const [photoFileName, setPhotoFileName] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const photoInput = useRef<HTMLInputElement>(null);
-  // The API refused to pack for want of a photo: the error offers the upload.
-  const [photoRefused, setPhotoRefused] = useState(false);
+  // The API refused to pack for want of a photo: the error offers that upload.
+  const [photoRefused, setPhotoRefused] = useState<PhotoKind | null>(null);
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -153,9 +212,10 @@ export default function SupplierJobDetailPage() {
     setActing(null);
   }
 
-  function openPhoto() {
+  function openPhoto(kind: PhotoKind = "progress") {
     setActionError(null);
-    setPhotoRefused(false);
+    setPhotoRefused(null);
+    setPhotoKind(kind);
     setPhotoError(null);
     setPhotoFileId(null);
     setPhotoFileName(null);
@@ -174,7 +234,11 @@ export default function SupplierJobDetailPage() {
   async function runAction(action: SupplierAction) {
     if (!job) return;
     if (action.kind === "add_progress_photo") {
-      openPhoto();
+      openPhoto("progress");
+      return;
+    }
+    if (action.kind === "add_packing_photo") {
+      openPhoto("packing");
       return;
     }
     if (action.kind === "add_proof" || action.targetState === null) {
@@ -187,30 +251,71 @@ export default function SupplierJobDetailPage() {
     }
     if (action.blockedReason) return;
     if (action.kind === "ready_for_pickup" && shopProofOutstanding(job)) return;
-    if (action.destructive && !confirmDecline) {
-      setConfirmDecline(true);
+    if (action.kind === "decline") {
+      openDecline(null);
+      return;
+    }
+    // GRIDGO refuses the acceptance until the shop ticks that it read the notes.
+    const needsTick = action.kind === "accept" && hasSpecialInstructions(job);
+    if (needsTick && !instructionsRead) {
+      setTickMissing(true);
       return;
     }
     setActing(action.kind);
     setActionError(null);
-    setPhotoRefused(false);
+    setPhotoRefused(null);
     try {
       const note =
-        action.kind === "decline"
-          ? "Supplier declined — returned for rematch"
-          : action.kind === "accept"
-            ? "Accepted"
-            : action.kind === "ready_for_pickup"
-              ? "Packaging ready — packed and staged for joint pickup checks with the rider"
-              : action.label;
-      setJob(await transitionOrder(job.id, action.targetState, { note }));
-      setConfirmDecline(false);
-    } catch (err) {
-      setActionError(supplierErrorMessage(err));
-      setPhotoRefused(
-        err instanceof ApiError && err.code === "production_photo_required",
+        action.kind === "accept"
+          ? "Accepted"
+          : action.kind === "ready_for_pickup"
+            ? "Packaging ready — packed and staged for joint pickup checks with the rider"
+            : action.label;
+      setJob(
+        await transitionOrder(
+          job.id,
+          action.targetState,
+          // The tick is recorded with the time, against the notes as they stand.
+          needsTick ? { note, specialInstructionsRead: true } : { note },
+        ),
       );
-      await load();
+    } catch (err) {
+      // GRIDGO's own sentence for a refused step, even when the checklist
+      // said it would pass: the step is checked again when pressed.
+      const refusal = stepRefusal(err);
+      setActionError(refusal?.message ?? supplierErrorMessage(err));
+      const owed = refusal?.missing.map((item) => item.kind) ?? [];
+      const code = err instanceof ApiError ? err.code : "";
+      setPhotoRefused(
+        owed.includes("production_photo") || code === "production_photo_required"
+          ? "progress"
+          : owed.includes("packing_photo") || code === "packing_photo_required"
+            ? "packing"
+            : null,
+      );
+      await load().catch(() => undefined);
+    } finally {
+      setActing(null);
+    }
+  }
+
+  function openDecline(reason: DeclineReasonId | null) {
+    setDeclineError(null);
+    setDeclineReason(reason);
+    setDeclineOpen(true);
+  }
+
+  async function decline(reason: string) {
+    if (!job) return;
+    setActing("decline");
+    setDeclineError(null);
+    try {
+      await declineJob(job.id, reason);
+      setDeclineOpen(false);
+      await load().catch(() => undefined);
+    } catch (err) {
+      setDeclineError(supplierErrorMessage(err));
+      await load().catch(() => undefined);
     } finally {
       setActing(null);
     }
@@ -223,7 +328,10 @@ export default function SupplierJobDetailPage() {
     setPhotoFileId(null);
     setPhotoFileName(file.name);
     try {
-      const stored = await uploadProductionPhoto(file);
+      const stored =
+        photoKind === "packing"
+          ? await uploadPackingPhoto(file)
+          : await uploadProductionPhoto(file);
       setPhotoFileId(stored.fileId);
     } catch (err) {
       setPhotoError(uploadErrorMessage(err, { what: "this photo" }));
@@ -237,15 +345,20 @@ export default function SupplierJobDetailPage() {
     setActing("add_progress_photo");
     setPhotoError(null);
     try {
-      await attachProductionPhoto(photoFileId, job.id);
+      if (photoKind === "packing") await attachPackingPhoto(photoFileId, job.id);
+      else await attachProductionPhoto(photoFileId, job.id);
       setJob(await getOrder(job.id));
-      setFiledNote("Photo sent. The client can see it on their order.");
+      setFiledNote(PHOTO_WORDS[photoKind].sent);
       closePhoto();
     } catch (err) {
-      if (err instanceof ApiError && err.code === "production_photo_upload_not_allowed") {
+      if (
+        err instanceof ApiError &&
+        (err.code === "production_photo_upload_not_allowed" ||
+          err.code === "packing_photo_upload_not_allowed")
+      ) {
         // The job moved on while the dialog was open. Show where it is now.
         closePhoto();
-        setActionError(PRODUCTION_PHOTO_COPY.supplierTooLate);
+        setActionError(supplierErrorMessage(err));
         await load();
         return;
       }
@@ -325,6 +438,18 @@ export default function SupplierJobDetailPage() {
   const photos = progressPhotos(job);
   const photoMissing = productionPhotoMissing(job);
   const photoOpenState = canAddProgressPhoto(job);
+  const check = packagingCheck(job);
+  const heldByChecklist = Boolean(primary?.blockedReason && check);
+  const packingPhotos = (job.packingProgress?.photos ?? []).filter(
+    (photo) => photo?.fileId,
+  );
+  const packingOwed = packingPhotoOwed(job);
+  const photoWords = PHOTO_WORDS[photoKind];
+  const notes = itemInstructions(job);
+  const needsTick = primary?.kind === "accept" && hasSpecialInstructions(job);
+  const changeAllowed = canRequestChange(job);
+  const changeRequest = currentChangeRequest(job);
+  const earlierChanges = changeRequestsOf(job).filter((row) => row.id !== changeRequest?.id);
 
   return (
     <div className="flex w-full flex-col gap-3">
@@ -380,7 +505,11 @@ export default function SupplierJobDetailPage() {
                 className="w-full sm:w-auto sm:min-w-40"
                 disabled={acting !== null || Boolean(primary.blockedReason)}
                 aria-describedby={
-                  primary.blockedReason ? "primary-blocked-reason" : undefined
+                  primary.blockedReason
+                    ? heldByChecklist
+                      ? "packaging-hold-reason"
+                      : "primary-blocked-reason"
+                    : undefined
                 }
                 onClick={() => void runAction(primary)}
               >
@@ -415,7 +544,19 @@ export default function SupplierJobDetailPage() {
                 "Nothing for you to do on this job right now. The timeline below shows where it has got to."}
             </p>
           ) : null}
-          {primary?.blockedReason ? (
+          {/*
+            With the checklist on the page, its row carries GRIDGO's reason
+            (and the way to Operations); here it is only pointed to, so the
+            sentence is not said twice. An older API has no checklist, so the
+            reason stays under the button.
+          */}
+          {heldByChecklist && !actionError ? (
+            <p className="text-body text-text-secondary m-0 flex max-w-prose items-start gap-2">
+              <Scale className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+              Waiting on Operations. The list below says why.
+            </p>
+          ) : null}
+          {primary?.blockedReason && !heldByChecklist ? (
             <p
               id="primary-blocked-reason"
               className="text-body text-text-primary m-0 flex max-w-prose items-start gap-2"
@@ -427,10 +568,48 @@ export default function SupplierJobDetailPage() {
           {primary && waiting ? (
             <p className="text-caption text-text-muted m-0">{waiting}</p>
           ) : null}
-          {primary?.kind === "add_progress_photo" ? (
+          {primary?.kind === "add_progress_photo" && !check ? (
             <p className="text-caption text-text-muted m-0 max-w-prose">
               {PRODUCTION_PHOTO_COPY.supplierRule}
             </p>
+          ) : null}
+          {needsTick ? (
+            <div className="flex max-w-prose flex-col gap-1">
+              <Confirmation
+                id="special-instructions-read"
+                checked={instructionsRead}
+                disabled={acting !== null}
+                onChange={(next) => {
+                  setInstructionsRead(next);
+                  setTickMissing(false);
+                  setActionError(null);
+                }}
+              >
+                I&rsquo;ve read the special instructions
+                <span className="text-caption text-text-muted block">
+                  GRIDGO records when you ticked it. Your shop makes the job with them.
+                </span>
+              </Confirmation>
+              {tickMissing && !instructionsRead ? (
+                <p className="text-body text-error m-0" role="alert">
+                  Tick that you read the special instructions to accept.
+                </p>
+              ) : null}
+              <div className="flex flex-wrap gap-x-4">
+                {changeAllowed ? (
+                  <Button variant="link" className="px-0" onClick={() => setChangeOpen(true)}>
+                    They cost more? Request a change
+                  </Button>
+                ) : null}
+                <Button
+                  variant="link"
+                  className="px-0"
+                  onClick={() => openDecline("special_instructions")}
+                >
+                  Not possible? Decline this job
+                </Button>
+              </div>
+            </div>
           ) : null}
           {primary?.kind === "accept" ? (
             <div className="flex max-w-prose flex-col gap-1">
@@ -453,15 +632,23 @@ export default function SupplierJobDetailPage() {
           {filedNote ? (
             <p className="text-body text-text-secondary m-0">{filedNote}</p>
           ) : null}
-          {actionError && !confirmDecline && !proofOpen && !photoOpen ? (
+          {actionError && !declineOpen && !proofOpen && !photoOpen && !changeOpen ? (
             <div className="flex flex-col items-start gap-2" role="alert">
               <p className="text-body text-error m-0">{actionError}</p>
-              {photoRefused &&
+              {photoRefused === "progress" &&
               photoOpenState &&
               primary?.kind !== "add_progress_photo" ? (
-                <Button variant="secondary" onClick={openPhoto}>
+                <Button variant="secondary" onClick={() => openPhoto("progress")}>
                   <Camera size={16} strokeWidth={1.75} aria-hidden />
                   Add a progress photo
+                </Button>
+              ) : null}
+              {photoRefused === "packing" &&
+              photoOpenState &&
+              primary?.kind !== "add_packing_photo" ? (
+                <Button variant="secondary" onClick={() => openPhoto("packing")}>
+                  <Package size={16} strokeWidth={1.75} aria-hidden />
+                  Add a packing photo
                 </Button>
               ) : null}
             </div>
@@ -477,6 +664,28 @@ export default function SupplierJobDetailPage() {
       */}
       <div className="grid w-full gap-3 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:items-start">
         <div className="flex min-w-0 flex-col gap-3">
+          {check ? <PackagingChecklist check={check} /> : null}
+
+          {/*
+            The client's own words come before the docket: they are the part of
+            the job nobody picked from a list. On an offer the tick sits with
+            Accept above; once accepted the card says when it was ticked.
+          */}
+          {notes.length ? (
+            <SpecialInstructionsCard
+              notes={notes}
+              readAt={instructionsReadAt(job)}
+              offer={job.state === "supplier_assigned" && !shopLetJobGo(job)}
+              onRequestChange={
+                changeAllowed && !needsTick ? () => setChangeOpen(true) : undefined
+              }
+            />
+          ) : null}
+
+          {changeRequest ? (
+            <ChangeRequestCard request={changeRequest} earlier={earlierChanges} />
+          ) : null}
+
           <section className="gg-card p-3" aria-labelledby="spec-heading">
             <h3
               id="spec-heading"
@@ -485,7 +694,7 @@ export default function SupplierJobDetailPage() {
               <ListChecks size={18} strokeWidth={1.75} aria-hidden />
               Spec
             </h3>
-            <OrderMeta order={job} showMoney={false} />
+            <OrderMeta order={job} showMoney={false} fromJobDetails />
           </section>
 
           {progress && progressReached(job) ? (
@@ -507,15 +716,46 @@ export default function SupplierJobDetailPage() {
                   tone={photoOpenState ? "attention" : "neutral"}
                   body={
                     photoOpenState
-                      ? "Once one photo of this job is here, you can pack it for a rider."
+                      ? "Once one photo of this job on your floor is here, the packing photo comes next."
                       : "This job left production without a progress photo."
                   }
                 />
               ) : (
                 <ProgressGallery
                   photos={photos}
-                  onAdd={photoOpenState ? openPhoto : undefined}
+                  onAdd={photoOpenState ? () => openPhoto("progress") : undefined}
                   addDisabled={acting !== null}
+                />
+              )}
+            </section>
+          ) : null}
+
+          {job.packingProgress && (packingPhotos.length || packingOwed) ? (
+            <section className="gg-card p-3" aria-labelledby="packing-heading">
+              <h3
+                id="packing-heading"
+                className="text-h3 text-text-primary m-0 mb-1 flex items-center gap-2"
+              >
+                <Package size={18} strokeWidth={1.75} aria-hidden />
+                Packing photos
+              </h3>
+              <p className="text-caption text-text-muted m-0 mb-3 max-w-prose">
+                The finished prints, packed for the rider. The client sees these on their
+                order.
+              </p>
+              {packingPhotos.length ? (
+                <ProgressGallery
+                  photos={packingPhotos}
+                  label="Packing photo"
+                  addLabel="Add another packing photo"
+                  onAdd={photoOpenState ? () => openPhoto("packing") : undefined}
+                  addDisabled={acting !== null}
+                />
+              ) : (
+                <WaitingForPhoto
+                  tone={productionPhotoOwed(job) ? "neutral" : "attention"}
+                  title="No packing photo yet"
+                  body="Once the job is packed, add one photo of it here before you mark it ready for pickup."
                 />
               )}
             </section>
@@ -588,7 +828,12 @@ export default function SupplierJobDetailPage() {
               >
                 Choose file
               </Button>
-              <span className="text-caption text-text-secondary min-w-0 truncate">
+              <TakePhotoButton
+                disabled={acting !== null}
+                inputLabel="Take a photo for this proof"
+                onFile={(file) => void onProofFile(file)}
+              />
+              <span className="text-caption text-text-secondary min-w-0 basis-full truncate sm:basis-auto">
                 {proofFileName ?? "No file chosen"}
               </span>
             </div>
@@ -636,8 +881,8 @@ export default function SupplierJobDetailPage() {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Progress photo</DialogTitle>
-            <DialogDescription>{PRODUCTION_PHOTO_COPY.supplierHint}</DialogDescription>
+            <DialogTitle>{photoWords.title}</DialogTitle>
+            <DialogDescription>{photoWords.hint}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2">
             <p className="text-caption text-text-muted m-0">
@@ -652,7 +897,12 @@ export default function SupplierJobDetailPage() {
               >
                 Choose photo
               </Button>
-              <span className="text-caption text-text-secondary min-w-0 truncate">
+              <TakePhotoButton
+                disabled={acting !== null}
+                inputLabel="Take a progress photo"
+                onFile={(file) => void onPhotoFile(file)}
+              />
+              <span className="text-caption text-text-secondary min-w-0 basis-full truncate sm:basis-auto">
                 {photoFileName ?? "No photo chosen"}
               </span>
             </div>
@@ -662,7 +912,7 @@ export default function SupplierJobDetailPage() {
               accept="image/jpeg,image/png,image/webp"
               className="sr-only"
               tabIndex={-1}
-              aria-label="Progress photo file"
+              aria-label={photoWords.fileLabel}
               disabled={acting !== null}
               onChange={(event) => {
                 const file = event.target.files?.[0];
@@ -691,42 +941,25 @@ export default function SupplierJobDetailPage() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog
-        open={confirmDecline}
-        onOpenChange={(open) => {
-          if (!open) setConfirmDecline(false);
+      <DeclineJobDialog
+        open={declineOpen}
+        initialReason={declineReason}
+        busy={acting === "decline"}
+        error={declineError}
+        onCancel={() => setDeclineOpen(false)}
+        onDecline={(reason) => void decline(reason)}
+      />
+
+      <RequestChangeDialog
+        job={job}
+        open={changeOpen}
+        onClose={() => setChangeOpen(false)}
+        onSent={async (message) => {
+          setChangeOpen(false);
+          setFiledNote(message);
+          await load().catch(() => undefined);
         }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Decline this job?</AlertDialogTitle>
-            <AlertDialogDescription>
-              It goes back to Operations to be given to another supplier, and you lose
-              this assignment.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          {actionError ? (
-            <p className="text-body text-error m-0" role="alert">
-              {actionError}
-            </p>
-          ) : null}
-          <AlertDialogFooter>
-            <AlertDialogCancel variant="secondary" disabled={acting !== null}>
-              Keep job
-            </AlertDialogCancel>
-            <AlertDialogAction
-              variant="danger"
-              disabled={acting !== null}
-              onClick={() => {
-                const decline = secondary.find((action) => action.destructive);
-                if (decline) void runAction(decline);
-              }}
-            >
-              {acting === "decline" ? "Declining…" : "Confirm decline"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      />
     </div>
   );
 }

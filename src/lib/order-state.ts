@@ -8,6 +8,7 @@ import type {
   PaymentInstallment,
   PayoutMilestone,
   PickupCheckCode,
+  ShopHandover,
 } from "@/lib/api/types";
 import { paymentIsSettled } from "@/lib/api/constraints";
 import {
@@ -59,6 +60,24 @@ export function presentOrderState(
   state: string,
   order?: PaymentSplitSource,
 ): StatePresentation {
+  // The rider-packs handover renames the two packing states
+  // (`gridgo-api/docs/SHOP_HANDOVER_API.md`): nothing is packed at the shop.
+  if (order && "handoverFlow" in order && order.handoverFlow === "rider_packs") {
+    if (state === "supplier_self_qc") {
+      // The state alone does not say whose move it is: read the review.
+      const handover = (order as { shopHandover?: ShopHandover | null }).shopHandover;
+      if (handover?.finished && handover.review?.decision === "approved") {
+        return { label: "Approved, shop to call a rider", tone: "info", icon: "circle-check" };
+      }
+      if (handover?.finished && !handover.review) {
+        return { label: "Finished work in review", tone: "warning", icon: "triangle-alert" };
+      }
+      return { label: "No finished photos yet", tone: "neutral", icon: "clock" };
+    }
+    if (state === "ready_for_dispatch") {
+      return { label: "Ready for rider pickup", tone: "success", icon: "circle-check" };
+    }
+  }
   if (order && balanceNotRequired(order)) {
     const upfront = UPFRONT_PAYMENT_STATES[state];
     if (upfront) return upfront;
@@ -126,7 +145,13 @@ export function presentOrderState(
   }
 }
 
-export function presentTimelineActor(by: string): string {
+/**
+ * Who moved an order, in words. Empty when the entry names no one: a
+ * supplier's timeline carries no actor, and an unnamed update is not
+ * GRIDGO's to claim.
+ */
+export function presentTimelineActor(by: string | null | undefined): string {
+  if (!by) return "";
   if (by === "system") return "GRIDGO";
   if (by === "user_client") return "Client";
   if (by === "user_supplier") return "Supplier";
@@ -315,6 +340,18 @@ export function presentMilestone(
   }
 }
 
+/**
+ * Payout stage codes an older API left in a timeline note ("Proof filed for
+ * production_started"). The API now writes the stage's own name; this keeps
+ * an older note from showing the internal code (report 6C695C15).
+ */
+const PAYOUT_STAGE_CODES = /\b(production_started|packaging_qc|issue_window)\b/g;
+
+/** A timeline note in plain words, with any payout stage code named. */
+export function presentTimelineNote(note: string): string {
+  return note.replace(PAYOUT_STAGE_CODES, (code) => presentMilestone(code));
+}
+
 /** `presentMilestone` for a stage as the API sends it. */
 export function milestoneName(
   milestone: Pick<PayoutMilestone, "code"> &
@@ -445,6 +482,8 @@ export function presentChecklistStatus(status: string | undefined): StatePresent
       return { label: "Blocked at the counter", tone: "error", icon: "circle-x" };
     case "escalation_resolved":
       return { label: "Waiting for a fresh check", tone: "warning", icon: "clock" };
+    case "inspected":
+      return { label: "Checked unpacked, not signed yet", tone: "info", icon: "clock" };
     case "not_started":
     case undefined:
       return { label: "Not checked yet", tone: "neutral", icon: "clock" };

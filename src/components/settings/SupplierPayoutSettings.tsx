@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { PayoutQrPlate } from "@/components/orders/PayoutDestination";
 import { Button } from "@/components/ui/button";
+import { TakePhotoButton } from "@/components/ui/TakePhotoButton";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -303,12 +304,21 @@ export function SupplierPayoutSettings() {
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 disabled={qrBusy || busy}
-                className="text-caption text-text-secondary file:mr-3 file:rounded-field file:border file:border-outline file:bg-surface file:px-3 file:py-1.5 file:text-caption file:text-text-primary"
+                className="text-caption text-text-secondary file:mr-3 file:h-11 file:rounded-field file:border file:border-outline file:bg-surface file:px-4 file:text-caption file:text-text-primary"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
                   event.target.value = "";
                   void onPickQr(file);
                 }}
+              />
+              {/* Field stretches every child (`*:w-full`); this one keeps its size. */}
+              <TakePhotoButton
+                size="sm"
+                className="w-fit!"
+                label="Photograph the plate"
+                inputLabel="Photograph the QR plate on your counter"
+                disabled={qrBusy || busy}
+                onFile={(file) => void onPickQr(file)}
               />
               <FieldDescription>
                 JPEG, PNG or WebP, up to 5 MB. A screenshot of the wallet&apos;s receiving

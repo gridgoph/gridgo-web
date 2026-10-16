@@ -12,6 +12,7 @@
 import type { ReviewQueueStatus } from "@/lib/api/client";
 import { formatPhp } from "@/lib/format";
 import { normalizeListing, priceLine, specs, type Listing } from "@/lib/listings";
+import { layoutsLine, sameLayouts } from "@/lib/print-layout";
 import type { StatusIconName, StatusTone } from "@/lib/order-state";
 
 export type ReviewEntry = {
@@ -253,8 +254,8 @@ function specLines(listing: Listing): Map<string, string> {
 
 /**
  * What a pending change does to the version clients see now. Only the
- * review-sensitive parts (price, product type, specs, formats, photos) and
- * the name; text edits apply without review.
+ * review-sensitive parts (price, product type, specs, print layouts, formats,
+ * photos) and the name; text edits apply without review.
  */
 export function listingChanges(
   live: Listing,
@@ -281,6 +282,15 @@ export function listingChanges(
     const before = beforeSpecs.get(name) ?? "Not offered";
     const after = afterSpecs.get(name) ?? "Removed";
     if (before !== after) out.push({ label: name, before, after });
+  }
+  // Which layouts clients must choose from. An API without layouts sends
+  // none on either side, so nothing is compared.
+  if (draft.printLayouts !== null && !sameLayouts(live.printLayouts, draft.printLayouts)) {
+    out.push({
+      label: "Print layouts",
+      before: layoutsLine(live.printLayouts),
+      after: layoutsLine(draft.printLayouts),
+    });
   }
   const livePhotos = new Set(live.photos.map((photo) => photo.fileId));
   const added = draft.photos.filter((photo) => !livePhotos.has(photo.fileId)).length;

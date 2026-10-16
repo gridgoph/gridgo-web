@@ -295,7 +295,11 @@ export type PortalRoleProjection<R extends PortalRole = PortalRole> =
 export type TimelineEntry = {
   at: string;
   state: string;
-  by: string;
+  /**
+   * Who moved it. Absent on a supplier's timeline: the API keeps only
+   * `{ at, state, note }` there (gridgo-api SUPPLIER_JOB_READINESS_API.md).
+   */
+  by?: string;
   note: string;
   /** Set on the row the API writes when a Proof of Fulfilment or delivery photo is attached. */
   fileId?: string | null;
@@ -460,7 +464,12 @@ export type PickupCheck = {
  * repeat all six checks and a fresh count before taking the package.
  */
 export type PickupChecklistStatus =
-  "not_started" | "passed" | "failed_escalated" | "escalation_resolved";
+  | "not_started"
+  | "passed"
+  | "failed_escalated"
+  | "escalation_resolved"
+  // Rider-packs handover: six passes on the unpacked products, custody not moved yet.
+  | "inspected";
 
 /**
  * What the rider counts at the counter, one row per order line. The API
@@ -504,6 +513,14 @@ export type PickupChecklist = {
   signOffPrompt?: string;
   /** `null` on a failed attempt; absent on checks recorded before signatures. */
   handoffSignature?: HandoffSignature | null;
+  /**
+   * Rider-packs handover only. `status: "inspected"` is a passing check of
+   * the unpacked products that has not moved custody yet; the final pickup
+   * keeps the inspection it confirmed and the packed photos.
+   */
+  inspectionId?: string;
+  inspectedAt?: string;
+  packedPhotoFileIds?: string[];
 };
 
 export type DeliveryEvidence = {
@@ -540,7 +557,31 @@ export type ArtworkLinkFormat =
 export type ArtworkLink = {
   formatCode: ArtworkLinkFormat | (string & {});
   url: string;
+  /** The client's own name for it ("Logo design"); absent when they gave none. */
+  label?: string | null;
 };
+
+/**
+ * One entry in a line's ordered artwork: an uploaded file or a design link,
+ * each with an optional client label ("Front", "Back", "Logo PDF"). At most
+ * ten per line, in the client's order; the first file is `artworkFileId`.
+ * File entries carry a short-lived signed link when the API could sign one.
+ * Contract: "Multiple artwork attachments" in `gridgo-api/docs/ORDER_MATCH_API.md`.
+ */
+export type ArtworkAttachment =
+  | {
+      kind: "file";
+      fileId: string;
+      label?: string | null;
+      downloadUrl?: string;
+      downloadUrlExpiresAt?: string;
+    }
+  | {
+      kind: "link";
+      formatCode: ArtworkLinkFormat | (string & {});
+      url: string;
+      label?: string | null;
+    };
 
 /** One print line on a placed order. */
 export type ProductionItem = {
@@ -559,7 +600,139 @@ export type ProductionItem = {
   artworkFileId?: string | null;
   /** Design links on this line; `[]` when none, absent on an older API. */
   artworkLinks?: ArtworkLink[];
+  /** Every file and link on this line, in order; absent on an older API. */
+  artworkAttachments?: ArtworkAttachment[];
   mockupFileId?: string | null;
+  /**
+   * The client's special instructions for this line (≤ 300 characters),
+   * contact details already masked by GRIDGO; empty or absent when none.
+   * Read through `@/lib/order-changes`.
+   */
+  specialInstructions?: string | null;
+  /** The latest change the client agreed to (and paid for) on this line. */
+  agreedChange?: { id: string; proposedSpec: string; appliedAt: string } | null;
+  /**
+   * What the uploaded files measured against the product type at checkout,
+   * and which warnings the client accepted. Frozen when the order was placed;
+   * `null` on older orders and lines with no uploaded file, absent on an older
+   * API. Read through `@/lib/artwork-guidance`.
+   */
+  artworkGuidance?: ArtworkGuidanceRecord | null;
+  /**
+   * How the client asked for the file to sit on the paper. `null` on products
+   * without a layout choice and on older orders, absent on an older API.
+   * Read through `@/lib/print-layout`.
+   */
+  printLayout?: PrintLayoutCode | null;
+  /** The fit check as the client saw it at checkout, frozen with the order. */
+  printLayoutCheck?: PrintLayoutCheck | null;
+};
+
+// ---- Print layout ----
+// Contract: gridgo-api docs/PRINT_LAYOUT_API.md.
+
+/** A layout code; a code added after this build reads as itself, tidied. */
+export type PrintLayoutCode =
+  | "fit_to_paper"
+  | "actual_size_centered"
+  | "actual_size_original_position"
+  | (string & {});
+
+/** A paper option of the listing, measured in thousandths of a millimetre. */
+export type PrintLayoutPaper = {
+  optionId: string;
+  label: string;
+  widthMilli: number;
+  heightMilli: number;
+  pageSize: string | null;
+};
+
+export type PrintLayoutFilePage = {
+  widthMilli: number;
+  heightMilli: number;
+  pageSize: string | null;
+  orientation?: string | null;
+  largestShortSideMilli?: number | null;
+  largestLongSideMilli?: number | null;
+  mixedPageSizes?: boolean | null;
+};
+
+/** The fit check: the file's page against the chosen paper. */
+export type PrintLayoutCheck = {
+  supportedLayouts: PrintLayoutCode[];
+  layout: PrintLayoutCode | null;
+  paper: PrintLayoutPaper | null;
+  files: Array<{
+    fileId: string;
+    page: PrintLayoutFilePage | null;
+    exceedsPaper: boolean | null;
+  }>;
+  exceedsPaper: boolean | null;
+  cutOff: boolean | null;
+  scaleChanges: boolean | null;
+  suggestedPaper: PrintLayoutPaper | null;
+  unknown: Array<{ code: string; fileId?: string | null }>;
+};
+
+// ---- Artwork guidance ----
+// Contract: gridgo-api docs/ARTWORK_GUIDANCE_API.md.
+
+/** One product type's target. `minimumDpi` 50–1200, or null for no resolution check. */
+export type ArtworkGuidanceTarget = {
+  minimumDpi: number | null;
+  /** `false`: the product type expects CMYK, so an RGB file gets a warning. */
+  acceptsRgb: boolean;
+};
+
+/** `settings.artworkGuidance`: the default and each product type's own target. */
+export type ArtworkGuidanceSettings = {
+  version: 1;
+  default: ArtworkGuidanceTarget;
+  /** Keyed by taxonomy subcategory code; a code without an entry uses `default`. */
+  subcategories: Record<string, ArtworkGuidanceTarget>;
+};
+
+export type ArtworkColorMode = "rgb" | "cmyk" | "grayscale" | "mixed";
+
+export type ArtworkGuidanceWarning =
+  | {
+      code: "low_resolution";
+      effectiveDpi: number;
+      minimumDpi: number;
+      /** When the client accepted it; null when nobody did. */
+      acceptedAt: string | null;
+    }
+  | {
+      code: "color_mode";
+      colorMode: ArtworkColorMode | string;
+      expectedColorMode: string;
+      acceptedAt: string | null;
+    };
+
+export type ArtworkGuidanceFile = {
+  fileId: string;
+  /** Null when the file does not say (Word, a PDF naming no colour space). */
+  colorMode: ArtworkColorMode | string | null;
+  pixelWidth: number | null;
+  pixelHeight: number | null;
+  /** At the ordered size, limiting side. Null without pixels or a size. */
+  effectiveDpi: number | null;
+  warnings: ArtworkGuidanceWarning[];
+};
+
+/** The order line's frozen record (`productionItems[].artworkGuidance`). */
+export type ArtworkGuidanceRecord = {
+  version: number;
+  evaluatedAt: string;
+  subcategoryCode: string | null;
+  minimumDpi: number | null;
+  acceptsRgb: boolean;
+  /** `cmyk`, or `rgb_accepted` when the product type takes RGB. */
+  expectedColorMode: string;
+  /** Thousandths of a millimetre; null when the line names no size. */
+  orderedSize: { widthMilli: number; heightMilli: number } | null;
+  files: ArtworkGuidanceFile[];
+  openWarningCount: number;
 };
 
 export type PhysicalInvoiceRequest = {
@@ -634,6 +807,16 @@ export type Order = {
    * Read the three through `src/lib/organization-discount.ts`.
    */
   serviceFeeMinor?: number;
+  /**
+   * Ops / Super Admin. The fee table this order was priced under, frozen at
+   * checkout (gridgo-api#220). Version 2 is the bracket table; version 1 a
+   * legacy flat rate. Orders on version 2 carry `serviceFeeRateBps: null`:
+   * never infer one whole-order rate for them. Read through
+   * `src/lib/service-fee-brackets.ts`.
+   */
+  serviceFeeSchedule?: ServiceFeeSchedule | null;
+  /** Ops / Super Admin. How the gross fee was worked out, bracket by bracket. */
+  serviceFeeWorking?: ServiceFeeWorkingRow[] | null;
   /** Ops / Super Admin. The fee before the organization discount. */
   grossServiceFeeMinor?: number;
   /** Ops / Super Admin. The discount rate snapshotted at checkout; 0 for everyone else. */
@@ -646,6 +829,27 @@ export type Order = {
   organizationDiscountMinor?: number;
   /** Ops / Super Admin. GRIDGO's revenue on this order, gross and net of the discount. */
   platformRevenue?: PlatformRevenue;
+  /**
+   * A GRIDGO-funded voucher on this order (gridgo-api#204, VOUCHERS_API.md).
+   * Ops / Super Admin and the owning client only; the API strips it, and the
+   * five figures below, from shops and riders. On a basket group the line is
+   * that group's share of the one voucher. It replaces the organization
+   * discount (only one applies) and comes out of GRIDGO's service fee first,
+   * then delivery; the shop price, payout stages and rider pay never move.
+   * `totalMinor` is already after it. Read through `src/lib/vouchers.ts`.
+   */
+  voucher?: OrderVoucherLine | null;
+  voucherDiscountMinor?: number;
+  /** Of the voucher, the part taken off GRIDGO's service fee. */
+  voucherServiceFeeMinor?: number;
+  /** Of the voucher, the part taken off delivery (only once the fee is used up). */
+  voucherDeliveryMinor?: number;
+  /** The service fee the client actually pays after the voucher. */
+  clientServiceFeeMinor?: number;
+  /** The delivery the client actually pays after the voucher. */
+  clientDeliveryFeeMinor?: number;
+  /** Ops / Super Admin money reporting: the voucher line with its funding split. */
+  voucherFunding?: OrderVoucherLine;
   /**
    * Multi-shop checkout (gridgo-api#150, MULTI_SHOP_CHECKOUT_API.md). A basket
    * is one payment over several shop groups; each group is an ordinary order
@@ -777,6 +981,38 @@ export type Order = {
   productionProgress?: ProductionProgress;
   /** Separate packed-work evidence; supplier, client and staff only. */
   packingProgress?: ProductionProgress;
+  /**
+   * Which shop-to-rider handover this order follows (contract
+   * `gridgo-api/docs/SHOP_HANDOVER_API.md`). Staff and the assigned
+   * shop/rider only; absent on an older API. Read it through
+   * `src/lib/shop-handover.ts`, never from dates or payout amounts.
+   */
+  handoverFlow?: HandoverFlow;
+  /** The handover evidence trail. Staff and the assigned shop/rider only. */
+  shopHandover?: ShopHandover | null;
+  /** Every staff-forced production step, with its reason. Staff and assigned parties. */
+  forcedSteps?: ForcedStep[];
+  /** True once any step was forced: every app shows "Forced by GRIDGO". */
+  forcedByGridgo?: boolean;
+  /** Staff only: the reason codes a forced step may carry. */
+  forcedStepReasonCodes?: string[];
+  /** Staff only: already-packed jobs this shop has presented, across its orders. */
+  shopArrivedPackedCount?: number;
+  /**
+   * What the API would still refuse each packaging step for, as of this read
+   * (assigned supplier and Operations/Super Admin). A snapshot, never a
+   * reservation: the transition is checked again when pressed. Read it
+   * through `src/lib/packaging-readiness.ts`.
+   */
+  transitionReadiness?: Partial<
+    Record<"supplier_self_qc" | "ready_for_dispatch", TransitionReadiness>
+  > | null;
+  /**
+   * Material, zone and the shop's date as the API filled them from the
+   * order's own snapshots. A value it could not fill is exactly
+   * "Not specified" and is named in `missing`.
+   */
+  jobDetails?: JobDetails | null;
   /** Wallet receipts Operations bound to released shares. Never sent to clients. */
   payoutReceiptFileIds?: string[];
 
@@ -799,6 +1035,12 @@ export type Order = {
    */
   fileCheck?: FileCheck | null;
   /**
+   * While a new order's file check is pending: when Operations can review it
+   * (OPERATING_HOURS_API.md). Ops / Super Admin and the owning client; absent
+   * on an order from before operating hours or once the check is decided.
+   */
+  review?: OrderReview | null;
+  /**
    * The assigned shop's one-opening-hour window to accept (SHOP_RECOVERY_API.md).
    * Ops / Super Admin and the assigned shop.
    */
@@ -816,8 +1058,6 @@ export type Order = {
   hubPickup?: HubPickup | null;
   /** Ops / Super Admin. Set when Operations holds the file and tells the client. */
   qaHold?: { at: string; by: string; reason: string } | null;
-  /** Free text the client wrote, when the order stored it. */
-  specialInstructions?: string | null;
   notes?: string | null;
   /** Optional landmark kept beside the composed address. */
   landmark?: string | null;
@@ -837,6 +1077,176 @@ export type Order = {
   } | null;
   /** Already inside `deliveryFeeMinor` on a pick-up order. Never add the two. */
   pickupFeeMinor?: number;
+  /**
+   * The production-finished delivery pin (gridgo-api `docs/DELIVERY_PIN_API.md`):
+   * whether the client will be there, and their one change. Absent on a pick-up
+   * order, a legacy trip and every supplier payload. Read through
+   * `@/lib/delivery-pin`.
+   */
+  deliveryPin?: DeliveryPin | null;
+  /**
+   * The delivery fee now, after an applied pin change. `deliveryFeeMinor`
+   * stays the checkout fee. Sent only with `deliveryPin`.
+   */
+  effectiveDeliveryFeeMinor?: number;
+  /** The checkout total plus an applied pin change's difference. */
+  effectiveTotalMinor?: number;
+  /**
+   * Special instructions and change requests (gridgo-api
+   * `docs/ORDER_CHANGES_API.md`). Read only through `@/lib/order-changes`.
+   * `specialInstructions` is an older order's single note; checkout orders
+   * carry one per line.
+   */
+  specialInstructions?: string | null;
+  specialInstructionLines?: SpecialInstructionLine[];
+  /** The assigned shop's tick that it read the notes, once it accepted. */
+  specialInstructionsAcknowledgement?: SpecialInstructionsAcknowledgement | null;
+  changeRequests?: OrderChangeRequest[];
+  /** Verified change payments on top of the checkout total. Absent until one is confirmed. */
+  supplementalTotalMinor?: number;
+  totalIncludingSupplementsMinor?: number;
+};
+
+// ---- Special instructions and change requests (gridgo-api docs/ORDER_CHANGES_API.md) ----
+
+export type SpecialInstructionLine = { lineItemId: string; text: string };
+
+export type SpecialInstructionsAcknowledgement = {
+  /** The shop that ticked. Stripped for clients. */
+  supplierId?: string;
+  at: string;
+  /** The notes exactly as the shop read them. */
+  lines?: SpecialInstructionLine[];
+  /** An older order's single note, when it had one. */
+  text?: string;
+};
+
+export type OrderChangeStatus =
+  | "pending"
+  | "pending_payment"
+  | "pending_confirmation"
+  | "applied"
+  | "declined"
+  | "closed";
+
+/** The client's QR transfer for a change, and the GRIDGO Team's check of it. */
+export type OrderChangePayment = {
+  proofFileId: string;
+  reference: string;
+  submittedAt: string;
+  confirmedAt?: string;
+  confirmedBy?: string;
+};
+
+export type OrderChangeRejectedPayment = OrderChangePayment & {
+  rejectedAt: string;
+  rejectedBy?: string;
+  reason?: string;
+};
+
+/** The shop's extra for an applied change, paid with the final payout stage. */
+export type OrderChangePayout = {
+  status: "pending" | "released" | "superseded";
+  amountMinor: number;
+  releaseRequires?: string;
+  reference?: string;
+  createdAt?: string;
+};
+
+/**
+ * One change request. Which fields arrive depends on the caller: the shop
+ * never gets the client's total, GRIDGO's fee or the payment; staff get
+ * everything.
+ */
+export type OrderChangeRequest = {
+  id: string;
+  orderId?: string;
+  supplierId?: string;
+  lineItemId: string | null;
+  status: OrderChangeStatus | (string & {});
+  version: number;
+  reason: string;
+  /** Empty for a time-only request. */
+  proposedSpec: string;
+  proposedReadyBy?: string | null;
+  proposedPromiseBy?: string | null;
+  /** The shop's own extra (centavos). Shop and staff only. */
+  extraPrincipalMinor?: number;
+  /** GRIDGO's added fee on the extra. Staff only. */
+  feeMinor?: number;
+  /** What the client pays for the change: extra + fee. Client and staff. */
+  totalMinor?: number;
+  createdAt: string;
+  originalInstructions?: string;
+  originalReadyBy?: string | null;
+  originalPromiseBy?: string | null;
+  answeredAt?: string;
+  answeredBy?: string;
+  appliedAt?: string;
+  closedAt?: string;
+  closureReason?: string;
+  payment?: OrderChangePayment;
+  paymentHistory?: OrderChangeRejectedPayment[];
+  rejectionReason?: string;
+  payout?: OrderChangePayout | null;
+};
+
+// ---- Delivery pin (gridgo-api docs/DELIVERY_PIN_API.md) ----
+
+/** The client's surcharge transfer for a dearer pin, and Operations' check of it. */
+export type DeliveryPinPayment = {
+  proofFileId: string;
+  reference: string;
+  submittedAt: string;
+  /** Set when Operations verified it: always the exact difference. */
+  amountMinor?: number;
+  confirmedAt?: string;
+  confirmedBy?: string;
+};
+
+export type DeliveryPinChangeStatus = "pending_payment" | "pending_confirmation" | "applied";
+
+/** The one change. A dearer pin is a proposal until its payment is verified. */
+export type DeliveryPinChange = {
+  id: string;
+  status: DeliveryPinChangeStatus | string;
+  point: MapPoint;
+  zone: DeliveryZoneKey | string;
+  distanceMeters: number;
+  /** The delivery fee at the new pin. */
+  deliveryFeeMinor: number;
+  /** Signed: positive is collected from the client, negative is a credit back. */
+  feeDifferenceMinor: number;
+  createdAt: string;
+  appliedAt?: string | null;
+  /** A cheaper pin's delivery-fee credit, a `delivery_pin` refund request. */
+  refundRequestId?: string | null;
+  payment?: DeliveryPinPayment | null;
+  /** The last rejected proof's reason, which the client read. */
+  rejectionReason?: string | null;
+  /** Staff only: the signed split of the difference. */
+  riderDifferenceMinor?: number;
+  platformDifferenceMinor?: number;
+};
+
+export type DeliveryPin = {
+  version: number;
+  /** `pending` until the client says they will be there (or a change applies). */
+  status: "pending" | "confirmed" | string;
+  requestedAt: string;
+  confirmedAt: string | null;
+  /** The effective pin: the original until a change is applied. */
+  point: MapPoint;
+  zone: DeliveryZoneKey | string;
+  notes: string;
+  /** Empty means the client receives it themselves. */
+  receiverName: string;
+  changeUsed: boolean;
+  canConfirm: boolean;
+  canChange: boolean;
+  /** The checkout pin. Never on a rider payload. */
+  original?: MapPoint;
+  change?: DeliveryPinChange | null;
 };
 
 // ---- Operations file check (gridgo-api#122) ----
@@ -968,6 +1378,51 @@ export type RescheduleQueue = {
   requests: RescheduleRequest[];
 };
 
+// ---- Operating hours (gridgo-api docs/OPERATING_HOURS_API.md) ----
+
+/**
+ * GRIDGO's own working week: when artwork is reviewed, riders are dispatched
+ * and new orders' shop clocks count. One window per open day, Manila time.
+ */
+export type OperatingHours = {
+  /** Always `Asia/Manila`. */
+  timeZone: string;
+  schedule: {
+    /** Always 480. */
+    utcOffsetMinutes: number;
+    /** One window per open weekday; a weekday left out is closed. */
+    week: WeeklyWindow[];
+    /** Inclusive Manila dates; at most 100 ranges and 90 distinct days. */
+    closures: ScheduleClosure[];
+  };
+  /** Open-time minutes a review takes, 1–540. */
+  artworkReviewMinutes: number;
+  /** Minutes after Manila midnight, 0–1439. Stored only: Priority Delivery is not offered. */
+  priorityDispatchCutoffMinute: number;
+};
+
+/** The shared timing object: when a review placed at the read instant would happen. */
+export type OperatingTiming = {
+  timeZone: string;
+  isOpenNow: boolean;
+  artworkReviewMinutes: number;
+  /** Now while open, otherwise the next opening. */
+  scheduledReviewAt: string;
+  reviewCompletesAt: string;
+  /** A closure pushes the review later than the same week without closures. */
+  reviewDelayed: boolean;
+};
+
+/** `order.review`: a pending file check's live review time. */
+export type OrderReview = OperatingTiming & {
+  status: "waiting_for_review" | string;
+  label: string;
+  originallyScheduledReviewAt: string | null;
+  outsideHoursNotice: "outside_operating_hours" | null | string;
+  /** The client promise, never the shop's internal deadline. */
+  readyBy: string | null;
+};
+
 // ---- Hub pick-up (gridgo-api OPERATIONAL_MODEL_V2_API.md "Hub pick-up settings") ----
 
 /** One opening window: weekday 0 Sunday … 6 Saturday, minutes after midnight. */
@@ -975,6 +1430,38 @@ export type WeeklyWindow = { weekday: number; opensMinute: number; closesMinute:
 
 /** Inclusive `YYYY-MM-DD` days the hub is shut. */
 export type ScheduleClosure = { startDay: string; endDay: string };
+
+// ---- Shop hours ----
+// Contract: gridgo-api docs/SHOP_HOURS_API.md. Read through
+// `normalizeShopHours` in `src/lib/shop-hours.ts`, never raw.
+
+/** Today's extra hours, a Manila date and minutes after its midnight. */
+export type ShopHoursExtension = { day: string; opensMinute: number; closesMinute: number };
+
+/** A shop's hours as the screens read them. */
+export type ShopHours = {
+  /** Shared with `/me/supplier-profile`; a stale one is `409 supplier_profile_stale`. */
+  version: number;
+  /** One window per open weekday; a weekday left out is closed. */
+  week: WeeklyWindow[];
+  closures: ScheduleClosure[];
+  temporarilyClosed: boolean;
+  isOpenNow: boolean;
+  /** False when the API holds an older calendar it cannot schedule against. */
+  calendarAvailable: boolean;
+  /** Now while open, the next opening while closed, null while closed for a while. */
+  nextOpeningAt: string | null;
+  todayExtension: ShopHoursExtension | null;
+  /** `dispatchNotice` is `review_and_dispatch_in_next_working_window`. */
+  dispatchWaits: boolean;
+};
+
+/** `PATCH /me/shop-hours` without its `expectedVersion`. Fields left out are kept. */
+export type ShopHoursPatch = {
+  schedule?: { utcOffsetMinutes: number; week: WeeklyWindow[]; closures: ScheduleClosure[] };
+  temporarilyClosed?: boolean;
+  extension?: { closesMinute: number } | null;
+};
 
 export type WeeklySchedule = {
   utcOffsetMinutes: number;
@@ -1108,6 +1595,67 @@ export type ProductionNudge = {
   maxCount: number;
 };
 
+// ---- Service fee brackets ----
+// Contract: gridgo-api docs/SERVICE_FEE_API.md (gridgo-api#220).
+
+/** One bracket: the rate on the part of the shop price up to `upToMinor`; null on the last. */
+export type ServiceFeeBracket = { upToMinor: number | null; rateBps: number };
+
+/** A legacy flat rate on the whole shop price, as older orders snapshot it. */
+export type ServiceFeeScheduleV1 = { version: 1; rateBps: number };
+
+/** Marginal brackets, rounded half-up once per shop/deadline group. */
+export type ServiceFeeScheduleV2 = {
+  version: 2;
+  rounding: "half_up_once";
+  brackets: ServiceFeeBracket[];
+  /** The settings version that saved it (settings edits only). */
+  settingsVersion?: number;
+  /** When it prices new orders, as UTC ISO (settings edits only). */
+  effectiveFrom?: string;
+};
+
+export type ServiceFeeSchedule = ServiceFeeScheduleV1 | ServiceFeeScheduleV2;
+
+/** One line of the fee's working: `taxableMinor × rateBps`, rounded so the rows add to the fee. */
+export type ServiceFeeWorkingRow = {
+  fromMinor: number;
+  upToMinor: number | null;
+  rateBps: number;
+  taxableMinor: number;
+  amountMinor: number;
+};
+
+export type ServiceFeeResult = {
+  grossServiceFeeMinor: number;
+  serviceFeeSchedule: ServiceFeeSchedule;
+  serviceFeeWorking: ServiceFeeWorkingRow[];
+};
+
+/** `POST /settings/service-fee/preview`: today's table against the proposed one. */
+export type ServiceFeePreview = {
+  version: number;
+  current: ServiceFeeSchedule;
+  proposed: ServiceFeeSchedule;
+  examples: Array<{
+    shopPriceMinor: number;
+    previous: ServiceFeeResult;
+    next: ServiceFeeResult;
+  }>;
+};
+
+export type ServiceFeePreviewInput = {
+  expectedVersion: number;
+  serviceFeeBrackets: ServiceFeeBracket[];
+  serviceFeeEffectiveFrom?: string;
+};
+
+/** The order fields the money panel reads a fee from. */
+export type OrderFeeLike = Pick<
+  Order,
+  "serviceFeeSchedule" | "serviceFeeWorking" | "serviceFeeRateBps" | "supplierSubtotalMinor"
+>;
+
 export type PlatformSettings = {
   /**
    * The settings row's version, quoted back as `expectedVersion` on every
@@ -1129,6 +1677,19 @@ export type PlatformSettings = {
    */
   serviceFeeRateBps: number;
   /**
+   * The bracket table pricing new orders (gridgo-api#220). Operations and
+   * Super Admin only; the API strips it from everyone else. When present,
+   * `serviceFeeRateBps` is kept for old consumers and prices nothing new.
+   * Absent on an API from before brackets.
+   */
+  serviceFeeSchedule?: ServiceFeeSchedule;
+  /**
+   * A table waiting for its `effectiveFrom`. Once that time has passed the API
+   * prices with it, though it stays here as evidence until the next edit:
+   * resolve through `scheduleInForce`.
+   */
+  scheduledServiceFee?: ServiceFeeScheduleV2 | null;
+  /**
    * Whether client checkout names the fee (`Service fee · N%`). The pesos
    * stay inside Printing either way. Absent on an older settings row; treat
    * as shown.
@@ -1142,9 +1703,10 @@ export type PlatformSettings = {
   physicalInvoiceRequestsEnabled?: boolean;
   /**
    * The organization discount, in basis points of the same shop price the
-   * service fee is charged on (500 = 5%), 0–10,000. Paid out of GRIDGO's fee,
-   * so it may never exceed `serviceFeeRateBps` (`400
-   * organization_discount_exceeds_service_fee`). Super Admin writes it.
+   * service fee is charged on (500 = 5%), 0–10,000. Paid out of GRIDGO's fee.
+   * Under a flat rate it may never exceed `serviceFeeRateBps` (`400
+   * organization_discount_exceeds_service_fee`); under brackets each order's
+   * discount is capped at its own fee instead. Super Admin writes it.
    * Absent on an API that predates organization discounts.
    */
   organizationDiscountRateBps?: number;
@@ -1156,8 +1718,21 @@ export type PlatformSettings = {
    * nothing.
    */
   riderCommissionBps?: number;
-  /** Live client tracking radius in whole meters; Super Admin writes it. */
+  /**
+   * Deprecated since gridgo-api#229: still stored, no longer controls what a
+   * client sees. Not shown or sent by this portal.
+   */
   clientRiderLocationRevealDistanceMeters?: number;
+  /**
+   * How often client maps re-read the rider's position, whole seconds 15–30
+   * (default 20). Super Admin writes it. Absent on an API before #229.
+   */
+  riderLocationRefreshIntervalSeconds?: number;
+  /**
+   * How old a rider's last fix may be before it is flagged stale, whole
+   * seconds 30–600 (default 120). Super Admin writes it.
+   */
+  riderLocationStaleAfterSeconds?: number;
   /**
    * How much of a new checkout the client pays up front: 100 (the default
    * since 2026-09-25, gridgo-api#66) or 75 (75% now, 25% before delivery).
@@ -1187,18 +1762,41 @@ export type PlatformSettings = {
   pricingFixedCostsMinor?: number | null;
   /** Super Admin pricing dashboard. Payment-fee rate in basis points. */
   pricingPaymentFeeBps?: number | null;
+  /**
+   * GRIDGO's operating week, review time and the stored Priority dispatch
+   * cutoff. Every role reads it; only Super Admin writes it, always whole.
+   * Absent on an API that predates operating hours.
+   */
+  operatingHours?: OperatingHours;
+  /**
+   * Read with the settings, beside them in the response: is GRIDGO open now,
+   * and when a file arriving now would be reviewed.
+   */
+  operatingStatus?: OperatingTiming;
+  /**
+   * Recommended resolution and colour per product type. Every role reads it;
+   * only Super Admin writes it, always the whole value. Absent on an API that
+   * predates artwork guidance.
+   */
+  artworkGuidance?: ArtworkGuidanceSettings;
 };
 
 export type UpdateSettingsInput = {
   issueWindowHours?: number;
   serviceFeeRateBps?: number;
   serviceFeeVisibleToClient?: boolean;
+  /** Super Admin only. The complete bracket table; the last limit is null. */
+  serviceFeeBrackets?: ServiceFeeBracket[];
+  /** With `serviceFeeBrackets` only: when it starts (ISO with offset). Omit to start now. */
+  serviceFeeEffectiveFrom?: string;
   /** Super Admin only. Off unless sent as `true`. */
   physicalInvoiceRequestsEnabled?: boolean;
   organizationDiscountRateBps?: number;
   riderCommissionBps?: number;
-  /** Live client tracking radius in whole meters; Super Admin writes it. */
-  clientRiderLocationRevealDistanceMeters?: number;
+  /** Super Admin only; whole seconds 15–30. */
+  riderLocationRefreshIntervalSeconds?: number;
+  /** Super Admin only; whole seconds 30–600. */
+  riderLocationStaleAfterSeconds?: number;
   downpaymentPercent?: number;
   deliveryFeeBands?: DeliveryFeeBand[];
   productionNudge?: ProductionNudge;
@@ -1214,6 +1812,10 @@ export type UpdateSettingsInput = {
   pricingFixedCostsMinor?: number | null;
   /** Pricing dashboard. Payment fee in basis points, 0–10,000. */
   pricingPaymentFeeBps?: number | null;
+  /** Super Admin only, always the complete object. */
+  operatingHours?: OperatingHours;
+  /** Super Admin only, always the complete value (`403` for anyone else). */
+  artworkGuidance?: ArtworkGuidanceSettings;
   reason?: string;
 };
 
@@ -1396,6 +1998,92 @@ export type DetectedArtwork = {
  * uploader, filename, payout stage or proof code. `downloadUrl` is missing when
  * signing failed; `GET /files/:fileId/download-url` retries it.
  */
+/** One thing the API still needs before a step, in its own sentence. */
+export type TransitionRequirement = { code: string; message: string };
+
+/** `rider_packs`: the shop sends unpacked photos, GRIDGO reviews, the rider packs. */
+export type HandoverFlow = "rider_packs" | "legacy";
+
+/** The shop's finished, unpacked product photos, as one immutable submission. */
+export type FinishedSubmission = {
+  at: string;
+  by: string;
+  supplierId: string;
+  photoFileIds: string[];
+};
+
+/** GRIDGO's answer to one submission. `note` is what the shop reads when sent back. */
+export type FinishedReview = {
+  at: string;
+  by: string;
+  decision: "approved" | "rejected" | (string & {});
+  note: string;
+};
+
+/** One reviewed submission, kept for good. */
+export type FinishedAttempt = { finished: FinishedSubmission; review: FinishedReview };
+
+/** A rider found the job already packed and recorded it before inspecting. */
+export type ArrivedPackedEvent = {
+  at: string;
+  riderId: string;
+  supplierId: string;
+  assignedAt: string | null;
+};
+
+/** A passing check of the unpacked products at the counter. */
+export type HandoverInspection = {
+  status: string;
+  inspectionId: string;
+  checks: PickupCheck[];
+  counts?: PickupCount[];
+  completedAt: string;
+  completedBy: string;
+};
+
+/** A packing photo the rider took after an inspection. */
+export type RiderPackingPhoto = {
+  at: string;
+  by: string;
+  fileId: string;
+  inspectionId: string;
+};
+
+export type ShopHandover = {
+  finished?: FinishedSubmission | null;
+  review?: FinishedReview | null;
+  attempts?: FinishedAttempt[];
+  arrivedPacked?: ArrivedPackedEvent[];
+  inspections?: HandoverInspection[];
+  packingPhotos?: RiderPackingPhoto[];
+};
+
+/** A production step GRIDGO staff forced, and the checks it went past. */
+export type ForcedStep = {
+  at: string;
+  by: string;
+  role: string;
+  from: string;
+  to: string;
+  reasonCode: string;
+  note: string;
+  skippedChecks: string[];
+};
+
+export type TransitionReadiness = {
+  allowed: boolean;
+  missing: TransitionRequirement[];
+  /** A supplier invoice scan. Optional: it never holds a step. */
+  receiptScan?: { required: boolean; attached: boolean } | null;
+};
+
+export type JobDetails = {
+  material: string;
+  zone: string;
+  promisedDate: string;
+  missing: Array<"material" | "zone" | "promisedDate" | (string & {})>;
+};
+
 export type ProductionPhoto = {
   fileId: string;
   contentType: string;
@@ -1604,20 +2292,32 @@ export type SupplierService = {
   id: string;
   supplierId: string;
   categoryCode: string;
-  materialCodes: string[];
-  finishCodes: string[];
-  productFamilyIds: string[];
+  /**
+   * Absent on a line the shop created in the supplier app
+   * (`POST /me/supplier-services` stores none of these). Read with `?? []`.
+   */
+  materialCodes?: string[];
+  finishCodes?: string[];
+  productFamilyIds?: string[];
   sizeMin: string | null;
   sizeMax: string | null;
   qtyMin: number | null;
   qtyMax: number | null;
   pricingBasis: string;
   referenceRateMinor: number;
+  /**
+   * The line's usual production time. Read it through `readServiceLineTime`
+   * (`src/lib/production-time.ts`): days for day-based work, exact minutes
+   * for everything, hours kept for older apps.
+   */
   turnaroundDays?: number | null;
+  turnaroundMinutes?: number | null;
   turnaroundHours: number;
+  /** The shop's working day in minutes; a same-day time stays under it. */
+  productionDayMinutes?: number | null;
   capacityDaily: number | null;
   capacityWeekly: number | null;
-  zones: string[];
+  zones?: string[];
   equipmentNotes: string;
   state: SupplierServiceState;
   verifiedAt: string | null;
@@ -1639,7 +2339,9 @@ export type CreateSupplierServiceInput = {
   qtyMax?: number | null;
   pricingBasis?: string;
   referenceRateMinor?: number;
-  turnaroundHours?: number;
+  /** Send one: whole working days, or same-day minutes under one working day. */
+  turnaroundDays?: number | null;
+  turnaroundMinutes?: number | null;
   capacityDaily?: number | null;
   capacityWeekly?: number | null;
   zones?: string[];
@@ -1754,23 +2456,48 @@ export type Issue = {
 
 // ---- Audit ----
 
+/**
+ * One permanent audit entry (`gridgo-api/docs/AUDIT_API.md`). The name, role,
+ * app and device are snapshots taken when the action happened; old rows and
+ * an older API leave them null or absent, and the portal never fills them in.
+ */
 export type AuditEntry = {
   id: string;
   at: string;
   actorId: string | null;
-  actorRole: string | null;
-  /** Copied from the user row when the entry was written. A later rename does not change it. */
+  /** Snapshot of the person's name; "System" for automatic work. */
   actorName?: string | null;
-  /** The app role header and the device that sent the request, when the request had them. */
-  source?: { app?: string | null; device?: string | null } | null;
+  actorRole: string | null;
+  /** `X-GRIDGO-App`, else the request origin, else `api`; `system` off-request. */
+  app?: string | null;
+  /** Bounded User-Agent. Describes the request; not a verified device. */
+  device?: string | null;
   action: string;
   entityType: string | null;
   entityId: string | null;
   orderId: string | null;
-  previous?: unknown;
-  current?: unknown;
+  /** Every order a shared basket payment or file record belongs to. */
+  orderIds?: string[] | null;
+  /** The item before the action; null on creation. */
+  before?: unknown;
+  /** The item after the action; null on removal. */
+  after?: unknown;
   detail: Record<string, unknown> | null;
   reason: string | null;
+};
+
+/** One page of `GET /audit` or `GET /orders/:id/audit`, newest first. */
+export type AuditPage = {
+  audit: AuditEntry[];
+  limit: number;
+  offset: number;
+  /** Offset of the next page; null on the last one. */
+  nextOffset: number | null;
+  /**
+   * True when the API answered without paging, as the API before the
+   * permanent log did: search, person and dates were not applied.
+   */
+  legacy: boolean;
 };
 
 // ---- Dispatch ----
@@ -1786,9 +2513,14 @@ export type LocationPing = {
 };
 
 /**
- * Latest shared GPS fix for a rider on an active trip, with what the map needs
- * to draw them honestly: the vehicle they drive and the trip's two ends.
- * `dropoff` is already the GRIDGO Office for a collected order.
+ * Latest shared GPS fix for a rider on an active trip (`rider_assigned`,
+ * `picked_up`, `out_for_delivery`), with what the map needs to draw them
+ * honestly: the vehicle they drive and the trip's two ends. `dropoff` is
+ * already the GRIDGO Office for a collected order.
+ *
+ * Since gridgo-api#229 a rider who has never sent a fix is still a row, with
+ * null position and times, so Operations can call them. The freshness fields
+ * are absent on an older API.
  */
 export type RiderLocation = {
   riderId: string;
@@ -1798,12 +2530,45 @@ export type RiderLocation = {
   orderId: string;
   orderTitle: string | null;
   state: string;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   accuracy: number | null;
-  at: string;
+  /** Source GPS time of the latest fix; null when none was ever sent. */
+  at: string | null;
+  /** When the server received that fix. */
+  receivedAt?: string | null;
+  lastUpdatedAt?: string | null;
+  /** Server-counted age of the fix at read time. */
+  ageSeconds?: number | null;
+  /** Past `riderLocationStaleAfterSeconds`, including a rider with no fix past the grace period. */
+  stale?: boolean;
   pickup: MapPoint | null;
   dropoff: MapPoint | null;
+};
+
+/** One accepted fix in the ping-gap diagnostics. No coordinates. */
+export type LocationDiagnosticsSample = {
+  at: string;
+  receivedAt: string;
+  processedAt: string | null;
+  /** Seconds since the previous received fix; null for the first. */
+  receiveGapSeconds: number | null;
+  /** Seconds from the GPS fix to server receipt. */
+  sourceDelaySeconds: number;
+};
+
+/** `GET /ops/orders/:id/location-diagnostics`, Operations and Super Admin only. */
+export type LocationDiagnostics = {
+  orderId: string;
+  riderId: string | null;
+  lastUpdatedAt: string | null;
+  ageSeconds: number | null;
+  stale: boolean;
+  sampleLimit: number;
+  sampleCount: number;
+  maxReceiveGapSeconds: number | null;
+  secondsSinceLastReceived: number | null;
+  samples: LocationDiagnosticsSample[];
 };
 
 // ---- Platform announcements ----
@@ -1914,6 +2679,13 @@ export type SeasonPushDryRun = {
   windows: SeasonPushDryRunWindow[];
 };
 
+/** A browser push subscription as `PushSubscription.toJSON()` gives it. */
+export type WebPushSubscriptionInput = {
+  endpoint: string;
+  expirationTime?: number | null;
+  keys: { p256dh: string; auth: string };
+};
+
 export type PostAnnouncementInput = {
   audience: AnnouncementAudience;
   title: string;
@@ -1963,6 +2735,8 @@ export type TrackerItem = {
   requirement?: string | null;
   category?: string | null;
   status: TrackerStatus;
+  /** Shared GitHub priority label; independent of status. */
+  priority?: boolean;
   /** `explicit` when a Super Admin set it; `derived` from the issue's state. */
   statusSource: "explicit" | "derived";
   decisions: TrackerDecision[];
@@ -2128,6 +2902,8 @@ export type IssueReport = {
   issue: string;
   category: IssueReportCategory | null;
   status: IssueReportStatus;
+  /** Shared implementation priority; absent on older APIs. */
+  priority?: boolean;
   publishedIn: string | null;
   /**
    * `https://github.com/gridgoph/<repo>/issues/<n>`. Kept while `tracked` or
@@ -2143,6 +2919,7 @@ export type IssueReport = {
 /** `tracked` is missing from an API that predates the tracker link. */
 export type IssueReportCounts = Record<Exclude<IssueReportStatus, "tracked">, number> & {
   tracked?: number;
+  priorities?: number;
 };
 
 // ---- Client refunds (available-funds settlement, `available_funds_v1`) ----
@@ -2159,10 +2936,17 @@ export type RefundStatus =
   | "rejected"
   | "withdrawn";
 
-export type RefundKind = "cancellation" | "complaint";
+/** `delivery_pin`: a cheaper pin's delivery-fee credit. It never cancels anything. */
+export type RefundKind = "cancellation" | "complaint" | "delivery_pin";
 
-/** `cancelled` before handover; `fulfilled_with_refund` after it. */
-export type RefundDisposition = "cancelled" | "fulfilled_with_refund";
+/** What a person can file. A delivery-fee credit is opened only by the pin route. */
+export type FileableRefundKind = Exclude<RefundKind, "delivery_pin">;
+
+/**
+ * `cancelled` before handover; `fulfilled_with_refund` after it;
+ * `delivery_adjustment` for a pin change's credit, reserved when the pin applied.
+ */
+export type RefundDisposition = "cancelled" | "fulfilled_with_refund" | "delivery_adjustment";
 
 /** The client's own receiving account. Only the client can set or replace it. */
 export type RefundDestination = {
@@ -2199,6 +2983,11 @@ export type RefundAmounts = RefundComponents & {
   availablePrincipalMinor: number;
   directStoreDueMinor?: number;
   directStoreCollectedMinor?: number;
+  /**
+   * Voucher orders only: whether staff found the refund the client's fault.
+   * `false` gives the client the voucher back if it has not expired.
+   */
+  clientCaused?: boolean;
 };
 
 export type RefundPreview = {
@@ -2226,7 +3015,18 @@ export type RefundSettlement = RefundComponents & {
   shopEntitlementMinor?: number;
   riderEntitlementMinor?: number;
   platformDeliveryMinor?: number;
+  /**
+   * The settlement's frozen working. A `delivery_adjustment` carries
+   * `DeliveryCreditSnapshot` instead: read it through `deliveryCreditSnapshot`.
+   */
   snapshot?: RefundAmounts;
+};
+
+/** A delivery-fee credit's frozen working: the checkout fee and the fee at the new pin. */
+export type DeliveryCreditSnapshot = {
+  changeId: string;
+  originalFeeMinor: number;
+  deliveryFeeMinor: number;
 };
 
 export type RefundAttemptStatus = "in_progress" | "unknown" | "failed" | "paid";
@@ -2418,6 +3218,8 @@ export type HubCodeMismatch = HubWaitingOrder & {
 
 /** Ops / Super Admin. One order's platform revenue, as the API reports it. */
 export type PlatformRevenue = {
+  /** Present on a voucher order: GRIDGO's funding, off the fee and delivery. */
+  voucherDiscountMinor?: number;
   grossServiceFeeMinor: number;
   organizationDiscountMinor: number;
   netServiceFeeMinor: number;
@@ -2572,4 +3374,470 @@ export type AccountDeletionRequest = {
   id: string; userId: string | null; contactEmail: string | null;
   source: 'app' | 'web'; status: 'pending' | 'done';
   requestedAt: string; dueAt: string; completedAt: string | null; completedBy: string | null;
+};
+
+// ---- GRIDGO-funded vouchers (gridgo-api#204, docs/VOUCHERS_API.md) ----
+
+/** The voucher line an order snapshots at checkout. */
+export type OrderVoucherLine = {
+  id: string;
+  campaignId: string;
+  label: string;
+  fundedBy: "GRIDGO";
+  amountMinor: number;
+  serviceFeeMinor: number;
+  deliveryMinor: number;
+};
+
+export type VoucherCampaignMode = "assigned" | "shared";
+export type VoucherCampaignStatus = "draft" | "active" | "paused" | "ended";
+
+/** Super Admin only. `code` is never shown to a client. */
+export type VoucherCampaign = {
+  id: string;
+  name: string;
+  code: string;
+  mode: VoucherCampaignMode;
+  valueMinor: number;
+  /** A count of accounts that can be issued one, not a budget in pesos. */
+  totalLimit: number;
+  perAccountLimit: 1;
+  /** Exactly one of `endsAt` (a fixed end) and `validityDays` (from each issue) is set. */
+  endsAt: string | null;
+  validityDays: number | null;
+  status: VoucherCampaignStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type VoucherCampaignInput = {
+  name: string;
+  valueMinor: number;
+  mode: VoucherCampaignMode;
+  code?: string | null;
+  endsAt?: string | null;
+  validityDays?: number | null;
+  totalLimit: number;
+  perAccountLimit: 1;
+};
+
+export type VoucherStatus = "available" | "used" | "expired" | "void";
+
+/** One wallet item, as the client and the staff lookup read it. */
+export type Voucher = {
+  id: string;
+  campaignId: string;
+  name?: string;
+  valueMinor: number;
+  status: VoucherStatus;
+  issuedAt: string;
+  expiresAt: string;
+  secondsRemaining: number;
+  redeemable: boolean;
+  reservation: { id: string; cartId: string; expiresAt: string } | null;
+  fundedBy: "GRIDGO";
+  transferable: false;
+  cashValue: false;
+};
+
+export type VoucherTab = "available" | "used" | "expired" | "all";
+
+export type VoucherIssueRecipient = { email: string; adultConfirmed: boolean };
+
+export type VoucherIssueReport = {
+  matched: { email: string; clientId: string; voucherId: string; issued: boolean }[];
+  unmatched: {
+    email: string;
+    reason: "no_client_account" | "invalid_email" | "ambiguous_email";
+  }[];
+};
+
+export type VoucherLedgerKind =
+  | "issued"
+  | "reserved"
+  | "released"
+  | "redeemed"
+  | "restored"
+  | "client_fault"
+  | "no_fault"
+  | "void"
+  | "reissue";
+
+/** One append-only activity row. `amountMinor` is negative on a restore. */
+export type VoucherLedgerEntry = {
+  id: string;
+  voucherId: string;
+  campaignId: string;
+  clientId: string;
+  kind: VoucherLedgerKind | string;
+  amountMinor: number;
+  at: string;
+  data: {
+    actorId?: string | null;
+    reason?: string | null;
+    orderId?: string;
+    orderIds?: string[];
+    [key: string]: unknown;
+  };
+};
+
+export type VoucherLedgerPage = {
+  entries: VoucherLedgerEntry[];
+  total: number;
+  /** A decimal integer string: the sum can pass JavaScript's safe range. */
+  budgetUsedMinor: string;
+  budgetUsedScope: string;
+  serverTime: string;
+};
+
+export type VoucherLedgerFilter = {
+  campaignId?: string;
+  clientId?: string;
+  kind?: string;
+  /** Inclusive ISO instants. */
+  from?: string;
+  to?: string;
+};
+
+// ---- Legal documents, consent evidence and privacy requests ----
+// Contract: gridgo-api `docs/LEGAL_API.md` (gridgo-api#202). Rules live in
+// `src/lib/legal.ts` and `src/lib/privacy-requests.ts`.
+
+/** Who a document binds. `all` is every signed-in identity. */
+export type LegalAudience = "all" | "client" | "supplier" | "rider" | "staff";
+
+/**
+ * The editable draft of one document. Editing it never changes a published
+ * version; publishing snapshots it as the next version.
+ */
+export type LegalDraft = {
+  title: string;
+  audience: LegalAudience;
+  /** Plain text, never HTML. "" when a PDF carries the document. */
+  text: string;
+  pdfFileId: string | null;
+  placeholder: boolean;
+  /** The editor's choice; the API forces it on in some cases (see `publishMateriality`). */
+  material: boolean;
+  /** Only a real Supplier Agreement may carry money penalties. */
+  penalties: boolean;
+  changeSummary: string;
+  effectiveAt: string;
+};
+
+/** One immutable published version. */
+export type LegalVersion = {
+  /** Opaque version ID (launch placeholders read `terms-of-service-1`). */
+  id: string;
+  documentId: string;
+  version: number;
+  title: string;
+  audience: LegalAudience;
+  text: string;
+  pdfFileId: string | null;
+  /** Public route that answers a signed link once the version is effective. */
+  pdfUrl: string | null;
+  effectiveAt: string;
+  publishedAt: string;
+  placeholder: boolean;
+  /** The enforced flag: true means everyone it applies to must accept again. */
+  material: boolean;
+  penalties: boolean;
+  changeSummary: string;
+  status: "placeholder" | "live";
+};
+
+/** `GET /admin/legal`: the library row with every version, newest first. */
+export type LegalDocument = {
+  id: string;
+  /** Optimistic editor token. Both edit and publish move it. */
+  revision: number;
+  draft: LegalDraft;
+  /** One of the eight reserved slots: never deleted, audience fixed. */
+  launchSlot: boolean;
+  versions: LegalVersion[];
+};
+
+export type LegalAcceptancePurpose = "document" | "enrollment" | "artwork";
+
+/** One append-only acceptance row, in the API's database field names. */
+export type LegalAcceptance = {
+  id: string;
+  user_id: string;
+  version_id: string;
+  document_id: string;
+  version: number;
+  accepted_at: string;
+  method: "checkbox" | "blocking_screen";
+  /** Caller-reported, never verified. */
+  app: string;
+  device: string;
+  purpose: LegalAcceptancePurpose;
+  order_id: string | null;
+  /** Sign-up evidence only; null otherwise. */
+  marketing: boolean | null;
+  junior: boolean | null;
+  guardian: boolean | null;
+};
+
+export type PrivacyRequestKind = "access" | "correction" | "deletion";
+export type PrivacyRequestStatus = "pending" | "in_progress" | "completed" | "rejected";
+
+export type PrivacyRequest = {
+  id: string;
+  userId: string;
+  kind: PrivacyRequestKind;
+  status: PrivacyRequestStatus;
+  /** The requester's own words; "" when they wrote none. */
+  details: string;
+  /** Staff's answer. The requester can read it in their app. */
+  resolution: string;
+  requestedAt: string;
+  dueAt: string;
+  handlerId: string | null;
+  updatedAt: string;
+  revision: number;
+};
+
+// ---- Post-order survey responses ----
+// Contract: gridgo-api `docs/SURVEY_API.md` (report 81CA4493). Super Admin
+// only; rules and words live in `src/lib/survey-responses.ts`.
+
+export type SurveyFulfillmentKind = "delivery" | "pickup";
+export type SurveyRewardStatus = "issued" | "cooldown";
+
+/** One submitted survey. No email, Clerk subject, file or voucher code. */
+export type SurveyResponse = {
+  orderId: string;
+  clientId: string;
+  fulfillmentKind: SurveyFulfillmentKind;
+  /** The handover the survey followed (fixed once invited). */
+  completedAt: string | null;
+  openedAt: string | null;
+  expiresAt: string | null;
+  notifiedAt: string | null;
+  dismissedAt: string | null;
+  submittedAt: string;
+  /** 1–5. */
+  fulfillmentStars: number;
+  fulfillmentTags: string[];
+  /** 1–5. */
+  easeStars: number;
+  easeTags: string[];
+  /** 1 very cheap … 5 very expensive. Not a star rating. */
+  priceFeeling: number;
+  expectedPriceMinor: number | null;
+  /** 1–5 or null. */
+  qualityStars: number | null;
+  /** 0–10 or null. */
+  recommendScore: number | null;
+  improvementNote: string | null;
+  /** Automatic: a star score ≤ 2 or a recommend score 0–6. Not editable. */
+  needsFollowUp: boolean;
+  rewardStatus: SurveyRewardStatus | null;
+  rewardVoucherId: string | null;
+  // Pricing feedback (PRICING_FEEDBACK_API.md). Optional: an older API sends none.
+  /** One code, or null when skipped. */
+  directShopComparison?: string | null;
+  /** Choose any; `not_worth_it` only ever alone. `[]` when skipped. */
+  priceWorthTags?: string[];
+  orderAgainAtPrice?: string | null;
+  /** The order's client total, delivery included. */
+  orderTotalMinor?: number | null;
+  orderSize?: OrderSizeBracket | null;
+  categoryCodes?: string[];
+  /** The client's account type now, not when they ordered. */
+  accountType?: ClientAccountType | null;
+};
+
+// ---- Pricing feedback (gridgo-api `docs/PRICING_FEEDBACK_API.md`) ----
+// Super Admin only; words and rules live in `src/lib/pricing-feedback.ts`.
+
+export type OrderSizeBracket = "under_500" | "500_to_1999" | "2000_to_4999" | "5000_to_19999" | "20000_and_up";
+export type ClientAccountType = "individual" | "business" | "organization";
+
+/** Category, order size and account type; shared by every survey and pricing read. */
+export type PricingFeedbackFilter = {
+  /** Inclusive ISO instants. Survey answers use submission time; exit answers the time asked. */
+  from?: string;
+  to?: string;
+  categoryCode?: string;
+  orderSize?: OrderSizeBracket;
+  accountType?: ClientAccountType;
+};
+
+export type PricingOptionCount = {
+  code: string;
+  count: number;
+  /** `100 × count / answered`, one decimal; null when nobody answered. */
+  percent: number | null;
+};
+
+export type PricingQuestionTally = {
+  /** Answers to this question; a skipped optional question is not counted. */
+  answered: number;
+  /** Every option in the API's order, zero counts included. */
+  options: PricingOptionCount[];
+};
+
+export type PricingQuestionKey =
+  | "priceFeeling"
+  | "expectedPrice"
+  | "directShopComparison"
+  | "priceWorthTags"
+  | "orderAgainAtPrice";
+
+export type CheckoutExitStatus = "answered" | "skipped" | "unanswered";
+
+export type PricingFeedbackReport = {
+  serverTime: string;
+  survey: {
+    responses: number;
+    questions: Record<PricingQuestionKey, PricingQuestionTally>;
+  };
+  checkoutExit: {
+    asked: number;
+    answered: number;
+    skipped: number;
+    unanswered: number;
+    reasons: PricingQuestionTally;
+  };
+  orderSizeBrackets: { code: OrderSizeBracket; minMinor: number; maxMinor: number | null }[];
+};
+
+/** One checkout exit question as asked, newest first. */
+export type CheckoutExitAnswer = {
+  id: string;
+  clientId: string;
+  cartId: string;
+  reachedAt: string;
+  askedAt: string;
+  status: CheckoutExitStatus;
+  reason: string | null;
+  /** Only with `reason: "other"`. The client's own words. */
+  otherText: string | null;
+  answeredAt: string | null;
+  skippedAt: string | null;
+  /** The cart's quote at the last checkout visit; null when it had no price. */
+  cartTotalMinor: number | null;
+  orderSize: OrderSizeBracket | null;
+  categoryCodes: string[];
+  accountType: ClientAccountType | null;
+};
+
+export type CheckoutExitFeedbackFilter = PricingFeedbackFilter & {
+  clientId?: string;
+  status?: CheckoutExitStatus;
+  reason?: string;
+};
+
+export type CheckoutExitFeedbackPage = {
+  serverTime: string;
+  prompts: CheckoutExitAnswer[];
+  total: number;
+};
+
+export type SurveyScoreKey =
+  | "fulfillmentStars"
+  | "easeStars"
+  | "priceFeeling"
+  | "qualityStars"
+  | "recommendScore";
+
+/** Over every matching response, not the page. Empty averages/NPS are null. */
+export type SurveyAggregates = {
+  averages: Record<SurveyScoreKey, number | null>;
+  counts: Record<SurveyScoreKey, number>;
+  needsFollowUp: number;
+  promoters: number;
+  passives: number;
+  detractors: number;
+  nps: number | null;
+};
+
+export type SurveyResponsesPage = {
+  serverTime: string;
+  responses: SurveyResponse[];
+  total: number;
+  aggregates: SurveyAggregates;
+};
+
+/** Filters combine with AND. Score filters are exact values. */
+export type SurveyResponsesFilter = PricingFeedbackFilter & {
+  clientId?: string;
+  orderId?: string;
+  fulfillmentKind?: SurveyFulfillmentKind;
+  rewardStatus?: SurveyRewardStatus;
+  needsFollowUp?: boolean;
+  fulfillmentStars?: number;
+  easeStars?: number;
+  qualityStars?: number;
+  priceFeeling?: number;
+  recommendScore?: number;
+  tag?: string;
+  /** Inclusive ISO instants, on submission time. */
+  from?: string;
+  to?: string;
+};
+
+// ---- Supplier invoices and monthly paper collection (SUPPLIER_INVOICES_API.md) ----
+
+/**
+ * One order's incoming shop invoice. The obligation is fixed when the order
+ * first became ready for pick-up: shop, order, `expectedAt` and `month`
+ * (Asia/Manila) never move. Details are null until the shop enters them.
+ * `received` is entered details plus the selected scan still on file;
+ * `collected` is GRIDGO holding the paper original. They are independent.
+ */
+export type SupplierInvoice = {
+  orderId: string;
+  supplierId: string;
+  expectedAt: string;
+  /** `YYYY-MM`, the Manila month `expectedAt` falls in. */
+  month: string;
+  fileId: string | null;
+  number: string | null;
+  /** The date printed on the shop's invoice, `YYYY-MM-DD` (a calendar date). */
+  date: string | null;
+  /** What the shop typed from its invoice, in centavos. Not order money. */
+  amountMinor: number | null;
+  submittedAt: string | null;
+  updatedAt: string | null;
+  version: number;
+  collectedAt: string | null;
+  /** User ID of the staff member who recorded the paper original. */
+  collectedBy: string | null;
+  /** Every ready scan the shop attached to this order, the selected one included. */
+  scanFileIds: string[];
+  received: boolean;
+  collected: boolean;
+};
+
+/** `missing = expected - received`; `toCollect = expected - collected`. */
+export type SupplierInvoiceCounts = {
+  expected: number;
+  received: number;
+  missing: number;
+  collected: number;
+  toCollect: number;
+};
+
+export type SupplierInvoiceShop = SupplierInvoiceCounts & {
+  supplierId: string;
+  shopName: string;
+};
+
+/** Totals and shops cover the whole filtered month; `invoices` is one page. */
+export type SupplierInvoiceMonth = {
+  month: string;
+  reminder: string;
+  totals: SupplierInvoiceCounts;
+  shops: SupplierInvoiceShop[];
+  invoices: SupplierInvoice[];
+  nextCursor: string | null;
+};
+
+export type SupplierInvoiceEnvelope = {
+  invoice: SupplierInvoice;
+  reminder: string;
 };

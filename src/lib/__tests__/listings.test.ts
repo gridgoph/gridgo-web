@@ -11,9 +11,10 @@ import {
   printerCapLine,
   printerMaxWidthFeetWrite,
   priceSuffix,
-  productionDaysLine,
+  productionTimeLine,
   unitChoiceLabel,
 } from "@/lib/listings";
+import { sameDay, workingDays } from "@/lib/production-time";
 
 const listing = normalizeListing({
   id: "sci_1",
@@ -65,13 +66,13 @@ describe("listings", () => {
   it("asks for a sample photo before the listing can go up", () => {
     const blockers = boardBlockers(
       { ...listing!, photos: [] },
-      { inheritedTurnaroundHours: 48, inheritedFormatCodes: ["pdf"] },
+      { inheritedTurnaround: workingDays(2), inheritedFormatCodes: ["pdf"] },
     );
     expect(blockers[0]).toMatch(/sample photo/i);
   });
 
   it("checks every board requirement, done or not, and blockers are the missing ones", () => {
-    const context = { inheritedTurnaroundHours: 48, inheritedFormatCodes: ["pdf"] };
+    const context = { inheritedTurnaround: workingDays(2), inheritedFormatCodes: ["pdf"] };
     const ready = boardChecklist(listing!, context);
     expect(ready.every((requirement) => requirement.done)).toBe(true);
     expect(ready.map((requirement) => requirement.key)).toEqual([
@@ -97,7 +98,7 @@ describe("listings", () => {
   });
 
   it("only asks for a pack size, a measure unit or a printer cap when the shape needs it", () => {
-    const context = { inheritedTurnaroundHours: 48, inheritedFormatCodes: ["pdf"] };
+    const context = { inheritedTurnaround: workingDays(2), inheritedFormatCodes: ["pdf"] };
     const keys = (partial: Record<string, unknown>) =>
       boardChecklist({ ...listing!, ...partial }, context).map((r) => r.key);
     expect(keys({ pricingUnit: "per_unit" })).not.toContain("packageQty");
@@ -152,7 +153,7 @@ describe("listings", () => {
 
   it("requires max printer width in feet before a tarpaulin listing can go on the board", () => {
     const ready = {
-      inheritedTurnaroundHours: 24,
+      inheritedTurnaround: workingDays(1),
       inheritedFormatCodes: ["pdf"],
     };
     const tarp = {
@@ -178,7 +179,7 @@ describe("listings", () => {
     expect(listing?.printerMaxWidthFeet).toBeNull();
     expect(
       boardBlockers(listing!, {
-        inheritedTurnaroundHours: 48,
+        inheritedTurnaround: workingDays(2),
         inheritedFormatCodes: ["pdf"],
       }),
     ).toEqual([]);
@@ -218,7 +219,7 @@ describe("listings", () => {
     expect(
       boardStanding(
         suspended!,
-        { inheritedTurnaroundHours: null, inheritedFormatCodes: [] },
+        { inheritedTurnaround: null, inheritedFormatCodes: [] },
         true,
       ),
     ).toMatchObject({
@@ -236,13 +237,31 @@ it("keeps server production days for Operations instead of deriving calendar day
     id: "duration",
     turnaroundMode: "override",
     turnaroundDays: 2,
+    turnaroundMinutes: 1200,
     turnaroundHours: 20,
+    productionDayMinutes: 600,
   });
-  expect(result?.turnaroundDays).toBe(2);
+  expect(result?.turnaround).toEqual(workingDays(2));
+  expect(result?.productionDayMinutes).toBe(600);
 });
 
-it("labels working days without guessing a missing server duration", () => {
-  expect(productionDaysLine(2)).toBe("2 working days");
-  expect(productionDaysLine(1)).toBe("1 working day");
-  expect(productionDaysLine(null)).toBe("Production days unavailable");
+it("reads an exact same-day time and its soonest, never rounding up to a day", () => {
+  const result = normalizeListing({
+    id: "same_day",
+    turnaroundMode: "override",
+    turnaroundDays: null,
+    turnaroundMinutes: 120,
+    turnaroundHours: 2,
+    minimumTurnaroundDays: null,
+    minimumTurnaroundMinutes: 60,
+  });
+  expect(result?.turnaround).toEqual(sameDay(120));
+  expect(result?.minimumTurnaround).toEqual(sameDay(60));
+});
+
+it("labels a production time without guessing a missing server duration", () => {
+  expect(productionTimeLine(workingDays(2))).toBe("2 working days");
+  expect(productionTimeLine(workingDays(1))).toBe("1 working day");
+  expect(productionTimeLine(sameDay(90))).toBe("1½ hours");
+  expect(productionTimeLine(null)).toBe("Production time unavailable");
 });

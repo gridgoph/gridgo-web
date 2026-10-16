@@ -180,6 +180,25 @@ describe("counterRow", () => {
     expect(counterRow(resolved, [open], when).trailing).toBe("Your call");
   });
 
+  it("reads a rider-packs inspection as checked but not handed over", () => {
+    const inspected = order({
+      pickupChecklist: {
+        status: "inspected",
+        checks: ALL_PASSED,
+        evidenceFileIds: [],
+        failureNote: null,
+        completedAt: "2026-09-27T06:00:00.000Z",
+        completedBy: "rider_1",
+        escalationId: null,
+        inspectionId: "insp_1",
+      },
+    });
+    const row = counterRow(inspected, [], when);
+    expect(row.trailing).toBe("Packing");
+    expect(row.summary).toMatch(/Unpacked items checked/);
+    expect(counterStep(inspected)).toBe("current");
+  });
+
   it("warns when the order has nothing to count against", () => {
     const row = counterRow(order({ pickupCountItems: null }), [], when);
     expect(row.summary).toMatch(/Nothing to count against/);

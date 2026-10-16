@@ -4,7 +4,20 @@
  * Never invents figures the API does not supply.
  */
 
-import type { Order, SupplierService } from "@/lib/api/types";
+import type {
+  Order,
+  SupplierService,
+  UpdateSupplierServiceInput,
+} from "@/lib/api/types";
+import {
+  DEFAULT_DAY_MINUTES,
+  readServiceLineTime,
+  sameTime,
+  singleTimeProblem,
+  timeFields,
+  workingDays,
+  type ProductionTime,
+} from "@/lib/production-time";
 
 /** Order states that still consume shop production capacity. */
 export const CAPACITY_COMMITTING_STATES = [
@@ -152,4 +165,78 @@ export function formatCapacityFigure(
   const unit =
     Math.abs(value) === 1 ? unitSingular : `${unitSingular}s`;
   return `${value.toLocaleString("en-PH")} ${unit}`;
+}
+
+// ---------------------------------------------------------------------------
+// Editing one live line: its capacity and usual production time
+// ---------------------------------------------------------------------------
+
+/** What a shop edits on one service line. Capacity stays text so a blank is "not set". */
+export type ServiceLineDraft = {
+  capacityDaily: string;
+  capacityWeekly: string;
+  /** The line's usual production time: hours for same-day work, else working days. */
+  turnaround: ProductionTime;
+};
+
+/** A line with no usual time yet starts here, as in the supplier app. */
+const DEFAULT_LINE_TIME = workingDays(2);
+
+export function serviceLineDraft(service: SupplierService): ServiceLineDraft {
+  return {
+    capacityDaily: service.capacityDaily != null ? String(service.capacityDaily) : "",
+    capacityWeekly: service.capacityWeekly != null ? String(service.capacityWeekly) : "",
+    turnaround: serviceLineTime(service) ?? DEFAULT_LINE_TIME,
+  };
+}
+
+/** The line's usual production time as GRIDGO holds it, or null when it has none. */
+export function serviceLineTime(service: SupplierService): ProductionTime | null {
+  return readServiceLineTime(service as unknown as Record<string, unknown>);
+}
+
+/** The shop's working day for this line; GRIDGO's ten-hour default when not sent. */
+export function serviceLineDayMinutes(service: SupplierService): number {
+  return service.productionDayMinutes ?? DEFAULT_DAY_MINUTES;
+}
+
+function wholeCount(raw: string): number | null | "invalid" {
+  const text = raw.trim();
+  if (!text) return null;
+  const value = Number(text);
+  return Number.isSafeInteger(value) && value >= 0 ? value : "invalid";
+}
+
+/** Why the draft cannot be saved, naming the fix. Null when it can. */
+export function serviceLineProblem(
+  draft: ServiceLineDraft,
+  dayMinutes: number = DEFAULT_DAY_MINUTES,
+): string | null {
+  const daily = wholeCount(draft.capacityDaily);
+  const weekly = wholeCount(draft.capacityWeekly);
+  if (daily === "invalid") return "Daily capacity is a whole number of units, like 500.";
+  if (weekly === "invalid") return "Weekly capacity is a whole number of units, like 2500.";
+  if (daily != null && weekly != null && weekly > 0 && weekly < daily) {
+    return "Weekly capacity is lower than daily capacity. Raise the weekly figure or lower the daily one.";
+  }
+  return singleTimeProblem(draft.turnaround, dayMinutes);
+}
+
+/**
+ * What a save sends: the counts that are set, and the production time in its
+ * own unit's field only when it changed. GRIDGO keeps any field left out.
+ */
+export function serviceLinePatch(
+  service: SupplierService,
+  draft: ServiceLineDraft,
+): UpdateSupplierServiceInput {
+  const patch: UpdateSupplierServiceInput = {};
+  const daily = wholeCount(draft.capacityDaily);
+  const weekly = wholeCount(draft.capacityWeekly);
+  if (typeof daily === "number") patch.capacityDaily = daily;
+  if (typeof weekly === "number") patch.capacityWeekly = weekly;
+  if (!sameTime(serviceLineTime(service), draft.turnaround)) {
+    Object.assign(patch, timeFields("turnaround", draft.turnaround));
+  }
+  return patch;
 }

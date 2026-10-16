@@ -26,11 +26,12 @@ import {
   boardContextFor,
   boardStanding,
   CHANGES_IN_REVIEW_NOTE,
+  effectiveMinimumTurnaround,
+  effectiveTurnaround,
   normalizeListing,
   normalizePrepSteps,
   priceLine,
   printerCapLine,
-  readyInLine,
   subcategoryName,
   type BoardStanding,
   type Listing,
@@ -39,6 +40,7 @@ import {
   type ServiceLine,
 } from "@/lib/listings";
 import type { Taxonomy } from "@/lib/api/types";
+import { readyInLine } from "@/lib/production-time";
 
 type Props = {
   listing: Listing;
@@ -72,10 +74,10 @@ export function ListingCard({
   const context = boardContextFor(listing, services);
   const standing = boardStanding(listing, context, shopApproved, readiness);
   const first = listing.photos[0];
-  const hours =
-    listing.turnaroundMode === "override"
-      ? listing.turnaroundHours
-      : context.inheritedTurnaroundHours;
+  const readyIn = readyInLine(
+    effectiveTurnaround(listing, context.inheritedTurnaround),
+    effectiveMinimumTurnaround(listing),
+  );
   const cap = printerCapLine(listing.printerMaxWidthFeet);
   const takenDown = Boolean(listing.suspendReason);
   const hideLabel = takenDown || listing.onTheBoard ? "Hide" : "Put it back";
@@ -128,7 +130,7 @@ export function ListingCard({
     <>
       <p className="text-body text-text-primary m-0">{priceLine(listing)}</p>
       {cap ? <p className="text-caption text-text-secondary m-0">{cap}</p> : null}
-      <p className="text-caption text-text-secondary m-0">{readyInLine(hours)}</p>
+      <p className="text-caption text-text-secondary m-0">{readyIn}</p>
     </>
   );
   const status = preview && standing.kind === "live" ? null : <CardStatus standing={standing} />;

@@ -5,8 +5,12 @@ import {
   committedLoad,
   formatCapacityFigure,
   isCapacityCommitting,
+  serviceLineDraft,
+  serviceLinePatch,
+  serviceLineProblem,
   sumDeclaredCapacity,
 } from "./capacity";
+import { sameDay, workingDays } from "@/lib/production-time";
 import type { Order, SupplierService } from "@/lib/api/types";
 
 function service(
@@ -142,5 +146,49 @@ describe("formatCapacityFigure", () => {
     expect(formatCapacityFigure(null)).toBe("Unavailable");
     expect(formatCapacityFigure(1)).toBe("1 unit");
     expect(formatCapacityFigure(12)).toBe("12 units");
+  });
+});
+
+describe("editing a live line (report 39853344)", () => {
+  const line = service({
+    id: "svc_1",
+    state: "live",
+    turnaroundDays: 2,
+    turnaroundMinutes: 1200,
+    turnaroundHours: 20,
+    productionDayMinutes: 600,
+    capacityDaily: 500,
+    capacityWeekly: 2500,
+  });
+
+  it("starts from the line's own time and counts", () => {
+    expect(serviceLineDraft(line)).toEqual({
+      capacityDaily: "500",
+      capacityWeekly: "2500",
+      turnaround: workingDays(2),
+    });
+  });
+
+  it("reads an exact same-day time, never rounded up to a day", () => {
+    expect(
+      serviceLineDraft(service({ id: "svc_2", state: "live", turnaroundMinutes: 90 })).turnaround,
+    ).toEqual(sameDay(90));
+  });
+
+  it("sends a changed time in its own unit's field only", () => {
+    const patch = serviceLinePatch(line, { ...serviceLineDraft(line), turnaround: sameDay(90) });
+    expect(patch).toEqual({ capacityDaily: 500, capacityWeekly: 2500, turnaroundMinutes: 90 });
+  });
+
+  it("leaves an unchanged time out of the save", () => {
+    expect(serviceLinePatch(line, serviceLineDraft(line))).not.toHaveProperty("turnaroundDays");
+  });
+
+  it("names what stops a save", () => {
+    const draft = serviceLineDraft(line);
+    expect(serviceLineProblem({ ...draft, capacityWeekly: "100" })).toMatch(/Weekly capacity is lower/);
+    expect(serviceLineProblem({ ...draft, capacityDaily: "lots" })).toMatch(/whole number/);
+    expect(serviceLineProblem({ ...draft, turnaround: sameDay(600) }, 600)).toMatch(/working days/);
+    expect(serviceLineProblem(draft)).toBeNull();
   });
 });

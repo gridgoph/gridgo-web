@@ -89,8 +89,39 @@ alerts and routes their clicks.
   page-level `Notification`, and a browser that refuses that constructor keeps the bell and
   toast.
 
-Nothing arrives with the browser closed: that needs Web Push (VAPID keys, a subscription
-endpoint and sender in `gridgo-api`), a follow-up the worker is already shaped for.
+With the browser closed, desktop alerts stop. Shops get the closed-browser case from Web
+Push instead (next section); Operations and Super Admin have no push.
+
+## Phone app and Web Push
+
+The supplier tree is an installable web app (gridgo-web#182), so a shop can use GRIDGO on an
+iPhone or Android phone like an app and get new jobs on the lock screen.
+
+- **Manifest.** `public/supplier.webmanifest`, linked only from `src/app/supplier/layout.tsx`
+  (with the iOS `apple-mobile-web-app-*` tags and the Home Screen icon). It starts at
+  `/supplier/dashboard`; its scope is `/`, not `/supplier/`, because `/login` and
+  `/sso-callback` must stay inside the app: on iPhone an out-of-scope page opens in a
+  separate browser with its own cookies, and the sign-in never lands back in the app. Icons
+  are drawn from the 3×3 mark by `scripts/generate-pwa-icons.mjs` into `public/pwa/`.
+- **Install.** `src/lib/pwa/install.ts`. Chrome's `beforeinstallprompt` is held from the root
+  layout's head (`INSTALL_CAPTURE_SCRIPT`) and offered as "Install app". iPhone has no
+  install event, so iOS Safari, and only Safari, gets the Share → Add to Home Screen
+  guide; other iOS browsers are pointed at Safari.
+- **Notifications.** `src/lib/pwa/webPush.ts`, API contract `gridgo-api/docs/WEB_PUSH_API.md`.
+  "Turn on notifications" asks for permission as the first thing the tap does, subscribes
+  with the server's VAPID key (`GET /web-push/public-key`, read ahead of the tap) and saves
+  the subscription (`POST /web-push/subscribe`). On iPhone this exists only inside the
+  installed app on iOS 16.4+. The shell re-sends a held subscription once per load, and
+  sign-out releases it (`POST /web-push/unsubscribe`) so a shared phone stops getting the
+  shop's notices.
+- **Worker.** The same `public/desk-alerts-sw.js` shows every push (browsers expect a visible
+  notification for each one) under the Desk alert's tag, so a slip an open tab already
+  raised is replaced, not repeated. A tap opens `/supplier/notice?id=…`, which marks the row
+  read and moves on through `notificationHref`. The worker still has no fetch handler and
+  caches nothing.
+- **Screens.** `/supplier/phone-app` (account menu → Phone app) shows both steps; the
+  dashboard invites a phone once per step (`src/components/pwa/PhoneApp.tsx`, "Not now"
+  remembered in `gridgo-web.phone-app-invite`). Screenshots: `docs/screenshots/phone-app/`.
 
 ## Inbox destinations
 
@@ -130,6 +161,33 @@ Listing review notices (`catalog_review_pending`, `catalog_review_decided`) name
 carries `catalogItemId`. The arrival is the live alert (chime, toast, desktop alert); an open
 desk re-reads on the `catalog` invalidation, marks newly arrived listings and product-type
 requests **New** and announces them politely.
+
+A Featured Prints save (`featured_prints_updated`, gridgo-api#234) reaches every Operations
+and Super Admin membership with no push, and opens `/ops/featured-prints` or
+`/admin/featured-prints`. An open setting re-reads on the `catalog` invalidation: with no
+unsaved edits it takes the new list; with edits it shows the other person's list and asks
+which to keep before Save.
+
+Legal library and privacy notices (`legal.created|edited|published|deleted`,
+`legal.accepted`, `privacy.requested|updated`; gridgo-api#202) name no document, person or
+request. Staff land on `/…/legal`, `/…/acceptance-log` or `/…/privacy-requests` in their
+own tree. The API queues `legal` and `privacy-requests` invalidations that its stream does not
+carry, so those screens re-read when one of these inbox notices arrives
+(`useLegalInboxReload`), and keep their Refresh button. The rail's open privacy
+request count re-reads on the same `privacy.*` notices.
+
+Post-order survey notices (`order_survey_available`, `order_survey_dismissed`,
+`order_survey_submitted`; `gridgo-api/docs/SURVEY_API.md`) reach Operations and Super Admin
+without any answer. Only Super Admin can read responses, so its `order_survey_submitted`
+copy opens `/admin/survey-responses?response=:orderId`, which opens that response; every
+other survey notice, and every Operations copy, opens the order. An open responses desk
+re-reads when a new submission notice arrives (`useLegalInboxReload`).
+
+Supplier invoice notices (`supplier_invoice_scanned|expected|submitted|corrected|collected`;
+`gridgo-api/docs/SUPPLIER_INVOICES_API.md`) reach Operations and Super Admin and open
+`/{ops,admin}/supplier-invoices?order=:orderId`, which finds the Manila month the invoice
+counts in and opens it. An open desk, and the Finance page's invoice summary, re-read on the
+same notices (`useLegalInboxReload`).
 
 Sign-up links open Super Admin verification only; Operations has no sign-up destination.
 Operations service-review links open `/ops/service-lines`; legacy `/ops/approvals?tab=services`

@@ -40,14 +40,6 @@ import { ChatTranscript } from "@/components/chat/ChatTranscript";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const SIDE_BY_SIDE_QUERY = "(min-width: 1024px)";
-
-function sideBySide(): boolean {
-  return typeof window !== "undefined" && typeof window.matchMedia === "function"
-    ? window.matchMedia(SIDE_BY_SIDE_QUERY).matches
-    : true;
-}
-
 function errorCopy(error: unknown, action: string): string {
   if (error instanceof ApiError && error.status === 403) {
     return "This chat is only available to shop accounts.";
@@ -84,7 +76,6 @@ export default function SupplierChatPage() {
   const [threads, setThreads] = useState<SupportChatThread[] | null>(null);
   const [messages, setMessages] = useState<SupportChatMessage[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [threadOpen, setThreadOpen] = useState(false);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [threadLoading, setThreadLoading] = useState(false);
@@ -250,7 +241,6 @@ export default function SupplierChatPage() {
       const opened = await openSupportChatThread();
       setThreads((current) => replaceThread(current, opened.thread));
       setSelectedId(opened.thread.id);
-      if (!sideBySide()) setThreadOpen(true);
       setInboxPage(0);
     } catch (err) {
       setError(errorCopy(err, "start a new chat"));
@@ -318,7 +308,6 @@ export default function SupplierChatPage() {
       setConfirmDelete(false);
       setThreads((current) => (current ?? []).filter((row) => row.id !== id));
       setSelectedId((current) => (current === id ? null : current));
-      setThreadOpen(false);
       setMessages([]);
     } catch (err) {
       setError(errorCopy(err, "delete this chat"));
@@ -369,15 +358,18 @@ export default function SupplierChatPage() {
         </div>
       ) : null}
       <div
-        className={`grid min-h-[36rem] gap-4 ${
+        className={`grid gap-4 lg:min-h-[36rem] ${
           detailsOpen
             ? "grid-cols-1 xl:grid-cols-[18rem_minmax(0,1fr)_20rem]"
             : "lg:grid-cols-[18rem_minmax(0,1fr)]"
         }`}
       >
+        {/* Below 1024px the list and the open conversation take turns: a phone
+            shows one or the other, never an empty "Pick a conversation" box
+            under the list. */}
         <aside
           className={`gg-card flex-col gap-3 ${
-            detailsOpen ? "hidden xl:flex" : threadOpen ? "hidden lg:flex" : "flex"
+            detailsOpen ? "hidden xl:flex" : selectedId ? "hidden lg:flex" : "flex"
           }`}
         >
           <div className="flex items-start justify-between gap-3">
@@ -428,7 +420,6 @@ export default function SupplierChatPage() {
                       type="button"
                       onClick={() => {
                         setSelectedId(thread.id);
-                        if (!sideBySide()) setThreadOpen(true);
                       }}
                       aria-current={active ? "true" : undefined}
                       aria-label={`Operations, ${preview}`}
@@ -476,7 +467,7 @@ export default function SupplierChatPage() {
 
         <section
           className={`gg-card min-h-[28rem] min-w-0 flex-col gap-3 ${
-            detailsOpen ? "hidden xl:flex" : threadOpen ? "flex" : "hidden lg:flex"
+            detailsOpen ? "hidden xl:flex" : selectedId ? "flex" : "hidden lg:flex"
           }`}
         >
           {!selectedId ? (
@@ -486,37 +477,32 @@ export default function SupplierChatPage() {
             />
           ) : (
             <>
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  {threadOpen ? (
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="icon"
-                      className="lg:hidden"
-                      aria-label="Back to inbox"
-                      onClick={() => setThreadOpen(false)}
-                    >
-                      <ChevronLeft />
-                    </Button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="flex min-w-0 items-center gap-2 rounded-[var(--radius-field)] text-left hover:bg-overlay-hover"
-                    onClick={() => setDetailsOpen(true)}
-                  >
-                    <ChatAvatar name="Operations" />
-                    <span className="min-w-0">
-                      <h2 className="text-h3 text-text-primary m-0">Operations</h2>
-                      <p className="text-caption text-text-muted m-0 mt-1">
-                        GRIDGO operations
-                        {selected?.lastMessageAt
-                          ? ` · ${formatDateTime(selected.lastMessageAt)}`
-                          : ""}
-                      </p>
-                    </span>
-                  </button>
-                </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="self-start lg:hidden"
+                onClick={() => setSelectedId(null)}
+              >
+                <ChevronLeft data-icon="inline-start" aria-hidden />
+                All conversations
+              </Button>
+              <div className="flex items-start justify-between gap-3">
+                <button
+                  type="button"
+                  className="flex min-w-0 items-center gap-2 rounded-[var(--radius-field)] text-left hover:bg-overlay-hover"
+                  onClick={() => setDetailsOpen(true)}
+                >
+                  <ChatAvatar name="Operations" />
+                  <span className="min-w-0">
+                    <h2 className="text-h3 text-text-primary m-0">Operations</h2>
+                    <p className="text-caption text-text-muted m-0 mt-1">
+                      GRIDGO operations
+                      {selected?.lastMessageAt
+                        ? ` · ${formatDateTime(selected.lastMessageAt)}`
+                        : ""}
+                    </p>
+                  </span>
+                </button>
                 <Button
                   type="button"
                   variant="secondary"

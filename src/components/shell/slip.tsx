@@ -105,6 +105,22 @@ export function slipFamily(notification: Notification): SlipFamily {
   return "general";
 }
 
+/**
+ * GRIDGO titles every change-request notice "Order change request"
+ * (gridgo-api docs/ORDER_CHANGES_API.md); the type says what happened, in
+ * words every party on the order can read.
+ */
+const CHANGE_HEADLINES: Record<string, string> = {
+  order_change_requested: "Change requested by the shop",
+  order_change_accepted: "Change approved, waiting for payment",
+  order_change_payment_submitted: "Payment for a change sent",
+  order_change_payment_rejected: "Payment for a change not confirmed",
+  order_change_payment_confirmed: "Change agreed",
+  order_change_applied: "Change agreed",
+  order_change_declined: "Change declined by the client",
+  order_change_closed: "Change request closed",
+};
+
 /** `Issue window open · ord_c6af26dd9caf` → the event, and the id it carried. */
 const TITLE_WITH_ID = /^\s*(.+?)\s+·\s+([a-z]+_[a-z0-9]+)\s*$/i;
 
@@ -128,7 +144,8 @@ export function presentSlip(notification: Notification): {
   reference: string | null;
 } {
   const match = TITLE_WITH_ID.exec(notification.title);
-  const headline = match ? match[1] : notification.title;
+  const headline =
+    CHANGE_HEADLINES[notification.type ?? ""] ?? (match ? match[1] : notification.title);
   const orderTitle = notification.orderTitle?.trim();
   if (orderTitle) return { headline, reference: orderTitle };
   if (notification.orderId) {

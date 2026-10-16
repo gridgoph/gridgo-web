@@ -11,6 +11,12 @@ import { Check, Trash2 } from "lucide-react";
 
 import { ListingPreviewBody } from "@/app/supplier/_components/ListingPreviewBody";
 import { PrinterMaxWidthField } from "@/app/supplier/_components/PrinterMaxWidthField";
+import { PrintLayoutsField } from "@/app/supplier/_components/PrintLayoutsField";
+import { sectionNumber } from "@/app/supplier/_components/editor-sections";
+import {
+  PRODUCTION_TIME_HINT,
+  ProductionTimeField,
+} from "@/app/supplier/_components/ProductionTimeField";
 import {
   focusField,
   ReadinessChecklist,
@@ -83,7 +89,8 @@ import {
   boardContextFor,
   boardStanding,
   coversFor,
-  effectiveTurnaroundHours,
+  effectiveMinimumTurnaround,
+  effectiveTurnaround,
   needsPrinterMaxWidth,
   nextFreeSlot,
   normalizeListing,
@@ -94,7 +101,6 @@ import {
   pickLine,
   priceSuffix,
   printerMaxWidthFeetWrite,
-  readyInLine,
   specs,
   subcategoryName,
   unitChoiceLabel,
@@ -107,6 +113,17 @@ import {
   type SpecGroup,
 } from "@/lib/listings";
 import { changeNotice, replacedNotice } from "@/lib/listing-photos";
+import {
+  DEFAULT_DAY_MINUTES,
+  listingTimeFields,
+  readyInLine,
+  sameTime,
+  timeLabel,
+  windowProblem,
+  workingDays,
+  type ProductionTime,
+} from "@/lib/production-time";
+import { PRINT_LAYOUTS_HELP, sameLayouts, type KnownLayout } from "@/lib/print-layout";
 import { cn } from "@/lib/utils";
 
 type Draft = {
@@ -118,9 +135,13 @@ type Draft = {
   packageQty: number;
   minimumOrderQuantity: number;
   turnaroundMode: "inherit" | "override";
-  turnaroundHours: number;
+  /** The listing's own window: hours for same-day work, else working days. */
+  turnaround: ProductionTime;
+  minimumTurnaround: ProductionTime;
   subcategoryCode: string;
   printerMaxWidthFeet: number | null;
+  /** Null on an API without layouts: nothing is shown or sent. */
+  printLayouts: KnownLayout[] | null;
 };
 
 /** Section and field ids; the readiness checklist scrolls to these. */
@@ -154,6 +175,19 @@ const EDITOR_STEPS = [
 ] as const;
 
 type EditorStepId = (typeof EDITOR_STEPS)[number]["id"];
+
+/** Each step's sections, top to bottom; their numbers are derived from this. */
+const STEP_SECTIONS: Record<EditorStepId, readonly string[]> = {
+  pick: ["section-kind"],
+  about: ["section-photos", "section-what"],
+  price: ["section-price"],
+  speed: ["section-ready-in"],
+  steps: ["section-picks", "section-addons"],
+  artwork: ["section-prep", "section-artwork", "section-print-layouts"],
+  review: ["section-review"],
+};
+
+const SECTION_ORDER = EDITOR_STEPS.map((entry) => STEP_SECTIONS[entry.id]);
 
 const STEP_OF_FIELD: Record<BoardField, EditorStepId> = {
   photos: "about",
@@ -195,10 +229,37 @@ function draftFrom(listing: Listing): Draft {
     packageQty: listing.packageQty ?? 100,
     minimumOrderQuantity: listing.minimumOrderQuantity ?? 0,
     turnaroundMode: listing.turnaroundMode,
-    turnaroundHours: listing.turnaroundHours ?? 48,
+    turnaround: listing.turnaround ?? DEFAULT_LISTING_TIME,
+    minimumTurnaround: listing.minimumTurnaround ?? listing.turnaround ?? DEFAULT_LISTING_TIME,
     subcategoryCode: listing.subcategoryCode,
     printerMaxWidthFeet: listing.printerMaxWidthFeet,
+    printLayouts: listing.printLayouts,
   };
+}
+
+/** A listing switched to its own time starts here when it has none yet. */
+const DEFAULT_LISTING_TIME = workingDays(2);
+
+/**
+ * The production-time fields a save sends: only the chosen unit's field for
+ * each end, and no soonest when it equals the latest. Inheriting clears both.
+ */
+function timePayload(draft: Draft) {
+  if (draft.turnaroundMode !== "override") return listingTimeFields(null, null);
+  return listingTimeFields(
+    sameTime(draft.minimumTurnaround, draft.turnaround) ? null : draft.minimumTurnaround,
+    draft.turnaround,
+  );
+}
+
+/**
+ * True when the draft's production time differs from what the listing holds.
+ * An unchanged time is left out of the save, so a listing still carrying an
+ * older long time in hours can have its name or price changed without first
+ * being asked to fix a time nobody touched.
+ */
+function timeChanged(draft: Draft, listing: Listing): boolean {
+  return JSON.stringify(timePayload(draft)) !== JSON.stringify(timePayload(draftFrom(listing)));
 }
 
 /** Exactly what `updateCatalogItem` receives for a draft, minus `active`. */
@@ -213,20 +274,41 @@ function payloadOf(draft: Draft) {
       ? draft.minimumOrderQuantity || null
       : null,
     turnaroundMode: draft.turnaroundMode,
-    turnaroundHours: draft.turnaroundMode === "override" ? draft.turnaroundHours : null,
+    ...timePayload(draft),
     subcategoryCode: draft.subcategoryCode,
     ...printerMaxWidthFeetWrite(
       draft.subcategoryCode,
       draft.printerMaxWidthFeet,
       "update",
     ),
+    ...(draft.printLayouts ? { printLayouts: draft.printLayouts } : {}),
   };
 }
 
+/** What a save sends: the draft, with an untouched production time left out. */
+function savePayload(draft: Draft, listing: Listing) {
+  const payload: Record<string, unknown> = payloadOf(draft);
+  if (!timeChanged(draft, listing)) {
+    for (const key of Object.keys(timePayload(draft))) delete payload[key];
+  }
+  // The set is replaced whole and a change opens review, so it is sent only
+  // when the shop changed it.
+  if (sameLayouts(draft.printLayouts, listing.printLayouts)) delete payload.printLayouts;
+  return payload;
+}
+
 /** Why a draft cannot be sent yet — the API would refuse it, so hold it here. */
-function holdReason(draft: Draft): string | null {
+function holdReason(draft: Draft, listing: Listing): string | null {
   if (pesosToMinor(draft.price) == null) {
     return "enter a price in pesos, like 400.00.";
+  }
+  if (draft.turnaroundMode === "override" && timeChanged(draft, listing)) {
+    const problem = windowProblem(
+      draft.minimumTurnaround,
+      draft.turnaround,
+      listing.productionDayMinutes ?? DEFAULT_DAY_MINUTES,
+    );
+    if (problem) return problem.charAt(0).toLowerCase() + problem.slice(1);
   }
   if (
     needsPrinterMaxWidth(draft.subcategoryCode) &&
@@ -342,11 +424,17 @@ export default function ListingEditorPage() {
             ? working.minimumOrderQuantity || null
             : null,
           turnaroundMode: working.turnaroundMode,
-          turnaroundHours: working.turnaroundHours,
+          turnaround: working.turnaroundMode === "override" ? working.turnaround : null,
+          minimumTurnaround:
+            working.turnaroundMode === "override" &&
+            !sameTime(working.minimumTurnaround, working.turnaround)
+              ? working.minimumTurnaround
+              : null,
           subcategoryCode: working.subcategoryCode,
           printerMaxWidthFeet: needsPrinterMaxWidth(working.subcategoryCode)
             ? working.printerMaxWidthFeet
             : null,
+          printLayouts: working.printLayouts,
         }
       : listing;
   const checklist = merged && context ? boardChecklist(merged, context) : [];
@@ -361,8 +449,10 @@ export default function ListingEditorPage() {
           dirty ? null : readiness,
         )
       : null;
-  const inheritedHours = context?.inheritedTurnaroundHours ?? null;
-  const resolvedHours = merged ? effectiveTurnaroundHours(merged, inheritedHours) : null;
+  const inheritedTime = context?.inheritedTurnaround ?? null;
+  const readyIn = merged
+    ? readyInLine(effectiveTurnaround(merged, inheritedTime), effectiveMinimumTurnaround(merged))
+    : readyInLine(null);
   const covers = listing
     ? coversFor(
         taxonomy,
@@ -372,7 +462,7 @@ export default function ListingEditorPage() {
 
   async function persist(onTheBoard?: boolean) {
     if (!listing || !working) return false;
-    const held = holdReason(working);
+    const held = holdReason(working, listing);
     if (held) {
       setSaveState({ kind: "held", reason: held });
       return false;
@@ -384,7 +474,7 @@ export default function ListingEditorPage() {
     try {
       const saved = normalizeListing(
         await updateCatalogItem(listing.id, working.version, {
-          ...payloadOf(working),
+          ...savePayload(working, listing),
           ...(onTheBoard != null ? { active: onTheBoard } : {}),
         }),
       );
@@ -469,8 +559,8 @@ export default function ListingEditorPage() {
   // refuse is held, not sent, and the status line says why. A failed save waits
   // for Retry or the next edit rather than hammering the API.
   useEffect(() => {
-    if (!dirty || !working) return;
-    const held = holdReason(working);
+    if (!dirty || !working || !listing) return;
+    const held = holdReason(working, listing);
     if (held) {
       setSaveState({ kind: "held", reason: held });
       return;
@@ -486,7 +576,7 @@ export default function ListingEditorPage() {
     timer = window.setTimeout(attempt, AUTOSAVE_DELAY_MS);
     return () => window.clearTimeout(timer);
     // `working` is the draft object; a new one means the shop typed.
-  }, [dirty, working]);
+  }, [dirty, working, listing]);
 
   async function applyPhotoOrder({ action, fileId, fileIds }: PhotoReorder) {
     if (!listing || listing.version == null) {
@@ -808,27 +898,12 @@ export default function ListingEditorPage() {
         onSend={() => void sendForReview()}
       />
 
+      {/* The editor comes first in the page, so on a phone the shop edits
+          before scrolling past the preview; from 1024px the grid places the
+          preview back in the left column. */}
       <div className="lg:grid lg:grid-cols-[minmax(18rem,28rem)_minmax(0,1fr)] lg:items-start lg:gap-8 xl:gap-10">
-        <aside
-          aria-label="What clients see"
-          className="flex flex-col gap-4 lg:sticky lg:top-[4.75rem] lg:self-start"
-        >
-          <div className="flex flex-col gap-1">
-            <p className="text-overline text-text-muted m-0 uppercase">
-              What clients see
-            </p>
-            <SaveStatus state={saveState} onRetry={() => void persist()} />
-          </div>
-          <ListingPreviewBody
-            listing={merged}
-            taxonomy={taxonomy}
-            services={services}
-            prepSteps={prepSteps}
-            formats={formats}
-          />
-        </aside>
-
-        <div className="mt-10 flex flex-col gap-6 lg:mt-0">
+        <div className="flex flex-col gap-6 lg:col-start-2 lg:row-start-1">
+          <SaveStatus state={saveState} onRetry={() => void persist()} />
           <ListingStepNav step={step} onSelect={setStep} />
 
           <div
@@ -840,7 +915,6 @@ export default function ListingEditorPage() {
             {step === "pick" ? (
               <Section
                 id="section-kind"
-                step="01"
                 title="Pick printing category"
                 help={`Filed under ${subcategoryName(taxonomy, working.subcategoryCode)}. You can move it within that category, not out of it.`}
               >
@@ -875,7 +949,6 @@ export default function ListingEditorPage() {
               <>
                 <Section
                   id="section-photos"
-                  step="02"
                   title="Sample photos"
                   help="Up to eight samples of this kind of work. The wide sample is the one clients see first. Use Edit on a photo to replace it, remove it, or make it the wide sample."
                 >
@@ -894,7 +967,6 @@ export default function ListingEditorPage() {
                 </Section>
                 <Section
                   id="section-what"
-                  step="03"
                   title="Describe your product"
                   help="Name it the way a client would ask for it."
                 >
@@ -931,7 +1003,6 @@ export default function ListingEditorPage() {
             {step === "price" ? (
               <Section
                 id="section-price"
-                step="04"
                 title="Set your product price"
                 help="Your own asking price. What GRIDGO charges the client on top is not yours to set."
               >
@@ -977,7 +1048,6 @@ export default function ListingEditorPage() {
             {step === "speed" ? (
               <Section
                 id="section-ready-in"
-                step="05"
                 title="Set your capacity & speed"
                 help="How many you will take, and how long a client waits from paying to pickup."
               >
@@ -1017,39 +1087,45 @@ export default function ListingEditorPage() {
                       <FieldDescription>0 means no minimum.</FieldDescription>
                     </Field>
                   ) : null}
+                  <div className="flex flex-col gap-1">
+                    <h3
+                      id="ready-in-heading"
+                      className="text-body text-text-primary m-0"
+                      style={{ fontFamily: "var(--font-medium)" }}
+                    >
+                      Production time
+                    </h3>
+                    <p className="text-caption text-text-secondary m-0 max-w-prose">
+                      {PRODUCTION_TIME_HINT}
+                    </p>
+                  </div>
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                     <SegmentedControl
                       id="turnaround-mode"
-                      aria-label="Ready-in time"
+                      aria-labelledby="ready-in-heading"
                       options={TURNAROUND_CHOICES}
                       value={working.turnaroundMode}
                       onChange={(turnaroundMode) => setDraft({ ...working, turnaroundMode })}
                     />
                     <p className="text-body text-text-secondary m-0" role="status">
-                      {readyInLine(resolvedHours)}
+                      {readyIn}
                     </p>
                   </div>
                   {working.turnaroundMode === "override" ? (
-                    <Field className="max-w-48">
-                      <FieldLabel htmlFor="hours">Hours</FieldLabel>
-                      <Input
-                        id="hours"
-                        type="number"
-                        min={1}
-                        value={working.turnaroundHours}
-                        onChange={(event) =>
-                          setDraft({
-                            ...working,
-                            turnaroundHours: Number(event.target.value) || 0,
-                          })
-                        }
-                      />
-                    </Field>
+                    <ProductionTimeField
+                      idPrefix="listing-time"
+                      min={working.minimumTurnaround}
+                      max={working.turnaround}
+                      dayMinutes={listing.productionDayMinutes ?? DEFAULT_DAY_MINUTES}
+                      onChange={({ min, max }) =>
+                        setDraft({ ...working, minimumTurnaround: min, turnaround: max })
+                      }
+                    />
                   ) : (
                     <p className="text-caption text-text-secondary m-0">
-                      {inheritedHours
-                        ? `Your shop's usual time is ${inheritedHours} hours.`
-                        : "Your shop has no usual turnaround yet. Set the hours for this listing."}
+                      {inheritedTime
+                        ? `Your shop's usual time is ${timeLabel(inheritedTime)}.`
+                        : "Your shop has no usual production time yet. Set one for this listing."}
                     </p>
                   )}
                 </FieldGroup>
@@ -1060,7 +1136,6 @@ export default function ListingEditorPage() {
               <>
                 <Section
                   id="section-picks"
-                  step="06"
                   title="How will the client choose?"
                   help="In this order, the way they will see it. Each one saves as you add it."
                 >
@@ -1087,7 +1162,6 @@ export default function ListingEditorPage() {
                 </Section>
                 <Section
                   id="section-addons"
-                  step="07"
                   title="Add-ons"
                   help="Priced extras a client can add. Rush, grommets, lamination."
                 >
@@ -1118,7 +1192,6 @@ export default function ListingEditorPage() {
               <>
                 <Section
                   id="section-prep"
-                  step="08"
                   title="How can the client help you?"
                   help="What a client should do before sending work. Numbered — they read it in order."
                 >
@@ -1168,7 +1241,6 @@ export default function ListingEditorPage() {
                 </Section>
                 <Section
                   id="section-artwork"
-                  step="09"
                   title="Artwork you accept"
                   help="What a client may send you for this listing."
                 >
@@ -1222,13 +1294,25 @@ export default function ListingEditorPage() {
                     )}
                   </FieldGroup>
                 </Section>
+                {working.printLayouts ? (
+                  <Section
+                    id="section-print-layouts"
+                    title="Print layouts"
+                    help={PRINT_LAYOUTS_HELP}
+                  >
+                    <PrintLayoutsField
+                      value={working.printLayouts}
+                      onChange={(printLayouts) => setDraft({ ...working, printLayouts })}
+                      inReview={listing.reviewStatus != null}
+                    />
+                  </Section>
+                ) : null}
               </>
             ) : null}
 
             {step === "review" ? (
               <Section
                 id="section-review"
-                step="10"
                 title="Finalize your product"
                 help="The reading beside this is what a client sees, including a price or sample you have not saved yet. It goes on the board only when the list below is clear."
               >
@@ -1261,8 +1345,8 @@ export default function ListingEditorPage() {
                 )}
                 {listing.reviewStatus ? (
                   <p className="text-caption text-text-secondary m-0 max-w-prose">
-                    Operations reviews every new listing, and any change to its price, specs,
-                    artwork formats or photos, before clients see it. Photos must not show a
+                    The GRIDGO Team reviews every new listing, and any change to its price,
+                    specs, print layouts, artwork formats or photos, before clients see it. Photos must not show a
                     watermark, logo or shop branding.
                   </p>
                 ) : null}
@@ -1294,6 +1378,22 @@ export default function ListingEditorPage() {
             </div>
           </div>
         </div>
+
+        <aside
+          aria-label="What clients see"
+          className="mt-10 flex flex-col gap-4 lg:sticky lg:col-start-1 lg:row-start-1 lg:mt-0 lg:top-[4.75rem] lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto"
+        >
+          <p className="text-overline text-text-muted m-0 uppercase">
+            What clients see
+          </p>
+          <ListingPreviewBody
+            listing={merged}
+            taxonomy={taxonomy}
+            services={services}
+            prepSteps={prepSteps}
+            formats={formats}
+          />
+        </aside>
       </div>
 
       <AlertDialog open={removeOpen} onOpenChange={setRemoveOpen}>
@@ -1411,13 +1511,11 @@ function ListingStepNav({
  */
 function Section({
   id,
-  step,
   title,
   help,
   children,
 }: {
   id: string;
-  step: string;
   title: string;
   help: string;
   children: ReactNode;
@@ -1425,7 +1523,9 @@ function Section({
   return (
     <section id={id} aria-labelledby={`${id}-title`} className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
-        <p className="text-overline text-text-muted m-0 uppercase">{step}</p>
+        <p className="text-overline text-text-muted m-0 uppercase">
+          {sectionNumber(SECTION_ORDER, id)}
+        </p>
         <h3
           id={`${id}-title`}
           className="text-body-lg text-text-primary m-0"

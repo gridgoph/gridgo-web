@@ -1,19 +1,23 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import OpsRiderMapPage from "@/app/ops/riders/page";
 import type { RiderLocation } from "@/lib/api/types";
 import type { RouteResult } from "@/lib/osrm";
 
 vi.stubGlobal("React", React);
 const list = vi.hoisted(() => vi.fn<() => Promise<RiderLocation[]>>());
+const settings = vi.hoisted(() => vi.fn());
+const users = vi.hoisted(() => vi.fn());
 const route = vi.hoisted(() => vi.fn<() => Promise<RouteResult>>());
 vi.mock("@/lib/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/client")>()),
   listRiderLocations: list,
+  getSettings: settings,
+  listUsers: users,
 }));
 vi.mock("@/lib/osrm", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/osrm")>()),
@@ -22,9 +26,19 @@ vi.mock("@/lib/osrm", async (importOriginal) => ({
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
+beforeEach(() => {
+  settings.mockResolvedValue({
+    riderLocationRefreshIntervalSeconds: 20,
+    riderLocationStaleAfterSeconds: 120,
+  });
+  users.mockResolvedValue([]);
+});
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   list.mockReset();
+  settings.mockReset();
+  users.mockReset();
   route.mockReset();
   Reflect.deleteProperty(window, "L");
   Reflect.deleteProperty(window, "matchMedia");
@@ -164,7 +178,75 @@ it("draws the vehicle on the pin and marks a stale fix differently", async () =>
   expect(icons[1]!.html).toContain("gg-rider-pin--stale");
   expect(L.marker.mock.calls[0]![1]).toMatchObject({ alt: "van_rider, Van · VAN 22" });
   expect(screen.getByText(/Van · VAN 22/)).toBeInTheDocument();
-  expect(screen.getByText(/more than five minutes ago/)).toBeInTheDocument();
+  // In the roster and at the top, in the "needs a call" list.
+  expect(screen.getAllByText("No update for 10 min")).toHaveLength(1);
+  expect(within(screen.getByTestId("stale-riders")).getByText("10 min")).toBeInTheDocument();
+});
+
+it("puts riders whose location went quiet first, with Call and Message", async () => {
+  const { L } = leafletDouble();
+  users.mockResolvedValue([
+    { id: "quiet", name: "Quiet", role: "rider", email: "q@x", phone: "+63 917 555 0101" },
+  ]);
+  list.mockResolvedValueOnce([
+    rider("fresh", 7.1),
+    rider("quiet", 7.2, { at: new Date(NOW - 240_000).toISOString(), ageSeconds: 240, stale: true }),
+    // Accepted the job, never sent a fix: no pin, but the first to call.
+    rider("never", 7.3, {
+      lat: null,
+      lng: null,
+      at: null,
+      ageSeconds: null,
+      lastUpdatedAt: null,
+      stale: true,
+      state: "rider_assigned",
+    }),
+  ]);
+  render(<OpsRiderMapPage />);
+  const card = await screen.findByTestId("stale-riders");
+  expect(within(card).getByRole("heading", { name: "2 riders need a call" })).toBeInTheDocument();
+  const rows = within(card).getAllByRole("listitem");
+  expect(rows[0]).toHaveTextContent("never");
+  expect(rows[0]).toHaveTextContent("Has not sent a location since taking this job.");
+  expect(rows[1]).toHaveTextContent("4 min");
+  expect(within(rows[0]!).getByRole("link", { name: "Message never" })).toHaveAttribute(
+    "href",
+    "/ops/chat?with=never&role=rider",
+  );
+  await waitFor(() =>
+    expect(within(rows[1]!).getByRole("link", { name: /Call quiet/i })).toHaveAttribute(
+      "href",
+      "tel:+639175550101",
+    ),
+  );
+  expect(within(rows[0]!).getByText("No phone number on file")).toBeInTheDocument();
+  // Two pins: the rider with no position is not drawn.
+  expect(L.marker).toHaveBeenCalledTimes(2);
+  expect(screen.getByText("No location sent")).toBeInTheDocument();
+});
+
+it("says all is well when every rider is fresh", async () => {
+  leafletDouble();
+  list.mockResolvedValueOnce([rider("fresh", 7.1, { ageSeconds: 5, stale: false })]);
+  render(<OpsRiderMapPage />);
+  expect(await screen.findByTestId("stale-riders-clear")).toHaveTextContent(
+    "in the last 2 minutes",
+  );
+});
+
+it("re-reads at the refresh interval set by Super Admin", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  leafletDouble();
+  settings.mockResolvedValue({
+    riderLocationRefreshIntervalSeconds: 15,
+    riderLocationStaleAfterSeconds: 120,
+  });
+  list.mockResolvedValue([rider("rider_a", 7.1)]);
+  render(<OpsRiderMapPage />);
+  await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+  expect(await screen.findByText(/Updates every 15 seconds/)).toBeInTheDocument();
+  await vi.advanceTimersByTimeAsync(15_000);
+  await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
 });
 
 it("draws the road route to the drop-off and marks both ends of the trip", async () => {

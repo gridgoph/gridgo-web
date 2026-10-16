@@ -6,11 +6,13 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Eye } from "lucide-react";
+import { Eye, Pencil } from "lucide-react";
 
+import { ServiceLineDialog } from "@/app/supplier/_components/ServiceLineDialog";
 import {
   buildCapacitySnapshot,
   formatCapacityFigure,
+  serviceLineTime,
 } from "@/app/supplier/_lib/capacity";
 import { presentServiceState } from "@/app/supplier/_lib/service-state";
 import { categoryName } from "@/app/supplier/_lib/taxonomy-labels";
@@ -30,6 +32,7 @@ import type { Order, SupplierService, Taxonomy } from "@/lib/api/types";
 import { describeQuantity } from "@/lib/quantity";
 import { presentOrderState } from "@/lib/order-state";
 import { formatDateTime } from "@/lib/format";
+import { timeLabel, timeMinutes } from "@/lib/production-time";
 
 type LoadState = {
   services: SupplierService[];
@@ -41,6 +44,7 @@ export default function SupplierCapacityPage() {
   const [data, setData] = useState<LoadState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState<SupplierService | null>(null);
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -139,11 +143,19 @@ export default function SupplierCapacityPage() {
       },
       {
         id: "turnaround",
-        header: "Turnaround",
-        sortValue: (s) => s.turnaroundHours,
-        cell: (s) => (
-          <span className="text-body text-text-secondary">{s.turnaroundHours}h</span>
-        ),
+        header: "Production time",
+        sortValue: (s) => {
+          const time = serviceLineTime(s);
+          return time ? timeMinutes(time, s.productionDayMinutes ?? undefined) : -1;
+        },
+        cell: (s) => {
+          const time = serviceLineTime(s);
+          return (
+            <span className="text-body text-text-secondary">
+              {time ? timeLabel(time) : "Not set"}
+            </span>
+          );
+        },
       },
     ];
   }, [data]);
@@ -349,9 +361,36 @@ export default function SupplierCapacityPage() {
             loading={pending}
             getRowId={(s) => s.id}
             caption="Live service capacity"
+            rowActions={(s) => (
+              <DataTableRowAction
+                label="Edit capacity and time"
+                icon={Pencil}
+                onClick={() => setEditing(s)}
+              />
+            )}
           />
         )}
       </section>
+
+      <ServiceLineDialog
+        service={editing}
+        categoryName={
+          editing && data ? categoryName(editing.categoryCode, data.taxonomy) : ""
+        }
+        onOpenChange={(open) => {
+          if (!open) setEditing(null);
+        }}
+        onSaved={(saved) =>
+          setData((current) =>
+            current
+              ? {
+                  ...current,
+                  services: current.services.map((s) => (s.id === saved.id ? saved : s)),
+                }
+              : current,
+          )
+        }
+      />
 
       <section className="flex flex-col gap-3" aria-labelledby="cap-jobs">
         <h2 id="cap-jobs" className="text-h3 text-text-primary m-0">

@@ -3,6 +3,7 @@
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Eye } from "lucide-react";
 
@@ -26,8 +27,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { SkeletonLines } from "@/components/ui/loading";
-import { ApiError, listOrders } from "@/lib/api/client";
-import type { Order } from "@/lib/api/types";
+import { ApiError, getSettings, listOrders } from "@/lib/api/client";
+import type { OperatingHours, Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import {
@@ -38,6 +39,7 @@ import {
 } from "@/lib/baskets";
 import { presentOrderState } from "@/lib/order-state";
 import { describeQuantity } from "@/lib/quantity";
+import { awaitingFinishedReview, finishedReviewWaitingCount } from "@/lib/shop-handover";
 
 /**
  * Every order, in one place, filtered by where it has got to.
@@ -86,6 +88,21 @@ export default function OpsOrdersPage() {
     void load();
   }, [load]);
 
+  // The file check reads GRIDGO's operating hours. A failed read only drops
+  // the hours strip; each order still carries its own review time.
+  const [hours, setHours] = useState<OperatingHours | null>(null);
+  const loadHours = useCallback(async () => {
+    try {
+      setHours((await getSettings()).operatingHours ?? null);
+    } catch {
+      // Keep whatever was read last.
+    }
+  }, []);
+  useEffect(() => {
+    void loadHours();
+  }, [loadHours]);
+  useLiveReload("settings", loadHours);
+
   const counts = useMemo(() => stageCounts(orders ?? []), [orders]);
   const waiting = useMemo(
     () =>
@@ -102,6 +119,11 @@ export default function OpsOrdersPage() {
       (a.updatedAt || "").localeCompare(b.updatedAt || ""),
     );
   }, [orders, stage]);
+
+  const finishedWaiting = useMemo(
+    () => finishedReviewWaitingCount(orders ?? []),
+    [orders],
+  );
 
   // Counted across every order, not the stage on screen: a basket's groups
   // move through the stages independently.
@@ -166,7 +188,11 @@ export default function OpsOrdersPage() {
               fontFamily: stageNeedsOperations(order) ? "var(--font-medium)" : undefined,
             }}
           >
-            {stageNeedsOperations(order) ? "You" : waitingOn(order.state)}
+            {stageNeedsOperations(order)
+              ? "You"
+              : awaitingFinishedReview(order)
+                ? "Your review"
+                : waitingOn(order.state)}
           </span>
         ),
       },
@@ -270,9 +296,21 @@ export default function OpsOrdersPage() {
         // The file check is its own queue: oldest first, a live wait, and Pass
         // or Send back from the row. Orders still in payment review show their
         // wait beneath it.
-        <FileCheckQueue orders={orders ?? []} onChanged={load} />
+        <FileCheckQueue orders={orders ?? []} onChanged={load} hours={hours} />
       ) : (
         <>
+          {stage === "production" && finishedWaiting > 0 ? (
+            // The finished-work review has its own desk; say so where those
+            // orders sit, so "Nothing for you to do" never hides them.
+            <p className="text-body text-text-primary m-0 rounded-card border border-outline bg-surface-variant p-3">
+              {finishedWaiting === 1
+                ? "1 job's finished work is waiting for your review."
+                : `${finishedWaiting} jobs' finished work is waiting for your review.`}{" "}
+              <Link href="/ops/finished-work" className="underline underline-offset-2">
+                Open Finished work
+              </Link>
+            </p>
+          ) : null}
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <p className="text-body text-text-secondary m-0">{active?.hint}</p>
             <Button variant="secondary" onClick={() => void load()}>

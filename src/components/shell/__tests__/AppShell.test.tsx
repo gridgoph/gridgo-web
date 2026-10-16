@@ -726,7 +726,8 @@ describe("AppShell chrome", () => {
         await user.keyboard("{Escape}");
       }
       expect(reached.sort()).toEqual(navForRole(role).map((item) => item.href).sort());
-    });
+      // One flyout per group: the Super Admin walk outgrows 5 s on a busy runner.
+    }, 20_000);
   });
 
   it("keeps a nested parent crumb as a same-tab link with a destination tooltip", async () => {
@@ -992,7 +993,8 @@ describe("AppShell chrome", () => {
       countMocks.listJobs.mockClear();
       renderShell("/admin/overview");
       await vi.waitFor(() => expect(countMocks.listSupportChatThreads).toHaveBeenCalled());
-      expect(listOrdersMock).not.toHaveBeenCalled();
+      // Once, for Finished work: Super Admin's rail has no Orders count.
+      await vi.waitFor(() => expect(listOrdersMock).toHaveBeenCalledTimes(1));
       expect(countMocks.listEscalations).not.toHaveBeenCalled();
       expect(countMocks.listJobs).not.toHaveBeenCalled();
     });

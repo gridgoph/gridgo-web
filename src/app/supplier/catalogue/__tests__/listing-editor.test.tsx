@@ -390,6 +390,93 @@ describe("listing editor autosave", () => {
   });
 });
 
+/** The Speed step's own section, apart from the client preview beside it. */
+function speedSection(): HTMLElement {
+  const section = document.getElementById("section-ready-in");
+  if (!section) throw new Error("Speed step is not open");
+  return section;
+}
+
+describe("listing editor production time (report 39853344)", () => {
+  it("saves a same-day window in minutes, sending only that unit's fields", async () => {
+    stubLoad(
+      catalogItem({
+        turnaroundHours: undefined,
+        turnaroundDays: 2,
+        turnaroundMinutes: 1200,
+        productionDayMinutes: 600,
+      }),
+    );
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    expect(speedSection()).toHaveTextContent("Ready in 2 working days");
+
+    fireEvent.click(screen.getByRole("radio", { name: "Hours" }));
+    expect(screen.getByRole("spinbutton", { name: "Latest" })).toHaveAttribute(
+      "aria-valuetext",
+      "1 hour",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Longer latest production time" }));
+    fireEvent.click(screen.getByRole("button", { name: "Longer latest production time" }));
+    expect(within(speedSection()).getByText("Ready in 1–2 hours")).toBeVisible();
+    expect(within(speedSection()).getByText(/A job that starts now is ready/)).toBeVisible();
+
+    await waitFor(
+      () =>
+        expect(mocks.updateCatalogItem).toHaveBeenCalledWith(
+          "sci_1",
+          3,
+          expect.objectContaining({
+            turnaroundMode: "override",
+            minimumTurnaroundMinutes: 60,
+            turnaroundMinutes: 120,
+          }),
+        ),
+      AUTOSAVE_WAIT,
+    );
+    const body = mocks.updateCatalogItem.mock.calls[0][2];
+    expect(body).not.toHaveProperty("turnaroundDays");
+    expect(body).not.toHaveProperty("turnaroundHours");
+  });
+
+  it("switching back to working days restores the window the shop had", async () => {
+    stubLoad(catalogItem({ turnaroundHours: undefined, turnaroundDays: 3, minimumTurnaroundDays: 2 }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    expect(within(speedSection()).getByText("Ready in 2–3 working days")).toBeVisible();
+    fireEvent.click(screen.getByRole("radio", { name: "Hours" }));
+    expect(within(speedSection()).getByText("Ready in 1 hour")).toBeVisible();
+    fireEvent.click(screen.getByRole("radio", { name: "Working days" }));
+    expect(within(speedSection()).getByText("Ready in 2–3 working days")).toBeVisible();
+  });
+
+  it("steps down from one working day into hours", async () => {
+    stubLoad(catalogItem({ turnaroundHours: undefined, turnaroundDays: 1 }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    const latest = screen.getByRole("spinbutton", { name: "Latest" });
+    latest.focus();
+    fireEvent.keyDown(latest, { key: "ArrowDown" });
+    expect(latest).toHaveAttribute("aria-valuetext", "9½ hours");
+    expect(screen.getByRole("radio", { name: "Hours" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("leaves an older untouched time out of a save, so other edits are not held", async () => {
+    // An older API stored 48 hours exactly: longer than a working day, which
+    // the Hours picker cannot send back. Changing the name must still save.
+    stubLoad(catalogItem());
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers A5" } });
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled(), AUTOSAVE_WAIT);
+    const body = mocks.updateCatalogItem.mock.calls[0][2];
+    expect(body).toMatchObject({ name: "Flyers A5", turnaroundMode: "override" });
+    expect(body).not.toHaveProperty("turnaroundMinutes");
+    expect(body).not.toHaveProperty("turnaroundDays");
+    expect(body).not.toHaveProperty("turnaroundHours");
+  });
+});
+
 describe("listing editor readiness checklist", () => {
   it("lists what is missing once, and takes you to the field", async () => {
     stubLoad(catalogItem({ description: "", active: false }));
@@ -997,3 +1084,75 @@ it.each([false, true])(
     expect(price).toHaveValue("15.00");
   },
 );
+
+describe("listing editor print layouts (gridgo-client#245)", () => {
+  it("marks layouts, says clients must choose one, and saves the whole set", async () => {
+    stubLoad(catalogItem({ printLayouts: [], reviewStatus: "approved" }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+
+    const group = screen.getByRole("group", { name: "Print layouts you can print" });
+    const boxes = within(group).getAllByRole("checkbox");
+    expect(boxes.map((box) => box.textContent)).toEqual([
+      expect.stringContaining("Fit to paper"),
+      expect.stringContaining("Actual size, centred"),
+      expect.stringContaining("Actual size, in its original position"),
+    ]);
+    expect(boxes.every((box) => box.getAttribute("aria-checked") === "false")).toBe(true);
+    expect(screen.getByText(/No layout marked: clients are not asked/)).toBeVisible();
+    expect(screen.getByText(/A change goes to the GRIDGO Team for review/)).toBeVisible();
+
+    // Ticked out of order, sent in the canonical order.
+    fireEvent.click(within(group).getByRole("checkbox", { name: /Actual size, centred/ }));
+    fireEvent.click(within(group).getByRole("checkbox", { name: /Fit to paper/ }));
+    expect(
+      screen.getByText("Clients must choose one of these before they can order this listing. Nothing is chosen for them."),
+    ).toBeVisible();
+    // The client reading beside the editor asks for a layout too.
+    expect(within(screen.getByTestId("listing-preview-layout")).getByText("Step 2 · Layout")).toBeVisible();
+
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalledTimes(1), AUTOSAVE_WAIT);
+    const [, version, body] = mocks.updateCatalogItem.mock.calls[0];
+    expect(version).toBe(3);
+    expect(body).toMatchObject({ printLayouts: ["fit_to_paper", "actual_size_centered"] });
+  });
+
+  it("leaves an unchanged set out of other saves, so a text edit opens no review", async () => {
+    stubLoad(catalogItem({ printLayouts: ["fit_to_paper"] }));
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Plans" } });
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalledTimes(1), AUTOSAVE_WAIT);
+    expect(mocks.updateCatalogItem.mock.calls[0][2]).not.toHaveProperty("printLayouts");
+  });
+
+  it("shows no layout section against an API without layouts", async () => {
+    stubLoad(catalogItem());
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+    expect(screen.queryByRole("group", { name: "Print layouts you can print" })).not.toBeInTheDocument();
+  });
+});
+
+describe("listing editor section numbers", () => {
+  it("gives every section its own number, Print layouts included", async () => {
+    stubLoad(catalogItem({ printLayouts: [] }));
+    render(<ListingEditorPage />);
+    const seen: string[] = [];
+    for (const label of ["Pick", "About", "Price", "Speed", "Steps", "Artwork", "Review"]) {
+      await openEditorStep(label);
+      const panel = document.getElementById("listing-step-panel")!;
+      for (const section of panel.querySelectorAll("section[id^='section-']")) {
+        seen.push(section.querySelector("p")!.textContent ?? "");
+      }
+    }
+    expect(new Set(seen).size).toBe(seen.length);
+    await openEditorStep("Artwork");
+    const eyebrow = (id: string) => document.getElementById(id)!.querySelector("p")!.textContent;
+    expect(["section-prep", "section-artwork", "section-print-layouts"].map(eyebrow)).toEqual([
+      "06.1",
+      "06.2",
+      "06.3",
+    ]);
+  });
+});

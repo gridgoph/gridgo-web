@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, MessageSquareText, RefreshCw, Search } from "lucide-react";
+import { ExternalLink, MessageSquareText, Pin, RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -19,6 +19,7 @@ import {
 } from "@/app/admin/_lib/tracker";
 import { DecisionPanel } from "@/app/admin/tracker/_components/DecisionPanel";
 import { TrackerStatusSelect } from "@/app/admin/tracker/_components/TrackerStatusSelect";
+import { PriorityButton } from "@/components/ui/PriorityButton";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -35,7 +36,7 @@ import {
 import { StatusMark } from "@/components/ui/StatusChip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { getTracker } from "@/lib/api/client";
+import { getTracker, setTrackerPriority } from "@/lib/api/client";
 import type { TrackerBoard, TrackerItem, TrackerStatus } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
 import type { StatusTone } from "@/lib/order-state";
@@ -63,7 +64,7 @@ function shortRepo(repo: string): string {
 
 /**
  * The captain's sheet, read live from the GitHub issues labelled `tracker`.
- * Every column is read-only except Status; a Needs decision item opens the
+ * Status and priority pins are editable; a Needs decision item opens the
  * Decision panel.
  */
 export function TrackerDesk() {
@@ -74,6 +75,21 @@ export function TrackerDesk() {
   const [filters, setFilters] = useState<TrackerFilters>(NO_TRACKER_FILTERS);
   const [panelKey, setPanelKey] = useState<string | null>(null);
   const isMobile = useIsMobile();
+  const [pinning, setPinning] = useState<string | null>(null);
+  const [priorityError, setPriorityError] = useState<string | null>(null);
+
+  async function pin(item: TrackerItem) {
+    if (pinning) return;
+    setPinning(item.key);
+    setPriorityError(null);
+    try {
+      replaceItem(await setTrackerPriority(item, !item.priority));
+    } catch {
+      setPriorityError("Could not change priority. Refresh the tracker and try again.");
+    } finally {
+      setPinning(null);
+    }
+  }
 
   const load = useCallback(async (refresh = false) => {
     try {
@@ -112,7 +128,9 @@ export function TrackerDesk() {
       current
         ? {
             ...current,
-            items: current.items.map((item) => (item.key === updated.key ? updated : item)),
+            items: current.items.map((item) =>
+              item.key === updated.key ? updated : item,
+            ),
           }
         : current,
     );
@@ -135,7 +153,15 @@ export function TrackerDesk() {
   const counts = useMemo(() => statusCounts(narrowed), [narrowed]);
   const totals = useMemo(() => statusCounts(items), [items]);
   const visible = useMemo(() => filterTrackerItems(items, filters), [items, filters]);
-  const sections = useMemo(() => groupBySection(visible), [visible]);
+  const sections = useMemo(() => {
+    const priorities = visible.filter((item) => item.priority);
+    const pinned = priorities.length
+      ? [{ key: "priorities", title: "Priorities", items: priorities }]
+      : [];
+    return filters.status === "priorities"
+      ? pinned
+      : [...pinned, ...groupBySection(visible)];
+  }, [visible, filters.status]);
   const developers = useMemo(() => {
     const found = trackerDevelopers(items);
     return found.length ? found : ["Mark", "Ven"];
@@ -191,7 +217,8 @@ export function TrackerDesk() {
               {waiting === 0
                 ? "Nothing is waiting on your decision."
                 : `${waiting} ${waiting === 1 ? "item waits" : "items wait"} on your decision.`}{" "}
-              Only the status changes here; everything else comes from the GitHub issues.
+              Pin priorities to keep them at the top. Items stay in their original
+              sections.
             </p>
           </div>
           <div className="flex flex-col items-end gap-1">
@@ -225,7 +252,7 @@ export function TrackerDesk() {
         <ToggleGroup
           value={[filters.status]}
           onValueChange={(values) => {
-            const next = values[0] as TrackerStatus | "all" | undefined;
+            const next = values[0] as TrackerStatus | "all" | "priorities" | undefined;
             setFilters((current) => ({ ...current, status: next ?? "all" }));
           }}
           variant="outline"
@@ -235,6 +262,15 @@ export function TrackerDesk() {
         >
           <ToggleGroupItem value="all" aria-label={`All statuses, ${narrowed.length}`}>
             All <span className="tabular-nums text-text-muted">{narrowed.length}</span>
+          </ToggleGroupItem>
+          <ToggleGroupItem
+            value="priorities"
+            aria-label={`Priorities, ${narrowed.filter((item) => item.priority).length}`}
+          >
+            <Pin aria-hidden /> Priorities{" "}
+            <span className="tabular-nums text-text-muted">
+              {narrowed.filter((item) => item.priority).length}
+            </span>
           </ToggleGroupItem>
           {TRACKER_STATUSES.map((meta) => (
             <ToggleGroupItem
@@ -300,6 +336,11 @@ export function TrackerDesk() {
           ) : null}
         </div>
 
+        {priorityError ? (
+          <p role="alert" className="text-caption text-error m-0">
+            {priorityError}
+          </p>
+        ) : null}
         {refreshError ? (
           <p role="alert" className="text-caption text-error m-0">
             {refreshError} The sheet below is from the last good read.
@@ -326,6 +367,8 @@ export function TrackerDesk() {
             isMobile={isMobile}
             onChanged={replaceItem}
             onOpenDecision={setPanelKey}
+            onPin={pin}
+            pinning={pinning}
           />
         ))
       )}
@@ -347,11 +390,15 @@ function TrackerSection({
   isMobile,
   onChanged,
   onOpenDecision,
+  onPin,
+  pinning,
 }: {
   section: TrackerSectionGroup;
   isMobile: boolean;
   onChanged: (item: TrackerItem) => void;
   onOpenDecision: (key: string) => void;
+  onPin: (item: TrackerItem) => void;
+  pinning: string | null;
 }) {
   const headingId = `section-${section.key}`;
   const waiting = section.items.filter((item) => item.status === "needs-decision").length;
@@ -391,6 +438,12 @@ function TrackerSection({
                 <dt className="text-caption text-text-muted">Category</dt>
                 <dd className="text-caption text-text-secondary m-0">{item.category}</dd>
               </dl>
+              <PriorityButton
+                priority={!!item.priority}
+                name={trackerItemName(item)}
+                disabled={pinning !== null}
+                onClick={() => onPin(item)}
+              />
               <TrackerStatusSelect item={item} onChanged={onChanged} />
               <DecisionButton item={item} onOpen={onOpenDecision} fullWidth />
             </li>
@@ -440,6 +493,12 @@ function TrackerSection({
                   <td className="text-caption text-text-secondary px-3 py-3 break-words">{item.category}</td>
                   <td className="px-3 py-2">
                     <div className="flex flex-col gap-1.5">
+                      <PriorityButton
+                        priority={!!item.priority}
+                        name={trackerItemName(item)}
+                        disabled={pinning !== null}
+                        onClick={() => onPin(item)}
+                      />
                       <TrackerStatusSelect item={item} onChanged={onChanged} />
                       <DecisionButton item={item} onOpen={onOpenDecision} />
                     </div>

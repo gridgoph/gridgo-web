@@ -20,8 +20,9 @@ import {
   type Listing,
   type ListingReadiness,
 } from "@/lib/listings";
+import { workingDays } from "@/lib/production-time";
 
-const context = { inheritedTurnaroundHours: 48, inheritedFormatCodes: ["pdf"] };
+const context = { inheritedTurnaround: workingDays(2), inheritedFormatCodes: ["pdf"] };
 
 function listing(overrides: Record<string, unknown> = {}): Listing {
   const value = normalizeListing({

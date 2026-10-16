@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { SamplePhoto, ZoomablePhoto } from "@/app/supplier/_components/SamplePhoto";
 import { PinMap } from "@/components/riders/RiderMap";
-import { FileDownload, saveRemoteFile } from "@/components/orders/EvidencePreview";
+import { FileDownload } from "@/components/orders/EvidencePreview";
 import { QaChecklistFields, type QaPanelStatus } from "@/components/orders/QaChecklist";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,7 +23,9 @@ import {
   recordQaTick,
 } from "@/lib/api/client";
 import type { Order, StoredFile } from "@/lib/api/types";
+import { orderDesignLinks } from "@/lib/design-links";
 import { fileLooksLikeImage } from "@/lib/evidence";
+import { saveRemoteFile } from "@/lib/file-save";
 import { formatDateTime } from "@/lib/format";
 import {
   acceptedUploadWarning,
@@ -104,6 +106,7 @@ export function QualityReview({
   checked,
   onCheck,
   disabled,
+  sendBackClosed = false,
   note,
   onNote,
   onRequestFile,
@@ -112,6 +115,8 @@ export function QualityReview({
   checked: Record<string, boolean>;
   onCheck: (next: Record<string, boolean>) => void;
   disabled: boolean;
+  /** Outside opening hours a file cannot be sent back, so a new one cannot be asked for. */
+  sendBackClosed?: boolean;
   note: string;
   onNote: (value: string) => void;
   onRequestFile: () => void;
@@ -215,7 +220,11 @@ export function QualityReview({
         <p className="text-body text-error m-0" role="alert">Could not load the artwork.</p>
       ) : null}
       {fileStatus === "ready" && loadedFiles.length === 0 ? (
-        <p className="text-body text-text-secondary m-0">No file was uploaded with this order.</p>
+        <p className="text-body text-text-secondary m-0">
+          {orderDesignLinks(order).length
+            ? "No file was uploaded. The artwork is behind the design link above: open it to check the file."
+            : "No file was uploaded with this order."}
+        </p>
       ) : null}
       {loadedFiles.map((file) => {
         const image = fileLooksLikeImage(file);
@@ -396,7 +405,12 @@ export function QualityReview({
             Something on this file is a problem. The client is told.
           </p>
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" disabled={disabled || !note.trim()} onClick={onRequestFile}>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={disabled || sendBackClosed || !note.trim()}
+              onClick={onRequestFile}
+            >
               Ask for a new file
             </Button>
             <Button type="button" variant="secondary" disabled={disabled || !note.trim()} onClick={() => void tellClient("message")}>

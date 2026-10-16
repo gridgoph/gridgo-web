@@ -24,6 +24,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { TakePhotoButton } from "@/components/ui/TakePhotoButton";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -251,6 +252,19 @@ export function ListingPhotoManager({
             </li>
           ) : null}
         </ul>
+        {photos.length < LISTING_CAPS.photos ? (
+          <TakePhotoButton
+            disabled={busy}
+            size="sm"
+            className="mt-3"
+            label={photos.length === 0 ? "Take the wide sample" : "Take photo"}
+            inputLabel="Take a sample photo"
+            onFile={(file) => {
+              focusNext.current = { index: photos.length };
+              onAdd(file);
+            }}
+          />
+        ) : null}
       </div>
 
       <p

@@ -64,6 +64,15 @@ export type NavIconKey =
   | "hub"
   | "staff"
   | "listing-reviews"
+  | "featured-prints"
+  | "vouchers"
+  | "legal"
+  | "acceptances"
+  | "privacy"
+  | "surveys"
+  | "invoices"
+  | "finished-work"
+  | "shop-hours"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -71,7 +80,8 @@ export type NavIconKey =
   | "group-field"
   | "group-system"
   | "group-people"
-  | "group-catalog";
+  | "group-catalog"
+  | "group-legal";
 
 export type NavItem = {
   /** Stable id for tests / analytics. */
@@ -112,7 +122,9 @@ export type NavCountKey =
   | "tracker-needs-decision"
   | "refunds-waiting"
   | "shop-changes-needs-ops"
-  | "listing-reviews-waiting";
+  | "listing-reviews-waiting"
+  | "privacy-requests-open"
+  | "finished-work-waiting";
 
 /**
  * One rail section. A missing `label` is a top-level cluster (Overview / Jobs)
@@ -195,6 +207,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody:
             "Show promised dates and capacity commitments for accepted jobs. Built on listJobs / getOrder — no separate schedule endpoint.",
+        },
+        {
+          id: "supplier-shop-hours",
+          href: "/supplier/shop-hours",
+          label: "Shop hours",
+          title: "Shop hours",
+          icon: "shop-hours",
+          ready: true,
+          placeholderBody: "",
         },
         {
           id: "supplier-capacity",
@@ -294,6 +315,18 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           count: "orders-waiting",
         },
         {
+          // Rider-packs orders stop here until GRIDGO approves the shop's
+          // photos of the finished, unpacked work (SHOP_HANDOVER_API.md).
+          id: "ops-finished-work",
+          href: "/ops/finished-work",
+          label: "Finished work",
+          title: "Finished work",
+          icon: "finished-work",
+          ready: true,
+          placeholderBody: "",
+          count: "finished-work-waiting",
+        },
+        {
           id: "ops-approvals",
           href: "/ops/service-lines",
           label: "Service lines",
@@ -312,6 +345,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "listing-reviews-waiting",
+        },
+        {
+          // The client Home row: approved products GRIDGO chooses to show.
+          id: "ops-featured-prints",
+          href: "/ops/featured-prints",
+          label: "Featured Prints",
+          title: "Featured Prints",
+          icon: "featured-prints",
+          ready: true,
+          placeholderBody: "",
         },
       ],
     },
@@ -345,6 +388,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Shop rankings",
           title: "Shop rankings",
           icon: "rankings",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "ops-shop-hours",
+          href: "/ops/shop-hours",
+          label: "Shop hours",
+          title: "Shop hours",
+          icon: "shop-hours",
           ready: true,
           placeholderBody: "",
         },
@@ -413,6 +465,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          id: "ops-supplier-invoices",
+          href: "/ops/supplier-invoices",
+          label: "Supplier invoices",
+          title: "Supplier invoices",
+          icon: "invoices",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "ops-refunds",
           href: "/ops/refunds",
           label: "Client refunds",
@@ -428,6 +489,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Organizations",
           title: "Organizations",
           icon: "organizations",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "ops-vouchers",
+          href: "/ops/vouchers",
+          label: "Vouchers",
+          title: "Vouchers",
+          icon: "vouchers",
           ready: true,
           placeholderBody: "",
         },
@@ -449,6 +519,45 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "recovery",
           ready: true,
           placeholderBody: "",
+        },
+      ],
+    },
+    {
+      // Legal library, consent evidence and the manual privacy queue
+      // (gridgo-api#202, LEGAL_API.md). Operations reads the library;
+      // only Super Admin edits and publishes.
+      id: "ops-legal",
+      section: "Work",
+      label: "Legal & privacy",
+      icon: "group-legal",
+      items: [
+        {
+          id: "ops-legal-documents",
+          href: "/ops/legal",
+          label: "Legal documents",
+          title: "Legal documents",
+          icon: "legal",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "ops-legal-acceptances",
+          href: "/ops/acceptance-log",
+          label: "Acceptance log",
+          title: "Acceptance log",
+          icon: "acceptances",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "ops-privacy-requests",
+          href: "/ops/privacy-requests",
+          label: "Privacy requests",
+          title: "Privacy requests",
+          icon: "privacy",
+          ready: true,
+          placeholderBody: "",
+          count: "privacy-requests-open",
         },
       ],
     },
@@ -488,6 +597,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "issue-reports-new",
+        },
+        {
+          id: "admin-survey-responses",
+          href: "/admin/survey-responses",
+          label: "Survey responses",
+          title: "Survey responses",
+          icon: "surveys",
+          ready: true,
+          placeholderBody: "",
         },
         {
           id: "admin-riders",
@@ -552,6 +670,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
         },
+        {
+          id: "admin-shop-hours",
+          href: "/admin/shop-hours",
+          label: "Shop hours",
+          title: "Shop hours",
+          icon: "shop-hours",
+          ready: true,
+          placeholderBody: "",
+        },
       ],
     },
     {
@@ -578,6 +705,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "listing-reviews-waiting",
+        },
+        {
+          id: "admin-featured-prints",
+          href: "/admin/featured-prints",
+          label: "Featured Prints",
+          title: "Featured Prints",
+          icon: "featured-prints",
+          ready: true,
+          placeholderBody: "",
         },
         {
           id: "admin-zones",
@@ -615,6 +751,24 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          id: "admin-supplier-invoices",
+          href: "/admin/supplier-invoices",
+          label: "Supplier invoices",
+          title: "Supplier invoices",
+          icon: "invoices",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-vouchers",
+          href: "/admin/vouchers",
+          label: "Vouchers",
+          title: "Vouchers",
+          icon: "vouchers",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "admin-refunds",
           href: "/admin/refunds",
           label: "Client refunds",
@@ -634,6 +788,18 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          // The same desk as Operations': no rider is called until the
+          // shop's finished, unpacked work is approved.
+          id: "admin-finished-work",
+          href: "/admin/finished-work",
+          label: "Finished work",
+          title: "Finished work",
+          icon: "finished-work",
+          ready: true,
+          placeholderBody: "",
+          count: "finished-work-waiting",
+        },
+        {
           id: "admin-late-production",
           href: "/admin/late-production",
           label: "Late production",
@@ -651,6 +817,45 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "shop-changes-needs-ops",
+        },
+      ],
+    },
+    {
+      // Legal library, consent evidence and the manual privacy queue
+      // (gridgo-api#202, LEGAL_API.md). Operations reads the library;
+      // only Super Admin edits and publishes.
+      id: "admin-legal",
+      section: "Manage",
+      label: "Legal & privacy",
+      icon: "group-legal",
+      items: [
+        {
+          id: "admin-legal-documents",
+          href: "/admin/legal",
+          label: "Legal documents",
+          title: "Legal documents",
+          icon: "legal",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-legal-acceptances",
+          href: "/admin/acceptance-log",
+          label: "Acceptance log",
+          title: "Acceptance log",
+          icon: "acceptances",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-privacy-requests",
+          href: "/admin/privacy-requests",
+          label: "Privacy requests",
+          title: "Privacy requests",
+          icon: "privacy",
+          ready: true,
+          placeholderBody: "",
+          count: "privacy-requests-open",
         },
       ],
     },
@@ -798,6 +1003,8 @@ export function contextTitleForPath(
   // Nested workspaces that share a list parent
   if (pathname.startsWith("/supplier/jobs/")) return "Order workspace";
   if (pathname === "/supplier/catalogue/new") return "New listing";
+  if (pathname === "/supplier/phone-app") return "Phone app";
+  if (pathname === "/supplier/notice") return "Opening update";
   if (pathname.startsWith("/supplier/catalogue/")) return "Listing";
   if (pathname === "/admin/catalogue/jobs/new") return "Add print job";
   if (pathname.startsWith("/admin/catalogue/jobs/")) return "Print job";
@@ -811,6 +1018,8 @@ export function contextTitleForPath(
     return "Refund case";
   }
   if (pathname.startsWith("/admin/supplier-products/")) return "Supplier product";
+  if (pathname.startsWith("/admin/vouchers/")) return "Voucher campaign";
+  if (/^\/(ops|admin)\/legal\/[^/]+/.test(pathname)) return "Legal document";
   if (/^\/(ops|admin)\/organizations\/[^/]+\/statement$/.test(pathname)) {
     return "Organization statement";
   }
@@ -823,6 +1032,7 @@ export function contextTitleForPath(
   ) {
     return "Shop's late jobs";
   }
+  if (/^\/(ops|admin)\/shop-hours\/[^/]+/.test(pathname)) return "Shop's hours";
   if (pathname === "/admin/escalations" || pathname.startsWith("/admin/escalations/")) {
     return "Pickup escalations";
   }

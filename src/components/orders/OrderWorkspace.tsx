@@ -1,6 +1,12 @@
 "use client";
 
 import { PackingPhotos } from "@/components/orders/PackingPhotos";
+import { SpecialInstructionsPanel } from "@/components/orders/SpecialInstructions";
+import {
+  changePaymentAwaitingStaff,
+  instructionsRowSummary,
+  instructionsRowVisible,
+} from "@/lib/order-changes";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -13,6 +19,9 @@ import {
   CircleCheck,
   CircleDot,
   Lock,
+  MapPin,
+  MessageSquareText,
+  ScrollText,
   ShieldAlert,
   TriangleAlert,
   type LucideIcon,
@@ -27,8 +36,14 @@ import {
   type WorkspaceStep,
 } from "@/app/ops/_lib/pipeline";
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
-import { CorrectProductionDialog } from "@/components/orders/CorrectProductionDialog";
+import {
+  CorrectProductionDialog,
+  type ForcedStepInput,
+} from "@/components/orders/CorrectProductionDialog";
+import { FinishedReviewPanel } from "@/components/handover/FinishedReviewPanel";
+import { HandoverTimeline } from "@/components/handover/HandoverTimeline";
 import { CounterCheck } from "@/components/orders/CounterCheck";
+import { DeliveryPinPanel } from "@/components/orders/DeliveryPin";
 import {
   DeadlinePanel,
   ShopAcceptancePanel,
@@ -45,6 +60,9 @@ import {
   DesignLinkList,
   OrderArtwork,
 } from "@/components/orders/DesignLinks";
+import { ArtworkAttachments } from "@/components/orders/ArtworkAttachments";
+import { ArtworkGuidanceRecord } from "@/components/orders/ArtworkGuidanceRecord";
+import { PrintLayoutRecord } from "@/components/orders/PrintLayoutRecord";
 import { BasketPanel } from "@/components/orders/BasketPanel";
 import { BasketPayment } from "@/components/orders/BasketPayment";
 import { OrderMoneyLines } from "@/components/orders/OrderMoneyLines";
@@ -52,6 +70,13 @@ import { PaymentSummary } from "@/components/orders/PaymentSummary";
 import { ShopModeChip } from "@/components/orders/ShopModeChip";
 import { ProgressGallery, WaitingForPhoto } from "@/components/orders/ProductionProgress";
 import { ResolveEscalationDialog } from "@/components/orders/ResolveEscalationDialog";
+import {
+  RiderLocationPanel,
+  riderLocationNeedsContact,
+  riderLocationSummary,
+  useOrderRiderTracking,
+  type OrderRiderTracking,
+} from "@/components/orders/RiderLocation";
 import { PayoutMilestones } from "@/components/orders/PayoutMilestones";
 import {
   ReleaseMilestoneDialog,
@@ -79,17 +104,26 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { installmentsAwaitingConfirmation } from "@/lib/api/constraints";
 import { counterRow, counterStep } from "@/lib/counter-check";
 import { deliveryEvidenceItems } from "@/lib/evidence";
+import {
+  pinPaymentAwaitingOperations,
+  pinPaymentCollectedMinor,
+  pinReceiverLine,
+  pinRowSummary,
+  presentPinConfirmation,
+} from "@/lib/delivery-pin";
+import { showsAttachmentList } from "@/lib/artwork-attachments";
 import { artworkSource, orderDesignLinks } from "@/lib/design-links";
-import { OrderAudit } from "./OrderAudit";
 import { QaChecklistRecord } from "./QaChecklist";
 import { QualityReview } from "./QualityReview";
 import {
   fileCheckOf,
+  fileCheckReviewSlot,
   fileCheckWaitLine,
   qaChecksFor,
   qaChecklistPayload,
   canDecideFileCheck,
 } from "@/lib/file-check";
+import { manilaWhen } from "@/lib/operating-hours";
 import {
   confirmBasketPayment,
   confirmPayment,
@@ -108,6 +142,7 @@ import {
   releaseMilestoneWithReceipt,
   resolveEscalation,
   transitionOrder,
+  reviewFinishedProducts,
   uploadRefundEvidence,
 } from "@/lib/api/client";
 import type {
@@ -144,13 +179,35 @@ import {
   canAddProgressPhoto,
   productionCorrections,
   productionPhotoMissing,
+  staffCorrections,
   productionProgressOf,
   progressPhotos,
   progressReached,
   type ProductionCorrection,
 } from "@/lib/production-progress";
 import { describeQuantity } from "@/lib/quantity";
-import { presentRefundStatus, refundIsActive, refundKindLabel } from "@/lib/refunds";
+import {
+  FORCED_BY_GRIDGO,
+  awaitingFinishedReview,
+  checksAForceSkips,
+  finishedReviewStatus,
+  forcedByGridgo,
+  forcedReasonCodes,
+  forcedReasonLabel,
+  forcedSummary,
+  handoverFlowOf,
+  handoverVisible,
+  latestReview,
+  ridersPack,
+  sentBackAttempts,
+  skippedCheckLabel,
+} from "@/lib/shop-handover";
+import {
+  presentRefundState,
+  presentRefundStatus,
+  refundIsActive,
+  refundKindLabel,
+} from "@/lib/refunds";
 import {
   failuresForOrder,
   recoveryHoldsWork,
@@ -158,6 +215,11 @@ import {
   rescheduleNeedsOperations,
 } from "@/lib/shop-changes";
 import { cn } from "@/lib/utils";
+import {
+  OrderAuditPanel,
+  orderAuditSummary,
+  useOrderAudit,
+} from "@/components/audit/OrderAuditPanel";
 
 type Props = {
   /** Parent queue the back link returns to. Super Admin has no orders rail. */
@@ -172,10 +234,14 @@ type SectionId =
   | "payment"
   | "qa"
   | "production"
+  | "instructions"
   | "shop"
   | "deadline"
+  | "handover"
+  | "delivery-pin"
   | "counter"
   | "delivery"
+  | "rider-location"
   | "payout"
   | "refund"
   | "physical-invoice"
@@ -236,6 +302,7 @@ export function OrderWorkspace({
   const [corrections, setCorrections] = useState<ProductionCorrection[]>([]);
   const [correcting, setCorrecting] = useState(false);
   const [correctError, setCorrectError] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<string | null>(null);
   const [filing, setFiling] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const fileKey = useRef<{ signature: string; key: string } | null>(null);
@@ -243,6 +310,8 @@ export function OrderWorkspace({
   const tree = queueHref.startsWith("/admin") ? "admin" : "ops";
   // Below the two-column breakpoint the order file stacks above the steps.
   const phone = usePhoneLayout();
+  // Read the first time the Audit row opens, never on every refresh.
+  const audit = useOrderAudit(orderId, open.includes("audit"));
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -342,6 +411,19 @@ export function OrderWorkspace({
 
   const steps = useMemo(() => (order ? stepsFor(order) : []), [order]);
 
+  // The rider's location while they have the order, re-read on its own clock
+  // because no push arrives for a GPS fix.
+  const riderTracking = useOrderRiderTracking(order);
+  const riderNeedsContact = riderLocationNeedsContact(riderTracking);
+  // A rider who has gone quiet is a decision for Operations: open the row
+  // when that starts, and leave it to the reader after.
+  useEffect(() => {
+    if (!riderNeedsContact) return;
+    setOpen((current) =>
+      current.includes("rider-location") ? current : [...current, "rider-location"],
+    );
+  }, [riderNeedsContact]);
+
   // Who counted and who answered, by name. Best effort: a missing person
   // reads "the rider", never a raw id.
   const people = useMemo(() => {
@@ -352,8 +434,12 @@ export function OrderWorkspace({
       if (escalation.riderId) ids.add(escalation.riderId);
       if (escalation.resolvedBy) ids.add(escalation.resolvedBy);
     }
-    for (const correction of corrections) {
+    for (const correction of staffCorrections(order?.forcedSteps, corrections)) {
       if (correction.actorId) ids.add(correction.actorId);
+    }
+    // Who decided the shop's finished work.
+    for (const attempt of order?.shopHandover?.attempts ?? []) {
+      if (attempt.review?.by) ids.add(attempt.review.by);
     }
     // Shops named in the acceptance, recovery and deadline rows.
     if (order?.shopAcceptance?.supplierId) ids.add(order.shopAcceptance.supplierId);
@@ -363,6 +449,16 @@ export function OrderWorkspace({
       ids.add(order.shopRecovery.proposal.supplierId);
     if (order?.rescheduleRequest?.supplierId) ids.add(order.rescheduleRequest.supplierId);
     for (const event of failures ?? []) if (event.supplierId) ids.add(event.supplierId);
+    // Who verified a delivery-pin payment.
+    const pinPayer = order?.deliveryPin?.change?.payment?.confirmedBy;
+    if (pinPayer) ids.add(pinPayer);
+    // The shop that ticked the notes, each change's shop and who verified its payment.
+    const ticked = order?.specialInstructionsAcknowledgement?.supplierId;
+    if (ticked) ids.add(ticked);
+    for (const change of order?.changeRequests ?? []) {
+      if (change.supplierId) ids.add(change.supplierId);
+      if (change.payment?.confirmedBy) ids.add(change.payment.confirmedBy);
+    }
     // Each shop group's rider, for the basket panel.
     for (const group of basket?.groups ?? []) {
       if (group.order.riderId) ids.add(group.order.riderId);
@@ -431,14 +527,19 @@ export function OrderWorkspace({
     }
   }
 
-  async function correctProduction(reason: string) {
+  async function correctProduction({ reasonCode, reason }: ForcedStepInput) {
     if (!order) return;
     setActing("correct-production");
     setCorrectError(null);
     try {
-      // The reason is the audit record; the note carries it into the history
-      // Operations and the shop read. The client's history never shows it.
-      await transitionOrder(order.id, "ready_for_dispatch", { reason, note: reason });
+      // The code and note are the forced-step record and the audit; the note
+      // also carries it into the history Operations and the shop read. The
+      // client's history never shows it, only "Forced by GRIDGO".
+      await transitionOrder(order.id, "ready_for_dispatch", {
+        reasonCode,
+        reason,
+        note: reason,
+      });
       setCorrecting(false);
       await load();
     } catch (err) {
@@ -447,6 +548,28 @@ export function OrderWorkspace({
           err,
           "The job could not be moved on. Refresh the order and try again.",
         ),
+      );
+    } finally {
+      setActing(null);
+    }
+  }
+
+  /** GRIDGO's answer to the shop's finished, unpacked work. */
+  async function reviewFinished(decision: "approved" | "rejected", note?: string) {
+    if (!order) return;
+    setActing("finished-review");
+    setReviewError(null);
+    try {
+      setOrder(
+        await reviewFinishedProducts(
+          order.id,
+          decision === "approved" ? { decision } : { decision, note: note ?? "" },
+        ),
+      );
+      await load();
+    } catch (err) {
+      setReviewError(
+        opsErrorMessage(err, "That decision did not go through. Refresh the order and try again."),
       );
     } finally {
       setActing(null);
@@ -560,7 +683,12 @@ export function OrderWorkspace({
             </div>
           ) : null}
         </div>
-        <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
+        <div className="flex flex-wrap items-center gap-2">
+          {forcedByGridgo(order) ? (
+            <StatusChip tone="warning" icon="triangle-alert" label={FORCED_BY_GRIDGO} />
+          ) : null}
+          <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
+        </div>
       </div>
 
       {isCancelled(order) ? (
@@ -667,7 +795,10 @@ export function OrderWorkspace({
                       transitionOrder(order.id, "cancelled", { reason: note }),
                     )
                   }
-                  corrections={corrections}
+                  corrections={
+                    // The Handover row carries the corrections when it shows.
+                    handoverVisible(order) ? [] : staffCorrections(order.forcedSteps, corrections)
+                  }
                   names={names}
                   onCorrectProduction={() => {
                     setCorrectError(null);
@@ -682,6 +813,27 @@ export function OrderWorkspace({
                   When a shop could not take, keep or meet the order: its
                   acceptance window and dropouts, then its deadline request.
                 */}
+                {/*
+                  The client's notes per item, the shop's tick that it read
+                  them, and any change it asked for with its money. A
+                  client's transfer for a change is the team's to verify.
+                */}
+                {step.id === "production" && instructionsRowVisible(order) ? (
+                  <SectionRow
+                    id="instructions"
+                    heading="Special instructions"
+                    summary={instructionsRowSummary(order)}
+                    marker={
+                      changePaymentAwaitingStaff(order)
+                        ? { icon: TriangleAlert, tone: "current" }
+                        : { icon: MessageSquareText, tone: "muted" }
+                    }
+                    trailing={changePaymentAwaitingStaff(order) ? "Your call" : undefined}
+                    current={changePaymentAwaitingStaff(order)}
+                  >
+                    <SpecialInstructionsPanel order={order} names={names} onUpdated={load} />
+                  </SectionRow>
+                ) : null}
                 {step.id === "production" && shopRowVisible(order) ? (
                   <SectionRow
                     id="shop"
@@ -729,6 +881,79 @@ export function OrderWorkspace({
                       tree={tree}
                       onResolved={load}
                     />
+                  </SectionRow>
+                ) : null}
+                {/*
+                  From finished work to the rider's hands, in this order's own
+                  flow: GRIDGO's review of the unpacked work (rider-packs), or
+                  the shop's own packing (older flow), and any forced step.
+                */}
+                {step.id === "production" && handoverVisible(order) ? (
+                  <SectionRow
+                    id="handover"
+                    heading="Handover"
+                    summary={handoverSummary(order)}
+                    marker={
+                      awaitingFinishedReview(order)
+                        ? { icon: TriangleAlert, tone: "current" }
+                        : finishedReviewStatus(order) === "approved" ||
+                            counterStep(order) === "done"
+                          ? { icon: CircleCheck, tone: "success" }
+                          : { icon: CircleDot, tone: "muted" }
+                    }
+                    trailing={awaitingFinishedReview(order) ? "Your call" : undefined}
+                    current={awaitingFinishedReview(order)}
+                  >
+                    <HandoverPanel
+                      order={order}
+                      corrections={staffCorrections(order.forcedSteps, corrections)}
+                      names={names}
+                      busy={busy}
+                      reviewing={acting === "finished-review"}
+                      reviewError={reviewError}
+                      onApprove={() => void reviewFinished("approved")}
+                      onSendBack={(reason) => void reviewFinished("rejected", reason)}
+                    />
+                  </SectionRow>
+                ) : null}
+                {/*
+                  When the shop finishes a door delivery the client is asked
+                  whether they will be at the pin: their answer, receiver and
+                  notes, and their one change with its money.
+                */}
+                {step.id === "production" && order.deliveryPin ? (
+                  <SectionRow
+                    id="delivery-pin"
+                    heading="Delivery pin"
+                    summary={pinRowSummary(order)}
+                    marker={
+                      pinPaymentAwaitingOperations(order)
+                        ? { icon: TriangleAlert, tone: "current" }
+                        : order.deliveryPin.status === "confirmed"
+                          ? { icon: CircleCheck, tone: "success" }
+                          : { icon: MapPin, tone: "muted" }
+                    }
+                    trailing={pinPaymentAwaitingOperations(order) ? "Your call" : undefined}
+                    current={pinPaymentAwaitingOperations(order)}
+                  >
+                    <DeliveryPinPanel
+                      order={order}
+                      refunds={refunds}
+                      tree={tree}
+                      names={names}
+                      onUpdated={load}
+                    />
+                  </SectionRow>
+                ) : null}
+                {step.id === "delivery" && riderTracking.shown ? (
+                  <SectionRow
+                    id="rider-location"
+                    heading="Rider location"
+                    summary={riderLocationSummary(riderTracking)}
+                    marker={riderLocationMarker(riderTracking)}
+                    trailing={riderNeedsContact ? "Your call" : undefined}
+                  >
+                    <RiderLocationPanel state={riderTracking} tree={tree} />
                   </SectionRow>
                 ) : null}
                 {step.id === "production" ? (
@@ -833,11 +1058,11 @@ export function OrderWorkspace({
 
             <SectionRow
               id="audit"
-              heading="Audit record"
-              summary="Who changed this order, and what it was before."
-              marker={{ icon: CircleDot, tone: "muted" }}
+              heading="Audit"
+              summary={orderAuditSummary(audit, tree)}
+              marker={{ icon: ScrollText, tone: "muted" }}
             >
-              <OrderAudit orderId={order.id} />
+              <OrderAuditPanel orderId={order.id} tree={tree} state={audit} names={names} />
             </SectionRow>
           </Accordion>
 
@@ -866,6 +1091,9 @@ export function OrderWorkspace({
 
       <CorrectProductionDialog
         open={correcting}
+        ridersPack={ridersPack(order)}
+        reasonCodes={forcedReasonCodes(order)}
+        skippedChecks={checksAForceSkips(order)}
         photoMissing={productionPhotoMissing(order)}
         busy={acting === "correct-production"}
         error={correctError}
@@ -873,7 +1101,7 @@ export function OrderWorkspace({
           setCorrecting(false);
           setCorrectError(null);
         }}
-        onConfirm={(reason) => void correctProduction(reason)}
+        onConfirm={(input) => void correctProduction(input)}
       />
 
       <FileRefundDialog
@@ -920,6 +1148,9 @@ export function defaultOpenSections(order: Order): SectionId[] {
   if (releasableMilestones(order).length > 0) ids.add("payout");
   if (recoveryNeedsOperations(order.shopRecovery)) ids.add("shop");
   if (rescheduleNeedsOperations(order.rescheduleRequest)) ids.add("deadline");
+  if (awaitingFinishedReview(order)) ids.add("handover");
+  if (pinPaymentAwaitingOperations(order)) ids.add("delivery-pin");
+  if (changePaymentAwaitingStaff(order)) ids.add("instructions");
   if (isCancelled(order)) ids.add("history");
   return [...ids];
 }
@@ -965,6 +1196,115 @@ function CounterRow({
         onResolve={onResolve}
       />
     </SectionRow>
+  );
+}
+
+/** The Handover row's closed line, in the order's own flow. */
+function handoverSummary(order: Order): string {
+  const status = finishedReviewStatus(order);
+  if (status === "pending") {
+    return "The shop's photos of the finished, unpacked work are waiting for your review.";
+  }
+  if (status === "sent_back") {
+    const last = sentBackAttempts(order).at(-1);
+    return last
+      ? `Sent back ${formatDateTime(last.review.at)}. Waiting for the shop's new photos.`
+      : "Sent back. Waiting for the shop's new photos.";
+  }
+  if (order.pickupChecklist?.status === "passed") {
+    return order.pickupChecklist.handoffSignature
+      ? `Handed to the rider ${formatDateTime(order.pickupChecklist.handoffSignature.signedAt)}.`
+      : "Handed to the rider.";
+  }
+  if (order.pickupChecklist?.status === "inspected") {
+    return "The rider checked the unpacked items. Packing and the shop's signature are next.";
+  }
+  if (status === "approved") {
+    const review = latestReview(order);
+    return review
+      ? `Finished work approved ${formatDateTime(review.at)}. The rider packs it in front of the shop.`
+      : "Finished work approved. The rider packs it in front of the shop.";
+  }
+  if (status === "not_submitted") return "The shop sends photos of the finished, unpacked work when printing is done.";
+  if (handoverFlowOf(order) === "legacy") {
+    // Present tense: a correction can reach dispatch with nothing packed on record.
+    return "Older handover: the shop packs the job itself.";
+  }
+  return forcedByGridgo(order) ? forcedSummary(order) : "Handover steps for this order.";
+}
+
+/**
+ * The Handover row: GRIDGO's decision when the shop's finished work is
+ * waiting, the steps in this order's flow, then every forced step with its
+ * reason and the checks it went past.
+ */
+function HandoverPanel({
+  order,
+  corrections,
+  names,
+  busy,
+  reviewing,
+  reviewError,
+  onApprove,
+  onSendBack,
+}: {
+  order: Order;
+  corrections: ProductionCorrection[];
+  names: Record<string, string>;
+  busy: boolean;
+  reviewing: boolean;
+  reviewError: string | null;
+  onApprove: () => void;
+  onSendBack: (reason: string) => void;
+}) {
+  const reviews = order.shopHandover?.attempts ?? [];
+  return (
+    <div className="flex flex-col gap-4">
+      {awaitingFinishedReview(order) ? (
+        <FinishedReviewPanel
+          order={order}
+          shopName={order.supplierId ? names[order.supplierId] || null : null}
+          busy={busy || reviewing}
+          error={reviewError}
+          onApprove={onApprove}
+          onSendBack={onSendBack}
+          ticket={false}
+        />
+      ) : null}
+      <HandoverTimeline order={order} />
+      {reviews.length ? (
+        <section aria-label="Finished-work reviews" className="flex flex-col gap-2">
+          <h3 className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+            Reviews of the finished work
+          </h3>
+          <ol className="m-0 flex list-none flex-col gap-2 p-0">
+            {reviews.map((attempt) => {
+              const approved = attempt.review.decision === "approved";
+              const who = (attempt.review.by && names[attempt.review.by]) || "GRIDGO";
+              return (
+                <li key={attempt.review.at} className="flex flex-col gap-1">
+                  <span className="text-caption text-text-muted">
+                    {approved ? "Approved" : "Sent back"} by {who}, {formatDateTime(attempt.review.at)}.{" "}
+                    {attempt.finished.photoFileIds.length === 1
+                      ? "1 photo"
+                      : `${attempt.finished.photoFileIds.length} photos`}{" "}
+                    sent {formatDateTime(attempt.finished.at)}.
+                  </span>
+                  {!approved && attempt.review.note ? (
+                    <blockquote className="border-outline text-body text-text-secondary m-0 border-l-2 pl-3">
+                      {attempt.review.note}
+                    </blockquote>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+      ) : null}
+      {corrections.map((correction) => (
+        <CorrectionNote key={correction.id} order={order} correction={correction} names={names} />
+      ))}
+    </div>
   );
 }
 
@@ -1029,6 +1369,13 @@ const SHOP_MARKER: Record<ReturnType<typeof shopRowTone>, MarkerSpec> = {
   done: { icon: CircleCheck, tone: "success" },
   quiet: { icon: CircleDot, tone: "muted" },
 };
+
+function riderLocationMarker(state: OrderRiderTracking): MarkerSpec {
+  if (!state.active) return { icon: CircleDot, tone: "muted" };
+  if (state.view?.needsContact) return { icon: TriangleAlert, tone: "current" };
+  // A live location is a state, not a finished step: no green check.
+  return { icon: MapPin, tone: "current" };
+}
 
 function Marker({ icon: Icon, tone }: MarkerSpec) {
   return (
@@ -1148,8 +1495,13 @@ function StepRow({
   const current = step.status === "current";
   const artwork = artworkSource(order);
   const designLinks = orderDesignLinks(order);
+  const attachmentList = showsAttachmentList(order);
   const qaChecks = qaChecksFor(order);
   const busy = acting !== null;
+  // While GRIDGO is closed the API refuses a pass or a send-back on a new
+  // order (OPERATING_HOURS_API.md); cancelling stays open.
+  const reviewSlot = step.id === "qa" ? fileCheckReviewSlot(order) : null;
+  const reviewClosed = Boolean(reviewSlot?.closed && reviewSlot.scheduledAt !== null);
   const trailing =
     step.id === "payment"
       ? paymentProgress(order).label
@@ -1200,17 +1552,38 @@ function StepRow({
               A design link is the one piece of artwork the rail cannot show:
               the file is behind it. Put it where the check is made.
             */}
-            {designLinks.length ? (
+            {attachmentList ? (
+              // Several files and links on an item: every one of them is
+              // listed here, item by item, so each can be opened and checked.
+              <ArtworkAttachments order={order} audience="staff" review />
+            ) : designLinks.length ? (
               <div className="flex flex-col gap-2">
                 <DesignLinkLead fileToo={artwork !== "link"} />
                 <DesignLinkList links={designLinks} />
               </div>
             ) : null}
+            {reviewClosed && reviewSlot?.scheduledAt != null ? (
+              <p
+                className="text-body text-text-primary m-0 rounded-card border border-outline bg-surface-variant p-3"
+                role="note"
+                data-testid="workspace-review-closed"
+              >
+                GRIDGO is closed. This file can be approved or sent back from{" "}
+                {manilaWhen(reviewSlot.scheduledAt)}. You can open the artwork and tick the
+                checks now.
+              </p>
+            ) : null}
+            {/*
+              What each file measured against its product type, and which
+              warnings the client accepted, before the file is passed.
+            */}
+            <ArtworkGuidanceRecord order={order} audience="staff" />
             <QualityReview
               order={order}
               checked={checked}
               onCheck={onCheck}
               disabled={busy}
+              sendBackClosed={reviewClosed}
               note={note}
               onNote={onNote}
               onRequestFile={onRequestFile}
@@ -1219,14 +1592,16 @@ function StepRow({
               <Button
                 variant="primary"
                 onClick={onApprove}
-                disabled={busy || qaChecks.some((check) => !checked[check.id])}
+                disabled={
+                  busy || reviewClosed || qaChecks.some((check) => !checked[check.id])
+                }
               >
                 {acting === "approve" ? "Sending…" : "Approve and send to the shop"}
               </Button>
               <Button
                 variant="secondary"
                 onClick={onCorrection}
-                disabled={busy || !note.trim()}
+                disabled={busy || reviewClosed || !note.trim()}
               >
                 Send back for changes
               </Button>
@@ -1568,7 +1943,7 @@ function ProductionStep({
       <PackingPhotos order={order} />
 
       {corrections.map((correction) => (
-        <CorrectionNote key={correction.id} correction={correction} names={names} />
+        <CorrectionNote key={correction.id} order={order} correction={correction} names={names} />
       ))}
 
       {filed.map(({ milestone, proofs }) => (
@@ -1598,12 +1973,16 @@ function ProductionStep({
       {correctable ? (
         <div className="border-outline-subtle flex flex-col items-start gap-2 border-t pt-3">
           <p className="text-caption text-text-muted m-0 max-w-prose">
-            {photoMissing
-              ? "If you have seen the finished job yourself, you can move it on without the photo. You will be asked why."
-              : "The shop has not marked this job ready for dispatch yet. You can move it on for them. You will be asked why."}
+            {ridersPack(order)
+              ? awaitingFinishedReview(order)
+                ? "Review the finished work in the Handover row. Force it past the review only if the photos cannot reach you; you will be asked why."
+                : "If you have checked the finished work yourself, you can force this job to ready for rider pickup. You will be asked why, and the order shows it was forced."
+              : photoMissing
+                ? "If you have seen the finished job yourself, you can move it on without the photo. You will be asked why."
+                : "The shop has not marked this job ready for dispatch yet. You can move it on for them. You will be asked why."}
           </p>
           <Button variant="secondary" disabled={busy} onClick={onCorrect}>
-            Move to ready for dispatch
+            {ridersPack(order) ? "Force to ready for pickup" : "Move to ready for dispatch"}
           </Button>
         </div>
       ) : null}
@@ -1613,17 +1992,20 @@ function ProductionStep({
 
 /** Who moved the job, the edge, whether a photo existed, and the reason in their words. */
 function CorrectionNote({
+  order,
   correction,
   names,
 }: {
+  /** The order's flow names the states (rider-packs has no shop packing). */
+  order: Order;
   correction: ProductionCorrection;
   names: Record<string, string>;
 }) {
   const who =
     (correction.actorId && names[correction.actorId]) ||
     (correction.actorRole === "super_admin" ? "Super Admin" : "Operations");
-  const from = correction.from ? presentOrderState(correction.from).label : null;
-  const to = correction.to ? presentOrderState(correction.to).label : null;
+  const from = correction.from ? presentOrderState(correction.from, order).label : null;
+  const to = correction.to ? presentOrderState(correction.to, order).label : null;
   return (
     <div
       className="border-outline bg-surface-variant rounded-card flex gap-3 border p-3"
@@ -1641,13 +2023,21 @@ function CorrectionNote({
           className="text-body text-text-primary m-0"
           style={{ fontFamily: "var(--font-medium)" }}
         >
-          Moved on by {who}
+          {correction.reasonCode ? `${FORCED_BY_GRIDGO}: ${who}` : `Moved on by ${who}`}
         </p>
         <p className="text-caption text-text-muted m-0">
           {formatDateTime(correction.at)}
           {from && to ? `. From ${from} to ${to}.` : "."}
-          {correction.photoMissing ? " No progress photo was on file." : ""}
+          {correction.reasonCode ? ` Reason: ${forcedReasonLabel(correction.reasonCode)}.` : ""}
+          {!correction.skippedChecks.length && correction.photoMissing
+            ? " No progress photo was on file."
+            : ""}
         </p>
+        {correction.skippedChecks.length ? (
+          <p className="text-caption text-text-muted m-0">
+            Skipped: {correction.skippedChecks.map(skippedCheckLabel).join("; ")}.
+          </p>
+        ) : null}
         {correction.reason ? (
           <blockquote className="border-outline text-body text-text-secondary m-0 mt-1 border-l-2 pl-3">
             {correction.reason}
@@ -1813,12 +2203,22 @@ function SpecRail({
               </div>
             ))}
         </dl>
+        {/* The client's layout is part of the agreed spec, frozen at checkout. */}
+        <PrintLayoutRecord order={order} className="mt-3" />
       </section>
 
       {hasArtwork ? (
         <section className="gg-card p-3">
           <h2 className="text-overline text-text-muted m-0 mb-2">Artwork</h2>
           <OrderArtwork order={order} />
+          {/*
+            While the file check is open the record sits in the Quality check
+            step, where the decision is made. After it, it stays here: the
+            evidence when a claim about a soft or off-colour print comes in.
+          */}
+          {canDecideFileCheck(order) ? null : (
+            <ArtworkGuidanceRecord order={order} audience="staff" className="mt-3" />
+          )}
         </section>
       ) : null}
 
@@ -1860,6 +2260,15 @@ function SpecRail({
           <dd className="text-body text-text-secondary m-0 tabular-nums">
             {paidMinor != null ? formatPhp(paidMinor) : "—"}
           </dd>
+          {/* A dearer pin's top-up is its own collection, never an installment. */}
+          {pinPaymentCollectedMinor(order) !== null ? (
+            <>
+              <dt className="text-caption text-text-muted">Paid for the pin change</dt>
+              <dd className="text-body text-text-secondary m-0 tabular-nums">
+                {formatPhp(pinPaymentCollectedMinor(order)!)}
+              </dd>
+            </>
+          ) : null}
           <dt className="text-caption text-text-muted">Remaining</dt>
           <dd className="text-body text-text-secondary m-0 tabular-nums">
             {remainingMinor != null ? formatPhp(remainingMinor) : "—"}
@@ -1888,6 +2297,14 @@ function SpecRail({
       <section className="gg-card p-3">
         <h2 className="text-overline text-text-muted m-0 mb-2">Delivery</h2>
         <p className="text-body text-text-secondary m-0">{order.address || "Not set"}</p>
+        {order.deliveryPin ? (
+          <div className="mt-2 flex flex-col items-start gap-1">
+            <StatusChip {...presentPinConfirmation(order.deliveryPin)} />
+            <span className="text-caption text-text-muted">
+              Receiver: {pinReceiverLine(order.deliveryPin)}
+            </span>
+          </div>
+        ) : null}
         {order.readyBy ? (
           <p className="text-caption text-text-muted m-0 mt-2">
             Client was promised {formatDateTime(order.readyBy)}
@@ -1938,6 +2355,13 @@ function latestRefund(refunds: RefundRequest[] | null): RefundRequest | null {
   return sorted.find(refundIsActive) ?? sorted[0];
 }
 
+/** A delivery-fee credit starts reserved and waiting on the client's QR; say so. */
+function refundRowState(refund: RefundRequest) {
+  return refund.kind === "delivery_pin"
+    ? presentRefundState(refund)
+    : presentRefundStatus(refund.status);
+}
+
 function refundRowSummary(order: Order, refunds: RefundRequest[] | null): string {
   const latest = latestRefund(refunds);
   if (!latest) {
@@ -1946,7 +2370,7 @@ function refundRowSummary(order: Order, refunds: RefundRequest[] | null): string
     }
     return "No refund requested.";
   }
-  const status = presentRefundStatus(latest.status).label;
+  const status = refundRowState(latest).label;
   const amount = latest.payment?.amountMinor ?? latest.settlement?.totalMinor;
   return `${refundKindLabel(latest.kind)}: ${status}${
     amount !== undefined ? `, ${formatPhp(amount)}` : ""
@@ -2026,7 +2450,7 @@ function RefundRowPanel({
       {sorted.length ? (
         <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {sorted.map((refund) => {
-            const status = presentRefundStatus(refund.status);
+            const status = refundRowState(refund);
             const amount = refund.payment?.amountMinor ?? refund.settlement?.totalMinor;
             return (
               <li
@@ -2075,6 +2499,11 @@ function RefundRowPanel({
             </Button>
           </div>
         </div>
+      ) : refunds?.some((refund) => refund.kind === "delivery_pin" && refundIsActive(refund)) ? (
+        <p className="text-caption text-text-muted m-0">
+          The delivery-fee credit is still open. Finish paying it before filing another
+          refund on this order; only one can be open at a time.
+        </p>
       ) : canFileRefund(order, refunds) && late ? (
         <p className="text-caption text-text-muted m-0">
           The complaint deadline has passed. Super Admin files and decides late refund

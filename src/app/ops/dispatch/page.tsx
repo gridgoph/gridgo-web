@@ -7,16 +7,11 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Bike, Eye, MapPin, PackageCheck, RefreshCw } from "lucide-react";
 
-import {
-  filterDispatchOrders,
-  formatCoords,
-  locationTone,
-  presentLocation,
-  presentRouteAction,
-  type LocationView,
-} from "@/app/ops/_lib/dispatch";
+import { filterDispatchOrders, presentRouteAction } from "@/app/ops/_lib/dispatch";
 import { presentZone } from "@/app/ops/_lib/present";
+import { StaleRiders } from "@/components/riders/StaleRiders";
 import { VehicleGlyph } from "@/components/riders/VehicleGlyph";
+import { useRiderLocations } from "@/components/riders/useRiderLocations";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -38,62 +33,90 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { StatusChip } from "@/components/ui/StatusChip";
 import {
   ApiError,
-  getDispatchLocation,
   listDispatchOffers,
   listOrders,
   listUsers,
   recordCollection,
   transitionOrder,
 } from "@/lib/api/client";
-import type { Order, User } from "@/lib/api/types";
+import type { Order, RiderLocation, User } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime } from "@/lib/format";
-import { presentOrderState, presentTimelineActor } from "@/lib/order-state";
+import {
+  presentOrderState,
+  presentTimelineActor,
+  type StatusIconName,
+  type StatusTone,
+} from "@/lib/order-state";
+import {
+  ACTIVE_TRACKING_STATES,
+  freshnessIcon,
+  freshnessLabel,
+  freshnessTone,
+  ridersToContact,
+  type RiderLocationView,
+} from "@/lib/rider-tracking";
 import { vehicleSummary } from "@/lib/vehicle";
+import {
+  pinDispatchBlocker,
+  pinNotesLine,
+  pinReceiverLine,
+  presentPinForDispatch,
+} from "@/lib/delivery-pin";
 
 /** Demo rider when order has none — same honesty as QA workspace. */
 const DEMO_RIDER_ID = "user_rider";
 
-type LocationMap = Record<string, LocationView>;
+/** The Location cell for one order: the rider's freshness, or why there is none. */
+type LocationCell = {
+  label: string;
+  tone: StatusTone;
+  icon: StatusIconName;
+  view: RiderLocationView | null;
+};
 
-function LocationCell({ order, location }: { order: Order; location: LocationView }) {
+function locationCell(
+  order: Order,
+  row: RiderLocation | undefined,
+  view: ((row: RiderLocation) => RiderLocationView) | null,
+): LocationCell {
+  if (order.state === "ready_for_dispatch") {
+    return { label: "No rider yet", tone: "neutral", icon: "clock", view: null };
+  }
+  if (!order.riderId || !ACTIVE_TRACKING_STATES.has(order.state)) {
+    return { label: "Not tracked", tone: "neutral", icon: "circle-dot", view: null };
+  }
+  if (!row || !view) {
+    return { label: "Location not read yet", tone: "neutral", icon: "clock", view: null };
+  }
+  const v = view(row);
+  return {
+    label: freshnessLabel(v),
+    tone: freshnessTone(v.freshness),
+    icon: freshnessIcon(v.freshness),
+    view: v,
+  };
+}
+
+function LocationColumn({ order, cell }: { order: Order; cell: LocationCell }) {
   const reasonId = useId();
-  const route = presentRouteAction(location, order.riderId);
+  const route = presentRouteAction(order.riderId, cell.view, cell.label);
   return (
     <div className="flex flex-col items-start gap-1">
-      <StatusChip
-        tone={locationTone(location.freshness)}
-        label={location.label}
-        icon={
-          location.freshness === "live"
-            ? "circle-check"
-            : location.freshness === "stale"
-              ? "triangle-alert"
-              : "clock"
-        }
-      />
-      {location.lat != null && location.lng != null ? (
+      <StatusChip tone={cell.tone} label={cell.label} icon={cell.icon} />
+      {cell.view?.lastUpdatedAt ? (
         <span className="text-caption text-text-muted">
-          {formatCoords(location.lat, location.lng)}
-          {location.freshness === "stale" && location.at
-            ? ` · last ${formatDateTime(location.at)}`
-            : location.at
-              ? ` · ${formatDateTime(location.at)}`
-              : ""}
+          Last ping {formatDateTime(cell.view.lastUpdatedAt)}
         </span>
       ) : null}
-      {route.enabled && route.href ? (
-        <Button
-          variant="secondary"
-          nativeButton={false}
-          render={<Link href={route.href} />}
-        >
-          Show route
+      {route.href ? (
+        <Button variant="secondary" nativeButton={false} render={<Link href={route.href} />}>
+          {route.label}
         </Button>
       ) : (
         <>
           <Button variant="secondary" disabled aria-describedby={reasonId}>
-            Show route
+            {route.label}
           </Button>
           <span id={reasonId} className="text-caption text-text-muted">
             {route.reason}
@@ -112,10 +135,8 @@ export default function OpsDispatchPage() {
   const [offers, setOffers] = useState<Order[]>([]);
   /** Rider directory, so a row shows who is driving and what they drive. */
   const [ridersById, setRidersById] = useState<Record<string, User>>({});
-  const [locations, setLocations] = useState<LocationMap>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [locLoading, setLocLoading] = useState(false);
   const [acting, setActing] = useState<string | null>(null);
   const [releasing, setReleasing] = useState<Order | null>(null);
   const [collector, setCollector] = useState("");
@@ -134,8 +155,6 @@ export default function OpsDispatchPage() {
         setOrders(all);
         setOffers(offerList);
         setRidersById(Object.fromEntries(riderList.map((rider) => [rider.id, rider])));
-        // Locations are session-memory only — never localStorage / never treated as durable.
-        setLocations({});
       } catch (err) {
         setOrders(null);
         if (err instanceof ApiError) {
@@ -157,42 +176,17 @@ export default function OpsDispatchPage() {
 
   const board = useMemo(() => (orders ? filterDispatchOrders(orders) : []), [orders]);
 
-  const refreshLocations = useSerializedLoad(
-    useCallback(async (list: Order[]) => {
-      const trackable = list.filter(
-        (o) =>
-          o.riderId &&
-          (o.state === "picked_up" ||
-            o.state === "out_for_delivery" ||
-            o.state === "rider_assigned"),
-      );
-      if (!trackable.length) {
-        setLocations({});
-        return;
-      }
-      setLocLoading(true);
-      const next: LocationMap = {};
-      await Promise.all(
-        trackable.map(async (o) => {
-          try {
-            const ping = await getDispatchLocation(o.id);
-            next[o.id] = presentLocation(ping, o.state);
-          } catch {
-            next[o.id] = presentLocation(null, o.state);
-          }
-        }),
-      );
-      // In-memory only for this view refresh.
-      setLocations(next);
-      setLocLoading(false);
-    }, []),
+  // Every rider on a trip in one read, re-read at the configured interval.
+  // Session memory only: nothing about a rider's position is stored here.
+  const locations = useRiderLocations();
+  const riderRows = useMemo(
+    () => new Map((locations.riders ?? []).map((row) => [row.riderId, row])),
+    [locations.riders],
   );
-
-  useEffect(() => {
-    if (board.length) void refreshLocations(board);
-  }, [board, refreshLocations]);
-
-  useLiveReload("location", () => refreshLocations(board));
+  const toContact = useMemo(
+    () => ridersToContact(locations.riders ?? [], locations.view),
+    [locations.riders, locations.view],
+  );
 
   /*
     Releasing a collected order at the counter.
@@ -238,7 +232,11 @@ export default function OpsDispatchPage() {
       await load();
     } catch (err) {
       if (err instanceof ApiError) {
-        setActionError(`Could not assign rider (${err.code}).`);
+        setActionError(
+          err.code === "delivery_pin_payment_pending"
+            ? "The client's delivery-pin payment is waiting on Operations. Verify or reject it on the order, then assign a rider."
+            : `Could not assign rider (${err.code}).`,
+        );
       } else {
         setActionError("Network error while assigning rider.");
       }
@@ -313,13 +311,59 @@ export default function OpsDispatchPage() {
       {
         id: "location",
         header: "Location",
-        sortValue: (o) => locations[o.id]?.label ?? "",
+        sortValue: (o) =>
+          locationCell(o, riderRows.get(o.riderId ?? ""), locations.view).label,
         cell: (o) => (
-          <LocationCell
+          <LocationColumn
             order={o}
-            location={locations[o.id] ?? presentLocation(null, o.state)}
+            cell={locationCell(o, riderRows.get(o.riderId ?? ""), locations.view)}
           />
         ),
+      },
+      {
+        /*
+          Whether the client will be at the pin, who receives it and the notes
+          for the rider. A pin payment waiting on Operations holds dispatch
+          until someone decides it on the order.
+        */
+        id: "pin",
+        header: "Delivery pin",
+        sortValue: (o) => presentPinForDispatch(o)?.label ?? "",
+        filterValue: (o) =>
+          o.deliveryPin ? `${pinReceiverLine(o.deliveryPin)} ${o.deliveryPin.notes}` : "",
+        cell: (o) => {
+          const pin = o.deliveryPin;
+          const chip = presentPinForDispatch(o);
+          if (!pin || !chip) {
+            return <span className="text-body text-text-muted">No pin check</span>;
+          }
+          const blocker = pinDispatchBlocker(o);
+          return (
+            <div className="flex max-w-64 flex-col items-start gap-1 whitespace-normal">
+              <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} />
+              {blocker ? (
+                <Link
+                  href={`/ops/orders/${o.id}`}
+                  className="text-caption text-text-primary underline-offset-4 hover:underline"
+                >
+                  Dispatch held. Verify the pin payment on the order
+                </Link>
+              ) : pin.status === "confirmed" && pin.confirmedAt ? (
+                <span className="text-caption text-text-muted">
+                  {formatDateTime(pin.confirmedAt)}
+                </span>
+              ) : null}
+              <span className="text-caption text-text-secondary block max-w-64 break-words">
+                Receiver: {pinReceiverLine(pin)}
+              </span>
+              {pin.notes.trim() ? (
+                <span className="text-caption text-text-muted block max-w-64 line-clamp-2 break-words">
+                  Notes: {pinNotesLine(pin)}
+                </span>
+              ) : null}
+            </div>
+          );
+        },
       },
       {
         id: "promised",
@@ -332,7 +376,7 @@ export default function OpsDispatchPage() {
         ),
       },
     ],
-    [locations, focusOrder, ridersById],
+    [riderRows, locations.view, focusOrder, ridersById],
   );
 
   if (error) {
@@ -354,17 +398,18 @@ export default function OpsDispatchPage() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Riders and orders in delivery states. Location is re-fetched only — stale pings
-          are never shown as live, and nothing is stored on this device.
+          Riders and orders in delivery states. Rider locations update every{" "}
+          {locations.tracking.refreshIntervalSeconds} seconds; a stale one is never shown
+          as live, and nothing is stored on this device.
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
             variant="secondary"
-            disabled={locLoading}
-            onClick={() => void refreshLocations(board)}
+            disabled={locations.loading}
+            onClick={() => void locations.reload()}
           >
             <RefreshCw size={16} aria-hidden />
-            {locLoading ? "Refreshing location…" : "Refresh location"}
+            {locations.loading ? "Refreshing location…" : "Refresh location"}
           </Button>
           <Button variant="secondary" disabled={loading} onClick={() => void load()}>
             Refresh board
@@ -377,6 +422,21 @@ export default function OpsDispatchPage() {
           {actionError}
         </p>
       ) : null}
+
+      {locations.error ? (
+        <p className="text-body text-error m-0" role="alert">
+          {locations.error}
+        </p>
+      ) : null}
+
+      <StaleRiders
+        entries={toContact}
+        activeCount={locations.riders?.length ?? 0}
+        staleAfterSeconds={locations.tracking.staleAfterSeconds}
+        phoneOf={(id) => ridersById[id]?.phone}
+        tree="ops"
+        orderHref={(id) => `/ops/orders/${id}`}
+      />
 
       {offers.length > 0 ? (
         <section className="gg-card" aria-labelledby="offers-heading">
@@ -430,9 +490,13 @@ export default function OpsDispatchPage() {
             <>
               {o.state === "ready_for_dispatch" ? (
                 <DataTableRowAction
-                  label="Assign rider"
+                  label={
+                    pinDispatchBlocker(o)
+                      ? "Assign rider (verify the pin payment first)"
+                      : "Assign rider"
+                  }
                   icon={Bike}
-                  disabled={acting !== null}
+                  disabled={acting !== null || pinDispatchBlocker(o) !== null}
                   onClick={() => void assignRider(o)}
                 />
               ) : null}
@@ -501,9 +565,8 @@ export default function OpsDispatchPage() {
         <MapPin size={14} className="mt-0.5 shrink-0" aria-hidden />
         <span>
           Assign rider uses the demo rider when no directory endpoint exists. The vehicle
-          shown is the one on the rider&apos;s profile. Tracking becomes active after
-          pickup; before that the board shows “Tracking starts at pickup”, not a fake live
-          pin.
+          shown is the one on the rider&apos;s profile. Tracking runs from the moment a
+          rider accepts the job until delivery.
         </span>
       </p>
     </div>

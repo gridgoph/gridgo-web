@@ -13,7 +13,11 @@
  */
 
 import type { Order, TimelineEntry } from "@/lib/api/types";
-import { presentOrderState, presentTimelineActor } from "@/lib/order-state";
+import {
+  presentOrderState,
+  presentTimelineActor,
+  presentTimelineNote,
+} from "@/lib/order-state";
 
 export type JobActivity = {
   /** Epoch ms of the most recent movement, or null when the API sent none. */
@@ -67,8 +71,9 @@ export function jobActivity(job: Order): JobActivity {
 
   // The note is the shop's own sentence when there is one; the state label is
   // the fallback, so this never renders a snake_case value.
+  const note = entry?.note?.trim();
   const what =
-    entry?.note?.trim() ||
+    (note ? presentTimelineNote(note) : "") ||
     (entry?.state ? presentOrderState(entry.state).label : "") ||
     presentOrderState(job.state).label;
 
@@ -76,7 +81,7 @@ export function jobActivity(job: Order): JobActivity {
     at,
     iso,
     what,
-    who: entry?.by ? presentTimelineActor(entry.by) : "",
+    who: presentTimelineActor(entry?.by),
   };
 }
 

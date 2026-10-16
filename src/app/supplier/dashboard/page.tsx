@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { Banknote, CircleCheck, PackageCheck, Timer } from "lucide-react";
 
+import { PhoneAppInvite } from "@/components/pwa/PhoneApp";
 import { Button } from "@/components/ui/button";
 import {
   ChartContainer,
@@ -145,21 +146,25 @@ export default function SupplierDashboardPage() {
 
   if (!rows.length) {
     return (
-      <EmptyState
-        title="Nothing to measure yet"
-        body="Your first assigned job starts this dashboard. Earnings, on-time delivery and production time all come from the jobs you work."
-        action={
-          <Button variant="secondary" onClick={() => void load()}>
-            Refresh
-          </Button>
-        }
-      />
+      <div className="flex flex-col gap-4">
+        <PhoneAppInvite />
+        <EmptyState
+          title="Nothing to measure yet"
+          body="Your first assigned job starts this dashboard. Earnings, on-time delivery and production time all come from the jobs you work."
+          action={
+            <Button variant="secondary" onClick={() => void load()}>
+              Refresh
+            </Button>
+          }
+        />
+      </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <PhoneAppInvite />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label="On the board"
           value={formatPhp(onTheBoardMinor(rows))}

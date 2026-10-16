@@ -31,7 +31,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
 import type {
   RefundAttempt,
-  RefundKind,
+  FileableRefundKind,
   SupplierPayoutAccount,
   SupplierSettlementPayout,
 } from "@/lib/api/types";
@@ -641,7 +641,7 @@ export function SettlementPayoutDialog({
 // File a request for the client
 // ---------------------------------------------------------------------------
 
-export type FiledRequest = { kind: RefundKind; reason: string; evidence: File | null };
+export type FiledRequest = { kind: FileableRefundKind; reason: string; evidence: File | null };
 
 export function FileRefundDialog({
   open,
@@ -659,7 +659,7 @@ export function FileRefundDialog({
   onCancel: () => void;
   onFile: (request: FiledRequest) => void;
 }) {
-  const [kind, setKind] = useState<RefundKind>("cancellation");
+  const [kind, setKind] = useState<FileableRefundKind>("cancellation");
   const [reason, setReason] = useState("");
   const [evidence, setEvidence] = useState<File | null>(null);
   useEffect(() => {
@@ -686,7 +686,7 @@ export function FileRefundDialog({
             <RadioGroup
               aria-labelledby="file-kind-label"
               value={kind}
-              onValueChange={(value) => setKind(value as RefundKind)}
+              onValueChange={(value) => setKind(value as FileableRefundKind)}
               disabled={busy}
               className="gap-1"
             >
