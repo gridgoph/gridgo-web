@@ -15,10 +15,12 @@ import {
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { StatCard } from "@/components/ui/StatCard";
+import { ExpressChip } from "@/components/ui/ExpressChip";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, listJobs } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
+import { isExpressOrder } from "@/lib/express";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
 import { shopHandoverChip } from "@/lib/shop-handover";
@@ -182,9 +184,12 @@ export default function SupplierJobsPage() {
         header: "Deadline",
         sortValue: (job) => job.deadline || job.promisedDate || "",
         cell: (job) => (
-          <span className="text-body text-text-secondary whitespace-nowrap">
-            {formatDateTime(job.deadline)}
-          </span>
+          <div className="flex flex-col items-start gap-1">
+            <span className="text-body text-text-secondary whitespace-nowrap">
+              {formatDateTime(job.deadline)}
+            </span>
+            {isExpressOrder(job) ? <ExpressChip /> : null}
+          </div>
         ),
       },
       {

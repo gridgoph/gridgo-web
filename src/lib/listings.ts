@@ -125,6 +125,11 @@ export type Listing = {
    * Contract: gridgo-api docs/PRINT_LAYOUT_API.md.
    */
   printLayouts: KnownLayout[] | null;
+  /**
+   * Express, the shop's own same-day switch (`src/lib/express.ts`). Applies
+   * at once and never enters review. `null` on an API that predates it.
+   */
+  express: boolean | null;
   minimumHeightMilli: number | null;
   minimumLengthMilli: number | null;
   minimumOrderQuantity: number | null;
@@ -404,6 +409,7 @@ export function normalizeListing(body: unknown, index = 0): Listing | null {
       pick(raw, "printerMaxWidthFeet", "printer_max_width_feet"),
     ),
     printLayouts: readPrintLayouts(pick(raw, "printLayouts", "print_layouts")),
+    express: typeof pick(raw, "express") === "boolean" ? (pick(raw, "express") as boolean) : null,
     minimumHeightMilli: num(pick(raw, "minimumHeightMilli", "minimum_height_milli")),
     minimumLengthMilli: num(pick(raw, "minimumLengthMilli", "minimum_length_milli")),
     minimumOrderQuantity: num(pick(raw, "minimumOrderQuantity", "minimum_order_quantity")),

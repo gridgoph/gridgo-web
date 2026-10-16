@@ -68,6 +68,8 @@ import { BasketPayment } from "@/components/orders/BasketPayment";
 import { OrderMoneyLines } from "@/components/orders/OrderMoneyLines";
 import { PaymentSummary } from "@/components/orders/PaymentSummary";
 import { ShopModeChip } from "@/components/orders/ShopModeChip";
+import { ExpressChip } from "@/components/ui/ExpressChip";
+import { isExpressOrder } from "@/lib/express";
 import { ProgressGallery, WaitingForPhoto } from "@/components/orders/ProductionProgress";
 import { ResolveEscalationDialog } from "@/components/orders/ResolveEscalationDialog";
 import {
@@ -671,12 +673,15 @@ export function OrderWorkspace({
           <h1 className="text-h2 text-text-primary m-0 mt-1 truncate">
             {order.title || "Untitled order"}
           </h1>
-          {order.basketId ? (
+          {order.basketId || isExpressOrder(order) ? (
             <div className="mt-1 flex flex-wrap items-center gap-2">
-              <ShopModeChip
-                mode={{ kind: "multi", shops: Math.max(2, basket?.groups.length ?? 2) }}
-              />
-              {order.groupLabel ? (
+              {order.basketId ? (
+                <ShopModeChip
+                  mode={{ kind: "multi", shops: Math.max(2, basket?.groups.length ?? 2) }}
+                />
+              ) : null}
+              {isExpressOrder(order) ? <ExpressChip /> : null}
+              {order.basketId && order.groupLabel ? (
                 <span className="text-caption text-text-secondary">
                   This is {order.groupLabel}
                 </span>

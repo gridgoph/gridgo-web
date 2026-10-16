@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { StatusChip } from "@/components/ui/StatusChip";
+import { ExpressChip } from "@/components/ui/ExpressChip";
 import { getTaxonomy, listStaffCatalogItems } from "@/lib/api/client";
 import type { Taxonomy } from "@/lib/api/types";
 import { formatDate } from "@/lib/format";
@@ -257,6 +258,7 @@ export function SupplierProductList() {
               {review ? (
                 <StatusChip tone={review.tone} icon={review.icon} label={review.label} />
               ) : null}
+              {row.listing.express ? <ExpressChip /> : null}
             </span>
           );
         },

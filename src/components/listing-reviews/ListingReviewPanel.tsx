@@ -8,6 +8,7 @@ import { LayoutGlyph } from "@/components/orders/PrintLayoutRecord";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { StatusChip } from "@/components/ui/StatusChip";
+import { ExpressChip } from "@/components/ui/ExpressChip";
 import { getStaffPublicCatalogItem } from "@/lib/api/client";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import {
@@ -30,6 +31,7 @@ import {
   type Listing,
 } from "@/lib/listings";
 import { readyInLine } from "@/lib/production-time";
+import { expressFactLine } from "@/lib/express";
 import { layoutLabel, layoutsLine, type KnownLayout } from "@/lib/print-layout";
 
 type Props = {
@@ -109,6 +111,7 @@ export function ListingReviewPanel({
             {listing.suspendReason ? (
               <StatusChip tone="error" icon="ban" label="Taken down" />
             ) : null}
+            {listing.express ? <ExpressChip /> : null}
           </div>
         </div>
       </div>
@@ -381,6 +384,14 @@ function ListingFacts({
               : productionTimeLine(null)
             : "The shop's usual time"}
         </dd>
+        {listing.express != null ? (
+          <>
+            <dt className="text-caption text-text-muted">Express</dt>
+            <dd className="text-body text-text-primary m-0">
+              {expressFactLine(listing.express)}
+            </dd>
+          </>
+        ) : null}
         {cap ? (
           <>
             <dt className="text-caption text-text-muted">Printer</dt>

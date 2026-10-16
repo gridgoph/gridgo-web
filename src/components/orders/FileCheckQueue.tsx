@@ -79,6 +79,8 @@ import { formatDateTime } from "@/lib/format";
 import { basketShopCounts, groupPositionLabel, shopModeOf } from "@/lib/baskets";
 import { QaChecklistFields } from "./QaChecklist";
 import { ShopModeChip } from "@/components/orders/ShopModeChip";
+import { ExpressChip } from "@/components/ui/ExpressChip";
+import { isExpressOrder } from "@/lib/express";
 import { describeQuantity } from "@/lib/quantity";
 
 const medium = { fontFamily: "var(--font-medium)" } as const;
@@ -177,8 +179,9 @@ export function FileCheckQueue({
                 <StatusChip tone="info" icon="circle-dot" label="New" />
               ) : null}
             </p>
-            <div className="mt-1">
+            <div className="mt-1 flex flex-wrap items-center gap-2">
               <ShopModeChip mode={shopModeOf(row.order, shopCounts)} />
+              {isExpressOrder(row.order) ? <ExpressChip /> : null}
             </div>
             <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
               {groupPositionLabel(row.order, shopCounts)

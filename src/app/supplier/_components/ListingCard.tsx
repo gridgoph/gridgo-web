@@ -16,6 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ExpressChip } from "@/components/ui/ExpressChip";
 import { StatusChip, StatusMark } from "@/components/ui/StatusChip";
 import {
   listAcceptedFileFormats,
@@ -131,6 +132,11 @@ export function ListingCard({
       <p className="text-body text-text-primary m-0">{priceLine(listing)}</p>
       {cap ? <p className="text-caption text-text-secondary m-0">{cap}</p> : null}
       <p className="text-caption text-text-secondary m-0">{readyIn}</p>
+      {listing.express ? (
+        <span className="flex">
+          <ExpressChip />
+        </span>
+      ) : null}
     </>
   );
   const status = preview && standing.kind === "live" ? null : <CardStatus standing={standing} />;

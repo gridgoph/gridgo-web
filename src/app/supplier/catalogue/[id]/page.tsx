@@ -10,6 +10,7 @@ import { useParams, useRouter } from "next/navigation";
 import { Check, Trash2 } from "lucide-react";
 
 import { ListingPreviewBody } from "@/app/supplier/_components/ListingPreviewBody";
+import { ExpressField } from "@/app/supplier/_components/ExpressField";
 import { PrinterMaxWidthField } from "@/app/supplier/_components/PrinterMaxWidthField";
 import { PrintLayoutsField } from "@/app/supplier/_components/PrintLayoutsField";
 import { sectionNumber } from "@/app/supplier/_components/editor-sections";
@@ -346,6 +347,8 @@ export default function ListingEditorPage() {
   const [replacingPhoto, setReplacingPhoto] = useState<string | null>(null);
   const [addingPhoto, setAddingPhoto] = useState(false);
   const [step, setStep] = useState<EditorStepId>("pick");
+  const [expressPending, setExpressPending] = useState<boolean | null>(null);
+  const [expressError, setExpressError] = useState<string | null>(null);
   const dirtyRef = useRef(false);
   const busyRef = useRef(false);
 
@@ -513,6 +516,35 @@ export default function ListingEditorPage() {
       });
       return false;
     } finally {
+      setBusy(false);
+    }
+  }
+
+  /**
+   * Express saves on its own, at once: only `express` with the version the
+   * draft carries, so it never sends half-typed edits and never opens review.
+   * The draft moves to the new version so the next autosave is not stale.
+   */
+  async function saveExpress(next: boolean) {
+    if (!listing || !working || busyRef.current) return;
+    setBusy(true);
+    busyRef.current = true;
+    setExpressPending(next);
+    setExpressError(null);
+    try {
+      const saved = normalizeListing(
+        await updateCatalogItem(listing.id, working.version, { express: next }),
+      );
+      if (!saved) throw new Error("unreadable");
+      setListing(saved);
+      setDraft((current) =>
+        current == null ? current : { ...current, version: saved.version },
+      );
+      void refreshReadiness();
+    } catch (err) {
+      setExpressError(listingErrorMessage(err, "Could not change Express."));
+    } finally {
+      setExpressPending(null);
       setBusy(false);
     }
   }
@@ -1128,6 +1160,15 @@ export default function ListingEditorPage() {
                         : "Your shop has no usual production time yet. Set one for this listing."}
                     </p>
                   )}
+                  {listing.express != null ? (
+                    <ExpressField
+                      on={listing.express}
+                      pending={expressPending}
+                      disabled={busy}
+                      error={expressError}
+                      onChange={(next) => void saveExpress(next)}
+                    />
+                  ) : null}
                 </FieldGroup>
               </Section>
             ) : null}

@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/dialog";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonDetail } from "@/components/ui/loading";
+import { ExpressChip } from "@/components/ui/ExpressChip";
 import { StatusChip } from "@/components/ui/StatusChip";
 import {
   ApiError,
@@ -53,6 +54,7 @@ import {
 } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
+import { EXPRESS_JOB_NOTE, isExpressOrder } from "@/lib/express";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import {
   canRequestChange,
@@ -435,6 +437,12 @@ export default function SupplierJobDetailPage() {
           <div className="min-w-0">
             <h2 className="text-h2 text-text-primary m-0">{job.title}</h2>
             <p className="text-caption text-text-muted m-0 mt-1">Order {job.id}</p>
+            {isExpressOrder(job) ? (
+              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                <ExpressChip />
+                <span className="text-caption text-text-secondary">{EXPRESS_JOB_NOTE}</span>
+              </div>
+            ) : null}
             {confirmedMinor !== undefined ? (
               <p className="text-caption text-text-muted m-0 mt-1">
                 You earn {formatPhp(confirmedMinor)} on this job
