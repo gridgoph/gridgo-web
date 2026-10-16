@@ -19,6 +19,7 @@ import {
   listApprovalCases,
   listCatalogReviews,
   listClaims,
+  listColourPriceChecks,
   listEscalations,
   listIssueReports,
   listJobs,
@@ -44,6 +45,7 @@ import { refundNeedsStaff } from "@/lib/refunds";
 import { finishedReviewWaitingCount } from "@/lib/shop-handover";
 import { buildNeedsOperations } from "@/lib/shop-changes";
 import { needsSupplierAction } from "@/lib/supplier-actions";
+import { readColourPriceChecks } from "@/lib/colour-pricing";
 
 type CountSource = {
   /** Live-stream resources that make this count stale. */
@@ -54,7 +56,7 @@ type CountSource = {
    */
   refreshOnNavigate?: boolean;
   /** Re-read when a staff inbox notice of this kind arrives. */
-  inboxPrefix?: "privacy.";
+  inboxPrefix?: "privacy." | "colour_price_check";
   load: () => Promise<number>;
 };
 
@@ -169,6 +171,15 @@ const NAV_COUNT_SOURCES: Record<Exclude<NavCountKey, OrderCountKey>, CountSource
       ]);
       return listings.entries.length + requests.requests.length;
     },
+  },
+  // Draft cart pages in a colour tier their shop left blank (up to 100). No
+  // stream covers carts for staff, so the count is re-read on each page move,
+  // when an analysis files a price-check notice, and when listings change.
+  "colour-price-checks-waiting": {
+    resources: ["catalog"],
+    refreshOnNavigate: true,
+    inboxPrefix: "colour_price_check",
+    load: async () => readColourPriceChecks(await listColourPriceChecks()).length,
   },
   // New and in-progress privacy requests, one page of each (100): past that
   // the badge is a floor and the queue has the rest. The API's live stream

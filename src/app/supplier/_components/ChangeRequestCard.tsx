@@ -1,6 +1,8 @@
 import { FilePen } from "lucide-react";
 
+import { ColourCorrectionPages } from "@/components/orders/ColourCorrectionPages";
 import { StatusChip } from "@/components/ui/StatusChip";
+import type { ColourQuote } from "@/lib/colour-pricing";
 import type { OrderChangeRequest } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
 import { shopChangeNotice } from "@/lib/order-changes";
@@ -9,6 +11,8 @@ type Props = {
   request: OrderChangeRequest;
   /** The job's other requests, oldest first, said in one line each. */
   earlier?: OrderChangeRequest[];
+  /** The line's original colour reading, when the request corrects it. */
+  originalColour?: ColourQuote | null;
 };
 
 /**
@@ -18,7 +22,7 @@ type Props = {
  * the chip, with the client's note it answers muted above it. Until a change
  * is agreed every state says to keep making the job as ordered.
  */
-export function ChangeRequestCard({ request, earlier = [] }: Props) {
+export function ChangeRequestCard({ request, earlier = [], originalColour = null }: Props) {
   const notice = shopChangeNotice(request);
   return (
     <section
@@ -65,6 +69,14 @@ export function ChangeRequestCard({ request, earlier = [] }: Props) {
             </dd>
           </div>
         ) : null}
+        {request.colourCorrection ? (
+          <div className="flex flex-col gap-1">
+            <dt className="text-caption text-text-muted">Your corrected colour pages</dt>
+            <dd className="m-0">
+              <ColourCorrectionPages request={request} original={originalColour} />
+            </dd>
+          </div>
+        ) : null}
         {request.proposedReadyBy ? (
           <div className="flex flex-col gap-0.5">
             <dt className="text-caption text-text-muted">New ready time</dt>
@@ -92,7 +104,8 @@ export function ChangeRequestCard({ request, earlier = [] }: Props) {
           <ul className="m-0 flex list-none flex-col gap-1 p-0">
             {earlier.map((row) => (
               <li key={row.id} className="text-body text-text-secondary">
-                {shopChangeNotice(row).chip.label}: {row.proposedSpec || "a new time"}
+                {shopChangeNotice(row).chip.label}:{" "}
+                {row.proposedSpec || (row.colourCorrection ? "corrected colour prices" : "a new time")}
               </li>
             ))}
           </ul>

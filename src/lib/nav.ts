@@ -64,6 +64,7 @@ export type NavIconKey =
   | "hub"
   | "staff"
   | "listing-reviews"
+  | "colour-price-checks"
   | "featured-prints"
   | "vouchers"
   | "legal"
@@ -123,6 +124,7 @@ export type NavCountKey =
   | "refunds-waiting"
   | "shop-changes-needs-ops"
   | "listing-reviews-waiting"
+  | "colour-price-checks-waiting"
   | "privacy-requests-open"
   | "finished-work-waiting";
 
@@ -345,6 +347,17 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "listing-reviews-waiting",
+        },
+        {
+          // Draft carts whose pages fall in a colour tier the shop left blank.
+          id: "ops-colour-price-checks",
+          href: "/ops/colour-price-checks",
+          label: "Colour price checks",
+          title: "Colour price checks",
+          icon: "colour-price-checks",
+          ready: true,
+          placeholderBody: "",
+          count: "colour-price-checks-waiting",
         },
         {
           // The client Home row: approved products GRIDGO chooses to show.
@@ -705,6 +718,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "listing-reviews-waiting",
+        },
+        {
+          id: "admin-colour-price-checks",
+          href: "/admin/colour-price-checks",
+          label: "Colour price checks",
+          title: "Colour price checks",
+          icon: "colour-price-checks",
+          ready: true,
+          placeholderBody: "",
+          count: "colour-price-checks-waiting",
         },
         {
           id: "admin-featured-prints",

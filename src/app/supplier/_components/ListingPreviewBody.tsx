@@ -104,14 +104,26 @@ export function ListingPreviewBody({
         </p>
         {cap ? <p className="text-caption text-text-muted m-0">{cap}</p> : null}
         <p className="text-text-primary m-0">
-          {hasPriceRange(listing) ? (
+          {hasPriceRange(listing) || listing.pricedByColour ? (
             <span className="text-caption text-text-muted">From </span>
           ) : null}
           <span className="text-h3" style={{ fontFamily: "var(--font-bold)" }}>
             {formatPhp(fromPriceMinor(listing))}
           </span>{" "}
-          <span className="text-body text-text-secondary">{unitLine(listing)}</span>
+          <span className="text-body text-text-secondary">
+            {listing.pricedByColour ? "per sheet" : unitLine(listing)}
+          </span>
         </p>
+        {listing.pricedByColour ? (
+          <p className="text-caption text-text-secondary m-0">
+            Each page is priced by how much strong colour it has, measured on the paper
+            the client picks.
+          </p>
+        ) : listing.oneColour ? (
+          <p className="text-caption text-text-secondary m-0">
+            Prints in one colour. A client sending a colour file is told before they order.
+          </p>
+        ) : null}
         <p className="text-body text-text-secondary m-0">{readyIn}</p>
       </div>
 

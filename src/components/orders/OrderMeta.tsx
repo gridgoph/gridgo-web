@@ -20,6 +20,7 @@ import { DesignLinkLead, DesignLinkList } from "@/components/orders/DesignLinks"
 import { PrintLayoutRecord } from "@/components/orders/PrintLayoutRecord";
 import { EvidencePlate } from "@/components/orders/EvidencePreview";
 import { ExactColoursRecord } from "@/components/orders/ExactColours";
+import { ColourPricingRecord } from "@/components/orders/ColourPricingRecord";
 import { showsAttachmentList } from "@/lib/artwork-attachments";
 import { orderDesignLinks } from "@/lib/design-links";
 import { jobFileEvidence } from "@/lib/evidence";
@@ -144,6 +145,12 @@ export function OrderMeta({ order, showMoney = true, fromJobDetails = false }: P
         Only on products whose shop offers the choice.
       */}
       <PrintLayoutRecord order={order} />
+      {/*
+        Each page's strong colour, tier and the shop's own sheet rate, as
+        GRIDGO measured it at checkout. Only on colour-priced and one-colour
+        lines.
+      */}
+      <ColourPricingRecord order={order} audience="shop" />
       {/*
         The client's exact colours, beside the colours GRIDGO read from each
         released file. Nothing on a job without colours.

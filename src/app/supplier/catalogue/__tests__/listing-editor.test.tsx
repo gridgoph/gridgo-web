@@ -28,6 +28,7 @@ const mocks = vi.hoisted(() => ({
   attachCatalogItemPhoto: vi.fn(),
   getSupplierReadiness: vi.fn(),
   submitCatalogItemForReview: vi.fn(),
+  getSettings: vi.fn(),
 }));
 
 vi.stubGlobal("React", React);
@@ -66,6 +67,7 @@ vi.mock("@/lib/api/client", async () => {
     attachCatalogItemPhoto: mocks.attachCatalogItemPhoto,
     getSupplierReadiness: mocks.getSupplierReadiness,
     submitCatalogItemForReview: mocks.submitCatalogItemForReview,
+    getSettings: mocks.getSettings,
   };
 });
 
@@ -174,6 +176,7 @@ function stubLoad(item: ReturnType<typeof catalogItem>) {
   mocks.getSupplierReadiness.mockResolvedValue({
     operational: { ready: true, missing: [], listings: [] },
   });
+  mocks.getSettings.mockRejectedValue(new ApiError(403, { error: "forbidden" }));
   mocks.updateCatalogItem.mockImplementation(async (_id, _version, body) => ({
     item: { ...item.item, ...body, version: 4 },
   }));
@@ -1223,5 +1226,132 @@ describe("listing editor Express (gridgo-api#224)", () => {
     render(<ListingEditorPage />);
     await openEditorStep("Speed");
     expect(screen.queryByRole("switch", { name: "Express" })).not.toBeInTheDocument();
+  });
+});
+
+// Many keystrokes and an autosave pause each: slower than the default five seconds.
+describe("listing editor colour pricing (report 0BE07331)", { timeout: 30_000 }, () => {
+  function documentListing(partial: Record<string, unknown> = {}) {
+    return catalogItem({
+      pricingUnit: "per_page",
+      packageQty: null,
+      printLayouts: ["fit_to_paper"],
+      pricedByColour: false,
+      oneColour: false,
+      colourPricing: null,
+      optionGroups: [
+        {
+          id: "grp_1",
+          version: 1,
+          name: "Paper",
+          kind: "spec",
+          required: true,
+          options: [
+            // The binding names the paper, as the API reads it.
+            { id: "opt_20x30", label: "Whiteprint 20 by 30", priceModifierMinor: 0, sortOrder: 0, specBinding: { fieldCode: "size", value: "20x30" } },
+            { id: "opt_a3", label: "A3", priceModifierMinor: 0, sortOrder: 1, specBinding: { fieldCode: "size", value: "A3" } },
+            { id: "opt_note", label: "Rush", priceModifierMinor: 0, sortOrder: 2 },
+          ],
+        },
+      ],
+      ...partial,
+    });
+  }
+
+  it("prices each tier per paper, leaves a blank tier not offered, and saves the table", async () => {
+    stubLoad(documentListing());
+    mocks.getSettings.mockResolvedValue({ version: 1, colourDetection: { minSaturationBps: 2500, minLightnessBps: 500, maxLightnessBps: 8500, a3MonochromeMaxBps: 1500 } });
+    render(<ListingEditorPage />);
+    await openEditorStep("Price");
+
+    fireEvent.click(screen.getByRole("radio", { name: "Priced by colour" }));
+    expect(screen.queryByLabelText("Your price")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "20x30" }));
+    fireEvent.click(screen.getByRole("button", { name: "A3" }));
+
+    const large = screen.getByRole("group", { name: "20x30 prices per sheet" });
+    expect(within(large).getAllByRole("textbox")).toHaveLength(4);
+    fireEvent.change(within(large).getByLabelText("No strong colour"), { target: { value: "30" } });
+    fireEvent.change(within(large).getByLabelText("Up to 25%"), { target: { value: "60" } });
+    fireEvent.change(within(large).getByLabelText("Above 50%"), { target: { value: "200" } });
+    expect(within(large).getByLabelText("Up to 50%")).toHaveAttribute("placeholder", "Not offered");
+
+    const a3 = screen.getByRole("group", { name: "A3 prices per sheet" });
+    // The A3 limit in force is a Super Admin setting.
+    fireEvent.change(await within(a3).findByLabelText("Up to 15%, monochrome"), { target: { value: "10" } });
+
+    // Autosave may land partway through the typing; the last save carries it all.
+    await waitFor(
+      () =>
+        expect(mocks.updateCatalogItem.mock.calls.at(-1)?.[2]?.colourPricing?.sizes?.[1]?.prices).toEqual({
+          monochrome: 1000,
+        }),
+      AUTOSAVE_WAIT,
+    );
+    const body = mocks.updateCatalogItem.mock.calls.at(-1)![2];
+    expect(body).not.toHaveProperty("oneColour");
+    expect(body).toMatchObject({
+      pricedByColour: true,
+      colourPricing: {
+        sizes: [
+          { paperSize: "20x30", tierSet: "large_format", prices: { none: 3000, up_to_25: 6000, above_50: 20000 } },
+          { paperSize: "A3", tierSet: "a3", prices: { monochrome: 1000 } },
+        ],
+      },
+    });
+    expect(body.colourPricing.sizes[0].prices).not.toHaveProperty("up_to_50");
+  });
+
+  it("holds the save while no print layout is marked, and says why", async () => {
+    stubLoad(documentListing({ printLayouts: [] }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Price");
+    fireEvent.click(screen.getByRole("radio", { name: "Priced by colour" }));
+    fireEvent.click(screen.getByRole("button", { name: "A3" }));
+    fireEvent.change(screen.getByLabelText(/monochrome/), { target: { value: "10" } });
+    expect(screen.getByText(/Pricing by colour needs at least one print layout/)).toBeVisible();
+    expect(
+      await screen.findByText(/keep at least one print layout/, undefined, AUTOSAVE_WAIT),
+    ).toBeVisible();
+    expect(mocks.updateCatalogItem).not.toHaveBeenCalled();
+  });
+
+  it("marks a fixed-price listing as one colour", async () => {
+    stubLoad(documentListing());
+    render(<ListingEditorPage />);
+    await openEditorStep("Price");
+    fireEvent.click(screen.getByRole("switch", { name: "Prints in one colour" }));
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalledTimes(1), AUTOSAVE_WAIT);
+    const body = mocks.updateCatalogItem.mock.calls[0][2];
+    expect(body).toMatchObject({ oneColour: true });
+    expect(body).not.toHaveProperty("pricedByColour");
+    expect(body).not.toHaveProperty("colourPricing");
+  });
+
+  it("turns colour pricing off when the unit leaves per page", async () => {
+    stubLoad(
+      documentListing({
+        pricedByColour: true,
+        colourPricing: { sizes: [{ paperSize: "A3", tierSet: "a3", prices: { monochrome: 1000 }, widthMilli: 297000, heightMilli: 420000 }] },
+      }),
+    );
+    render(<ListingEditorPage />);
+    await openEditorStep("Price");
+    expect(screen.getByRole("radio", { name: "Priced by colour" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.change(screen.getByLabelText(/monochrome/), { target: { value: "12" } });
+    fireEvent.click(screen.getByRole("radio", { name: /piece/i }));
+    fireEvent.change(await screen.findByLabelText("Your price"), { target: { value: "5" } });
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalledTimes(1), AUTOSAVE_WAIT);
+    const body = mocks.updateCatalogItem.mock.calls[0][2];
+    expect(body).toMatchObject({ pricedByColour: false, basePriceMinor: 500 });
+    expect(body).not.toHaveProperty("colourPricing");
+  });
+
+  it("shows nothing about colour against an API that predates it", async () => {
+    stubLoad(catalogItem({ pricingUnit: "per_page", packageQty: null }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Price");
+    expect(screen.queryByText("How each page is priced")).not.toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: "Prints in one colour" })).not.toBeInTheDocument();
   });
 });

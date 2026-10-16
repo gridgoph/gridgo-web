@@ -21,6 +21,11 @@ import { FinishedWorkDialog } from "@/app/supplier/_components/FinishedWorkDialo
 import { ProofUploadDialog } from "@/app/supplier/_components/ProofUploadDialog";
 import { PackagingChecklist } from "@/app/supplier/_components/PackagingChecklist";
 import { RequestChangeDialog } from "@/app/supplier/_components/RequestChangeDialog";
+import {
+  ColourCorrectionDialog,
+  correctableColourLines,
+} from "@/app/supplier/_components/ColourCorrectionDialog";
+import { originalColourOf } from "@/components/orders/ColourCorrectionPages";
 import { SpecialInstructionsCard } from "@/app/supplier/_components/SpecialInstructionsCard";
 import { JobFilesDialog } from "@/components/orders/JobFilesDialog";
 import { MilestoneList } from "@/components/orders/MilestoneList";
@@ -170,6 +175,8 @@ export default function SupplierJobDetailPage() {
   const [instructionsRead, setInstructionsRead] = useState(false);
   const [tickMissing, setTickMissing] = useState(false);
   const [changeOpen, setChangeOpen] = useState(false);
+  /** The colour-priced line being corrected; null when the dialog is shut. */
+  const [colourLine, setColourLine] = useState<string | null>(null);
   // The payout stage whose proof photos are being added, if any.
   const [proofStage, setProofStage] = useState<string | null>(null);
   const [filedNote, setFiledNote] = useState<string | null>(null);
@@ -620,7 +627,7 @@ export default function SupplierJobDetailPage() {
           {filedNote ? (
             <p className="text-body text-text-secondary m-0">{filedNote}</p>
           ) : null}
-          {actionError && !declineOpen && proofStage === null && !photoOpen && !changeOpen ? (
+          {actionError && !declineOpen && proofStage === null && !photoOpen && !changeOpen && colourLine == null ? (
             <div className="flex flex-col items-start gap-2" role="alert">
               <p className="text-body text-error m-0">{actionError}</p>
               {photoRefused === "progress" &&
@@ -671,7 +678,11 @@ export default function SupplierJobDetailPage() {
           ) : null}
 
           {changeRequest ? (
-            <ChangeRequestCard request={changeRequest} earlier={earlierChanges} />
+            <ChangeRequestCard
+              request={changeRequest}
+              earlier={earlierChanges}
+              originalColour={originalColourOf(job, changeRequest.lineItemId)}
+            />
           ) : null}
 
           <section className="gg-card p-3" aria-labelledby="spec-heading">
@@ -683,6 +694,23 @@ export default function SupplierJobDetailPage() {
               Spec
             </h3>
             <OrderMeta order={job} showMoney={false} fromJobDetails />
+            {changeAllowed && !needsTick
+              ? correctableColourLines(job).map(({ item }) => (
+                  <div
+                    key={item.id}
+                    className="border-outline-subtle mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3"
+                  >
+                    <p className="text-body text-text-secondary m-0 max-w-prose">
+                      {correctableColourLines(job).length > 1 ? `${item.itemName}: a` : "A"} page
+                      clearly in another colour tier? Ask the client to approve the corrected
+                      price before you print it.
+                    </p>
+                    <Button variant="secondary" onClick={() => setColourLine(item.id)}>
+                      Correct the colour price
+                    </Button>
+                  </div>
+                ))
+              : null}
           </section>
 
           {/*
@@ -922,6 +950,18 @@ export default function SupplierJobDetailPage() {
         error={declineError}
         onCancel={() => setDeclineOpen(false)}
         onDecline={(reason) => void decline(reason)}
+      />
+
+      <ColourCorrectionDialog
+        job={job}
+        lineItemId={colourLine}
+        open={colourLine != null}
+        onClose={() => setColourLine(null)}
+        onSent={async (message) => {
+          setColourLine(null);
+          setFiledNote(message);
+          await load().catch(() => undefined);
+        }}
       />
 
       <RequestChangeDialog

@@ -37,6 +37,12 @@ export function listingErrorMessage(err: unknown, fallback: string): string {
         return "This listing is not finished yet. Fix the steps listed under Finalize your product, then send it again.";
       case "listing_already_approved":
         return "Operations already approved this listing. Edit it to send a change.";
+      case "invalid_colour_pricing":
+        return "GRIDGO could not read your colour prices. Name each paper size once, like A3 or 20x30, and enter prices in pesos or leave a tier blank.";
+      case "colour_pricing_requires_per_page":
+        return "Pricing by colour works per page only. Set the pricing unit to per page first.";
+      case "colour_pricing_requires_print_layout":
+        return "Pricing by colour needs at least one print layout, so GRIDGO knows how each page sits on the paper. Mark one on the Artwork step.";
       case "item_in_use":
         return "Kept for a job already ordered — it is off the board and no client can see it.";
       default:
