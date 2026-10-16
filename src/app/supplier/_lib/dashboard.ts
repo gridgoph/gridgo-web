@@ -42,7 +42,9 @@ export const PIPELINE_STAGES: readonly {
   },
   { id: "ready-to-start", label: "Ready to start", states: ["payment_authorized"] },
   { id: "production", label: "In production", states: ["production"] },
-  { id: "qc", label: "Packing (older flow)", states: ["supplier_self_qc"] },
+  // GRIDGO's review of the finished work, or the shop's own packing on an
+  // older order: the same state in either handover.
+  { id: "qc", label: "In review or packing", states: ["supplier_self_qc"] },
   { id: "dispatch", label: "Waiting for a rider", states: ["ready_for_dispatch"] },
   {
     id: "with-rider",

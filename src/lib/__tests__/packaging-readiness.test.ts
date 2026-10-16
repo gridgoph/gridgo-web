@@ -65,9 +65,61 @@ describe("reading what the API still needs (report 6C695C15)", () => {
         },
       }),
     );
-    expect(check?.photos.every((photo) => photo.done)).toBe(true);
+    expect(check?.flow).toBe("legacy");
+    expect(check?.steps).toEqual([
+      { kind: "production_photo", done: true },
+      { kind: "packing_photo", done: true },
+    ]);
     expect(check?.receiptAttached).toBe(true);
     expect(packagingHold(check)?.message).toBe(CLAIM.message);
+  });
+});
+
+describe("a rider-packs job's readiness (ord_de22bfb54b9d)", () => {
+  const FINISHED = {
+    code: "production_finished_required",
+    message: "Submit photos of the finished, unpacked products for GRIDGO review first.",
+  };
+  const REVIEW = {
+    code: "production_review_required",
+    message:
+      "Wait for GRIDGO to approve the finished-product photos before calling a rider. Do not pack yet.",
+  };
+
+  it("reads the finished photos and the review as the shop's steps, never a hold", () => {
+    const check = packagingCheck(
+      order({
+        handoverFlow: "rider_packs",
+        transitionReadiness: {
+          ready_for_dispatch: { allowed: false, missing: [FINISHED, REVIEW] },
+        },
+      }),
+    );
+    expect(check?.flow).toBe("rider_packs");
+    expect(check?.missing.map((item) => item.kind)).toEqual(["finished_photos", "review"]);
+    // No packing photo is listed, so none can be ticked as done.
+    expect(check?.steps).toEqual([
+      { kind: "finished_photos", done: false },
+      { kind: "review", done: false },
+    ]);
+    expect(packagingHold(check)).toBeNull();
+  });
+
+  it("still holds the step for a claim", () => {
+    const check = packagingCheck(
+      order({
+        handoverFlow: "rider_packs",
+        state: "supplier_self_qc",
+        transitionReadiness: {
+          ready_for_dispatch: { allowed: false, missing: [REVIEW, CLAIM] },
+        },
+      }),
+    );
+    expect(check?.steps).toEqual([
+      { kind: "finished_photos", done: true },
+      { kind: "review", done: false },
+    ]);
+    expect(packagingHold(check)?.code).toBe("claim_hold_active");
   });
 });
 

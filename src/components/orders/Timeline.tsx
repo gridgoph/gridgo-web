@@ -6,6 +6,7 @@ import {
   presentOrderState,
   presentTimelineActor,
   presentTimelineNote,
+  type StatePresentation,
   type StatusTone,
 } from "@/lib/order-state";
 import type { PaymentSplitSource } from "@/lib/payments";
@@ -31,10 +32,17 @@ type Props = {
    * now", and the answer was at the bottom of a growing list.
    */
   newestFirst?: boolean;
+  /** Each entry's state in the reader's words, where the order's own label is not. */
+  presentState?: (state: string) => StatePresentation;
 };
 
 /** Who did what and when, with the state each event moved the order into. */
-export function Timeline({ entries, newestFirst = false, order }: Props) {
+export function Timeline({
+  entries,
+  newestFirst = false,
+  order,
+  presentState = (state) => presentOrderState(state, order),
+}: Props) {
   if (!entries.length) {
     return (
       <p className="text-body text-text-muted m-0">No timeline events yet.</p>
@@ -48,7 +56,7 @@ export function Timeline({ entries, newestFirst = false, order }: Props) {
   return (
     <ol className="m-0 flex list-none flex-col p-0">
       {ordered.map((entry, i) => {
-        const state = presentOrderState(entry.state, order);
+        const state = presentState(entry.state);
         const Icon = ICONS[state.icon];
         const isLatest = entry === latest;
         const isLast = i === ordered.length - 1;

@@ -143,6 +143,8 @@ beforeEach(() => {
         return json({
           user: { id: "shop1", name: "Ana", supplierName: "Shop A", role: "supplier" },
         });
+      if (url.pathname === "/users/ops1")
+        return json({ user: { id: "ops1", name: "Bea", role: "ops_admin" } });
       if (url.pathname === "/audit") return json({ audit: [] });
       if (url.pathname === "/escalations") return json({ escalations: [] });
       if (url.pathname.endsWith("/refund-requests")) return json({ refundRequests: [] });
@@ -258,23 +260,33 @@ describe("the Finished work desk", () => {
   });
 });
 
-describe("the order workspace's Handover row", () => {
-  it("opens on a waiting review, with the decision and the steps", async () => {
+describe("the order workspace's finished-work review", () => {
+  it("decides a waiting review in the With the shop step, above Force", async () => {
     const user = userEvent.setup();
     render(<OrderWorkspace queueHref="/ops/orders" payoutsHref="/ops/payouts" />);
 
-    const row = (await screen.findByRole("heading", { name: /Handover/ })).closest(
+    const shop = (await screen.findByRole("heading", { name: /^With the shop/ })).closest(
       "section",
     )!;
-    expect(within(row).getByText("Your call")).toBeInTheDocument();
+    expect(within(shop).getByText("Your call")).toBeInTheDocument();
     expect(screen.getAllByText("Finished work in review").length).toBeGreaterThan(0);
-    const steps = within(row).getByRole("list", { name: "Handover steps" });
+    const panel = within(shop).getByTestId("finished-review-panel");
+    // Force stays, below the review, as the exception.
+    const force = within(shop).getByRole("button", { name: "Force to ready for pickup" });
+    expect(
+      panel.compareDocumentPosition(force) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    // The Handover row keeps the steps and the record, not a second decision.
+    const handover = screen.getByRole("heading", { name: /^Handover/ }).closest("section")!;
+    await user.click(within(handover).getByRole("button", { name: /Handover/ }));
+    const steps = await within(handover).findByRole("list", { name: "Handover steps" });
     expect(
       within(steps).getByText(/GRIDGO reviews the finished work/),
     ).toBeInTheDocument();
     expect(within(steps).getByText(/Packed in front of the rider/)).toBeInTheDocument();
+    expect(within(handover).queryByTestId("finished-review-panel")).toBeNull();
 
-    const panel = within(row).getByTestId("finished-review-panel");
     await tickAllChecks(panel);
     await user.click(
       within(panel).getByRole("button", { name: "Approve finished work" }),
@@ -284,6 +296,72 @@ describe("the order workspace's Handover row", () => {
         decision: "approved",
       }),
     );
+  });
+
+  it("says what the shop still owes before any photo arrives, with Force as the exception", async () => {
+    // The reported order: in production, a progress photo, nothing sent for review.
+    orders = [
+      pending({
+        state: "production",
+        shopHandover: {},
+        transitionReadiness: {
+          ready_for_dispatch: {
+            allowed: false,
+            missing: [
+              { code: "production_finished_required", message: "Submit photos first." },
+              { code: "production_review_required", message: "Wait for GRIDGO." },
+            ],
+          },
+        },
+      }),
+    ];
+    render(<OrderWorkspace queueHref="/ops/orders" payoutsHref="/ops/payouts" />);
+
+    const shop = (await screen.findByRole("heading", { name: /^With the shop/ })).closest(
+      "section",
+    )!;
+    expect(within(shop).getByText("No finished-work photos yet")).toBeInTheDocument();
+    expect(within(shop).queryByTestId("finished-review-panel")).toBeNull();
+    // A rider-packs order owes no progress photo, so none is asked for.
+    expect(within(shop).queryByText(/Waiting for a progress photo/)).toBeNull();
+    expect(
+      within(shop).getByRole("button", { name: "Force to ready for pickup" }),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the last send-back's reason while it waits for new photos", async () => {
+    orders = [
+      pending({
+        state: "production",
+        shopHandover: {
+          attempts: [
+            {
+              finished: {
+                at: "2026-10-15T02:00:00Z",
+                by: "shop1",
+                supplierId: "shop1",
+                photoFileIds: ["file_a"],
+              },
+              review: {
+                decision: "rejected",
+                at: "2026-10-15T03:00:00Z",
+                by: "ops1",
+                note: "Page 12 is smudged. Reprint it.",
+              },
+            },
+          ],
+        },
+      }),
+    ];
+    render(<OrderWorkspace queueHref="/ops/orders" payoutsHref="/ops/payouts" />);
+
+    const shop = (await screen.findByRole("heading", { name: /^With the shop/ })).closest(
+      "section",
+    )!;
+    expect(
+      await within(shop).findByText(/Waiting for the shop's new photos/),
+    ).toBeInTheDocument();
+    expect(within(shop).getByText("Page 12 is smudged. Reprint it.")).toBeInTheDocument();
   });
 
   it("forces past the review only with a reason code and a note, naming what it skips", async () => {
