@@ -781,6 +781,13 @@ export type Order = {
    * absent from every client-facing payload, and Operations reads this one.
    */
   readyBy?: string | null;
+  /**
+   * Checkout promised this order under Express: the shop's listing was on
+   * Express, so the client's deadline stood even where ordinary production
+   * time would miss it. Fixed at checkout. Absent on orders placed before
+   * Express; read a missing value as false (`isExpressOrder`).
+   */
+  express?: boolean;
   /** When the shop actually finished, stamped as it hands over to a rider. */
   readyAt?: string | null;
   /**

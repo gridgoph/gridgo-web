@@ -421,3 +421,19 @@ describe("supplier Catalogues standings (gridgo-web#111)", () => {
     expect(screen.queryByRole("link", { name: /catalog\/items/ })).toBeNull();
   });
 });
+
+describe("supplier Catalogues Express (gridgo-api#224)", () => {
+  it("marks a listing with Express on, and only that one", async () => {
+    mocks.listCatalogItems.mockImplementation(async () => ({
+      items: [
+        item("live", "Live flyers", { express: true }),
+        item("hidden", "Hidden flyers", { active: false, express: false }),
+      ],
+      total: 2,
+    }));
+    render(<SupplierCataloguesPage />);
+    expect(await screen.findByText("Live flyers")).toBeVisible();
+    expect(within(card("Live flyers")).getByText("Express")).toBeVisible();
+    expect(within(card("Hidden flyers")).queryByText("Express")).not.toBeInTheDocument();
+  });
+});

@@ -30,7 +30,9 @@ import {
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { ExpressChip } from "@/components/ui/ExpressChip";
 import { StatusChip } from "@/components/ui/StatusChip";
+import { isExpressOrder } from "@/lib/express";
 import {
   ApiError,
   listDispatchOffers,
@@ -256,12 +258,15 @@ export default function OpsDispatchPage() {
         filterValue: (o) => `${o.title} ${o.id} ${o.riderId ?? ""} ${o.zone}`,
         cell: (o) => (
           <div>
-            <p
-              className="text-body text-text-primary m-0"
-              style={{ fontFamily: "var(--font-medium)" }}
-            >
-              {o.title}
-            </p>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <p
+                className="text-body text-text-primary m-0"
+                style={{ fontFamily: "var(--font-medium)" }}
+              >
+                {o.title}
+              </p>
+              {isExpressOrder(o) ? <ExpressChip /> : null}
+            </div>
             <p className="text-caption text-text-muted m-0 mt-0.5">Order {o.id}</p>
             <p className="text-caption text-text-muted m-0 mt-0.5">
               {presentZone(o.zone)}
@@ -457,6 +462,11 @@ export default function OpsDispatchPage() {
                   <span className="text-body text-text-primary block">{o.title}</span>
                   <span className="text-caption text-text-muted">Order {o.id}</span>
                 </span>
+                {isExpressOrder(o) ? (
+                  <span className="ml-auto">
+                    <ExpressChip />
+                  </span>
+                ) : null}
                 <StatusChip
                   tone={presentOrderState(o.state, o).tone}
                   label={presentOrderState(o.state, o).label}

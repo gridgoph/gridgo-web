@@ -44,7 +44,9 @@ export type StatusIconName =
   | "circle-dot"
   // Single-Shop and Multi-Shop orders (one shop, or one payment split across shops).
   | "store"
-  | "split";
+  | "split"
+  // An Express order or listing (docs/EXPRESS_API.md in gridgo-api).
+  | "zap";
 
 export type StatePresentation = {
   label: string;

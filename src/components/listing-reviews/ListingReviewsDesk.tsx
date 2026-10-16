@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/ui/StatusChip";
+import { ExpressChip } from "@/components/ui/ExpressChip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   decideCatalogReview,
@@ -616,6 +617,7 @@ export function ListingReviewsDesk({ tree }: { tree: "ops" | "admin" }) {
                           {isRevision(entry.listing) ? (
                             <StatusChip tone="neutral" icon="square-pen" label="Change" />
                           ) : null}
+                          {entry.listing.express ? <ExpressChip /> : null}
                           {status === "pending" && entry.blockers.length ? (
                             <StatusChip {...reviewChip(entry)} />
                           ) : null}
