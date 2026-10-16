@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { SamplePhoto, ZoomablePhoto } from "@/app/supplier/_components/SamplePhoto";
 import { PinMap } from "@/components/riders/RiderMap";
 import { FileDownload } from "@/components/orders/EvidencePreview";
+import { ColorChip, ReadColoursPanel, useUploadedNames } from "@/components/orders/ExactColours";
 import { QaChecklistFields, type QaPanelStatus } from "@/components/orders/QaChecklist";
 import { Button } from "@/components/ui/button";
 import {
@@ -23,6 +24,7 @@ import {
   recordQaTick,
 } from "@/lib/api/client";
 import type { Order, StoredFile } from "@/lib/api/types";
+import { colourComparisonRows, itemsWithColours, swatchNote } from "@/lib/color-targets";
 import { orderDesignLinks } from "@/lib/design-links";
 import { fileLooksLikeImage } from "@/lib/evidence";
 import { saveRemoteFile } from "@/lib/file-save";
@@ -163,6 +165,11 @@ export function QualityReview({
   const loadedFiles = files ?? [];
   const facts = fileDetailFacts(loadedFiles, order);
   const comparison = specComparison(order, loadedFiles);
+  // The client's exact colours, held against the colours read from each file.
+  const colourNames = useUploadedNames(
+    itemsWithColours(order).flatMap(({ read }) => read.map((entry) => entry.fileId)),
+  );
+  const colourRows = colourComparisonRows(order, (fileId) => colourNames[fileId]);
   const money = quantityFacts(order);
   const warning = acceptedUploadWarning(loadedFiles);
   const problem = hasProblem(facts, comparison.rows);
@@ -308,8 +315,25 @@ export function QualityReview({
               <td className="text-body text-text-primary py-2">{row.match}</td>
             </tr>
           ))}
+          {colourRows.map((row, index) => (
+            <tr key={`colour:${index}`} className="border-b border-outline-subtle align-top" data-testid="colour-row">
+              <th scope="row" className="text-body text-text-secondary py-2 pr-3 [font-weight:inherit]">{row.item}</th>
+              <td className="text-body text-text-secondary py-2 pr-3">
+                <span className="flex items-start gap-2">
+                  <ColorChip target={row.target} compact />
+                  <span className="flex min-w-0 flex-col">
+                    <span>{row.ordered}</span>
+                    <span className="text-caption text-text-muted">{swatchNote(row.target)}</span>
+                  </span>
+                </span>
+              </td>
+              <td className="text-body text-text-secondary py-2 pr-3">{row.file}</td>
+              <td className="text-body text-text-primary py-2">{row.match}</td>
+            </tr>
+          ))}
         </tbody>
       </table>
+      <ReadColoursPanel order={order} />
       {comparison.instructions ? (
         <p className="text-body text-text-secondary m-0 whitespace-pre-wrap">
           <span className="text-text-muted">Special instructions. </span>

@@ -19,6 +19,7 @@ import { useEffect, useId, useState } from "react";
 import { WaitMark } from "@/components/orders/FileCheckQueue";
 import { LayoutGlyph } from "@/components/orders/PrintLayoutRecord";
 import { OrderArtwork } from "@/components/orders/DesignLinks";
+import { TicketColours } from "@/components/orders/ExactColours";
 import { ProgressGallery } from "@/components/orders/ProductionProgress";
 import { SendBackDialog } from "@/components/listing-reviews/SendBackDialog";
 import { Button } from "@/components/ui/button";
@@ -302,6 +303,7 @@ export function JobTicket({ order }: { order: Order }) {
                 </span>
               ) : null}
               <TicketLayout item={item} />
+              <TicketColours item={item} />
             </li>
           ))}
         </ul>
