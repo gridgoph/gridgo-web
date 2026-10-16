@@ -101,11 +101,11 @@ describe("when the list is used", () => {
     expect(shirt.productSize).toBe("A4");
   });
 
-  it("asks the GRIDGO Team to check every entry, and keeps the old wording otherwise", () => {
+  it("asks the GRIDGO Team to check every entry, and keeps the plain artwork check otherwise", () => {
     const base = { artworkFileIds: ["front"], requestFulfillment: null } as unknown as Order;
     expect(qaChecksFor({ ...base, productionItems: [SHIRT] })[0].label).toBe(ATTACHMENTS_QA_CHECK_LABEL);
     expect(qaChecksFor({ ...base, productionItems: [TOTE] })[0].label).toBe(
-      "Artwork opens and is high enough resolution",
+      "Artwork is print-ready",
     );
   });
 });

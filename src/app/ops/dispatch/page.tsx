@@ -2,12 +2,12 @@
 
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Bike, Eye, MapPin, PackageCheck, RefreshCw } from "lucide-react";
 
-import { filterDispatchOrders } from "@/app/ops/_lib/dispatch";
+import { filterDispatchOrders, presentRouteAction } from "@/app/ops/_lib/dispatch";
 import { presentZone } from "@/app/ops/_lib/present";
 import { StaleRiders } from "@/components/riders/StaleRiders";
 import { VehicleGlyph } from "@/components/riders/VehicleGlyph";
@@ -96,6 +96,36 @@ function locationCell(
     icon: freshnessIcon(v.freshness),
     view: v,
   };
+}
+
+function LocationColumn({ order, cell }: { order: Order; cell: LocationCell }) {
+  const reasonId = useId();
+  const route = presentRouteAction(order.riderId, cell.view, cell.label);
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <StatusChip tone={cell.tone} label={cell.label} icon={cell.icon} />
+      {cell.view?.lastUpdatedAt ? (
+        <span className="text-caption text-text-muted">
+          Last ping {formatDateTime(cell.view.lastUpdatedAt)}
+        </span>
+      ) : null}
+      {route.href ? (
+        <Button variant="secondary" nativeButton={false} render={<Link href={route.href} />}>
+          {route.label}
+        </Button>
+      ) : (
+        <>
+          <Button variant="secondary" disabled aria-describedby={reasonId}>
+            {route.label}
+          </Button>
+          {/* The chip above already says why; this names it for the disabled button. */}
+          <span id={reasonId} className="sr-only">
+            {route.reason}
+          </span>
+        </>
+      )}
+    </div>
+  );
 }
 
 export default function OpsDispatchPage() {
@@ -284,29 +314,12 @@ export default function OpsDispatchPage() {
         header: "Location",
         sortValue: (o) =>
           locationCell(o, riderRows.get(o.riderId ?? ""), locations.view).label,
-        cell: (o) => {
-          const loc = locationCell(o, riderRows.get(o.riderId ?? ""), locations.view);
-          return (
-            <div className="flex flex-col gap-1">
-              <StatusChip tone={loc.tone} label={loc.label} icon={loc.icon} />
-              {loc.view?.lastUpdatedAt ? (
-                <span className="text-caption text-text-muted">
-                  Last ping {formatDateTime(loc.view.lastUpdatedAt)}
-                </span>
-              ) : null}
-              {loc.view?.hasPosition && o.riderId ? (
-                <Link
-                  href={`/ops/riders?rider=${encodeURIComponent(o.riderId)}`}
-                  className="text-caption text-text-secondary hover:text-text-primary underline-offset-4 hover:underline"
-                >
-                  {loc.view.freshness === "live"
-                    ? "Show route on map"
-                    : "Show last position on map"}
-                </Link>
-              ) : null}
-            </div>
-          );
-        },
+        cell: (o) => (
+          <LocationColumn
+            order={o}
+            cell={locationCell(o, riderRows.get(o.riderId ?? ""), locations.view)}
+          />
+        ),
       },
       {
         /*

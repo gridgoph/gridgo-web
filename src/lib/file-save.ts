@@ -11,7 +11,11 @@ import { getFileDownloadUrl } from "@/lib/api/client";
 const REVOKE_AFTER_MS = 10_000;
 
 export async function saveFileById(fileId: string, filename: string): Promise<void> {
-  const url = await getFileDownloadUrl(fileId);
+  await saveRemoteFile(await getFileDownloadUrl(fileId), filename);
+}
+
+/** Saves the bytes behind a signed link already asked for on this click. */
+export async function saveRemoteFile(url: string, filename: string): Promise<void> {
   const response = await fetch(url);
   if (!response.ok) throw new Error("download failed");
   const blob = await response.blob();

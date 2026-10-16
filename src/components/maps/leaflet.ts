@@ -26,16 +26,20 @@ export const TILE_OPTIONS = {
   maxZoom: 19,
 } as const;
 
+/** One load for every map on the page, so two maps mounting together share one script. */
+let loading: Promise<LeafletLike> | null = null;
+
 export function ensureLeaflet(): Promise<LeafletLike> {
   const existing = (window as unknown as { L?: LeafletLike }).L;
   if (existing) return Promise.resolve(existing);
+  if (loading) return loading;
   if (!document.querySelector(`link[href="${LEAFLET_CSS}"]`)) {
     const css = document.createElement("link");
     css.rel = "stylesheet";
     css.href = LEAFLET_CSS;
     document.head.appendChild(css);
   }
-  return new Promise((resolve, reject) => {
+  loading = new Promise<LeafletLike>((resolve, reject) => {
     const script = document.createElement("script");
     script.src = LEAFLET_JS;
     script.async = true;
@@ -44,9 +48,17 @@ export function ensureLeaflet(): Promise<LeafletLike> {
       if (!L) reject(new Error("Leaflet failed to load"));
       else resolve(L);
     };
-    script.onerror = () => reject(new Error("Leaflet failed to load"));
+    script.onerror = () => {
+      script.remove();
+      reject(new Error("Leaflet failed to load"));
+    };
     document.body.appendChild(script);
+  }).catch((error: unknown) => {
+    // A failed load is tried again by the next map, not remembered.
+    loading = null;
+    throw error;
   });
+  return loading;
 }
 
 export function readToken(name: string, fallback: string): string {

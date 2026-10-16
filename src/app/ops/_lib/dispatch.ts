@@ -45,3 +45,32 @@ export function filterDispatchOrders(orders: Order[]): Order[] {
       return (b.updatedAt || "").localeCompare(a.updatedAt || "");
     });
 }
+
+export type RouteAction = {
+  /** Where "Show route" goes: the rider on the live map. Null when it cannot open. */
+  href: string | null;
+  /** "Show route on map" while live, "Show last position on map" once the rider goes quiet. */
+  label: string;
+  /** Under a disabled control and its accessible description: the location label. */
+  reason: string | null;
+};
+
+/**
+ * The dispatch row's route control. A last known position still opens it, so
+ * a quiet rider can be found where they were. With no position the control
+ * stays visible but disabled, and says why in the location column's words.
+ */
+export function presentRouteAction(
+  riderId: string | null | undefined,
+  view: { hasPosition: boolean; freshness: string } | null,
+  locationLabel: string,
+): RouteAction {
+  if (riderId && view?.hasPosition) {
+    return {
+      href: `/ops/riders?rider=${encodeURIComponent(riderId)}`,
+      label: view.freshness === "live" ? "Show route on map" : "Show last position on map",
+      reason: null,
+    };
+  }
+  return { href: null, label: "Show route on map", reason: locationLabel };
+}

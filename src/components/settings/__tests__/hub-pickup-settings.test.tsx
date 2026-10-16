@@ -28,6 +28,8 @@ vi.mock("@/lib/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/client")>()),
   getSettings,
   updateSettings,
+  // The settings screen also reads the catalogue for artwork guidance; never the network.
+  getTaxonomy: vi.fn(async () => ({ categories: [], subcategories: [], materials: [], finishes: [] })),
 }));
 const { OperationalSettings } = await import("@/components/settings/OperationalSettings");
 const { HubPickupSettings } = await import("@/components/settings/HubPickupSettings");

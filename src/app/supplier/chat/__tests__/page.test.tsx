@@ -2,13 +2,15 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import SupplierChatPage from "@/app/supplier/chat/page";
+import * as apiClient from "@/lib/api/client";
 import { ApiError } from "@/lib/api/client";
 import type { SupportChatEvent } from "@/lib/api/types";
+import { formatDate } from "@/lib/format";
 
 vi.stubGlobal("React", React);
 
@@ -78,6 +80,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  vi.spyOn(apiClient, "getFileDownloadUrl").mockResolvedValue("https://files.test/photo.jpg");
   getSupportChatMe.mockReset();
   getSupportChatThread.mockReset();
   openSupportChatThread.mockReset();
@@ -286,4 +289,110 @@ describe("supplier chat", () => {
     expect(screen.queryByText("Desk Agent")).toBeNull();
     await waitFor(() => expect(markSupportChatRead).toHaveBeenCalledWith("thread-1"));
   });
+
+  it("places an incoming bubble on the left and an outgoing bubble on the right", async () => {
+    getSupportChatThread.mockResolvedValue({
+      thread: { ...thread, unreadCount: 0 },
+      messages: [
+        shopLine({ id: "in", body: "We are looking.", mine: false, createdAt: "2026-09-21T03:00:00.000Z" }),
+        shopLine({ id: "out", body: "Where is the payout?", mine: true, createdAt: "2026-09-21T03:05:00.000Z" }),
+      ],
+    });
+    render(<SupplierChatPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Operations, Where is the payout?" }));
+    const runs = await screen.findAllByTestId("chat-run");
+    expect(runs).toHaveLength(2);
+    expect(runs[0]).toHaveAttribute("data-side", "incoming");
+    expect(runs[0]).toHaveClass("justify-start");
+    expect(runs[0]).toHaveTextContent("We are looking.");
+    expect(runs[1]).toHaveAttribute("data-side", "outgoing");
+    expect(runs[1]).toHaveClass("justify-end");
+    expect(runs[1]).toHaveTextContent("Where is the payout?");
+    expect(within(runs[1]!).queryByTestId("chat-avatar")).toBeNull();
+  });
+
+  it("shows one avatar and one time for two incoming messages in a row", async () => {
+    getSupportChatThread.mockResolvedValue({
+      thread: { ...thread, unreadCount: 0 },
+      messages: [
+        shopLine({ id: "a", body: "We are looking.", mine: false, createdAt: "2026-09-21T03:00:00.000Z" }),
+        shopLine({ id: "b", body: "Still checking.", mine: false, createdAt: "2026-09-21T03:05:00.000Z" }),
+      ],
+    });
+    render(<SupplierChatPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Operations, Where is the payout?" }));
+    const run = await screen.findByTestId("chat-run");
+    expect(run).toHaveAttribute("data-side", "incoming");
+    expect(within(run).getAllByTestId("chat-avatar")).toHaveLength(1);
+    expect(within(run).getAllByTestId("chat-run-time")).toHaveLength(1);
+    expect(within(run).getAllByTestId("chat-bubble")).toHaveLength(2);
+    expect(within(run).getByTestId("chat-run-time")).toHaveTextContent(/^Operations ·/);
+    expect(screen.queryByText("Desk Agent")).toBeNull();
+  });
+
+  it("renders a photo in the bubble", async () => {
+    getSupportChatThread.mockResolvedValue({
+      thread: { ...thread, unreadCount: 0 },
+      messages: [
+        shopLine({
+          id: "photo",
+          body: "",
+          mine: false,
+          createdAt: "2026-09-21T03:00:00.000Z",
+          attachments: [{ fileId: "file_photo", originalFilename: "proof.jpg" }],
+        }),
+      ],
+    });
+    render(<SupplierChatPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Operations, Where is the payout?" }));
+    const run = await screen.findByTestId("chat-run");
+    expect(await within(run).findByRole("img", { name: "proof.jpg" })).toBeTruthy();
+  });
+
+  it("shows a date chip when a new day starts", async () => {
+    const today = new Date();
+    today.setHours(15, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setDate(today.getDate() - 1);
+    getSupportChatThread.mockResolvedValue({
+      thread: { ...thread, unreadCount: 0 },
+      messages: [
+        shopLine({ id: "y", body: "Noted yesterday.", mine: false, createdAt: yesterday.toISOString() }),
+        shopLine({ id: "t", body: "Noted today.", mine: true, createdAt: today.toISOString() }),
+      ],
+    });
+    render(<SupplierChatPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Operations, Where is the payout?" }));
+    const chips = await screen.findAllByTestId("chat-day");
+    expect(chips.map((chip) => chip.textContent)).toEqual([
+      formatDate(yesterday.toISOString()),
+      "Today",
+    ]);
+  });
 });
+
+function shopLine({
+  id,
+  body,
+  mine,
+  createdAt,
+  attachments,
+}: {
+  id: string;
+  body: string;
+  mine: boolean;
+  createdAt: string;
+  attachments?: { fileId: string; originalFilename?: string }[];
+}) {
+  return {
+    id,
+    threadId: thread.id,
+    senderUserId: mine ? "shop" : "ops",
+    senderRole: mine ? ("supplier" as const) : ("ops_admin" as const),
+    senderName: mine ? "North Press" : "Desk Agent",
+    body,
+    createdAt,
+    mine,
+    attachments,
+  };
+}

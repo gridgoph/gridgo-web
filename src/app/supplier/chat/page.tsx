@@ -18,6 +18,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Textarea } from "@/components/ui/textarea";
 import { ChatAttachButton } from "@/components/chat/ChatAttachButton";
+import { ChatAvatar } from "@/components/chat/ChatAvatar";
 import { ConversationDetails } from "@/components/chat/ConversationDetails";
 import { InboxPager, sliceInboxPage } from "@/components/chat/InboxPager";
 import { ApiError, uploadSupportChatImage } from "@/lib/api/client";
@@ -35,7 +36,7 @@ import {
   validateSupportChatImage,
 } from "@/lib/chatImages";
 import type { SupportChatAttachment, SupportChatMessage, SupportChatThread } from "@/lib/api/types";
-import { ChatMessage } from "@/components/chat/ChatMessage";
+import { ChatTranscript } from "@/components/chat/ChatTranscript";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -417,36 +418,41 @@ export default function SupplierChatPage() {
                   <div key={thread.id} role="listitem">
                     <button
                       type="button"
-                      onClick={() => setSelectedId(thread.id)}
+                      onClick={() => {
+                        setSelectedId(thread.id);
+                      }}
                       aria-current={active ? "true" : undefined}
                       aria-label={`Operations, ${preview}`}
                       className={cn(
-                        "mb-1 flex w-full flex-col items-start gap-0.5 rounded-[var(--radius-field)] px-3 py-2 text-left",
+                        "mb-1 flex w-full items-center gap-2 rounded-[var(--radius-field)] px-3 py-2 text-left",
                         active ? "bg-muted" : "hover:bg-overlay-hover",
                       )}
                     >
-                      <span className="flex w-full items-center justify-between gap-2">
-                        <span
-                          className="text-body text-text-primary m-0"
-                          style={{ fontFamily: "var(--font-medium)" }}
-                        >
-                          Operations
-                        </span>
-                        {thread.lastMessageAt ? (
-                          <span className="text-caption text-text-muted">
-                            {formatDateTime(thread.lastMessageAt)}
+                      <ChatAvatar name="Operations" />
+                      <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+                        <span className="flex w-full items-center justify-between gap-2">
+                          <span
+                            className="text-body text-text-primary m-0"
+                            style={{ fontFamily: "var(--font-medium)" }}
+                          >
+                            Operations
                           </span>
-                        ) : null}
-                      </span>
-                      <span className="flex w-full items-center justify-between gap-2">
-                        <span className="text-caption text-text-secondary line-clamp-2 min-w-0">
-                          {preview}
+                          {thread.lastMessageAt ? (
+                            <span className="text-caption text-text-muted">
+                              {formatDateTime(thread.lastMessageAt)}
+                            </span>
+                          ) : null}
                         </span>
-                        {thread.unreadCount > 0 ? (
-                          <span className="text-caption text-text-primary">
-                            {thread.unreadCount}
+                        <span className="flex w-full items-center justify-between gap-2">
+                          <span className="text-caption text-text-secondary line-clamp-2 min-w-0">
+                            {preview}
                           </span>
-                        ) : null}
+                          {thread.unreadCount > 0 ? (
+                            <span className="text-caption text-text-primary">
+                              {thread.unreadCount}
+                            </span>
+                          ) : null}
+                        </span>
                       </span>
                     </button>
                   </div>
@@ -483,16 +489,19 @@ export default function SupplierChatPage() {
               <div className="flex items-start justify-between gap-3">
                 <button
                   type="button"
-                  className="min-w-0 rounded-[var(--radius-field)] text-left hover:bg-overlay-hover"
+                  className="flex min-w-0 items-center gap-2 rounded-[var(--radius-field)] text-left hover:bg-overlay-hover"
                   onClick={() => setDetailsOpen(true)}
                 >
-                  <h2 className="text-h3 text-text-primary m-0">Operations</h2>
-                  <p className="text-caption text-text-muted m-0 mt-1">
-                    GRIDGO operations
-                    {selected?.lastMessageAt
-                      ? ` · ${formatDateTime(selected.lastMessageAt)}`
-                      : ""}
-                  </p>
+                  <ChatAvatar name="Operations" />
+                  <span className="min-w-0">
+                    <h2 className="text-h3 text-text-primary m-0">Operations</h2>
+                    <p className="text-caption text-text-muted m-0 mt-1">
+                      GRIDGO operations
+                      {selected?.lastMessageAt
+                        ? ` · ${formatDateTime(selected.lastMessageAt)}`
+                        : ""}
+                    </p>
+                  </span>
                 </button>
                 <Button
                   type="button"
@@ -514,13 +523,11 @@ export default function SupplierChatPage() {
                     body="Ask about a job, a payout, or anything the desk needs to settle. They write back here."
                   />
                 ) : (
-                  messages.map((message) => (
-                    <ChatMessage
-                      key={message.id}
-                      message={message}
-                      counterpartLabel="Operations"
-                    />
-                  ))
+                  <ChatTranscript
+                    messages={messages}
+                    party={{ kind: "operations" }}
+                    otherName={() => "Operations"}
+                  />
                 )}
                 <div ref={endRef} />
               </div>

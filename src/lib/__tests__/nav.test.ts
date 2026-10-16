@@ -93,6 +93,7 @@ describe("ROLE_NAV", () => {
       "/admin/featured-prints",
       "/admin/zones",
       "/admin/finance",
+      "/admin/pricing",
       "/admin/supplier-invoices",
       "/admin/vouchers",
       "/admin/refunds",
@@ -144,6 +145,7 @@ describe("ROLE_NAV", () => {
       "/admin/organizations",
       "/admin/overview",
       "/admin/planning",
+      "/admin/pricing",
       "/admin/privacy-requests",
       "/admin/refunds",
       "/admin/riders",
@@ -329,6 +331,7 @@ describe("ROLE_NAV", () => {
         ?.items.map((n) => n.href),
     ).toEqual([
       "/admin/finance",
+      "/admin/pricing",
       "/admin/supplier-invoices",
       "/admin/vouchers",
       "/admin/refunds",
