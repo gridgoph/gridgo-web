@@ -96,7 +96,7 @@ function LineRecord({
   return (
     <section
       aria-label={title}
-      className="border-outline flex flex-col gap-3 rounded-card border p-3"
+      className="border-outline @container flex flex-col gap-3 rounded-card border p-3"
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex min-w-0 flex-col gap-0.5">
@@ -173,7 +173,7 @@ function PageTable({ quote, audience }: { quote: ColourQuote; audience: Audience
             </th>
             {quote.pricedByColour ? (
               <>
-                <th scope="col" className="text-caption text-text-muted hidden py-1.5 pr-2 font-normal sm:table-cell">
+                <th scope="col" className="text-caption text-text-muted hidden py-1.5 pr-2 font-normal @md:table-cell">
                   Tier
                 </th>
                 <th scope="col" className="text-caption text-text-muted py-1.5 pr-2 text-right font-normal">
@@ -236,23 +236,29 @@ function PageRow({
       <th scope="row" className="py-1.5 pr-2 font-normal">
         <span className="flex items-center gap-2">
           <CoverageGlyph bps={page.strongColourBps} size="sm" />
-          <span className="text-body text-text-primary">
+          <span className="text-body text-text-primary whitespace-nowrap">
             Page {page.page}
             {fileIndex ? (
               <span className="text-caption text-text-muted block">File {fileIndex}</span>
             ) : null}
+            {/* A narrow column (the workspace rail, a phone) drops the Tier column: name it here. */}
+            {priced ? (
+              <span className="text-caption text-text-secondary block whitespace-normal @md:hidden">
+                {page.tier ? tierLabel(page.tier, limit) : "No tier on this paper"}
+              </span>
+            ) : null}
           </span>
         </span>
       </th>
-      <td className="text-body text-text-primary py-1.5 pr-2 text-right tabular-nums">
+      <td className="text-body text-text-primary py-1.5 pr-2 text-right whitespace-nowrap tabular-nums">
         {bpsPercent(page.strongColourBps)}
       </td>
       {priced ? (
         <>
-          <td className="text-body text-text-secondary hidden py-1.5 pr-2 sm:table-cell">
+          <td className="text-body text-text-secondary hidden py-1.5 pr-2 @md:table-cell">
             {page.tier ? tierLabel(page.tier, limit) : "No tier on this paper"}
           </td>
-          <td className="py-1.5 pr-2 text-right tabular-nums">
+          <td className="py-1.5 pr-2 text-right whitespace-nowrap tabular-nums">
             {missing ? (
               <span className="text-body text-text-primary inline-flex items-center gap-1" style={medium}>
                 <TriangleAlert size={14} aria-hidden className="text-warning shrink-0" />
@@ -263,7 +269,7 @@ function PageRow({
             )}
           </td>
           {staff ? (
-            <td className="text-body text-text-secondary py-1.5 text-right tabular-nums">
+            <td className="text-body text-text-secondary py-1.5 text-right whitespace-nowrap tabular-nums">
               {page.clientSheetPriceMinor == null ? "—" : formatPhp(page.clientSheetPriceMinor)}
             </td>
           ) : null}
