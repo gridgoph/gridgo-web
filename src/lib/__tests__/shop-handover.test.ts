@@ -17,6 +17,9 @@ import {
   handoverSteps,
   handoverVisible,
   sentBackQueue,
+  shopFinishedStep,
+  shopHandoverChip,
+  shopTimelineState,
   skippedCheckLabel,
   submissionNumber,
   submissionPhotos,
@@ -450,6 +453,70 @@ describe("the order's status chip in the rider-packs flow", () => {
     expect(label({ shopHandover: {} })).toBe("No finished photos yet");
     expect(presentOrderState("ready_for_dispatch", order()).label).toBe(
       "Ready for rider pickup",
+    );
+  });
+});
+
+describe("the shop's side of the finished work", () => {
+  const sent = {
+    finished: { at: "2026-10-15T02:00:00Z", by: "shop_1", supplierId: "shop_1", photoFileIds: ["f1"] },
+  };
+  const rejected = {
+    at: "2026-10-15T03:00:00Z",
+    by: "ops1",
+    decision: "rejected",
+    note: "Reprint page 12",
+  };
+
+  it("asks for photos in production, carrying the last send-back's reason", () => {
+    expect(shopFinishedStep(order({ state: "production", shopHandover: {} }))).toEqual({
+      stage: "to_send",
+      sendBack: null,
+    });
+    const back = order({
+      state: "production",
+      shopHandover: { attempts: [{ ...sent, review: rejected }] } as ShopHandover,
+    });
+    expect(shopFinishedStep(back)).toEqual({ stage: "to_send", sendBack: rejected });
+    expect(shopHandoverChip(back)?.label).toBe("Needs a fix");
+  });
+
+  it("never reads another shop's send-back after a replacement", () => {
+    const other = order({
+      state: "production",
+      supplierId: "shop2",
+      shopHandover: { attempts: [{ ...sent, review: rejected }] } as ShopHandover,
+    });
+    expect(shopFinishedStep(other)).toEqual({ stage: "to_send", sendBack: null });
+  });
+
+  it("waits while GRIDGO reviews, and calls a rider once approved", () => {
+    const waiting = order({ state: "supplier_self_qc", shopHandover: { ...sent, review: null } });
+    expect(shopFinishedStep(waiting)?.stage).toBe("in_review");
+    expect(shopHandoverChip(waiting)?.label).toBe("GRIDGO reviewing");
+    const approved = order({
+      state: "supplier_self_qc",
+      shopHandover: { ...sent, review: { ...rejected, decision: "approved", note: "" } },
+    });
+    expect(shopFinishedStep(approved)?.stage).toBe("approved");
+  });
+
+  it("has no step on the older handover", () => {
+    expect(
+      shopFinishedStep(order({ handoverFlow: "legacy", state: "production" })),
+    ).toBeNull();
+  });
+
+  it("labels a timeline entry by its state, not by where the review stands now", () => {
+    // Sent back since: the entry still records that the work went for review.
+    const back = order({
+      state: "production",
+      shopHandover: { attempts: [{ ...sent, review: rejected }] } as ShopHandover,
+    });
+    expect(shopTimelineState(back, "supplier_self_qc").label).toBe("GRIDGO review");
+    expect(shopTimelineState(back, "ready_for_dispatch").label).toBe("Ready for rider pickup");
+    expect(shopTimelineState(order({ handoverFlow: "legacy" }), "supplier_self_qc")).toEqual(
+      presentOrderState("supplier_self_qc"),
     );
   });
 });

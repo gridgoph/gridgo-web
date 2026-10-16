@@ -21,6 +21,7 @@ import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
+import { shopHandoverChip } from "@/lib/shop-handover";
 import { needsSupplierAction, primaryAction } from "@/lib/supplier-actions";
 import { activitySortValue, jobActivity, relativeTime } from "../_lib/job-activity";
 
@@ -32,6 +33,11 @@ function nextStepLabel(job: Order): string {
   if (!action) return NO_ACTION;
   // A claim hold blocks packing: the shop waits on Operations, not on itself.
   return action.blockedReason ? "Waiting on Operations (claim)" : action.label;
+}
+
+/** The job's status in the shop's words: a rider-packs review is not packing. */
+function jobStatus(job: Order) {
+  return shopHandoverChip(job) ?? presentOrderState(job.state);
 }
 
 /** Whether a due date falls inside the next `hours`. */
@@ -128,10 +134,10 @@ export default function SupplierJobsPage() {
       {
         id: "status",
         header: "Status",
-        sortValue: (job) => presentOrderState(job.state).label,
-        filterValue: (job) => presentOrderState(job.state).label,
+        sortValue: (job) => jobStatus(job).label,
+        filterValue: (job) => jobStatus(job).label,
         cell: (job) => {
-          const status = presentOrderState(job.state);
+          const status = jobStatus(job);
           return (
             <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
           );
@@ -214,7 +220,7 @@ export default function SupplierJobsPage() {
       {
         columnId: "status",
         title: "Status",
-        options: facetOptions(rows, (job) => presentOrderState(job.state).label),
+        options: facetOptions(rows, (job) => jobStatus(job).label),
       },
       {
         columnId: "next",

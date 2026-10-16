@@ -13,11 +13,8 @@
  */
 
 import type { Order, TimelineEntry } from "@/lib/api/types";
-import {
-  presentOrderState,
-  presentTimelineActor,
-  presentTimelineNote,
-} from "@/lib/order-state";
+import { presentTimelineActor, presentTimelineNote } from "@/lib/order-state";
+import { shopTimelineState } from "@/lib/shop-handover";
 
 export type JobActivity = {
   /** Epoch ms of the most recent movement, or null when the API sent none. */
@@ -74,8 +71,8 @@ export function jobActivity(job: Order): JobActivity {
   const note = entry?.note?.trim();
   const what =
     (note ? presentTimelineNote(note) : "") ||
-    (entry?.state ? presentOrderState(entry.state).label : "") ||
-    presentOrderState(job.state).label;
+    (entry?.state ? shopTimelineState(job, entry.state).label : "") ||
+    shopTimelineState(job, job.state).label;
 
   return {
     at,

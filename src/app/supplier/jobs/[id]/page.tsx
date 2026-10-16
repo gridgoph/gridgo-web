@@ -17,6 +17,7 @@ import {
 
 import { ChangeRequestCard } from "@/app/supplier/_components/ChangeRequestCard";
 import { DeclineJobDialog } from "@/app/supplier/_components/DeclineJobDialog";
+import { FinishedWorkDialog } from "@/app/supplier/_components/FinishedWorkDialog";
 import { PackagingChecklist } from "@/app/supplier/_components/PackagingChecklist";
 import { RequestChangeDialog } from "@/app/supplier/_components/RequestChangeDialog";
 import { SpecialInstructionsCard } from "@/app/supplier/_components/SpecialInstructionsCard";
@@ -76,6 +77,13 @@ import {
   progressReached,
 } from "@/lib/production-progress";
 import { uploadErrorMessage } from "@/lib/upload-errors";
+import {
+  DO_NOT_PACK_YET,
+  ridersPack,
+  shopFinishedStep,
+  shopHandoverChip,
+  shopTimelineState,
+} from "@/lib/shop-handover";
 import {
   CLAIM_HOLD_PACKING_REASON,
   actionsForJob,
@@ -173,6 +181,8 @@ export default function SupplierJobDetailPage() {
   const photoInput = useRef<HTMLInputElement>(null);
   // The API refused to pack for want of a photo: the error offers that upload.
   const [photoRefused, setPhotoRefused] = useState<PhotoKind | null>(null);
+  // Rider-packs: the finished, unpacked work, sent for GRIDGO's review.
+  const [finishedOpen, setFinishedOpen] = useState(false);
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -241,6 +251,13 @@ export default function SupplierJobDetailPage() {
       openPhoto("packing");
       return;
     }
+    if (action.kind === "send_finished_photos") {
+      if (action.blockedReason) return;
+      setActionError(null);
+      setFiledNote(null);
+      setFinishedOpen(true);
+      return;
+    }
     if (action.kind === "add_proof" || action.targetState === null) {
       setActionError(null);
       setProofError(null);
@@ -269,7 +286,9 @@ export default function SupplierJobDetailPage() {
         action.kind === "accept"
           ? "Accepted"
           : action.kind === "ready_for_pickup"
-            ? "Packaging ready — packed and staged for joint pickup checks with the rider"
+            ? ridersPack(job)
+              ? "Ready for rider pickup. Packing materials prepared; nothing packed until the rider checks the items."
+              : "Packaging ready — packed and staged for joint pickup checks with the rider"
             : action.label;
       setJob(
         await transitionOrder(
@@ -425,7 +444,7 @@ export default function SupplierJobDetailPage() {
     );
   }
 
-  const status = presentOrderState(job.state);
+  const status = shopHandoverChip(job) ?? presentOrderState(job.state);
   const activity = jobActivity(job);
   const actions = actionsForJob(job);
   const proofAction = actions.find((action) => action.kind === "add_proof") ?? null;
@@ -439,6 +458,8 @@ export default function SupplierJobDetailPage() {
   const photoMissing = productionPhotoMissing(job);
   const photoOpenState = canAddProgressPhoto(job);
   const check = packagingCheck(job);
+  const riderPacks = ridersPack(job);
+  const finished = shopFinishedStep(job);
   const heldByChecklist = Boolean(primary?.blockedReason && check);
   const packingPhotos = (job.packingProgress?.photos ?? []).filter(
     (photo) => photo?.fileId,
@@ -568,6 +589,9 @@ export default function SupplierJobDetailPage() {
           {primary && waiting ? (
             <p className="text-caption text-text-muted m-0">{waiting}</p>
           ) : null}
+          {primary?.kind === "ready_for_pickup" && riderPacks ? (
+            <p className="text-body text-text-secondary m-0 max-w-prose">{DO_NOT_PACK_YET}</p>
+          ) : null}
           {primary?.kind === "add_progress_photo" && !check ? (
             <p className="text-caption text-text-muted m-0 max-w-prose">
               {PRODUCTION_PHOTO_COPY.supplierRule}
@@ -664,7 +688,7 @@ export default function SupplierJobDetailPage() {
       */}
       <div className="grid w-full gap-3 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:items-start">
         <div className="flex min-w-0 flex-col gap-3">
-          {check ? <PackagingChecklist check={check} /> : null}
+          {check ? <PackagingChecklist check={check} finished={finished} /> : null}
 
           {/*
             The client's own words come before the docket: they are the part of
@@ -697,7 +721,11 @@ export default function SupplierJobDetailPage() {
             <OrderMeta order={job} showMoney={false} fromJobDetails />
           </section>
 
-          {progress && progressReached(job) ? (
+          {/*
+            A rider-packs job owes no progress photo, so the empty frame that
+            asks for one is not drawn; any photo it has is still shown.
+          */}
+          {progress && progressReached(job) && (!riderPacks || !photoMissing) ? (
             <section className="gg-card p-3" aria-labelledby="progress-heading">
               <h3
                 id="progress-heading"
@@ -770,7 +798,11 @@ export default function SupplierJobDetailPage() {
               Timeline
             </h3>
             <p className="text-caption text-text-muted m-0 mb-3">Most recent first.</p>
-            <Timeline entries={job.timeline} newestFirst />
+            <Timeline
+              entries={job.timeline}
+              newestFirst
+              presentState={(state) => shopTimelineState(job, state)}
+            />
           </section>
         </div>
 
@@ -815,7 +847,7 @@ export default function SupplierJobDetailPage() {
           <div className="flex flex-col gap-2">
             <p className="text-caption text-text-muted m-0">
               JPEG, PNG, WebP, or PDF.
-              {progress
+              {progress && !riderPacks
                 ? " A photo also counts as the progress photo you need before packing; a PDF does not."
                 : ""}
             </p>
@@ -940,6 +972,26 @@ export default function SupplierJobDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {riderPacks ? (
+        <FinishedWorkDialog
+          job={job}
+          open={finishedOpen}
+          sendBack={finished?.stage === "to_send" ? finished.sendBack : null}
+          onClose={() => setFinishedOpen(false)}
+          onSent={(order) => {
+            setFinishedOpen(false);
+            setJob(order);
+            setFiledNote("Sent for review.");
+            void load().catch(() => undefined);
+          }}
+          onMovedOn={(message) => {
+            setFinishedOpen(false);
+            setActionError(message);
+            void load().catch(() => undefined);
+          }}
+        />
+      ) : null}
 
       <DeclineJobDialog
         open={declineOpen}
