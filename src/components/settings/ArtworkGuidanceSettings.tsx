@@ -16,7 +16,7 @@
  * file: a target only decides when the client is warned.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { Button } from "@/components/ui/button";
@@ -70,12 +70,23 @@ export function ArtworkGuidanceSettings({
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
+  // A read that lands after the card is gone is dropped, not written into
+  // a component (or a test environment) that no longer exists.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const loadTaxonomy = useCallback(async () => {
     try {
-      setTaxonomy(await getTaxonomy());
+      const next = await getTaxonomy();
+      if (!mounted.current) return;
+      setTaxonomy(next);
       setTaxonomyFailed(false);
     } catch {
-      setTaxonomyFailed(true);
+      if (mounted.current) setTaxonomyFailed(true);
     }
   }, []);
   useEffect(() => {
