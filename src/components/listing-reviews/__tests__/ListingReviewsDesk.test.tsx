@@ -133,7 +133,7 @@ beforeEach(() => {
               id: "sci_change",
               name: "Glossy flyers",
               hasApprovedVersion: true,
-              updatedAt: "2026-10-05T05:00:00Z",
+              updatedAt: "2026-10-04T23:00:00Z",
             }),
           ],
           nextCursor: null,
@@ -178,7 +178,7 @@ afterEach(() => {
 });
 
 describe("Listing reviews desk", () => {
-  it("lists waiting listings oldest first with their shop and opens the oldest", async () => {
+  it("lists waiting listings newest first with their shop and opens the newest", async () => {
     render(<ListingReviewsDesk tree="ops" />);
     const list = await screen.findByRole("list", { name: "Listings" });
     expect(await screen.findByText("Ready in 2 working days")).toBeInTheDocument();
@@ -191,6 +191,7 @@ describe("Listing reviews desk", () => {
     expect(rows[0]).toHaveTextContent("Shop A · Stickers");
     expect(rows[1]).toHaveTextContent("Change");
     expect(screen.getByRole("button", { name: "Listings · 2" })).toBeInTheDocument();
+    expect(screen.getByText(/, newest first/)).toBeInTheDocument();
     expect(
       await screen.findByRole("heading", { level: 2, name: "Die-cut stickers" }),
     ).toBeVisible();

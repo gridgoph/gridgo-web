@@ -55,7 +55,7 @@ import {
   isRevision,
   normalizeProductTypeRequests,
   normalizeReviewPage,
-  oldestFirst,
+  newestFirst,
   reviewChip,
   reviewCountLine,
   reviewErrorMessage,
@@ -271,7 +271,7 @@ export function ListingReviewsDesk({ tree }: { tree: "ops" | "admin" }) {
   const source = status === "pending" ? pending : other;
   const sorted = useMemo(() => {
     if (!source) return null;
-    if (status === "pending") return oldestFirst(source);
+    if (status === "pending") return newestFirst(source);
     return [...source].sort((a, b) =>
       String(b.listing.reviewedAt ?? "").localeCompare(
         String(a.listing.reviewedAt ?? ""),
@@ -310,7 +310,7 @@ export function ListingReviewsDesk({ tree }: { tree: "ops" | "admin" }) {
       ? (entries ?? []).map((entry) => entry.listing.id)
       : (shownRequests ?? []).map((request) => request.id);
 
-  // Side by side, the oldest waiting item opens on its own: the desk works top down.
+  // Side by side, the newest waiting item opens on its own: the desk works top down.
   useEffect(() => {
     if (selectedId && rowIds.includes(selectedId)) return;
     if (rowIds.length && sideBySide()) setSelectedId(rowIds[0]);
@@ -709,7 +709,7 @@ export function ListingReviewsDesk({ tree }: { tree: "ops" | "admin" }) {
               aria-live="polite"
             >
               {reviewCountLine(entries.length, sorted.length, filtered)}
-              {status === "pending" ? ", oldest first" : ", latest decision first"}
+              {status === "pending" ? ", newest first" : ", latest decision first"}
               {partial ? `. Showing the first ${sorted.length}.` : ""}
             </p>
           ) : null}

@@ -200,10 +200,13 @@ export function filterReviewEntries(
   });
 }
 
-/** Oldest first: the shop that has waited longest is next. */
-export function oldestFirst(entries: readonly ReviewEntry[]): ReviewEntry[] {
+/**
+ * Newest first: a listing just sent in, or just changed, leads the queue
+ * (issue report 5B001D9C). `updatedAt` moves on every submission and change.
+ */
+export function newestFirst(entries: readonly ReviewEntry[]): ReviewEntry[] {
   return [...entries].sort((a, b) =>
-    String(a.listing.updatedAt ?? "").localeCompare(String(b.listing.updatedAt ?? "")),
+    String(b.listing.updatedAt ?? "").localeCompare(String(a.listing.updatedAt ?? "")),
   );
 }
 

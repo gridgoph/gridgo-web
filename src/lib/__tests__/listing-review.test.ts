@@ -9,7 +9,7 @@ import {
   listingChanges,
   normalizeProductTypeRequests,
   normalizeReviewPage,
-  oldestFirst,
+  newestFirst,
   productTypeCodeError,
   reviewChip,
   reviewErrorMessage,
@@ -101,7 +101,7 @@ describe("listing review queue", () => {
     ]);
   });
 
-  it("filters by search, kind, shop and product type, and sorts oldest first", () => {
+  it("filters by search, kind, shop and product type, and sorts newest first", () => {
     const entries = normalizeReviewPage({
       items: [
         item({ id: "new", updatedAt: "2026-10-05T03:00:00Z" }),
@@ -144,7 +144,7 @@ describe("listing review queue", () => {
     expect(
       filterReviewEntries(entries, { ...base, subcategoryCode: "stickers" }, shop, type),
     ).toHaveLength(1);
-    expect(oldestFirst(entries).map((e) => e.listing.id)).toEqual(["change", "new"]);
+    expect(newestFirst(entries).map((e) => e.listing.id)).toEqual(["new", "change"]);
   });
 
   it("chips an unfinished listing apart from one ready to review", () => {
