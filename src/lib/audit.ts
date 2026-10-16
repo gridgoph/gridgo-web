@@ -163,6 +163,13 @@ const ACTION_LABELS: Record<string, string> = {
   "order.transition_refused": "Refused a step change",
   "order.production_override": "Moved job on for the shop",
   "order.file_check": "Checked the artwork file",
+  // The quality review's own records (gridgo-api#253).
+  "order.qa_tick": "Ticked or cleared a quality check",
+  "order.qa_message": "Messaged the client about the file",
+  "order.qa_hold": "Held the order and told the client",
+  "order.qa_request_file": "Asked the client for a new file",
+  "order.artwork_download": "Downloaded the artwork",
+  "order.artwork_download_all": "Downloaded all the artwork",
   "order.supplier_assigned": "Assigned a shop",
   "order.supplier_changed": "Changed the shop",
   "order.rider_assigned": "Changed the rider",

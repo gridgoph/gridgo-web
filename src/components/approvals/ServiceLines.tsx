@@ -213,7 +213,7 @@ export function ServiceLines() {
     );
   }
 
-  const hasAnyLines = (data?.services.length ?? 0) > 0;
+  const hasAnyLines = (data?.services?.length ?? 0) > 0;
   const hasVisibleShops =
     sections.waiting.length + sections.live.length + sections.suspended.length > 0;
 

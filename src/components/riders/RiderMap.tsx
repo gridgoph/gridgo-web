@@ -330,3 +330,64 @@ function popupHtml(
     escapeHtml(ping),
   ].join("<br/>");
 }
+
+/**
+ * One delivery pin on the same Leaflet map the rider desk uses.
+ * The basemap, tiles and theme class stay with that map.
+ */
+export function PinMap({
+  point,
+  label,
+  onReady,
+  onFailed,
+}: {
+  point: { lat: number; lng: number; label?: string };
+  label: string;
+  onReady?: () => void;
+  onFailed?: () => void;
+}) {
+  const hostRef = useRef<HTMLDivElement | null>(null);
+  const dark = useDarkTheme();
+  const readyRef = useRef(onReady);
+  const failedRef = useRef(onFailed);
+  readyRef.current = onReady;
+  failedRef.current = onFailed;
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    let cancelled = false;
+    let map: LeafletMap | null = null;
+    void ensureLeaflet()
+      .then((L) => {
+        if (cancelled || !hostRef.current) return;
+        map = L.map(host).setView([point.lat, point.lng], 16);
+        L.tileLayer(TILE_URL, TILE_OPTIONS).addTo(map);
+        const marker = L.marker([point.lat, point.lng], {
+          icon: endpointIcon(L, "dropoff"),
+          alt: label,
+        }).addTo(map);
+        marker.bindPopup(`<strong>${escapeHtml(label)}</strong>`);
+        readyRef.current?.();
+      })
+      .catch(() => {
+        if (!cancelled) failedRef.current?.();
+      });
+    return () => {
+      cancelled = true;
+      map?.remove();
+    };
+  }, [point.lat, point.lng, label]);
+
+  return (
+    <div className={dark ? "gg-map gg-map--dark" : "gg-map"}>
+      <div
+        ref={hostRef}
+        className="gg-card h-64 w-full overflow-hidden p-0"
+        role="img"
+        aria-label={label}
+      />
+    </div>
+  );
+}
+

@@ -904,31 +904,7 @@ export default function ListingEditorPage() {
       <div className="lg:grid lg:grid-cols-[minmax(18rem,28rem)_minmax(0,1fr)] lg:items-start lg:gap-8 xl:gap-10">
         <div className="flex flex-col gap-6 lg:col-start-2 lg:row-start-1">
           <SaveStatus state={saveState} onRetry={() => void persist()} />
-          <div role="tablist" aria-label="Listing steps" className="flex flex-wrap gap-1">
-            {EDITOR_STEPS.map((entry) => {
-              const selected = step === entry.id;
-              return (
-                <button
-                  key={entry.id}
-                  type="button"
-                  role="tab"
-                  id={`listing-step-${entry.id}`}
-                  aria-selected={selected}
-                  aria-controls="listing-step-panel"
-                  tabIndex={selected ? 0 : -1}
-                  onClick={() => setStep(entry.id)}
-                  className={cn(
-                    "text-button min-h-11 rounded-[var(--radius-field)] border px-3",
-                    selected
-                      ? "border-transparent bg-primary text-primary-foreground"
-                      : "border-border bg-card text-foreground hover:bg-overlay-hover",
-                  )}
-                >
-                  {entry.label}
-                </button>
-              );
-            })}
-          </div>
+          <ListingStepNav step={step} onSelect={setStep} />
 
           <div
             id="listing-step-panel"
@@ -1283,27 +1259,31 @@ export default function ListingEditorPage() {
                       }}
                     />
                     {listing.fileFormatMode === "override" ? (
-                      <div
-                        role="group"
-                        aria-label="File formats you accept"
-                        className="flex flex-wrap gap-2"
-                      >
-                        {formats.map((format) => {
-                          const on = listing.formatCodes.includes(format.code);
-                          return (
-                            <FormatChip
-                              key={format.code}
-                              label={format.displayName}
-                              on={on}
-                              onToggle={() => {
-                                const next = on
-                                  ? listing.formatCodes.filter((code) => code !== format.code)
-                                  : [...listing.formatCodes, format.code];
-                                void saveFormats("override", next);
-                              }}
-                            />
-                          );
-                        })}
+                      <div className="flex flex-col gap-5">
+                        <FormatGroup
+                          title="Files"
+                          hint="A file is an upload."
+                          formats={formats.filter((format) => format.inputKind === "file")}
+                          selected={listing.formatCodes}
+                          onToggle={(code, on) => {
+                            const next = on
+                              ? listing.formatCodes.filter((entry) => entry !== code)
+                              : [...listing.formatCodes, code];
+                            void saveFormats("override", next);
+                          }}
+                        />
+                        <FormatGroup
+                          title="Links"
+                          hint="A link is a Canva, Drive, or Dropbox address."
+                          formats={formats.filter((format) => format.inputKind === "url")}
+                          selected={listing.formatCodes}
+                          onToggle={(code, on) => {
+                            const next = on
+                              ? listing.formatCodes.filter((entry) => entry !== code)
+                              : [...listing.formatCodes, code];
+                            void saveFormats("override", next);
+                          }}
+                        />
                       </div>
                     ) : (
                       <p className="text-caption text-text-secondary m-0">
@@ -1440,6 +1420,94 @@ export default function ListingEditorPage() {
 }
 
 /**
+ * Where the shop is in the seven steps, and what is still ahead.
+ *
+ * The current step is marked. Steps before it can be opened again. Later
+ * steps stay in the row and read as not done yet. On a phone only the
+ * current step is named; the rest keep their numbers.
+ */
+function ListingStepNav({
+  step,
+  onSelect,
+}: {
+  step: EditorStepId;
+  onSelect: (id: EditorStepId) => void;
+}) {
+  const currentIndex = EDITOR_STEPS.findIndex((entry) => entry.id === step);
+  return (
+    <>
+      <p id="listing-step-done" className="sr-only">
+        Done. You can open it again.
+      </p>
+      <p id="listing-step-ahead" className="sr-only">
+        Not done yet.
+      </p>
+      <div role="tablist" aria-label="Listing steps" className="grid grid-cols-7">
+        {EDITOR_STEPS.map((entry, index) => {
+          const selected = index === currentIndex;
+          const done = index < currentIndex;
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              role="tab"
+              id={`listing-step-${entry.id}`}
+              aria-label={entry.label}
+              aria-selected={selected}
+              aria-controls="listing-step-panel"
+              aria-describedby={
+                selected ? undefined : done ? "listing-step-done" : "listing-step-ahead"
+              }
+              tabIndex={selected ? 0 : -1}
+              onClick={() => onSelect(entry.id)}
+              className="relative flex min-h-11 flex-col items-center gap-1.5 bg-transparent px-0.5 pt-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-yellow"
+            >
+              {index > 0 ? (
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute top-4 right-1/2 left-0 h-px",
+                    index <= currentIndex ? "bg-foreground" : "bg-border",
+                  )}
+                />
+              ) : null}
+              <span
+                aria-hidden
+                className={cn(
+                  "relative z-10 flex size-6 items-center justify-center rounded-full text-caption",
+                  selected && "bg-foreground text-background",
+                  done && "border border-foreground bg-card text-foreground",
+                  !selected && !done && "border border-border bg-card text-text-muted",
+                )}
+              >
+                {done ? <Check className="size-3.5" /> : index + 1}
+              </span>
+              <span
+                className={cn(
+                  "text-caption",
+                  // Seven labels do not fit a phone; it names only the step it is on.
+                  !selected && "max-sm:sr-only",
+                  selected && "text-text-primary",
+                  done && "text-text-secondary",
+                  !selected && !done && "text-text-muted",
+                )}
+                style={selected ? { fontFamily: "var(--font-medium)" } : undefined}
+              >
+                {entry.label}
+              </span>
+              <span
+                aria-hidden
+                className={cn("h-0.5 w-6 rounded-full", selected ? "bg-foreground" : "bg-transparent")}
+              />
+            </button>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+/**
  * One editing section: fill-order eyebrow, sentence-case title, one line of
  * help, then the fields. Sections sit 32px apart; fields inside sit 16px apart.
  */
@@ -1471,6 +1539,46 @@ function Section({
       </div>
       {children}
     </section>
+  );
+}
+
+/** Files in one wrap, links in another. An empty kind is omitted. */
+function FormatGroup({
+  title,
+  hint,
+  formats,
+  selected,
+  onToggle,
+}: {
+  title: string;
+  hint: string;
+  formats: ReadonlyArray<{ code: string; displayName: string }>;
+  selected: readonly string[];
+  onToggle: (code: string, on: boolean) => void;
+}) {
+  if (!formats.length) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-0.5">
+        <p className="text-caption text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+          {title}
+        </p>
+        <p className="text-caption text-text-muted m-0">{hint}</p>
+      </div>
+      <div role="group" aria-label={title} className="flex flex-wrap gap-2">
+        {formats.map((format) => {
+          const on = selected.includes(format.code);
+          return (
+            <FormatChip
+              key={format.code}
+              label={format.displayName}
+              on={on}
+              onToggle={() => onToggle(format.code, on)}
+            />
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

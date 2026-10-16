@@ -505,6 +505,41 @@ export async function transitionOrder(
   return normalizeOrder(result.order);
 }
 
+/** One quality-check tick, written to the audit log as it is ticked. */
+export async function recordQaTick(
+  orderId: string,
+  checkId: string,
+  checked: boolean,
+): Promise<void> {
+  await request(`/orders/${orderId}/qa-checks`, {
+    method: "POST",
+    body: JSON.stringify({ checkId, checked }),
+  });
+}
+
+/** Audited artwork download. `all` saves every artwork file on the order. */
+export async function downloadOrderArtwork(
+  orderId: string,
+  target: { fileId: string } | { all: true },
+): Promise<{ files: { fileId: string; filename: string; url: string }[] }> {
+  return request(`/orders/${orderId}/artwork-downloads`, {
+    method: "POST",
+    body: JSON.stringify(target),
+  });
+}
+
+/** Tell the client in the existing support thread: a message, or a hold. */
+export async function postQaClientAction(
+  orderId: string,
+  action: "message" | "hold",
+  note: string,
+): Promise<{ ok: boolean; threadId: string }> {
+  return request(`/orders/${orderId}/qa-actions`, {
+    method: "POST",
+    body: JSON.stringify({ action, note }),
+  });
+}
+
 /** GRIDGO's answer to the shop's finished, unpacked product photos. */
 export type FinishedProductsDecision =
   | { decision: "approved" }
@@ -1015,6 +1050,63 @@ function withVersion(result: SettingsEnvelope): PlatformSettings {
     version: result.version,
     ...(result.operatingStatus ? { operatingStatus: result.operatingStatus } : {}),
   };
+}
+
+export type PricingFigure = { known: boolean; minor?: number };
+export type PricingStats = { average: number | null; median: number | null; count: number };
+export type PricingPeriod = {
+  funnel: {
+    counts: Record<string, number>;
+    dropOff: number;
+    open: number;
+    paidInTime: number;
+    reached: number;
+    exitQuestion: { asked: boolean; message: string | null; answers: { answer: string; count: number }[] };
+  };
+  operations: {
+    note: string;
+    qualityCheck: PricingStats;
+    firstAction: PricingStats;
+    manualInterventions: number;
+  };
+  reprints: { recorded: boolean; rate: number | null; cost: PricingFigure; borneBy: string | null; note: string };
+  refunds: { orders: number; rate: number | null; gridgo: PricingFigure; shop: PricingFigure; rider: PricingFigure };
+  prices: {
+    byCategory: ({ id: string; label: string } & PricingStats)[];
+    byBracket: ({ id: string; label: string } & PricingStats)[];
+  };
+  earnings: ({
+    orderId: string;
+    fee: PricingFigure;
+    effectiveFeeBps: number | null;
+    remains: PricingFigure;
+    paymentFeeMinor: PricingFigure;
+    voucherMinor: PricingFigure;
+    discountMinor: PricingFigure;
+    reprintShareMinor: PricingFigure;
+    refundShareMinor: PricingFigure;
+    deliveryAbsorbedMinor: PricingFigure;
+  })[];
+};
+export type PricingReport = {
+  scope: string;
+  brackets: { id: string; label: string }[];
+  filters: { from: string; to: string; category: string; bracket: string; accountType: string; cohort: string };
+  /** The range actually read (gridgo-api#253): the last 30 days when no dates were sent. */
+  range?: { from: string; to: string; defaultDays: number; maxDays: number };
+  compareRange?: { from: string; to: string } | null;
+  settings: { version: number | null; fixedCostsMinor: number | null; paymentFeeBps: number | null };
+  period: PricingPeriod;
+  compare: PricingPeriod | null;
+  completedThisMonth: number;
+  breakEven: { known: boolean; orders: number | null };
+};
+
+export async function getPricing(query: Record<string, string>): Promise<PricingReport> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) if (value) params.set(key, value);
+  const search = params.toString();
+  return request<PricingReport>(`/admin/pricing${search ? `?${search}` : ""}`);
 }
 
 export async function getSettings(): Promise<PlatformSettings> {

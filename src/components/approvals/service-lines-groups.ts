@@ -209,10 +209,12 @@ export function presentLineFacts(
   if (zones.length) {
     facts.push(zones.map(presentZone).join(", "));
   }
-  if (line.pricingBasis || line.referenceRateMinor != null) {
+  if (typeof line.pricingBasis === "string" && line.pricingBasis) {
     facts.push(
       `${presentPricingBasis(line.pricingBasis)} ${formatPhp(line.referenceRateMinor)}`,
     );
+  } else if (line.referenceRateMinor != null) {
+    facts.push(formatPhp(line.referenceRateMinor));
   }
   return facts;
 }

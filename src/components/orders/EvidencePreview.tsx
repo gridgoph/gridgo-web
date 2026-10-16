@@ -29,7 +29,7 @@ import {
   fileLooksLikeImage,
 } from "@/lib/evidence";
 import { fileIsGone } from "@/lib/file-retention";
-import { saveFileById } from "@/lib/file-save";
+import { saveFileById, saveRemoteFile } from "@/lib/file-save";
 import { cn } from "@/lib/utils";
 
 type PlateProps = {
@@ -273,15 +273,21 @@ export function EvidencePlate({
   );
 }
 
-/** The plate's save control; the work is `saveFileById` (`src/lib/file-save.ts`). */
-function FileDownload({
+/**
+ * The plate's save control; the work is `saveFileById` (`src/lib/file-save.ts`).
+ * `resolveUrl` swaps in another signed link, such as the audited artwork download.
+ */
+export function FileDownload({
   fileId,
   filename,
   featured,
+  resolveUrl,
 }: {
   fileId: string;
   filename: string;
   featured: boolean;
+  /** When set, this request is the audited download instead of the plain signed link. */
+  resolveUrl?: () => Promise<string>;
 }) {
   const [failed, setFailed] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -298,7 +304,8 @@ function FileDownload({
     setFailed(false);
     setSaving(true);
     try {
-      await saveFileById(fileId, filename);
+      if (resolveUrl) await saveRemoteFile(await resolveUrl(), filename);
+      else await saveFileById(fileId, filename);
     } catch {
       if (live.current) setFailed(true);
     } finally {

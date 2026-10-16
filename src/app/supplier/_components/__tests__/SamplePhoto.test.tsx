@@ -32,7 +32,9 @@ describe("SamplePhoto viewer", () => {
 
     await user.click(await screen.findByRole("button", { name: "Open Flyers on the rack larger" }));
 
-    expect(screen.getByRole("dialog")).toBeVisible();
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toBeVisible();
+    expect(dialog.className).not.toMatch(/bg-white|text-black/);
     expect(screen.getByText("Pinch or scroll to look closer.")).toBeVisible();
     expect(screen.getAllByAltText("Flyers on the rack").length).toBeGreaterThan(1);
   });

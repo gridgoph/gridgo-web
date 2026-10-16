@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { Claim, Issue, Order } from "@/lib/api/types";
 
-import { filterDispatchOrders } from "../dispatch";
+import { filterDispatchOrders, presentRouteAction } from "../dispatch";
 import {
   buildOverviewBuckets,
   isSlaAtRisk,
@@ -184,6 +184,30 @@ describe("dispatch board", () => {
       order({ id: "c", state: "production" }),
     ]);
     expect(list.map((o) => o.id)).toEqual(["b", "a"]);
+  });
+
+  it("opens Show route on any known position and disables it with the location label otherwise", () => {
+    expect(presentRouteAction("rider_1", { hasPosition: true, freshness: "live" }, "Live")).toEqual({
+      href: "/ops/riders?rider=rider_1",
+      label: "Show route on map",
+      reason: null,
+    });
+    // A rider gone quiet still has a last position to find them by.
+    expect(
+      presentRouteAction("rider_1", { hasPosition: true, freshness: "silent" }, "Gone quiet"),
+    ).toEqual({
+      href: "/ops/riders?rider=rider_1",
+      label: "Show last position on map",
+      reason: null,
+    });
+    expect(presentRouteAction(null, null, "No rider yet")).toEqual({
+      href: null,
+      label: "Show route on map",
+      reason: "No rider yet",
+    });
+    expect(
+      presentRouteAction("rider_1", { hasPosition: false, freshness: "waiting" }, "Waiting for a first ping"),
+    ).toMatchObject({ href: null, reason: "Waiting for a first ping" });
   });
 
   it("keeps a collected order on the board until the counter releases it", () => {
