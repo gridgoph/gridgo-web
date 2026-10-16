@@ -1,3 +1,10 @@
+import type {
+  ColourCorrection,
+  ColourQuote,
+  ColourThresholds,
+  QuantityMode,
+} from "@/lib/colour-pricing";
+
 /** Shared GRIDGO API types derived from observed responses. */
 
 export type Role = "client" | "supplier" | "rider" | "ops_admin" | "super_admin";
@@ -634,6 +641,20 @@ export type ProductionItem = {
   colorTargets?: ColorTargetRecord[];
   /** The colours GRIDGO read from each uploaded file on the line. Design links have none. */
   artworkColors?: ArtworkColorsRecord[];
+  /**
+   * Copies of each page or sets of the whole document; both mean selected
+   * pages × quantity sheets. `null` on fixed-price lines that never chose.
+   */
+  quantityMode?: QuantityMode | null;
+  totalSheets?: number | null;
+  /**
+   * Each page's strong colour, tier and sheet price, frozen at checkout as
+   * the evidence in a price dispute. Shop rates for the shop; staff also get
+   * the client's all-in figures. Read through `@/lib/colour-pricing`.
+   */
+  colourPricing?: ColourQuote | null;
+  /** The latest colour correction the client agreed to (and paid for) on this line. */
+  agreedColourCorrection?: (ColourCorrection & { id: string; appliedAt: string }) | null;
 };
 
 // ---- Exact colours ----
@@ -1244,6 +1265,8 @@ export type OrderChangeRequest = {
   paymentHistory?: OrderChangeRejectedPayment[];
   rejectionReason?: string;
   payout?: OrderChangePayout | null;
+  /** A shop's corrected colour pages (`@/lib/colour-pricing`), when the change is one. */
+  colourCorrection?: ColourCorrection | null;
 };
 
 // ---- Delivery pin (gridgo-api docs/DELIVERY_PIN_API.md) ----
@@ -1834,6 +1857,12 @@ export type PlatformSettings = {
    * predates artwork guidance.
    */
   artworkGuidance?: ArtworkGuidanceSettings;
+  /**
+   * What counts as strong colour on a printed page, and the A3 monochrome
+   * limit. Every role reads it; only Super Admin writes it, always the whole
+   * object. Absent on an API that predates colour pricing.
+   */
+  colourDetection?: ColourThresholds;
 };
 
 export type UpdateSettingsInput = {
@@ -1871,6 +1900,8 @@ export type UpdateSettingsInput = {
   operatingHours?: OperatingHours;
   /** Super Admin only, always the complete value (`403` for anyone else). */
   artworkGuidance?: ArtworkGuidanceSettings;
+  /** Super Admin only, always the complete object, with a reason. */
+  colourDetection?: ColourThresholds;
   reason?: string;
 };
 

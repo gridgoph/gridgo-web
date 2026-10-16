@@ -52,6 +52,11 @@ export const NAV_COUNT_MEANING: Record<NavCountKey, CountMeaning> = {
     phrase: (count) => `${compactCount(count)} waiting for review`,
     attention: false,
   },
+  // A client's cart, not an order, waits on the shop's price: monochrome.
+  "colour-price-checks-waiting": {
+    phrase: (count) => `${compactCount(count)} waiting on a shop price`,
+    attention: false,
+  },
   // A rider-packs order cannot leave production until this desk decides.
   "finished-work-waiting": {
     phrase: (count) => `${compactCount(count)} waiting for review`,

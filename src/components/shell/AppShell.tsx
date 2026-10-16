@@ -1,5 +1,5 @@
 "use client";
-import { TicketPercent, UserRoundMinus } from "lucide-react";
+import { SwatchBook, TicketPercent, UserRoundMinus } from "lucide-react";
 
 import {
   useCallback,
@@ -215,6 +215,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   hub: Warehouse,
   staff: IdCard,
   "listing-reviews": BadgeCheck,
+  "colour-price-checks": SwatchBook,
   "featured-prints": GalleryHorizontal,
   vouchers: TicketPercent,
   legal: BookText,

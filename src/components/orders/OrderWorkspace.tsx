@@ -64,6 +64,7 @@ import { ArtworkAttachments } from "@/components/orders/ArtworkAttachments";
 import { ArtworkGuidanceRecord } from "@/components/orders/ArtworkGuidanceRecord";
 import { PrintLayoutRecord } from "@/components/orders/PrintLayoutRecord";
 import { ExactColoursRecord } from "@/components/orders/ExactColours";
+import { ColourPricingRecord } from "@/components/orders/ColourPricingRecord";
 import { BasketPanel } from "@/components/orders/BasketPanel";
 import { BasketPayment } from "@/components/orders/BasketPayment";
 import { OrderMoneyLines } from "@/components/orders/OrderMoneyLines";
@@ -1569,6 +1570,8 @@ function StepRow({
               warnings the client accepted, before the file is passed.
             */}
             <ArtworkGuidanceRecord order={order} audience="staff" />
+            {/* Each page's strong colour, tier and price, beside the file it was read from. */}
+            <ColourPricingRecord order={order} audience="staff" />
             <QualityReview
               order={order}
               checked={checked}
@@ -2313,6 +2316,13 @@ function SpecRail({
         <PrintLayoutRecord order={order} className="mt-3" />
         {/* The client's exact colours are agreed spec too, frozen at checkout. */}
         <ExactColoursRecord order={order} audience="staff" className="mt-3" />
+        {/*
+          The colour reading is price evidence: while the file check is open
+          it sits in the Quality check step, after it here.
+        */}
+        {canDecideFileCheck(order) ? null : (
+          <ColourPricingRecord order={order} audience="staff" className="mt-3" />
+        )}
       </section>
 
       {hasArtwork ? (

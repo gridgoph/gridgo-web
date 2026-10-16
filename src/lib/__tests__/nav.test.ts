@@ -50,6 +50,7 @@ describe("ROLE_NAV", () => {
       "/ops/finished-work",
       "/ops/service-lines",
       "/ops/listing-reviews",
+      "/ops/colour-price-checks",
       "/ops/featured-prints",
       "/ops/dispatch",
       "/ops/riders",
@@ -90,6 +91,7 @@ describe("ROLE_NAV", () => {
       "/admin/shop-hours",
       "/admin/catalogue",
       "/admin/listing-reviews",
+      "/admin/colour-price-checks",
       "/admin/featured-prints",
       "/admin/zones",
       "/admin/finance",
@@ -133,6 +135,7 @@ describe("ROLE_NAV", () => {
       "/admin/broadcast",
       "/admin/catalogue",
       "/admin/chat",
+      "/admin/colour-price-checks",
       "/admin/featured-prints",
       "/admin/file-retention",
       "/admin/finance",
@@ -166,6 +169,7 @@ describe("ROLE_NAV", () => {
       "/ops/account-deletion",
       "/ops/chat",
       "/ops/claims",
+      "/ops/colour-price-checks",
       "/ops/dispatch",
       "/ops/escalations",
       "/ops/featured-prints",
@@ -260,6 +264,7 @@ describe("ROLE_NAV", () => {
       "/ops/finished-work",
       "/ops/service-lines",
       "/ops/listing-reviews",
+      "/ops/colour-price-checks",
       "/ops/featured-prints",
     ]);
     expect(
@@ -322,6 +327,7 @@ describe("ROLE_NAV", () => {
     ).toEqual([
       "/admin/catalogue",
       "/admin/listing-reviews",
+      "/admin/colour-price-checks",
       "/admin/featured-prints",
       "/admin/zones",
     ]);

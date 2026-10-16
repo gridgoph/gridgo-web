@@ -11,6 +11,12 @@
  */
 
 import { formatPhp } from "@/lib/format";
+import {
+  lowestSheetRate,
+  readColourPricing,
+  readPaperSize,
+  type ListingColourPricing,
+} from "@/lib/colour-pricing";
 import type { Taxonomy } from "@/lib/api/types";
 import { readPrintLayouts, type KnownLayout } from "@/lib/print-layout";
 import {
@@ -86,7 +92,23 @@ export type SpecOption = {
   priceModifierMinor: number;
   active: boolean;
   sortOrder: number;
+  /**
+   * The paper this option prints on, when it is bound to a paper field: the
+   * binding's value, else the label. The binding wins, as in the API's print
+   * layout and colour pricing (a "20x30 / A2" option bound to A2 is A2).
+   */
+  paper?: string | null;
 };
+
+/** Spec bindings that name the paper a size option prints on. */
+const PAPER_BINDING_FIELDS = new Set(["size", "paper_size", "item_size", "dimensions"]);
+
+function optionPaper(raw: Raw, label: string): string | null {
+  const binding = pick(raw, "specBinding", "spec_binding");
+  if (!isRecord(binding) || !PAPER_BINDING_FIELDS.has(String(binding.fieldCode))) return null;
+  const bound = str(pick(binding, "value", "valueCode"));
+  return bound && readPaperSize(bound) ? bound : readPaperSize(label) ? label : null;
+}
 
 export type SpecGroup = {
   id: string;
@@ -130,6 +152,18 @@ export type Listing = {
    * at once and never enters review. `null` on an API that predates it.
    */
   express: boolean | null;
+  /**
+   * Priced per sheet by each page's strong colour, from the shop's own tier
+   * table (`colourPricing`). Fixed-price listings keep it false. Contract:
+   * gridgo-api docs/COLOUR_PRICING_API.md; read through `@/lib/colour-pricing`.
+   */
+  pricedByColour: boolean;
+  /** Prints in one colour (blueprint, monochrome): clients are warned about colour files. */
+  oneColour: boolean;
+  /** The shop's price per sheet for each colour tier and paper size. */
+  colourPricing: ListingColourPricing | null;
+  /** False on an API that predates colour pricing: nothing is shown or sent. */
+  colourSupported: boolean;
   minimumHeightMilli: number | null;
   minimumLengthMilli: number | null;
   minimumOrderQuantity: number | null;
@@ -321,6 +355,7 @@ function readOption(raw: Raw, index: number): SpecOption | null {
     priceModifierMinor: num(pick(raw, "priceModifierMinor", "price_modifier_minor")) ?? 0,
     active: pick(raw, "active") !== false,
     sortOrder: num(pick(raw, "sortOrder", "sort_order")) ?? index,
+    paper: optionPaper(raw, label),
   };
 }
 
@@ -410,6 +445,10 @@ export function normalizeListing(body: unknown, index = 0): Listing | null {
     ),
     printLayouts: readPrintLayouts(pick(raw, "printLayouts", "print_layouts")),
     express: typeof pick(raw, "express") === "boolean" ? (pick(raw, "express") as boolean) : null,
+    pricedByColour: pick(raw, "pricedByColour", "priced_by_colour") === true,
+    oneColour: pick(raw, "oneColour", "one_colour") === true,
+    colourPricing: readColourPricing(pick(raw, "colourPricing", "colour_pricing")),
+    colourSupported: typeof pick(raw, "pricedByColour", "priced_by_colour") === "boolean",
     minimumHeightMilli: num(pick(raw, "minimumHeightMilli", "minimum_height_milli")),
     minimumLengthMilli: num(pick(raw, "minimumLengthMilli", "minimum_length_milli")),
     minimumOrderQuantity: num(pick(raw, "minimumOrderQuantity", "minimum_order_quantity")),
@@ -651,6 +690,7 @@ export function priceSuffix(
 }
 
 export function fromPriceMinor(listing: Listing): number {
+  if (listing.pricedByColour) return lowestSheetRate(listing.colourPricing) ?? 0;
   const required = specs(listing).filter((group) => group.required);
   const additions = required.reduce((total, group) => {
     const active = group.options.filter((option) => option.active);
@@ -667,6 +707,12 @@ export function hasPriceRange(listing: Listing): boolean {
 }
 
 export function priceLine(listing: Listing): string {
+  if (listing.pricedByColour) {
+    const lowest = lowestSheetRate(listing.colourPricing);
+    return lowest == null
+      ? "Priced by colour, no sheet prices yet"
+      : `From ${formatPhp(lowest)} per sheet, priced by colour`;
+  }
   const money = formatPhp(fromPriceMinor(listing));
   return hasPriceRange(listing)
     ? `From ${money} ${unitLine(listing)}`
@@ -765,12 +811,21 @@ export function boardChecklist(listing: Listing, context: BoardContext): BoardRe
       done: parsePrinterMaxWidthFeet(listing.printerMaxWidthFeet) != null,
     });
   }
-  out.push({
-    key: "price",
-    label: "Your price",
-    sentence: "Set your price before it can go on the board.",
-    done: listing.basePriceMinor > 0,
-  });
+  if (listing.pricedByColour) {
+    out.push({
+      key: "price",
+      label: "Colour prices",
+      sentence: "Price at least one colour tier on one paper size before it can go on the board.",
+      done: lowestSheetRate(listing.colourPricing) != null,
+    });
+  } else {
+    out.push({
+      key: "price",
+      label: "Your price",
+      sentence: "Set your price before it can go on the board.",
+      done: listing.basePriceMinor > 0,
+    });
+  }
   if (listing.pricingUnit === "per_package") {
     out.push({
       key: "packageQty",

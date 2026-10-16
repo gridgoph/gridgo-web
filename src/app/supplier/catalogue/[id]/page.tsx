@@ -13,6 +13,7 @@ import { ListingPreviewBody } from "@/app/supplier/_components/ListingPreviewBod
 import { ExpressField } from "@/app/supplier/_components/ExpressField";
 import { PrinterMaxWidthField } from "@/app/supplier/_components/PrinterMaxWidthField";
 import { PrintLayoutsField } from "@/app/supplier/_components/PrintLayoutsField";
+import { ColourPricingField } from "@/app/supplier/_components/ColourPricingField";
 import { sectionNumber } from "@/app/supplier/_components/editor-sections";
 import {
   PRODUCTION_TIME_HINT,
@@ -65,6 +66,7 @@ import {
   deleteCatalogOption,
   deleteCatalogOptionGroup,
   getCatalogItem,
+  getSettings,
   getSupplierReadiness,
   getTaxonomy,
   isApiError,
@@ -125,6 +127,14 @@ import {
   type ProductionTime,
 } from "@/lib/production-time";
 import { PRINT_LAYOUTS_HELP, sameLayouts, type KnownLayout } from "@/lib/print-layout";
+import {
+  DEFAULT_A3_LIMIT_BPS,
+  colourDraftFrom,
+  readColourDraft,
+  unpricedSizes,
+  type ColourDraft,
+} from "@/lib/colour-pricing";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 type Draft = {
@@ -143,6 +153,11 @@ type Draft = {
   printerMaxWidthFeet: number | null;
   /** Null on an API without layouts: nothing is shown or sent. */
   printLayouts: KnownLayout[] | null;
+  /** Null on an API without colour pricing: nothing is shown or sent. */
+  pricedByColour: boolean | null;
+  oneColour: boolean;
+  /** The tier table as typed; blank prices are tiers not offered. */
+  colour: ColourDraft;
 };
 
 /** Section and field ids; the readiness checklist scrolls to these. */
@@ -210,6 +225,11 @@ const PRICING_CHOICES = PRICING_UNITS.map((unit) => ({
   label: unitChoiceLabel(unit),
 }));
 
+const COLOUR_MODE_CHOICES = [
+  { value: "fixed", label: "Same price every page" },
+  { value: "colour", label: "Priced by colour" },
+] as const;
+
 const TURNAROUND_CHOICES = [
   { value: "inherit", label: "Your usual time" },
   { value: "override", label: "Just this listing" },
@@ -235,6 +255,30 @@ function draftFrom(listing: Listing): Draft {
     subcategoryCode: listing.subcategoryCode,
     printerMaxWidthFeet: listing.printerMaxWidthFeet,
     printLayouts: listing.printLayouts,
+    pricedByColour: listing.colourSupported ? listing.pricedByColour : null,
+    oneColour: listing.oneColour,
+    colour: colourDraftFrom(listing.colourPricing),
+  };
+}
+
+/** Priced by colour only per page: any other unit sends it off. */
+function colourOn(draft: Draft): boolean {
+  return draft.pricedByColour === true && draft.pricingUnit === "per_page";
+}
+
+/**
+ * The colour fields a save sends. The table goes only while the listing is
+ * priced by colour; switched off, it is left out so the shop's prices are
+ * kept for when it comes back. An unreadable table is held, never sent.
+ */
+function colourPayload(draft: Draft): Record<string, unknown> {
+  if (draft.pricedByColour == null) return {};
+  const on = colourOn(draft);
+  const read = readColourDraft(draft.colour);
+  return {
+    pricedByColour: on,
+    oneColour: on ? false : draft.oneColour,
+    ...(on ? { colourPricing: read.ok ? read.pricing : { unreadable: draft.colour } } : {}),
   };
 }
 
@@ -283,6 +327,7 @@ function payloadOf(draft: Draft) {
       "update",
     ),
     ...(draft.printLayouts ? { printLayouts: draft.printLayouts } : {}),
+    ...colourPayload(draft),
   };
 }
 
@@ -295,12 +340,25 @@ function savePayload(draft: Draft, listing: Listing) {
   // The set is replaced whole and a change opens review, so it is sent only
   // when the shop changed it.
   if (sameLayouts(draft.printLayouts, listing.printLayouts)) delete payload.printLayouts;
+  // Colour fields go through review too: send only what moved.
+  const before = colourPayload(draftFrom(listing));
+  for (const key of ["pricedByColour", "oneColour", "colourPricing"]) {
+    if (key in payload && JSON.stringify(payload[key]) === JSON.stringify(before[key])) {
+      delete payload[key];
+    }
+  }
   return payload;
 }
 
 /** Why a draft cannot be sent yet — the API would refuse it, so hold it here. */
 function holdReason(draft: Draft, listing: Listing): string | null {
-  if (pesosToMinor(draft.price) == null) {
+  if (colourOn(draft)) {
+    const read = readColourDraft(draft.colour);
+    if (!read.ok) return read.problem.message;
+    if (draft.printLayouts && draft.printLayouts.length === 0) {
+      return "keep at least one print layout on the Artwork step while this listing is priced by colour.";
+    }
+  } else if (pesosToMinor(draft.price) == null) {
     return "enter a price in pesos, like 400.00.";
   }
   if (draft.turnaroundMode === "override" && timeChanged(draft, listing)) {
@@ -349,6 +407,7 @@ export default function ListingEditorPage() {
   const [step, setStep] = useState<EditorStepId>("pick");
   const [expressPending, setExpressPending] = useState<boolean | null>(null);
   const [expressError, setExpressError] = useState<string | null>(null);
+  const [a3LimitBps, setA3LimitBps] = useState(DEFAULT_A3_LIMIT_BPS);
   const dirtyRef = useRef(false);
   const busyRef = useRef(false);
 
@@ -395,6 +454,20 @@ export default function ListingEditorPage() {
 
   useLiveReload(["catalog", "services"], load);
 
+  // The A3 monochrome limit is a Super Admin setting; tier labels say it.
+  useEffect(() => {
+    let live = true;
+    getSettings()
+      .then((settings) => {
+        const limit = settings.colourDetection?.a3MonochromeMaxBps;
+        if (live && typeof limit === "number") setA3LimitBps(limit);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+
   useEffect(() => {
     void load().catch(() => undefined);
   }, [load]);
@@ -438,9 +511,20 @@ export default function ListingEditorPage() {
             ? working.printerMaxWidthFeet
             : null,
           printLayouts: working.printLayouts,
+          pricedByColour: colourOn(working),
+          oneColour: colourOn(working) ? false : working.oneColour,
+          colourPricing: (() => {
+            const read = readColourDraft(working.colour);
+            return read.ok ? read.pricing : listing.colourPricing;
+          })(),
         }
       : listing;
   const checklist = merged && context ? boardChecklist(merged, context) : [];
+  const colourRead = working ? readColourDraft(working.colour) : null;
+  const colourProblem =
+    colourRead && !colourRead.ok && (colourRead.problem.key != null || working?.colour.length)
+      ? colourRead.problem
+      : null;
   const firstMissing = checklist.find((requirement) => !requirement.done) ?? null;
   const standing =
     merged && context
@@ -503,6 +587,13 @@ export default function ListingEditorPage() {
             pesosToMinor(current.price) === saved.basePriceMinor
               ? current.price
               : next.price,
+          // Rows keep their keys (and the cursor its field) when the server
+          // kept exactly the prices typed.
+          colour:
+            JSON.stringify(readColourDraft(current.colour)) ===
+            JSON.stringify(readColourDraft(next.colour))
+              ? current.colour
+              : next.colour,
         };
       });
       setNotice(null);
@@ -886,7 +977,8 @@ export default function ListingEditorPage() {
 
   function jumpTo(field: BoardField) {
     flushSync(() => setStep(STEP_OF_FIELD[field]));
-    focusField(FIELD_IDS[field]);
+    // A listing priced by colour has no single price field: land on its table.
+    focusField(field === "price" && working && colourOn(working) ? "section-price" : FIELD_IDS[field]);
   }
 
   return (
@@ -1046,6 +1138,72 @@ export default function ListingEditorPage() {
                     value={working.pricingUnit}
                     onChange={(pricingUnit) => setDraft({ ...working, pricingUnit })}
                   />
+                  {working.pricedByColour != null && working.pricingUnit === "per_page" ? (
+                    <div className="flex flex-col gap-2">
+                      <h4
+                        id="colour-mode-heading"
+                        className="text-body text-text-primary m-0"
+                        style={{ fontFamily: "var(--font-medium)" }}
+                      >
+                        How each page is priced
+                      </h4>
+                      <SegmentedControl
+                        id="colour-mode"
+                        aria-labelledby="colour-mode-heading"
+                        options={COLOUR_MODE_CHOICES}
+                        value={working.pricedByColour ? "colour" : "fixed"}
+                        onChange={(mode) =>
+                          setDraft({ ...working, pricedByColour: mode === "colour" })
+                        }
+                      />
+                      <p className="text-caption text-text-secondary m-0 max-w-prose">
+                        {working.pricedByColour
+                          ? "For document and construction prints charged by how much strong colour a sheet carries, like whiteprints. Fixed-price work such as CAD plotting, blueprint or photo paper keeps one price."
+                          : "One price for every page, whatever its colour. Choose priced by colour if you charge more for pages with strong colour."}
+                      </p>
+                    </div>
+                  ) : null}
+                  {colourOn(working) ? (
+                    <>
+                      {working.printLayouts && working.printLayouts.length === 0 ? (
+                        <div
+                          role="note"
+                          className="border-warning flex flex-col items-start gap-2 rounded-field border p-3"
+                        >
+                          <p className="text-body text-text-primary m-0">
+                            Pricing by colour needs at least one print layout, so GRIDGO
+                            measures each page the way it sits on the paper. Nothing saves
+                            until one is marked.
+                          </p>
+                          <Button type="button" onClick={() => setStep("artwork")}>
+                            Mark print layouts
+                          </Button>
+                        </div>
+                      ) : null}
+                      <ColourPricingField
+                        value={working.colour}
+                        onChange={(colour) => setDraft({ ...working, colour })}
+                        sizeLabels={specs(listing).flatMap((group) =>
+                          group.options.flatMap((option) => (option.paper ? [option.paper] : [])),
+                        )}
+                        problem={colourProblem}
+                        a3LimitBps={a3LimitBps}
+                      />
+                      {unpricedSizes(working.colour).length ? (
+                        <p className="text-caption text-text-secondary m-0 max-w-prose" role="status">
+                          No tier is priced on {unpricedSizes(working.colour).join(", ")}. Every
+                          page on that paper will need a price check before the client can
+                          pay.
+                        </p>
+                      ) : null}
+                      <p className="text-caption text-text-muted m-0 max-w-prose">
+                        Each price here is the whole rate for a sheet: option add-ons,
+                        quantity discounts and rush prices are not added on top. If another
+                        choice, such as a different stock, changes your rate, make it a
+                        separate listing.
+                      </p>
+                    </>
+                  ) : (
                   <Field className="max-w-sm">
                     <FieldLabel htmlFor="price">Your price</FieldLabel>
                     <div className="relative">
@@ -1073,6 +1231,33 @@ export default function ListingEditorPage() {
                       </span>
                     </div>
                   </Field>
+                  )}
+                  {working.pricedByColour != null &&
+                  working.pricingUnit === "per_page" &&
+                  !working.pricedByColour ? (
+                    <div className="flex items-start gap-3">
+                      <Switch
+                        id="one-colour"
+                        checked={working.oneColour}
+                        onCheckedChange={(oneColour) => setDraft({ ...working, oneColour })}
+                        aria-describedby="one-colour-hint"
+                      />
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <label
+                          htmlFor="one-colour"
+                          className="text-body text-text-primary"
+                          style={{ fontFamily: "var(--font-medium)" }}
+                        >
+                          Prints in one colour
+                        </label>
+                        <span id="one-colour-hint" className="text-caption text-text-secondary max-w-prose">
+                          For blueprint or monochrome work. A client whose file has colour
+                          is told this service prints in one colour. It never blocks the
+                          order or changes your price.
+                        </span>
+                      </div>
+                    </div>
+                  ) : null}
                 </FieldGroup>
               </Section>
             ) : null}

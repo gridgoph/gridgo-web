@@ -2554,6 +2554,14 @@ export async function listStaffCatalogItems(
   return request<unknown>(`/ops/catalog-items${search ? `?${search}` : ""}`);
 }
 
+/**
+ * Ops / Super Admin. Draft cart pages that fall in a colour tier their shop
+ * has not priced (up to 100). Read through `readColourPriceChecks`.
+ */
+export async function listColourPriceChecks(): Promise<unknown> {
+  return request<unknown>("/ops/colour-price-checks");
+}
+
 export async function getStaffCatalogItem(itemId: string): Promise<unknown> {
   return request<unknown>(`/ops/catalog-items/${encodeURIComponent(itemId)}`);
 }
@@ -3113,8 +3121,19 @@ export type OrderChangeInput = {
   /** Omitted only on an older order without lines. */
   lineItemId?: string;
   reason: string;
-  proposedSpec: string;
-  extraPrincipalMinor: number;
+  proposedSpec?: string;
+  /**
+   * The shop's extra. On a colour correction the server derives it from the
+   * corrected pages; when sent it must match.
+   */
+  extraPrincipalMinor?: number;
+  /**
+   * Every selected original page exactly once, with the shop's corrected
+   * coverage and sheet rate (gridgo-api docs/COLOUR_PRICING_API.md).
+   */
+  colourCorrection?: {
+    pages: Array<{ fileId: string; page: number; strongColourBps: number; sheetPriceMinor: number }>;
+  };
 };
 
 /** Supplier. Ask the client to approve a change to the job. */

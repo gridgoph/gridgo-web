@@ -6,6 +6,10 @@ import { CircleCheck, TriangleAlert } from "lucide-react";
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { ItemNotes } from "@/components/order-changes/ItemNotes";
 import { EvidencePlate } from "@/components/orders/EvidencePreview";
+import {
+  ColourCorrectionPages,
+  originalColourOf,
+} from "@/components/orders/ColourCorrectionPages";
 import { ReceiptReferenceOcr } from "@/components/orders/ReceiptReferenceOcr";
 import { CLIENT_READS_THIS, Confirmation } from "@/components/refunds/dialogs";
 import { useCommandKeys } from "@/components/refunds/useCommand";
@@ -193,6 +197,14 @@ function ChangeRequestRecord({
         {request.proposedSpec ? (
           <Term label="The shop's change">
             <span style={medium}>{request.proposedSpec}</span>
+          </Term>
+        ) : null}
+        {request.colourCorrection ? (
+          <Term label="The shop's corrected colour pages">
+            <ColourCorrectionPages
+              request={request}
+              original={originalColourOf(order, request.lineItemId)}
+            />
           </Term>
         ) : null}
         {request.proposedReadyBy || request.proposedPromiseBy ? (
@@ -433,7 +445,9 @@ function PaymentDecision({
         open={dialog === "confirm"}
         amount={amount}
         reference={payment?.reference ?? ""}
-        change={request.proposedSpec || "the new dates"}
+        change={
+          request.proposedSpec || (request.colourCorrection ? "the corrected colour prices" : "the new dates")
+        }
         busy={busy}
         error={error}
         onCancel={() => setDialog(null)}

@@ -38,6 +38,13 @@ describe("notificationHref", () => {
     ).toBe("/supplier/catalogue/sci_sticker");
   });
 
+  it("opens the colour price check queue in each staff tree, and nowhere for others", () => {
+    const type = "colour_price_check";
+    expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/colour-price-checks");
+    expect(notificationHref("super_admin", note({ type }))).toBe("/admin/colour-price-checks");
+    expect(notificationHref("supplier", note({ type }))).toBeNull();
+  });
+
   it("opens Featured Prints in each staff tree, and nowhere for others", () => {
     const type = "featured_prints_updated";
     expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/featured-prints");

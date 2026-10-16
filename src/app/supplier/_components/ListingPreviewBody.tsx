@@ -104,14 +104,26 @@ export function ListingPreviewBody({
         </p>
         {cap ? <p className="text-caption text-text-muted m-0">{cap}</p> : null}
         <p className="text-text-primary m-0">
-          {hasPriceRange(listing) ? (
+          {hasPriceRange(listing) || listing.pricedByColour ? (
             <span className="text-caption text-text-muted">From </span>
           ) : null}
           <span className="text-h3" style={{ fontFamily: "var(--font-bold)" }}>
             {formatPhp(fromPriceMinor(listing))}
           </span>{" "}
-          <span className="text-body text-text-secondary">{unitLine(listing)}</span>
+          <span className="text-body text-text-secondary">
+            {listing.pricedByColour ? "per sheet" : unitLine(listing)}
+          </span>
         </p>
+        {listing.pricedByColour ? (
+          <p className="text-caption text-text-secondary m-0">
+            Each page is priced by how much strong colour it has, measured on the paper
+            the client picks.
+          </p>
+        ) : listing.oneColour ? (
+          <p className="text-caption text-text-secondary m-0">
+            Prints in one colour. A client sending a colour file is told before they order.
+          </p>
+        ) : null}
         <p className="text-body text-text-secondary m-0">{readyIn}</p>
       </div>
 
@@ -138,7 +150,7 @@ export function ListingPreviewBody({
       ) : null}
 
       {specs(listing).map((group, index) => (
-        <OrderGroup key={group.id} group={group} step={index + 1} />
+        <OrderGroup key={group.id} group={group} step={index + 1} colour={listing.pricedByColour === true} />
       ))}
 
       {listing.printLayouts?.length ? (
@@ -149,7 +161,7 @@ export function ListingPreviewBody({
         <div className="flex flex-col gap-3">
           <p className="text-overline text-text-muted m-0 uppercase">Add anything else</p>
           {addOns(listing).map((group) => (
-            <OrderGroup key={group.id} group={group} step={null} />
+            <OrderGroup key={group.id} group={group} step={null} colour={listing.pricedByColour === true} />
           ))}
         </div>
       ) : null}
@@ -187,7 +199,16 @@ export function ListingPreviewBody({
   );
 }
 
-function OrderGroup({ group, step }: { group: SpecGroup; step: number | null }) {
+function OrderGroup({
+  group,
+  step,
+  colour,
+}: {
+  group: SpecGroup;
+  step: number | null;
+  /** A colour-priced listing's sheet rate is complete: option add-ons never apply. */
+  colour: boolean;
+}) {
   const options = group.options.filter((option) => option.active);
   return (
     <div className="flex flex-col gap-2">
@@ -215,7 +236,11 @@ function OrderGroup({ group, step }: { group: SpecGroup; step: number | null }) 
                 }
               />
               <span className="text-body text-text-primary min-w-0 flex-1">{option.label}</span>
-              <span className="text-body text-text-secondary">{modifierLine(option.priceModifierMinor)}</span>
+              {colour ? null : (
+                <span className="text-body text-text-secondary">
+                  {modifierLine(option.priceModifierMinor)}
+                </span>
+              )}
             </div>
           ))
         ) : (
