@@ -63,6 +63,7 @@ import {
 import { ArtworkAttachments } from "@/components/orders/ArtworkAttachments";
 import { ArtworkGuidanceRecord } from "@/components/orders/ArtworkGuidanceRecord";
 import { PrintLayoutRecord } from "@/components/orders/PrintLayoutRecord";
+import { ExactColoursRecord } from "@/components/orders/ExactColours";
 import { BasketPanel } from "@/components/orders/BasketPanel";
 import { BasketPayment } from "@/components/orders/BasketPayment";
 import { OrderMoneyLines } from "@/components/orders/OrderMoneyLines";
@@ -2305,6 +2306,8 @@ function SpecRail({
         </dl>
         {/* The client's layout is part of the agreed spec, frozen at checkout. */}
         <PrintLayoutRecord order={order} className="mt-3" />
+        {/* The client's exact colours are agreed spec too, frozen at checkout. */}
+        <ExactColoursRecord order={order} audience="staff" className="mt-3" />
       </section>
 
       {hasArtwork ? (

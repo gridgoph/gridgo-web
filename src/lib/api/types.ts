@@ -626,7 +626,55 @@ export type ProductionItem = {
   printLayout?: PrintLayoutCode | null;
   /** The fit check as the client saw it at checkout, frozen with the order. */
   printLayoutCheck?: PrintLayoutCheck | null;
+  /**
+   * The client's exact colours, agreed at checkout and frozen with the order;
+   * `[]` when none and on older orders, absent on an older API. Read through
+   * `@/lib/color-targets`.
+   */
+  colorTargets?: ColorTargetRecord[];
+  /** The colours GRIDGO read from each uploaded file on the line. Design links have none. */
+  artworkColors?: ArtworkColorsRecord[];
 };
+
+// ---- Exact colours ----
+// Contract: gridgo-api docs/EXACT_COLOURS_API.md.
+
+export type CmykValues = { c: number; m: number; y: number; k: number };
+
+/** One colour the client named, as GRIDGO normalised it. */
+export type ColorTargetRecord = {
+  label: string;
+  format: "pantone" | "cmyk" | "hex" | (string & {});
+  /** What to show as text: `PANTONE 201 C`, `C0 M100 Y65 K34`, `#1A5FB4`. */
+  value: string;
+  cmyk: CmykValues | null;
+  hex: string | null;
+  /** Null for a Pantone without the client's approximate hex: text only. */
+  swatchHex: string | null;
+  swatchApproximate: boolean | null;
+};
+
+/** One colour GRIDGO read from a file. */
+export type ArtworkColorRecord = {
+  kind: "spot" | "process" | "pixels" | (string & {});
+  name: string | null;
+  space: "cmyk" | "rgb" | "gray" | (string & {}) | null;
+  cmyk: CmykValues | null;
+  hex: string | null;
+  uses: number | null;
+  /** A PNG colour's share of the opaque pixels, 10000 = all. */
+  shareBps: number | null;
+};
+
+/** `file.detected.colors`: what GRIDGO read when the file was uploaded. */
+export type ArtworkColorsRead = {
+  version?: number;
+  status: "read" | "partial" | "unknown" | (string & {});
+  reasons: string[];
+  colors: ArtworkColorRecord[];
+};
+
+export type ArtworkColorsRecord = { fileId: string; colors: ArtworkColorsRead | null };
 
 // ---- Print layout ----
 // Contract: gridgo-api docs/PRINT_LAYOUT_API.md.
@@ -1991,6 +2039,8 @@ export type DetectedArtwork = {
   hasAlpha?: boolean | null;
   /** The warning a client accepted while uploading, when that record was stored. */
   acceptedWarning?: { at: string; message?: string | null } | null;
+  /** The colours the file uses, read once at upload; absent on older files. */
+  colors?: ArtworkColorsRead | null;
 };
 
 /**
