@@ -188,6 +188,32 @@ describe("milestoneProofs", () => {
     });
   });
 
+  it("names the order's own shop and rider as the filer, not a generic team", () => {
+    const row = (by: string, fileId: string, milestoneCode: string) => ({
+      at: "2026-10-16T08:30:00Z",
+      state: "production",
+      by,
+      note: `Proof of Fulfilment attached for ${milestoneCode}`,
+      fileId,
+      milestoneCode,
+    });
+    const o = {
+      ...order({
+        timeline: [
+          row("user_shop_real", "f1", "production_started"),
+          row("user_rider_real", "f2", "delivered"),
+          row("user_someone_else", "f3", "production_started"),
+        ],
+      }),
+      supplierId: "user_shop_real",
+      riderId: "user_rider_real",
+    };
+    const shop = milestoneProofs(o, milestone("production_started", { pofFileIds: ["f1", "f3"] }));
+    expect(shop.map((p) => p.attachedBy)).toEqual(["the shop", "Team"]);
+    const [rider] = milestoneProofs(o, milestone("delivered", { pofFileIds: ["f2"] }));
+    expect(describeProof(rider, () => "then")).toBe("Filed then by the rider");
+  });
+
   it("marks the retention proof as the rider's delivery photo", () => {
     const o = order({
       timeline: [

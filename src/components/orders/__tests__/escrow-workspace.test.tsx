@@ -103,8 +103,9 @@ describe("the order workspace on an escrow-plan order", () => {
     });
     render(<OrderWorkspace queueHref="/ops/orders" payoutsHref="/ops/payouts" />);
 
-    expect(await screen.findByText("Production started")).toBeInTheDocument();
-    expect(screen.getByText("Proof file_start")).toBeInTheDocument();
+    expect(await screen.findByText("Production started:")).toBeInTheDocument();
+    // Drawn once, as the stage's proof under Supplier payout.
+    expect(screen.getByText(/1 proof on file, shown under Supplier payout/)).toBeInTheDocument();
     expect(screen.queryByText("Everything looks good")).toBeNull();
   });
 

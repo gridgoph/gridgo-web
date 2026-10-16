@@ -17,7 +17,7 @@
 import type { Order } from "@/lib/api/types";
 import { paymentIsSettled } from "@/lib/api/constraints";
 import { balanceNotRequired, paymentOf } from "@/lib/payments";
-import { shopProofStages } from "@/lib/payout-plan";
+import { shopProofFileIds } from "@/lib/payout-proofs";
 import {
   canAddProgressPhoto,
   productionPhotoMissing,
@@ -269,7 +269,8 @@ export function stageSummary(
   }
 
   if (stage === "production") {
-    const proofs = shopProofStages(order).filter((m) => m.pofFileIds.length > 0);
+    // Pictures, not stages: a stage can carry many.
+    const proofCount = shopProofFileIds(order).size;
     const progress = productionProgressOf(order);
     // The gallery is what a shop must send before packing, so once the API
     // reports it, it is what the closed row counts. An older API keeps the
@@ -280,9 +281,9 @@ export function stageSummary(
           ? "No progress photo from the shop yet."
           : "Moved on with no progress photo from the shop."
         : `${progressPhotoCount(progress.photos.length)} from the shop.`
-      : proofs.length === 0
+      : proofCount === 0
         ? null
-        : `${proofs.length === 1 ? "One proof" : `${proofs.length} proofs`} on file from the shop.`;
+        : `${proofCount === 1 ? "One proof" : `${proofCount} proofs`} on file from the shop.`;
     if (status === "locked") return "Opens once the artwork is approved.";
     if (order.state === "supplier_assigned")
       return "Waiting for the shop to accept the job.";
