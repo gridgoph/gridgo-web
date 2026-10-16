@@ -693,7 +693,9 @@ export default function SupplierJobDetailPage() {
               <p className="text-caption text-text-muted m-0 mb-3 max-w-prose">
                 {photoMissing
                   ? "The client sees these on their order."
-                  : `${progressPhotoCount(photos.length)} on this job. The client sees these on their order.`}
+                  : photos.length === 0 && proofPhotos > 0
+                    ? "The client sees your photos on their order."
+                    : `${progressPhotoCount(photos.length)} on this job. The client sees these on their order.`}
                 {proofPhotos > 0
                   ? ` Your ${proofPhotos === 1 ? "proof photo is" : `${proofPhotos} proof photos are`} under Your payout, not repeated here.`
                   : ""}
