@@ -200,14 +200,18 @@ function useProofFile(fileId: string, onState: (fileId: string, state: FrameStat
   useEffect(() => {
     let cancelled = false;
     setState({ kind: "loading" });
-    Promise.all([getFile(fileId), getFileDownloadUrl(fileId)]).then(
-      ([file, url]) => {
-        if (!cancelled) setState({ kind: "ready", file, url, image: fileLooksLikeImage(file) });
-      },
-      (err) => {
+    // One catch for the reads and for reading what came back, so a malformed
+    // answer is a frame that failed to load, never an unhandled error.
+    (async () => {
+      try {
+        const [file, url] = await Promise.all([getFile(fileId), getFileDownloadUrl(fileId)]);
+        if (!file || !url) throw new Error("incomplete file answer");
+        const image = fileLooksLikeImage(file);
+        if (!cancelled) setState({ kind: "ready", file, url, image });
+      } catch (err) {
         if (!cancelled) setState(fileIsGone(err) ? { kind: "gone" } : { kind: "failed" });
-      },
-    );
+      }
+    })();
     return () => {
       cancelled = true;
     };
