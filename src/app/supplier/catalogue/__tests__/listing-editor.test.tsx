@@ -1133,3 +1133,26 @@ describe("listing editor print layouts (gridgo-client#245)", () => {
     expect(screen.queryByRole("group", { name: "Print layouts you can print" })).not.toBeInTheDocument();
   });
 });
+
+describe("listing editor section numbers", () => {
+  it("gives every section its own number, Print layouts included", async () => {
+    stubLoad(catalogItem({ printLayouts: [] }));
+    render(<ListingEditorPage />);
+    const seen: string[] = [];
+    for (const label of ["Pick", "About", "Price", "Speed", "Steps", "Artwork", "Review"]) {
+      await openEditorStep(label);
+      const panel = document.getElementById("listing-step-panel")!;
+      for (const section of panel.querySelectorAll("section[id^='section-']")) {
+        seen.push(section.querySelector("p")!.textContent ?? "");
+      }
+    }
+    expect(new Set(seen).size).toBe(seen.length);
+    await openEditorStep("Artwork");
+    const eyebrow = (id: string) => document.getElementById(id)!.querySelector("p")!.textContent;
+    expect(["section-prep", "section-artwork", "section-print-layouts"].map(eyebrow)).toEqual([
+      "06.1",
+      "06.2",
+      "06.3",
+    ]);
+  });
+});
