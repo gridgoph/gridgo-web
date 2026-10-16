@@ -60,7 +60,13 @@ export function shopColourQuote(partial: Partial<ColourQuote> = {}): ColourQuote
   return {
     ...staff,
     clientLineSubtotalMinor: undefined,
-    pages: staff.pages.map(({ clientSheetPriceMinor: _a, clientPageTotalMinor: _b, clientPageRoundingMinor: _c, ...page }) => page),
+    pages: staff.pages.map((page) => {
+      const shop = { ...page };
+      delete shop.clientSheetPriceMinor;
+      delete shop.clientPageTotalMinor;
+      delete shop.clientPageRoundingMinor;
+      return shop;
+    }),
     ...partial,
   };
 }
