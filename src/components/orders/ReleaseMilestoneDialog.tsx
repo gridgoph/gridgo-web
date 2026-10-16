@@ -32,12 +32,13 @@ import {
 } from "@/components/orders/PayoutDestination";
 import type { Order, PayoutMilestone, SupplierPayoutAccount } from "@/lib/api/types";
 import { formatPhp } from "@/lib/format";
+import { changeExtrasOnStage } from "@/lib/order-changes";
 import { milestoneName } from "@/lib/order-state";
 import { isWindowStage } from "@/lib/payout-plan";
 
 export type ReleaseTarget = {
   order: Pick<Order, "id" | "title"> &
-    Partial<Pick<Order, "payoutPlanVersion" | "payoutMilestones">>;
+    Partial<Pick<Order, "payoutPlanVersion" | "payoutMilestones" | "changeRequests">>;
   milestone: PayoutMilestone;
 };
 
@@ -46,6 +47,8 @@ export type ReleaseDecision = {
   note: string;
   reference: string;
   receipt: File | null;
+  /** The whole transfer, set only when the share carries paid change extras. */
+  amountMinor?: number;
 };
 
 type Props = {
@@ -104,11 +107,15 @@ export function ReleaseMilestoneDialog({
     return () => URL.revokeObjectURL(url);
   }, [receipt]);
 
-  const amount =
-    target?.milestone.amountMinor !== undefined
-      ? formatPhp(target.milestone.amountMinor)
-      : null;
+  // The final share also pays every agreed change's extra, as one transfer
+  // with its receipt and reference (gridgo-api docs/ORDER_CHANGES_API.md).
+  const extrasMinor = target ? changeExtrasOnStage(target.order, target.milestone) : 0;
+  const stageMinor = target?.milestone.amountMinor;
+  const transferMinor = stageMinor !== undefined ? stageMinor + extrasMinor : undefined;
+  const amount = transferMinor !== undefined ? formatPhp(transferMinor) : null;
   const windowShare = target ? isWindowStage(target.order, target.milestone) : false;
+  const proofRequired = extrasMinor > 0;
+  const proofMissing = proofRequired && (!receipt || !reference.trim());
 
   function pickReceipt(file: File | undefined) {
     setReceiptProblem(null);
@@ -155,6 +162,13 @@ export function ReleaseMilestoneDialog({
                 } This pays the shop and cannot be undone from the portal.`
               : ""}
           </AlertDialogDescription>
+          {proofRequired && stageMinor !== undefined ? (
+            <p className="text-body text-text-primary m-0" role="note">
+              One transfer: {formatPhp(stageMinor)} for this share plus{" "}
+              {formatPhp(extrasMinor)} extra for the changes the client paid for. It needs the
+              wallet receipt and its reference.
+            </p>
+          ) : null}
         </AlertDialogHeader>
         {destination !== undefined ? (
           <div
@@ -232,13 +246,15 @@ export function ReleaseMilestoneDialog({
               {receiptProblem ? (
                 <span className="text-error">{receiptProblem}</span>
               ) : (
-                "The wallet's confirmation screen after you send. Stored on the order beside the proof it paid for. Optional, but it is the only record the money moved."
+                proofRequired
+                  ? "The wallet's confirmation screen after you send. Required: this share carries the shop's change extras."
+                  : "The wallet's confirmation screen after you send. Stored on the order beside the proof it paid for. Optional, but it is the only record the money moved."
               )}
             </FieldDescription>
           </Field>
           <Field>
             <FieldLabel htmlFor="release-reference">
-              Reference number (optional)
+              {proofRequired ? "Reference number" : "Reference number (optional)"}
             </FieldLabel>
             <Input
               id="release-reference"
@@ -283,7 +299,7 @@ export function ReleaseMilestoneDialog({
           </AlertDialogCancel>
           <AlertDialogAction
             variant="primary"
-            disabled={busy}
+            disabled={busy || proofMissing}
             onClick={() =>
               onConfirm({
                 note:
@@ -291,6 +307,9 @@ export function ReleaseMilestoneDialog({
                   (windowShare ? WINDOW_RELEASE_NOTE : DEFAULT_RELEASE_NOTE),
                 reference: reference.trim(),
                 receipt,
+                ...(proofRequired && transferMinor !== undefined
+                  ? { amountMinor: transferMinor }
+                  : {}),
               })
             }
           >

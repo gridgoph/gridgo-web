@@ -524,6 +524,20 @@
   background-color: var(--color-surface);
 }
 
+/*
+ * "Scanned, paper original still at the shop" on the supplier invoice
+ * collection meter: a hatch in the current text colour, so the meter's three
+ * parts differ by fill rather than hue and still read in greyscale.
+ */
+@utility gg-invoice-hatch {
+  background-color: var(--color-surface);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    currentColor 0 2px,
+    transparent 2px 5px
+  );
+}
+
 @utility gg-panel {
   border-radius: var(--radius-card);
   background-color: var(--color-surface-variant);
@@ -696,6 +710,47 @@ textarea:focus-visible,
   height: 18px;
   background: var(--color-text-primary);
   border-color: var(--color-surface);
+}
+
+/* The order's delivery-pin map (and its legend, which draws the same marks).
+   The pin the rider follows is the one solid mark; the checkout pin it moved
+   from is a hollow ring, and a proposal not saved yet is a dashed ring. */
+.gg-pin-mark {
+  display: block;
+  box-sizing: border-box;
+  border-radius: var(--radius-pill);
+}
+
+.gg-pin-mark--shop {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: var(--color-surface);
+  border: 3px solid var(--color-text-muted);
+  box-shadow: 0 1px 3px var(--color-scrim);
+}
+
+.gg-pin-mark--final {
+  width: 20px;
+  height: 20px;
+  background: var(--color-text-primary);
+  border: 3px solid var(--color-surface);
+  box-shadow: 0 1px 4px var(--color-scrim);
+}
+
+.gg-pin-mark--original {
+  width: 18px;
+  height: 18px;
+  background: transparent;
+  border: 3px solid var(--color-text-muted);
+}
+
+.gg-pin-mark--proposed {
+  width: 20px;
+  height: 20px;
+  background: var(--color-surface);
+  border: 3px dashed var(--color-text-primary);
+  box-shadow: 0 1px 3px var(--color-scrim);
 }
 
 /* Leaflet stacks its panes and controls at z-index 400-1000. Isolating the map

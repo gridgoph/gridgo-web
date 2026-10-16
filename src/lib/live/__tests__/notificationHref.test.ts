@@ -16,6 +16,19 @@ function note(partial: Partial<Notification>): Notification {
 }
 
 describe("notificationHref", () => {
+  it("lands legal and privacy notices on each staff tree's own screen", () => {
+    for (const type of ["legal.created", "legal.edited", "legal.published", "legal.deleted"]) {
+      expect(notificationHref("super_admin", note({ type }))).toBe("/admin/legal");
+      expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/legal");
+    }
+    expect(notificationHref("ops_admin", note({ type: "legal.accepted" }))).toBe("/ops/acceptance-log");
+    for (const type of ["privacy.requested", "privacy.updated"]) {
+      expect(notificationHref("super_admin", note({ type }))).toBe("/admin/privacy-requests");
+      expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/privacy-requests");
+      expect(notificationHref("supplier", note({ type }))).toBeNull();
+    }
+  });
+
   it("opens the taken-down listing for the shop", () => {
     expect(
       notificationHref(
@@ -23,6 +36,21 @@ describe("notificationHref", () => {
         note({ type: "listing_suspended", catalogItemId: "sci_sticker" }),
       ),
     ).toBe("/supplier/catalogue/sci_sticker");
+  });
+
+  it("opens Featured Prints in each staff tree, and nowhere for others", () => {
+    const type = "featured_prints_updated";
+    expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/featured-prints");
+    expect(notificationHref("super_admin", note({ type }))).toBe("/admin/featured-prints");
+    expect(notificationHref("supplier", note({ type }))).toBeNull();
+  });
+
+  it("opens Shop hours in each role's own tree for an hours change", () => {
+    const type = "supplier_hours_updated";
+    expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/shop-hours");
+    expect(notificationHref("super_admin", note({ type }))).toBe("/admin/shop-hours");
+    expect(notificationHref("supplier", note({ type }))).toBe("/supplier/shop-hours");
+    expect(notificationHref("client", note({ type }))).toBeNull();
   });
 
   it("lands a listing-review notice on each role's own desk or board", () => {
@@ -35,6 +63,23 @@ describe("notificationHref", () => {
       ).toBe("/supplier/catalogue/sci_sticker");
       expect(notificationHref("rider", note({ type }))).toBeNull();
     }
+  });
+
+  it("lands finished work waiting for review on the desk with that order open", () => {
+    const type = "order_finished_review_required";
+    expect(notificationHref("ops_admin", note({ type, orderId: "ord 1" }))).toBe(
+      "/ops/finished-work?order=ord%201",
+    );
+    expect(notificationHref("super_admin", note({ type, orderId: "ord_1" }))).toBe(
+      "/admin/finished-work?order=ord_1",
+    );
+    // The shop's decision notice and the rider's handover notices open the order.
+    expect(
+      notificationHref("supplier", note({ type: "order_finished_reviewed", orderId: "ord_1" })),
+    ).toBe("/supplier/jobs/ord_1");
+    expect(
+      notificationHref("ops_admin", note({ type: "order_arrived_packed", orderId: "ord_1" })),
+    ).toBe("/ops/orders/ord_1");
   });
 
   it("opens the restored listing for the shop, and nothing for staff", () => {
@@ -54,6 +99,30 @@ describe("notificationHref", () => {
     expect(notificationHref("supplier", row)).toBe("/supplier/jobs/ord_9");
     expect(notificationHref("ops_admin", row)).toBe("/ops/orders/ord_9");
     expect(notificationHref("super_admin", row)).toBe("/admin/orders/ord_9");
+  });
+
+  it("opens a survey submission on Super Admin's responses and every other copy on the order", () => {
+    const submitted = note({ type: "order_survey_submitted", orderId: "ord_9" });
+    expect(notificationHref("super_admin", submitted)).toBe("/admin/survey-responses?response=ord_9");
+    expect(notificationHref("ops_admin", submitted)).toBe("/ops/orders/ord_9");
+    for (const type of ["order_survey_available", "order_survey_dismissed"]) {
+      expect(notificationHref("super_admin", note({ type, orderId: "ord_9" }))).toBe("/admin/orders/ord_9");
+      expect(notificationHref("ops_admin", note({ type, orderId: "ord_9" }))).toBe("/ops/orders/ord_9");
+    }
+  });
+
+  it("opens a supplier invoice notice on that order's invoice, in each staff tree", () => {
+    for (const type of [
+      "supplier_invoice_scanned",
+      "supplier_invoice_expected",
+      "supplier_invoice_submitted",
+      "supplier_invoice_corrected",
+      "supplier_invoice_collected",
+    ]) {
+      const row = note({ type, orderId: "ord_9" });
+      expect(notificationHref("super_admin", row)).toBe("/admin/supplier-invoices?order=ord_9");
+      expect(notificationHref("ops_admin", row)).toBe("/ops/supplier-invoices?order=ord_9");
+    }
   });
 
   it("opens the order workspace from an Operations progress ping", () => {
@@ -224,4 +293,12 @@ it("opens packing-photo notifications in the staff member's own order workspace"
   const row = note({ type: "order_packing_photo_received", orderId: "packed_job" });
   expect(notificationHref("ops_admin", row)).toBe("/ops/orders/packed_job");
   expect(notificationHref("super_admin", row)).toBe("/admin/orders/packed_job");
+});
+
+it("opens voucher activity on the Super Admin log and the Operations lookup", () => {
+  for (const type of ["voucher_issued", "voucher_redeemed", "voucher_expiry_24h"]) {
+    expect(notificationHref("super_admin", note({ type }))).toBe("/admin/vouchers?tab=activity");
+    expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/vouchers");
+    expect(notificationHref("supplier", note({ type }))).toBeNull();
+  }
 });

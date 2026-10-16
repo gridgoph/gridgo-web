@@ -266,7 +266,7 @@ export function milestoneProofs(
       label:
         ids.length > 1 ? `Proof ${index + 1} of ${ids.length}` : "Proof of fulfilment",
       attachedAt: row?.at ?? evidence?.recordedAt ?? null,
-      attachedBy: row ? presentTimelineActor(row.by) : evidence ? "Rider" : null,
+      attachedBy: row ? presentTimelineActor(row.by) || null : evidence ? "Rider" : null,
       inherited: Boolean(carried),
     };
   });

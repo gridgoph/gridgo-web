@@ -4,10 +4,12 @@
  */
 
 import type {
+  OperatingHours,
   Role,
   SupplierServiceState,
   VerificationStatus,
 } from "@/lib/api/types";
+import { operatingHoursChanges } from "@/lib/operating-hours";
 import type { StatusIconName, StatusTone } from "@/lib/order-state";
 import { roleLabel } from "@/lib/routes";
 
@@ -265,39 +267,77 @@ export function presentLedgerType(type: string): string {
   }
 }
 
-/** Map audit action codes to sentence-case labels. */
-export function presentAuditAction(action: string): string {
-  const map: Record<string, string> = {
-    "credits.grant": "Granted Pilot Credits",
-    "user.role_update": "Changed user role",
-    "user.role": "Changed user role",
-    "user.verification": "Updated verification",
-    "zone.create": "Created delivery zone",
-    "zone.update": "Updated delivery zone",
-    "taxonomy.category.create": "Created category",
-    "taxonomy.category.update": "Updated category",
-    "taxonomy.material.create": "Created material",
-    "taxonomy.material.update": "Updated material",
-    "taxonomy.finish.create": "Created finish",
-    "taxonomy.finish.update": "Updated finish",
-    "supplier_service.verify": "Verified supplier service",
-    "supplier_service.suspend": "Suspended supplier service",
-    "issue.report": "Client reported issue",
-    "issue.resolve": "Resolved issue",
-    "claim.create": "Raised claim",
-    "claim.hold": "Held payout",
-    "claim.release": "Released payout hold",
-    "tracker.status": "Changed tracker status",
-    "tracker.decision": "Recorded tracker decision",
-  };
-  if (map[action]) return map[action];
+/** Audit action codes in plain words; one vocabulary with the Audit log screen. */
+export { presentAuditAction } from "@/lib/audit";
 
-  // Fallback: dots/underscores → words, never raw snake_case
-  return action
-    .replace(/[._]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/^\w/, (c) => c.toUpperCase());
+/**
+ * One line of what a legal or privacy audit row recorded (LEGAL_API.md):
+ * which version a publish created and whether it makes people accept again.
+ */
+export function presentAuditDetail(entry: {
+  action: string;
+  detail: Record<string, unknown> | null;
+  reason?: string | null;
+}): string | null {
+  const detail = entry.detail ?? {};
+  if (entry.action === "legal.published" && typeof detail.version === "number") {
+    return detail.material === true
+      ? `Version ${detail.version}, material change: everyone it applies to accepts again`
+      : `Version ${detail.version}, no new acceptance needed`;
+  }
+  if (
+    (entry.action === "legal.edited" || entry.action === "legal.created") &&
+    typeof detail.revision === "number"
+  ) {
+    return `Draft revision ${detail.revision}`;
+  }
+  if (entry.action === "settings.operational_update") {
+    return operatingHoursAuditLine(detail, entry.reason ?? null);
+  }
+  if (entry.action === "privacy.updated" && typeof detail.status === "string") {
+    const status: Record<string, string> = {
+      pending: "New",
+      in_progress: "In progress",
+      completed: "Completed",
+      rejected: "Declined",
+    };
+    return `Status: ${status[detail.status] ?? "Updated"}`;
+  }
+  return null;
+}
+
+/**
+ * What a settings save did to the operating hours (OPERATING_HOURS_API.md):
+ * the changes in words, and how many waiting files it tagged Review delayed.
+ * The portal's own reason already lists the changes, so they are not said
+ * twice. Null when there is nothing to add.
+ */
+function operatingHoursAuditLine(
+  detail: Record<string, unknown>,
+  reason: string | null,
+): string | null {
+  const hoursOf = (value: unknown): OperatingHours | null => {
+    const hours = (value as { operatingHours?: unknown } | null)?.operatingHours;
+    return hours && typeof hours === "object" && Array.isArray((hours as OperatingHours).schedule?.week)
+      ? (hours as OperatingHours)
+      : null;
+  };
+  const current = hoursOf(detail.current);
+  const changes = current ? operatingHoursChanges(hoursOf(detail.previous), current) : [];
+  const delayed = Array.isArray(detail.reviewDelayedOrderIds)
+    ? detail.reviewDelayedOrderIds.length
+    : 0;
+  const parts: string[] = [];
+  const line = `Operating hours: ${changes.join("; ")}`;
+  if (changes.length && !reason?.startsWith(line)) parts.push(line);
+  if (delayed) {
+    parts.push(
+      delayed === 1
+        ? "1 waiting order tagged Review delayed"
+        : `${delayed} waiting orders tagged Review delayed`,
+    );
+  }
+  return parts.length ? parts.join(". ") : null;
 }
 
 export function presentAuditEntityType(
@@ -315,6 +355,9 @@ export function presentAuditEntityType(
     claim: "Claim",
     issue: "Issue",
     order: "Order",
+    legal_document: "Legal document",
+    privacy_request: "Privacy request",
+    settings: "Operational settings",
   };
   if (map[entityType]) return map[entityType];
   return entityType

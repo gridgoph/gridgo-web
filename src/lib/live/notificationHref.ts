@@ -1,4 +1,5 @@
 import type { Notification, Role } from "@/lib/api/types";
+import { SHOP_HOURS_NOTICE } from "@/lib/shop-hours";
 
 /**
  * Where the inbox row should land.
@@ -32,6 +33,22 @@ export function notificationHref(role: Role, notification: Notification): string
         ? `/supplier/catalogue/${encodeURIComponent(notification.catalogItemId)}`
         : "/supplier/catalogue";
     }
+    return null;
+  }
+
+  // A shop's hours or temporary closure changed (gridgo-api#219). The notice
+  // names no shop, so staff land on the list, sorted closed-for-now first.
+  if (type === SHOP_HOURS_NOTICE) {
+    if (role === "super_admin") return "/admin/shop-hours";
+    if (role === "ops_admin") return "/ops/shop-hours";
+    if (role === "supplier") return "/supplier/shop-hours";
+    return null;
+  }
+
+  // Someone saved the client Home row; staff land on the setting.
+  if (type === "featured_prints_updated") {
+    if (role === "super_admin") return "/admin/featured-prints";
+    if (role === "ops_admin") return "/ops/featured-prints";
     return null;
   }
 
@@ -77,6 +94,14 @@ export function notificationHref(role: Role, notification: Notification): string
     return null;
   }
 
+  // A shop's finished, unpacked work is decided on the Finished work desk,
+  // with that order open. Every other handover notice falls through to the order.
+  if (type === "order_finished_review_required" && notification.orderId) {
+    const order = encodeURIComponent(notification.orderId);
+    if (role === "super_admin") return `/admin/finished-work?order=${order}`;
+    if (role === "ops_admin") return `/ops/finished-work?order=${order}`;
+  }
+
   // A pickup escalation opens its order, where the counter check shows the
   // count, the six checks, the photos and the Resolve action together. Only
   // a notice without an order falls back to the escalations queue.
@@ -93,6 +118,15 @@ export function notificationHref(role: Role, notification: Notification): string
     if (role === "super_admin") return "/admin/roles";
     if (role === "ops_admin") return "/ops/overview";
     if (role === "supplier") return "/supplier/dashboard";
+    return null;
+  }
+
+  // Voucher activity and expiry reminders (gridgo-api#204) name no account
+  // or order for staff: Super Admin lands on the activity log, Operations on
+  // its read-only lookup.
+  if (type.startsWith("voucher_")) {
+    if (role === "super_admin") return "/admin/vouchers?tab=activity";
+    if (role === "ops_admin") return "/ops/vouchers";
     return null;
   }
 
@@ -113,6 +147,40 @@ export function notificationHref(role: Role, notification: Notification): string
 
   if (type === "account_deletion_requested" || type === "account_deletion_request_completed") {
     return role === "super_admin" ? "/admin/account-deletion" : role === "ops_admin" ? "/ops/account-deletion" : null;
+  }
+
+  // Legal library and privacy queue (LEGAL_API.md). The notice names no
+  // document or person, so staff land on the screen that lists them.
+  if (type === "legal.accepted") {
+    if (role === "super_admin") return "/admin/acceptance-log";
+    if (role === "ops_admin") return "/ops/acceptance-log";
+    return null;
+  }
+  if (type.startsWith("legal.")) {
+    if (role === "super_admin") return "/admin/legal";
+    if (role === "ops_admin") return "/ops/legal";
+    return null;
+  }
+  if (type.startsWith("privacy.")) {
+    if (role === "super_admin") return "/admin/privacy-requests";
+    if (role === "ops_admin") return "/ops/privacy-requests";
+    return null;
+  }
+
+  // Post-order survey (SURVEY_API.md). Only Super Admin can read answers, so
+  // a submission opens that response there; Operations' copy, and the
+  // opened/skipped notices that carry no answer, fall through to the order.
+  if (type === "order_survey_submitted" && role === "super_admin" && notification.orderId) {
+    return `/admin/survey-responses?response=${encodeURIComponent(notification.orderId)}`;
+  }
+
+  // Supplier invoices (SUPPLIER_INVOICES_API.md): a scan, an entry, a
+  // correction or a collection opens that order's invoice on the desk, which
+  // finds the month it counts in.
+  if (type.startsWith("supplier_invoice_") && notification.orderId) {
+    const order = encodeURIComponent(notification.orderId);
+    if (role === "super_admin") return `/admin/supplier-invoices?order=${order}`;
+    if (role === "ops_admin") return `/ops/supplier-invoices?order=${order}`;
   }
 
   if (type === "ops_issue_report_filed") {

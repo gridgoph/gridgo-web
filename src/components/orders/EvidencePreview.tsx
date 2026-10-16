@@ -29,6 +29,7 @@ import {
   fileLooksLikeImage,
 } from "@/lib/evidence";
 import { fileIsGone } from "@/lib/file-retention";
+import { saveFileById } from "@/lib/file-save";
 import { cn } from "@/lib/utils";
 
 type PlateProps = {
@@ -55,6 +56,11 @@ type PlateProps = {
    * leave this off.
    */
   deletable?: boolean;
+  /**
+   * A document read as a whole, such as a shop's invoice scan: the preview
+   * shows the full page rather than a cropped middle.
+   */
+  whole?: boolean;
 };
 
 type Loaded = {
@@ -73,6 +79,7 @@ export function EvidencePlate({
   downloadable = false,
   featuredDownload = false,
   deletable = false,
+  whole = false,
 }: PlateProps) {
   const access = useFileDeletionAccess();
   const [open, setOpen] = useState(false);
@@ -164,7 +171,9 @@ export function EvidencePlate({
                 "w-full object-center",
                 featuredDownload
                   ? "h-64 object-contain"
-                  : "aspect-[4/3] h-36 object-cover",
+                  : whole
+                    ? "h-80 bg-surface-variant object-contain"
+                    : "aspect-[4/3] h-36 object-cover",
               )}
             />
             <span className="block truncate px-3 py-1.5 text-caption text-white/80">
@@ -264,17 +273,7 @@ export function EvidencePlate({
   );
 }
 
-/**
- * Saves the stored object under its original name.
- *
- * The preview URL is a different request and is not reused. This one is
- * asked for on the click and not kept: it only lasts five minutes, and the
- * signed host is not this site, so a link with `download` opens the file
- * instead of saving it.
- */
-/** Long enough for any browser to have started the save from the blob. */
-const REVOKE_AFTER_MS = 10_000;
-
+/** The plate's save control; the work is `saveFileById` (`src/lib/file-save.ts`). */
 function FileDownload({
   fileId,
   filename,
@@ -299,23 +298,7 @@ function FileDownload({
     setFailed(false);
     setSaving(true);
     try {
-      const url = await getFileDownloadUrl(fileId);
-      const response = await fetch(url);
-      if (!response.ok) throw new Error("download failed");
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = objectUrl;
-      anchor.download = filename;
-      document.body.appendChild(anchor);
-      try {
-        anchor.click();
-      } finally {
-        anchor.remove();
-        // Safari and some Firefox builds drop a save whose URL is revoked in
-        // the same task as the click, so let the save start first.
-        setTimeout(() => URL.revokeObjectURL(objectUrl), REVOKE_AFTER_MS);
-      }
+      await saveFileById(fileId, filename);
     } catch {
       if (live.current) setFailed(true);
     } finally {

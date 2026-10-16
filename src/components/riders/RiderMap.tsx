@@ -1,32 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { presentLocation, type LocationFreshness } from "@/app/ops/_lib/dispatch";
 import type { RiderRoutes } from "@/components/riders/useRiderRoutes";
 import type { MapPoint, RiderLocation } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
 import { routeSummaryLabel } from "@/lib/osrm";
-import { resolveTheme } from "@/lib/theme";
+import { formatAge, type RiderLocationView } from "@/lib/rider-tracking";
 import { vehicleGlyphSvg, vehicleSummary } from "@/lib/vehicle";
+import {
+  ensureLeaflet,
+  escapeHtml,
+  readToken,
+  TILE_OPTIONS,
+  TILE_URL,
+  useDarkTheme,
+  type LeafletLike,
+  type LeafletMap,
+  type LeafletMarker,
+  type LeafletPolyline,
+} from "@/components/maps/leaflet";
 
 const DAVAO = { lat: 7.0731, lng: 125.6128 };
-const LEAFLET_CSS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-const LEAFLET_JS = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-
-/**
- * Basemap: the same OpenStreetMap tiles the rider app draws, keyless. The
- * cartography is toned to GRIDGO's greys in CSS (`.gg-map`), and inverted for
- * the dark theme (`.gg-map--dark`), so the yellow route is the only colour on
- * the map in either theme.
- */
-const TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-const TILE_OPTIONS = {
-  attribution:
-    '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  maxZoom: 19,
-} as const;
 
 /**
  * Route colours come from the theme tokens at draw time, so the casing that
@@ -62,47 +58,27 @@ function routeStyles() {
   } as const;
 }
 
-function readToken(name: string, fallback: string): string {
-  if (typeof window === "undefined") return fallback;
-  const value = window.getComputedStyle(document.documentElement).getPropertyValue(name);
-  return value.trim() || fallback;
-}
-
-function isDarkTheme(): boolean {
-  return resolveTheme() === "dark";
-}
-
-/** Follows the portal theme: the header toggle's class, else the device preference. */
-function useDarkTheme(): boolean {
-  const [dark, setDark] = useState(false);
-  useEffect(() => {
-    const update = () => setDark(isDarkTheme());
-    update();
-    const media =
-      typeof window.matchMedia === "function"
-        ? window.matchMedia("(prefers-color-scheme: dark)")
-        : null;
-    media?.addEventListener("change", update);
-    const observer = new MutationObserver(update);
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"],
-    });
-    return () => {
-      media?.removeEventListener("change", update);
-      observer.disconnect();
-    };
-  }, []);
-  return dark;
-}
+/** A rider with a position the map can draw. */
+type Placed = RiderLocation & { lat: number; lng: number };
 
 type Props = {
+  /** Riders without a position are skipped here; the lists above and below keep them. */
   riders: RiderLocation[];
   routes: RiderRoutes;
   /** Pan to this rider and open their pin. Changes are honoured once each. */
   focusRiderId: string | null;
-  nowMs: number;
+  /** Freshness per rider id, from `presentRiderLocation`. */
+  views: Record<string, RiderLocationView>;
 };
+
+function placed(rider: RiderLocation): rider is Placed {
+  return (
+    rider.lat != null &&
+    rider.lng != null &&
+    Number.isFinite(rider.lat) &&
+    Number.isFinite(rider.lng)
+  );
+}
 
 type TripLayers = {
   rider: LeafletMarker;
@@ -122,7 +98,8 @@ type TripLayers = {
  * Layers are diffed by rider id so a location update never resets the camera
  * or closes an open popup; the viewport is fitted once, on first data.
  */
-export function RiderMap({ riders, routes, focusRiderId, nowMs }: Props) {
+export function RiderMap({ riders: all, routes, focusRiderId, views }: Props) {
+  const riders = useMemo(() => all.filter(placed), [all]);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const [instance, setInstance] = useState<{ map: LeafletMap; L: LeafletLike } | null>(
     null,
@@ -138,29 +115,6 @@ export function RiderMap({ riders, routes, focusRiderId, nowMs }: Props) {
     let cancelled = false;
     let map: LeafletMap | null = null;
     const trips = tripsRef.current;
-
-    function ensureLeaflet(): Promise<LeafletLike> {
-      const existing = (window as unknown as { L?: LeafletLike }).L;
-      if (existing) return Promise.resolve(existing);
-      if (!document.querySelector(`link[href="${LEAFLET_CSS}"]`)) {
-        const css = document.createElement("link");
-        css.rel = "stylesheet";
-        css.href = LEAFLET_CSS;
-        document.head.appendChild(css);
-      }
-      return new Promise((resolve, reject) => {
-        const script = document.createElement("script");
-        script.src = LEAFLET_JS;
-        script.async = true;
-        script.onload = () => {
-          const L = (window as unknown as { L?: LeafletLike }).L;
-          if (!L) reject(new Error("Leaflet failed to load"));
-          else resolve(L);
-        };
-        script.onerror = () => reject(new Error("Leaflet failed to load"));
-        document.body.appendChild(script);
-      });
-    }
 
     void ensureLeaflet()
       .then((L) => {
@@ -202,27 +156,16 @@ export function RiderMap({ riders, routes, focusRiderId, nowMs }: Props) {
     }
     const points = riders.map((rider) => {
       const point: [number, number] = [rider.lat, rider.lng];
-      const freshness = presentLocation(
-        {
-          id: rider.riderId,
-          orderId: rider.orderId,
-          riderId: rider.riderId,
-          lat: rider.lat,
-          lng: rider.lng,
-          accuracy: rider.accuracy,
-          at: rider.at,
-        },
-        rider.state,
-        nowMs,
-      ).freshness;
-      const iconKey = `${rider.vehicleType ?? "unknown"}|${freshness}`;
-      const html = popupHtml(rider, freshness, routes[rider.riderId]);
+      const view = views[rider.riderId];
+      const stale = view ? view.freshness !== "live" : false;
+      const iconKey = `${rider.vehicleType ?? "unknown"}|${stale}`;
+      const html = popupHtml(rider, view, routes[rider.riderId]);
       const existing = trips.get(rider.riderId);
       if (existing) {
         existing.rider.setLatLng(point);
         existing.rider.setPopupContent(html);
         if (existing.iconKey !== iconKey) {
-          existing.rider.setIcon(riderIcon(L, rider, freshness));
+          existing.rider.setIcon(riderIcon(L, rider, stale));
           existing.iconKey = iconKey;
         }
         existing.pickup = syncEndpoint(L, map, existing.pickup, rider.pickup, "pickup");
@@ -235,7 +178,7 @@ export function RiderMap({ riders, routes, focusRiderId, nowMs }: Props) {
         );
       } else {
         const marker = L.marker(point, {
-          icon: riderIcon(L, rider, freshness),
+          icon: riderIcon(L, rider, stale),
           zIndexOffset: 1000,
           alt: `${rider.name}, ${vehicleSummary(rider.vehicleType, rider.plateNumber)}`,
         }).addTo(map);
@@ -257,7 +200,7 @@ export function RiderMap({ riders, routes, focusRiderId, nowMs }: Props) {
       else map.fitBounds(points, { padding: [32, 32] });
       fittedRef.current = true;
     }
-  }, [instance, riders, routes, nowMs]);
+  }, [instance, riders, routes, views]);
 
   // Road routes, redrawn when the route or the theme changes.
   useEffect(() => {
@@ -318,8 +261,7 @@ function removeTrip(trip: TripLayers) {
   trip.line?.remove();
 }
 
-function riderIcon(L: LeafletLike, rider: RiderLocation, freshness: LocationFreshness) {
-  const stale = freshness !== "live";
+function riderIcon(L: LeafletLike, rider: RiderLocation, stale: boolean) {
   return L.divIcon({
     className: "gg-pin-host",
     html: `<div class="gg-rider-pin${stale ? " gg-rider-pin--stale" : ""}">${vehicleGlyphSvg(rider.vehicleType, 22)}</div>`,
@@ -369,14 +311,17 @@ function syncEndpoint(
 
 function popupHtml(
   rider: RiderLocation,
-  freshness: LocationFreshness,
+  view: RiderLocationView | undefined,
   route: RiderRoutes[string],
 ): string {
   const status = presentOrderState(rider.state).label;
   const order = rider.orderTitle
     ? `${rider.orderTitle} · Order ${rider.orderId}`
     : `Order ${rider.orderId}`;
-  const ping = `Last ping ${formatDateTime(rider.at)}${freshness === "stale" ? " · stale" : ""}`;
+  const ping =
+    view && view.freshness !== "live"
+      ? `Last known position, ${formatDateTime(rider.at)} (${formatAge(view.ageSeconds ?? 0)} ago)`
+      : `Last ping ${formatDateTime(rider.at)}`;
   return [
     `<strong>${escapeHtml(rider.name)}</strong>`,
     escapeHtml(vehicleSummary(rider.vehicleType, rider.plateNumber)),
@@ -384,70 +329,4 @@ function popupHtml(
     escapeHtml(routeSummaryLabel(route)),
     escapeHtml(ping),
   ].join("<br/>");
-}
-
-type LeafletMap = {
-  setView: (latlng: [number, number], zoom: number) => LeafletMap;
-  fitBounds: (points: [number, number][], opts: { padding: [number, number] }) => void;
-  remove: () => void;
-};
-
-type LeafletIcon = object;
-
-type LeafletMarker = {
-  addTo: (map: LeafletMap) => LeafletMarker;
-  bindPopup: (html: string) => void;
-  setPopupContent: (html: string) => void;
-  setLatLng: (latlng: [number, number]) => void;
-  setIcon: (icon: LeafletIcon) => void;
-  openPopup: () => void;
-  remove: () => void;
-};
-
-type LeafletPolyline = {
-  addTo: (map: LeafletMap) => LeafletPolyline;
-  remove: () => void;
-};
-
-type LeafletTileLayer = {
-  addTo: (map: LeafletMap) => LeafletTileLayer;
-  remove: () => void;
-};
-
-type LeafletLike = {
-  map: (el: HTMLElement) => LeafletMap;
-  tileLayer: (
-    url: string,
-    opts: { attribution: string; maxZoom: number },
-  ) => LeafletTileLayer;
-  marker: (
-    latlng: [number, number],
-    opts: { icon: LeafletIcon; zIndexOffset?: number; alt?: string },
-  ) => LeafletMarker;
-  divIcon: (opts: {
-    className: string;
-    html: string;
-    iconSize: [number, number];
-    iconAnchor: [number, number];
-    popupAnchor: [number, number];
-  }) => LeafletIcon;
-  polyline: (
-    latlngs: [number, number][],
-    opts: {
-      color: string;
-      weight: number;
-      opacity: number;
-      dashArray?: string;
-      lineJoin: string;
-      lineCap: string;
-    },
-  ) => LeafletPolyline;
-};
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
 }

@@ -56,7 +56,8 @@ export function useRiderRoutes(riders: RiderLocation[]): RiderRoutes {
 
     for (const rider of riders) {
       const id = rider.riderId;
-      const origin = { lat: rider.lat, lng: rider.lng };
+      // A rider who has never sent a fix has no origin: no route, no request.
+      const origin = { lat: rider.lat ?? Number.NaN, lng: rider.lng ?? Number.NaN };
       const dest = rider.dropoff;
       if (!isValidLatLng(dest) || !isValidLatLng(origin)) {
         trips.get(id)?.controller.abort();

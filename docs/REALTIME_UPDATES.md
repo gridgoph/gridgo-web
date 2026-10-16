@@ -162,6 +162,33 @@ carries `catalogItemId`. The arrival is the live alert (chime, toast, desktop al
 desk re-reads on the `catalog` invalidation, marks newly arrived listings and product-type
 requests **New** and announces them politely.
 
+A Featured Prints save (`featured_prints_updated`, gridgo-api#234) reaches every Operations
+and Super Admin membership with no push, and opens `/ops/featured-prints` or
+`/admin/featured-prints`. An open setting re-reads on the `catalog` invalidation: with no
+unsaved edits it takes the new list; with edits it shows the other person's list and asks
+which to keep before Save.
+
+Legal library and privacy notices (`legal.created|edited|published|deleted`,
+`legal.accepted`, `privacy.requested|updated`; gridgo-api#202) name no document, person or
+request. Staff land on `/…/legal`, `/…/acceptance-log` or `/…/privacy-requests` in their
+own tree. The API queues `legal` and `privacy-requests` invalidations that its stream does not
+carry, so those screens re-read when one of these inbox notices arrives
+(`useLegalInboxReload`), and keep their Refresh button. The rail's open privacy
+request count re-reads on the same `privacy.*` notices.
+
+Post-order survey notices (`order_survey_available`, `order_survey_dismissed`,
+`order_survey_submitted`; `gridgo-api/docs/SURVEY_API.md`) reach Operations and Super Admin
+without any answer. Only Super Admin can read responses, so its `order_survey_submitted`
+copy opens `/admin/survey-responses?response=:orderId`, which opens that response; every
+other survey notice, and every Operations copy, opens the order. An open responses desk
+re-reads when a new submission notice arrives (`useLegalInboxReload`).
+
+Supplier invoice notices (`supplier_invoice_scanned|expected|submitted|corrected|collected`;
+`gridgo-api/docs/SUPPLIER_INVOICES_API.md`) reach Operations and Super Admin and open
+`/{ops,admin}/supplier-invoices?order=:orderId`, which finds the Manila month the invoice
+counts in and opens it. An open desk, and the Finance page's invoice summary, re-read on the
+same notices (`useLegalInboxReload`).
+
 Sign-up links open Super Admin verification only; Operations has no sign-up destination.
 Operations service-review links open `/ops/service-lines`; legacy `/ops/approvals?tab=services`
 links still work. Other `/ops/approvals` links show the Super Admin only notice. Super Admin

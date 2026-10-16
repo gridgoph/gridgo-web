@@ -34,11 +34,11 @@ describe("rail section headings", () => {
       ]);
     expect(shape("ops_admin")).toEqual([
       ["Desk", ["ops-top"]],
-      ["Work", ["Queue", "Field", "Money"]],
+      ["Work", ["Queue", "Field", "Money", "Legal & privacy"]],
     ]);
     expect(shape("super_admin")).toEqual([
       ["Desk", ["admin-top"]],
-      ["Manage", ["People", "Catalog", "Money"]],
+      ["Manage", ["People", "Catalog", "Money", "Legal & privacy"]],
       ["Platform", ["System"]],
     ]);
     expect(shape("supplier")).toEqual([
@@ -84,11 +84,13 @@ describe("rail counts", () => {
         "ops-chat:chat-unread",
         "ops-issue-reports:issue-reports-new",
         "ops-orders:orders-waiting",
+        "ops-finished-work:finished-work-waiting",
         "ops-listing-reviews:listing-reviews-waiting",
         "ops-shop-changes:shop-changes-needs-ops",
         "ops-escalations:escalations-open",
         "ops-refunds:refunds-waiting",
         "ops-claims:claims-open",
+        "ops-privacy-requests:privacy-requests-open",
       ],
       super_admin: [
         "admin-chat:chat-unread",
@@ -96,7 +98,9 @@ describe("rail counts", () => {
         "admin-verification:signups-waiting",
         "admin-listing-reviews:listing-reviews-waiting",
         "admin-refunds:refunds-waiting",
+        "admin-finished-work:finished-work-waiting",
         "admin-shop-changes:shop-changes-needs-ops",
+        "admin-privacy-requests:privacy-requests-open",
         "admin-tracker:tracker-needs-decision",
       ],
     });

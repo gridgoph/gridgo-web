@@ -6,6 +6,7 @@
 import { isApiError } from "@/lib/api/client";
 import { PLATFORM_CONSTRAINT_COPY } from "@/lib/api/constraints";
 import { RIDER_SHARE_INVALID } from "@/lib/delivery-split";
+import { manilaWhen } from "@/lib/operating-hours";
 
 /** Codes worth naming precisely, because each has a different way out. */
 const CODE_COPY: Record<string, string> = {
@@ -44,7 +45,25 @@ const CODE_COPY: Record<string, string> = {
   resolution_required:
     "Write the instruction. The rider is waiting at the shop and this is what they act on.",
   production_override_reason_required:
-    "Write why you are moving this job on without the shop's photo. The reason is kept in the audit log.",
+    "Write why you are forcing this step. The note is kept in the audit log.",
+  production_override_reason_code_required:
+    "Choose why you are forcing this step, then try again.",
+  production_override_reason_too_long:
+    "Shorten the note to 2,000 characters or fewer.",
+  // Finished-work review (SHOP_HANDOVER_API.md).
+  production_review_note_required:
+    "Write what the shop needs to fix. It cannot be sent back without a reason.",
+  invalid_production_review: "Choose Approve or Send back, then try again.",
+  production_review_not_available:
+    "Someone has already reviewed these photos, or the shop is no longer waiting. Refresh to see where it stands.",
+  finished_product_photo_required:
+    "A photo in this submission is no longer on file, so it cannot be reviewed. Ask the shop to send its photos again.",
+  production_finished_required:
+    "The shop has not sent photos of the finished work yet.",
+  production_review_required:
+    "The finished work has not been approved yet.",
+  handover_flow_not_available:
+    "This order follows the older handover, so it has no finished-work review. Refresh the order.",
   production_photo_required:
     "The shop has not sent a progress photo. Move the job on with a written reason instead.",
   production_penalty_pending:
@@ -113,6 +132,52 @@ const CODE_COPY: Record<string, string> = {
     "This order already has an open refund request. Work that one instead.",
   refund_stale:
     "Someone else changed this refund while you were reading it. Reload it and check again.",
+  // Delivery pin (DELIVERY_PIN_API.md).
+  delivery_pin_stale:
+    "The delivery pin changed while you were reading it. The order has been reloaded; check it again.",
+  delivery_pin_payment_mismatch:
+    "The amount must be exactly the pin's fee difference. Check the transfer against it.",
+  delivery_pin_payment_unavailable:
+    "No pin payment is waiting any more. Someone may already have decided it; the order has been reloaded.",
+  delivery_pin_payment_pending:
+    "The client's pin payment is waiting on Operations. Verify or reject it before a rider is assigned.",
+  delivery_pin_money_reconciliation_required:
+    "This order's money needs reconciling first: a payment is still pending, or a refund is already open. Resolve that, then decide the pin payment.",
+  delivery_pin_idempotency_conflict:
+    "This decision was already sent with different details. Reload the order and decide again.",
+  delivery_pin_locked:
+    "The delivery pin can no longer change on this order.",
+  invalid_delivery_pin_request:
+    "Write a reason of up to 2,000 characters, then try again.",
+  // Change requests (ORDER_CHANGES_API.md).
+  change_request_stale:
+    "The change request moved on while you were reading it. The order has been reloaded; check it again.",
+  change_payment_unavailable:
+    "No change payment is waiting any more. Someone may already have decided it; the order has been reloaded.",
+  change_payment_mismatch:
+    "The amount must be exactly what the client owes for the change. Check the transfer against it.",
+  change_payment_reference_used:
+    "That transfer reference is already recorded against another payment. Reject this one and ask the client for the right transfer.",
+  change_request_idempotency_conflict:
+    "This decision was already sent with different details. Reload the order and decide again.",
+  change_request_window_closed:
+    "The job has moved past production, so this change can no longer be applied. Reject the payment or reconcile it by hand.",
+  change_request_supplier_changed:
+    "The order has a different shop now, so this change cannot be applied. Reject the payment or reconcile it by hand.",
+  change_deadline_stale:
+    "The order's dates changed since the shop asked, so this change cannot be applied as it stands.",
+  change_deadline_operations_required:
+    "A late-production deduction applies to this order, so this time change needs reconciling by hand.",
+  change_payment_pending:
+    "A client's payment for a change is waiting. Verify or reject it on the Special instructions row first.",
+  change_payment_reconciliation_required:
+    "A paid change belongs to this order's shop. Reconcile it before the order moves to another shop.",
+  invalid_change_request:
+    "Write a reason of up to 2,000 characters, then try again.",
+  supplement_payout_amount_mismatch:
+    "The transfer must be this share plus every paid change extra. Reload the order and release again.",
+  supplement_payout_receipt_required:
+    "This share includes a paid change extra, so it needs the wallet receipt and its reference.",
   refund_idempotency_conflict:
     "This action was already sent with different details. Reload the refund and start again.",
   refund_destination_locked:
@@ -160,6 +225,14 @@ const CODE_COPY: Record<string, string> = {
 
 export function opsErrorMessage(err: unknown, fallback: string): string {
   if (!isApiError(err)) return fallback;
+
+  // Manual work on a new order waits for operating hours (OPERATING_HOURS_API.md).
+  if (err.code === "outside_operating_hours") {
+    const at = err.detail("scheduledReviewAt");
+    return typeof at === "string" && Number.isFinite(Date.parse(at))
+      ? `GRIDGO is closed, so this waits for operating hours. Try again from ${manilaWhen(at)}.`
+      : "GRIDGO is closed, so this waits for operating hours. Try again when it opens.";
+  }
 
   const specific = CODE_COPY[err.code];
   if (specific) return specific;

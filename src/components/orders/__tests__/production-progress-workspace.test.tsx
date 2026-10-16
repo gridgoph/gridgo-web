@@ -159,14 +159,18 @@ describe("a staff production correction", () => {
     expect(confirm).toBeDisabled();
 
     await user.type(
-      within(dialog).getByLabelText("Why you are moving it on"),
+      within(dialog).getByLabelText("What happened"),
       "Saw the finished job at the counter",
     );
+    // A note alone is not enough: the API needs the reason code too.
+    expect(confirm).toBeDisabled();
+    await user.click(within(dialog).getByLabelText(/Checked outside the app/));
     await user.click(confirm);
 
     await waitFor(() =>
       expect(requests.find((r) => r.method === "POST")?.body).toEqual({
         state: "ready_for_dispatch",
+        reasonCode: "evidence_verified_offline",
         reason: "Saw the finished job at the counter",
         note: "Saw the finished job at the counter",
       }),
@@ -182,11 +186,12 @@ describe("a staff production correction", () => {
 
     await user.click(await screen.findByRole("button", { name: "Move to ready for dispatch" }));
     const dialog = await screen.findByRole("alertdialog");
-    await user.type(within(dialog).getByLabelText("Why you are moving it on"), " x");
+    await user.type(within(dialog).getByLabelText("What happened"), " x");
+    await user.click(within(dialog).getByLabelText(/Technical issue/));
     await user.click(within(dialog).getByRole("button", { name: "Move to ready for dispatch" }));
 
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(
-      /Write why you are moving this job on/,
+      /Write why you are forcing this step/,
     );
   });
 

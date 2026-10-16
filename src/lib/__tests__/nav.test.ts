@@ -32,6 +32,7 @@ describe("ROLE_NAV", () => {
       "/supplier/chat",
       "/supplier/catalogue",
       "/supplier/schedule",
+      "/supplier/shop-hours",
       "/supplier/capacity",
       "/supplier/payouts",
       "/supplier/payout-account",
@@ -46,21 +47,29 @@ describe("ROLE_NAV", () => {
       "/ops/account-deletion",
       "/ops/issue-reports",
       "/ops/orders",
+      "/ops/finished-work",
       "/ops/service-lines",
       "/ops/listing-reviews",
+      "/ops/featured-prints",
       "/ops/dispatch",
       "/ops/riders",
       "/ops/rankings",
+      "/ops/shop-hours",
       "/ops/late-production",
       "/ops/shop-changes",
       "/ops/hub",
       "/ops/escalations",
       "/ops/schedule",
       "/ops/payouts",
+      "/ops/supplier-invoices",
       "/ops/refunds",
       "/ops/organizations",
+      "/ops/vouchers",
       "/ops/claims",
       "/ops/recovery",
+      "/ops/legal",
+      "/ops/acceptance-log",
+      "/ops/privacy-requests",
     ]);
   });
 
@@ -71,20 +80,29 @@ describe("ROLE_NAV", () => {
       "/admin/chat",
       "/admin/account-deletion",
       "/admin/issue-reports",
+      "/admin/survey-responses",
       "/admin/riders",
       "/admin/hub",
       "/admin/verification",
       "/admin/roles",
       "/admin/staff",
       "/admin/supplier-products",
+      "/admin/shop-hours",
       "/admin/catalogue",
       "/admin/listing-reviews",
+      "/admin/featured-prints",
       "/admin/zones",
       "/admin/finance",
+      "/admin/supplier-invoices",
+      "/admin/vouchers",
       "/admin/refunds",
       "/admin/organizations",
+      "/admin/finished-work",
       "/admin/late-production",
       "/admin/shop-changes",
+      "/admin/legal",
+      "/admin/acceptance-log",
+      "/admin/privacy-requests",
       "/admin/settings",
       "/admin/audit",
       "/admin/planning",
@@ -108,44 +126,58 @@ describe("ROLE_NAV", () => {
       .map((n) => n.href)
       .sort();
     expect(ready).toEqual([
+      "/admin/acceptance-log",
       "/admin/account-deletion",
       "/admin/audit",
       "/admin/broadcast",
       "/admin/catalogue",
       "/admin/chat",
+      "/admin/featured-prints",
       "/admin/file-retention",
       "/admin/finance",
+      "/admin/finished-work",
       "/admin/hub",
       "/admin/issue-reports",
       "/admin/late-production",
+      "/admin/legal",
       "/admin/listing-reviews",
       "/admin/organizations",
       "/admin/overview",
       "/admin/planning",
+      "/admin/privacy-requests",
       "/admin/refunds",
       "/admin/riders",
       "/admin/roles",
       "/admin/season-windows",
       "/admin/settings",
       "/admin/shop-changes",
+      "/admin/shop-hours",
       "/admin/staff",
+      "/admin/supplier-invoices",
       "/admin/supplier-products",
+      "/admin/survey-responses",
       "/admin/tracker",
       "/admin/verification",
+      "/admin/vouchers",
       "/admin/zones",
+      "/ops/acceptance-log",
       "/ops/account-deletion",
       "/ops/chat",
       "/ops/claims",
       "/ops/dispatch",
       "/ops/escalations",
+      "/ops/featured-prints",
+      "/ops/finished-work",
       "/ops/hub",
       "/ops/issue-reports",
       "/ops/late-production",
+      "/ops/legal",
       "/ops/listing-reviews",
       "/ops/orders",
       "/ops/organizations",
       "/ops/overview",
       "/ops/payouts",
+      "/ops/privacy-requests",
       "/ops/rankings",
       "/ops/recovery",
       "/ops/refunds",
@@ -153,6 +185,9 @@ describe("ROLE_NAV", () => {
       "/ops/schedule",
       "/ops/service-lines",
       "/ops/shop-changes",
+      "/ops/shop-hours",
+      "/ops/supplier-invoices",
+      "/ops/vouchers",
       "/supplier/capacity",
       "/supplier/catalogue",
       "/supplier/chat",
@@ -161,6 +196,7 @@ describe("ROLE_NAV", () => {
       "/supplier/payout-account",
       "/supplier/payouts",
       "/supplier/schedule",
+      "/supplier/shop-hours",
     ]);
   });
 
@@ -190,12 +226,14 @@ describe("ROLE_NAV", () => {
       "Queue",
       "Field",
       "Money",
+      "Legal & privacy",
     ]);
     expect(ROLE_NAV_GROUPS.super_admin.map((g) => g.label ?? g.id)).toEqual([
       "admin-top",
       "People",
       "Catalog",
       "Money",
+      "Legal & privacy",
       "System",
     ]);
     expect(ROLE_NAV_GROUPS.supplier.map((g) => g.label ?? g.id)).toEqual([
@@ -215,7 +253,13 @@ describe("ROLE_NAV", () => {
       ROLE_NAV_GROUPS.ops_admin
         .find((g) => g.id === "ops-queue")
         ?.items.map((n) => n.href),
-    ).toEqual(["/ops/orders", "/ops/service-lines", "/ops/listing-reviews"]);
+    ).toEqual([
+      "/ops/orders",
+      "/ops/finished-work",
+      "/ops/service-lines",
+      "/ops/listing-reviews",
+      "/ops/featured-prints",
+    ]);
     expect(
       ROLE_NAV_GROUPS.ops_admin
         .find((g) => g.id === "ops-field")
@@ -224,6 +268,7 @@ describe("ROLE_NAV", () => {
       "/ops/dispatch",
       "/ops/riders",
       "/ops/rankings",
+      "/ops/shop-hours",
       "/ops/late-production",
       "/ops/shop-changes",
       "/ops/hub",
@@ -236,8 +281,10 @@ describe("ROLE_NAV", () => {
         ?.items.map((n) => n.href),
     ).toEqual([
       "/ops/payouts",
+      "/ops/supplier-invoices",
       "/ops/refunds",
       "/ops/organizations",
+      "/ops/vouchers",
       "/ops/claims",
       "/ops/recovery",
     ]);
@@ -251,6 +298,7 @@ describe("ROLE_NAV", () => {
       "/admin/chat",
       "/admin/account-deletion",
       "/admin/issue-reports",
+      "/admin/survey-responses",
       "/admin/riders",
       "/admin/hub",
     ]);
@@ -263,23 +311,38 @@ describe("ROLE_NAV", () => {
       "/admin/roles",
       "/admin/staff",
       "/admin/supplier-products",
+      "/admin/shop-hours",
     ]);
     expect(
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-catalog")
         ?.items.map((n) => n.href),
-    ).toEqual(["/admin/catalogue", "/admin/listing-reviews", "/admin/zones"]);
+    ).toEqual([
+      "/admin/catalogue",
+      "/admin/listing-reviews",
+      "/admin/featured-prints",
+      "/admin/zones",
+    ]);
     expect(
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-money")
         ?.items.map((n) => n.href),
     ).toEqual([
       "/admin/finance",
+      "/admin/supplier-invoices",
+      "/admin/vouchers",
       "/admin/refunds",
       "/admin/organizations",
+      "/admin/finished-work",
       "/admin/late-production",
       "/admin/shop-changes",
     ]);
+    for (const tree of ["ops", "admin"] as const) {
+      const role = tree === "ops" ? "ops_admin" : "super_admin";
+      expect(
+        ROLE_NAV_GROUPS[role].find((g) => g.id === `${tree}-legal`)?.items.map((n) => n.href),
+      ).toEqual([`/${tree}/legal`, `/${tree}/acceptance-log`, `/${tree}/privacy-requests`]);
+    }
     expect(
       ROLE_NAV_GROUPS.super_admin
         .find((g) => g.id === "admin-system")
@@ -303,7 +366,12 @@ describe("ROLE_NAV", () => {
       ROLE_NAV_GROUPS.supplier
         .find((g) => g.id === "supplier-shop")
         ?.items.map((n) => n.href),
-    ).toEqual(["/supplier/catalogue", "/supplier/schedule", "/supplier/capacity"]);
+    ).toEqual([
+      "/supplier/catalogue",
+      "/supplier/schedule",
+      "/supplier/shop-hours",
+      "/supplier/capacity",
+    ]);
     expect(
       ROLE_NAV_GROUPS.supplier
         .find((g) => g.id === "supplier-money")
@@ -385,6 +453,8 @@ describe("nav helpers", () => {
       "Pickup escalations",
     );
     expect(contextTitleForPath("/admin/zones", "super_admin")).toBe("Delivery zones");
+    expect(contextTitleForPath("/ops/shop-hours/user_a", "ops_admin")).toBe("Shop's hours");
+    expect(contextTitleForPath("/admin/shop-hours", "super_admin")).toBe("Shop hours");
     expect(contextTitleForPath("/admin/supplier-products", "super_admin")).toBe(
       "Supplier products",
     );

@@ -17,6 +17,7 @@ import { orderDeliverySplit, platformShareBps } from "@/lib/delivery-split";
 import { formatPhp } from "@/lib/format";
 import { asDeduction, discountLabel, orderFeeSplit } from "@/lib/organization-discount";
 import { balanceNotRequired, installmentLabel } from "@/lib/payments";
+import { orderVoucher, VOUCHER_LINE_LABEL } from "@/lib/vouchers";
 
 type Props = {
   order: Order;
@@ -103,6 +104,14 @@ export function MoneyBreakdown({ order, headingId }: Props) {
       ? `${distance} from the supplier to the delivery address`
       : "Set by the distance band in Operational settings",
   });
+  const voucher = orderVoucher(order);
+  if (voucher) {
+    clientRows.push({
+      label: VOUCHER_LINE_LABEL,
+      value: asDeduction(formatPhp(voucher.amountMinor)),
+      hint: "Paid by GRIDGO out of its fee, then delivery. The supplier price and rider pay do not change.",
+    });
+  }
   clientRows.push({
     label: "Client total",
     value: formatPhp(order.totalMinor),

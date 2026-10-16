@@ -42,6 +42,8 @@ type GalleryProps = {
   onAdd?: () => void;
   addLabel?: string;
   addDisabled?: boolean;
+  /** Two to a row instead of three, for a screen whose job is to look at them. */
+  large?: boolean;
 };
 
 type Loaded = Record<string, string>;
@@ -54,6 +56,7 @@ export function ProgressGallery({
   onAdd,
   addLabel = "Add another photo",
   addDisabled = false,
+  large = false,
 }: GalleryProps) {
   const [urls, setUrls] = useState<Loaded>({});
   const [openIndex, setOpenIndex] = useState<number | null>(null);
@@ -70,7 +73,12 @@ export function ProgressGallery({
 
   return (
     <>
-      <ol className="m-0 grid list-none grid-cols-2 gap-3 p-0 sm:grid-cols-3">
+      <ol
+        className={cn(
+          "m-0 grid list-none gap-3 p-0",
+          large ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-2 sm:grid-cols-3",
+        )}
+      >
         {photos.map((photo, index) => (
           <li key={photo.fileId} className="min-w-0">
             <PhotoTile

@@ -1,5 +1,5 @@
 "use client";
-import { UserRoundMinus } from "lucide-react";
+import { TicketPercent, UserRoundMinus } from "lucide-react";
 
 import {
   useCallback,
@@ -15,6 +15,10 @@ import {
   AlertTriangle,
   ArrowLeftRight,
   BadgeCheck,
+  BookText,
+  Landmark,
+  Signature,
+  UserLock,
   Banknote,
   BanknoteArrowDown,
   Building2,
@@ -30,7 +34,9 @@ import {
   CircleUser,
   ClipboardCheck,
   ClipboardList,
+  Clock3,
   Coins,
+  GalleryHorizontal,
   Gauge,
   HandCoins,
   Inbox,
@@ -41,10 +47,13 @@ import {
   MapPinned,
   Megaphone,
   MessageSquare,
+  MessageSquareHeart,
   MessageSquareWarning,
   Package,
+  PackageCheck,
   PackageSearch,
   QrCode,
+  ReceiptText,
   Route,
   Scale,
   Trophy,
@@ -204,6 +213,15 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   hub: Warehouse,
   staff: IdCard,
   "listing-reviews": BadgeCheck,
+  "featured-prints": GalleryHorizontal,
+  vouchers: TicketPercent,
+  legal: BookText,
+  acceptances: Signature,
+  privacy: UserLock,
+  surveys: MessageSquareHeart,
+  invoices: ReceiptText,
+  "finished-work": PackageCheck,
+  "shop-hours": Clock3,
   "group-shop": Store,
   "group-money": HandCoins,
   "group-queue": Inbox,
@@ -211,6 +229,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   "group-system": SlidersHorizontal,
   "group-people": Contact,
   "group-catalog": Library,
+  "group-legal": Landmark,
 };
 
 /** Each count source this rail shows, once — read once for the whole rail. */
