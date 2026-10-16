@@ -45,6 +45,14 @@ export function notificationHref(role: Role, notification: Notification): string
     return null;
   }
 
+  // A colour analysis left a draft cart page without a shop price
+  // (gridgo-api docs/COLOUR_PRICING_API.md). Staff land on the queue.
+  if (type === "colour_price_check") {
+    if (role === "super_admin") return "/admin/colour-price-checks";
+    if (role === "ops_admin") return "/ops/colour-price-checks";
+    return null;
+  }
+
   // Someone saved the client Home row; staff land on the setting.
   if (type === "featured_prints_updated") {
     if (role === "super_admin") return "/admin/featured-prints";

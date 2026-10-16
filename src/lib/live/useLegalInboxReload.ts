@@ -18,7 +18,13 @@ import { useLiveOptional } from "@/lib/live/LiveProvider";
  * staff a `supplier_invoice_*` notice.
  */
 export function useLegalInboxReload(
-  prefix: "legal." | "privacy." | "order_survey_submitted" | "supplier_invoice_" | null,
+  prefix:
+    | "legal."
+    | "privacy."
+    | "order_survey_submitted"
+    | "supplier_invoice_"
+    | "colour_price_check"
+    | null,
   load: () => unknown,
 ): void {
   const live = useLiveOptional();

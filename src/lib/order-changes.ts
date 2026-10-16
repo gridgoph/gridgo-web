@@ -575,6 +575,10 @@ const SHOP_ERRORS: Record<string, string> = {
   change_request_limit:
     "This job has had as many change requests as GRIDGO keeps. Contact the GRIDGO Team.",
   change_terms_required: "Say what you will do differently.",
+  invalid_colour_correction:
+    "GRIDGO could not read the corrected pages. Give every page a reading from 0 to 100% and a price in pesos, then send it again.",
+  colour_correction_refund_required:
+    "These prices come to less than the client paid. A lower price is a refund: contact the GRIDGO Team, who refund the client through Operations.",
   invalid_change_request: "Say what you will do differently and why, in the space given.",
   invalid_special_instructions: "Keep the change under 300 characters.",
   invalid_change_line: "That item is no longer on this job. Refresh the job and pick it again.",
