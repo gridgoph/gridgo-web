@@ -155,13 +155,13 @@ function ProofUploadBody({
   useEffect(() => {
     const kept = new Set(items.map((item) => item.preview).filter(Boolean) as string[]);
     for (const url of previews.current) {
-      if (!kept.has(url)) URL.revokeObjectURL(url);
+      if (!kept.has(url)) URL.revokeObjectURL?.(url);
     }
     previews.current = kept;
   }, [items]);
   useEffect(
     () => () => {
-      for (const url of previews.current) URL.revokeObjectURL(url);
+      for (const url of previews.current) URL.revokeObjectURL?.(url);
     },
     [],
   );
@@ -191,7 +191,9 @@ function ProofUploadBody({
       // The same file picked twice is one picture.
       if (known.has(key)) continue;
       known.add(key);
-      const image = file.type.startsWith("image/");
+      // A preview is a nicety: a browser without object URLs still files.
+      const image =
+        file.type.startsWith("image/") && typeof URL.createObjectURL === "function";
       const fits = space > 0;
       if (fits) space -= 1;
       else over += 1;

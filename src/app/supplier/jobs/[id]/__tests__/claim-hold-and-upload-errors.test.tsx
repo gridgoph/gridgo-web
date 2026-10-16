@@ -135,8 +135,10 @@ it("names the size limit when a proof is too large, not file storage", async () 
   render(<SupplierJobDetailPage />);
 
   await user.click(await screen.findByRole("button", { name: "Add printing proof" }));
-  const input = document.querySelector("input[type=file]") as HTMLInputElement;
-  await user.upload(input, new File(["x"], "huge.jpg", { type: "image/jpeg" }));
+  await user.upload(
+    screen.getByLabelText("Printing proof photos"),
+    new File(["x"], "huge.jpg", { type: "image/jpeg" }),
+  );
 
   expect(
     await screen.findByText(/larger than 25 MB, the limit for this upload/),
