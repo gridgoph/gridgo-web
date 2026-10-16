@@ -4,8 +4,8 @@
  * One submission of finished, unpacked work, and GRIDGO's decision on it.
  *
  * Contract: `gridgo-api/docs/SHOP_HANDOVER_API.md`. Mounted on the Finished
- * work desk and inside the order workspace's Handover row, so the review
- * reads the same wherever it is opened.
+ * work desk and inside the order workspace's With the shop step, so the
+ * review reads the same wherever it is opened.
  *
  * The photos sit beside a job ticket: the lines, quantities and spec the
  * work was printed to, and the client's artwork, because the review is a

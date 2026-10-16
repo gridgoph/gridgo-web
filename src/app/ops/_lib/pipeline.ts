@@ -294,6 +294,11 @@ export function stageSummary(
       const review = finishedReviewStatus(order);
       if (review === "pending") return "Finished work is waiting for your review.";
       if (review === "sent_back") return "Sent back to the shop. Waiting for new photos.";
+      // A progress photo is not what this flow waits on: the finished work is.
+      if (order.state === "production")
+        return "Being printed. No photos of the finished work from the shop yet.";
+      if (order.state === "supplier_self_qc" && review === "approved")
+        return "Finished work approved. The shop marks it ready for rider pickup.";
       if (order.state === "ready_for_dispatch")
         return "Ready for rider pickup. The rider checks it unpacked and packs it at the shop.";
     }

@@ -6,17 +6,21 @@ import { PackageCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/ui/StatusChip";
+import { formatDateTime } from "@/lib/format";
 import type { StatusIconName, StatusTone } from "@/lib/order-state";
 import {
   needsOperations,
   otherRequirements,
-  photoRequirement,
   requirementTitle,
+  stepRequirement,
   type PackagingCheck,
+  type PackagingStepKind,
   type Requirement,
 } from "@/lib/packaging-readiness";
+import { photoCount, type ShopFinishedStep } from "@/lib/shop-handover";
 
-type RowState = "done" | "needed" | "blocked" | "optional";
+type RowState =
+  "done" | "needed" | "sent_back" | "waiting" | "upcoming" | "blocked" | "optional";
 
 const STATE_CHIP: Record<
   RowState,
@@ -24,6 +28,9 @@ const STATE_CHIP: Record<
 > = {
   done: { tone: "success", label: "Done", icon: "circle-check" },
   needed: { tone: "warning", label: "Needed", icon: "clock" },
+  sent_back: { tone: "warning", label: "Sent back", icon: "triangle-alert" },
+  waiting: { tone: "info", label: "With GRIDGO", icon: "clock" },
+  upcoming: { tone: "neutral", label: "Not yet", icon: "circle-dashed" },
   blocked: { tone: "error", label: "Waiting on Operations", icon: "triangle-alert" },
   optional: { tone: "neutral", label: "Optional", icon: "circle-dashed" },
 };
@@ -38,14 +45,28 @@ const STATE_CHIP: Record<
  * button; a claim is Operations' to clear, so its row is where to message
  * them from. The receipt scan is listed as optional and never holds the step.
  * Nothing here is yellow: the one yellow on the job is the step itself.
+ *
+ * A rider-packs job is not packed at the shop, so its list is the two steps
+ * before a rider is called: the shop's photos of the finished, unpacked work,
+ * then GRIDGO's review of them. A send-back puts GRIDGO's reason on the
+ * photos row, word for word.
  */
-export function PackagingChecklist({ check }: { check: PackagingCheck }) {
+export function PackagingChecklist({
+  check,
+  finished = null,
+}: {
+  check: PackagingCheck;
+  /** Where the finished work stands, on a rider-packs job. */
+  finished?: ShopFinishedStep | null;
+}) {
   const others = otherRequirements(check);
-  const done = check.photos.filter((photo) => photo.done).length;
-  const summary =
-    done === check.photos.length
+  const riderPacks = check.flow === "rider_packs";
+  const done = check.steps.filter((step) => step.done).length;
+  const summary = riderPacks
+    ? riderPacksSummary(finished)
+    : done === check.steps.length
       ? "Both photos are on the job."
-      : `${done} of ${check.photos.length} photos on the job.`;
+      : `${done} of ${check.steps.length} photos on the job.`;
 
   return (
     <section
@@ -59,27 +80,35 @@ export function PackagingChecklist({ check }: { check: PackagingCheck }) {
           className="text-h3 text-text-primary m-0 flex items-center gap-2"
         >
           <PackageCheck size={18} strokeWidth={1.75} aria-hidden />
-          Before it can be packaged
+          {riderPacks ? "Before a rider is called" : "Before it can be packaged"}
         </h3>
         <p className="text-body text-text-secondary m-0">
           {check.allowed
-            ? "Everything GRIDGO needs is on the job. You can package it for pickup."
+            ? riderPacks
+              ? "GRIDGO approved the finished work. Mark it ready for rider pickup once your packing materials are ready."
+              : "Everything GRIDGO needs is on the job. You can package it for pickup."
             : `${summary}${others.length ? " Something else is holding it too." : ""}`}
         </p>
       </div>
 
       <ul className="m-0 flex list-none flex-col p-0">
-        {check.photos.map((photo) => {
-          const owed = photoRequirement(check, photo.kind);
-          return (
-            <Row
-              key={photo.kind}
-              state={owed ? "needed" : "done"}
-              title={requirementTitle(photo.kind)}
-              detail={owed ? owed.message : "On the job."}
+        {check.steps.map((step) =>
+          riderPacks ? (
+            <RiderPacksRow
+              key={step.kind}
+              kind={step.kind}
+              check={check}
+              finished={finished}
             />
-          );
-        })}
+          ) : (
+            <Row
+              key={step.kind}
+              state={stepRequirement(check, step.kind) ? "needed" : "done"}
+              title={requirementTitle(step.kind)}
+              detail={stepRequirement(check, step.kind)?.message ?? "On the job."}
+            />
+          ),
+        )}
         {others.map((item, index) => (
           <BlockerRow
             key={`${item.code}:${index}`}
@@ -94,11 +123,100 @@ export function PackagingChecklist({ check }: { check: PackagingCheck }) {
           detail={
             check.receiptAttached
               ? "On the job."
-              : "Not needed. It never holds up packing."
+              : riderPacks
+                ? "Not needed. It never holds up pickup."
+                : "Not needed. It never holds up packing."
           }
         />
       </ul>
     </section>
+  );
+}
+
+function riderPacksSummary(finished: ShopFinishedStep | null): string {
+  switch (finished?.stage) {
+    case "in_review":
+      return "Your photos are with GRIDGO. Nothing for you to do until it answers.";
+    case "approved":
+      return "GRIDGO approved the finished work.";
+    case "with_gridgo":
+      return "The GRIDGO Team takes the next step on this job.";
+    default:
+      return finished?.sendBack
+        ? "GRIDGO sent the finished work back. Fix it, then send new photos."
+        : "Send photos of the finished, unpacked work. GRIDGO reviews them, then you call a rider.";
+  }
+}
+
+/** One of the two rider-packs steps, in the shop's words for where it stands. */
+function RiderPacksRow({
+  kind,
+  check,
+  finished,
+}: {
+  kind: PackagingStepKind;
+  check: PackagingCheck;
+  finished: ShopFinishedStep | null;
+}) {
+  const title = requirementTitle(kind);
+  const owed = stepRequirement(check, kind);
+  if (kind === "finished_photos") {
+    if (finished?.stage === "in_review" || finished?.stage === "approved") {
+      const { submission } = finished;
+      return (
+        <Row
+          state="done"
+          title={title}
+          detail={`Sent ${formatDateTime(submission.at)}, ${photoCount(submission.photoFileIds.length)}.`}
+        />
+      );
+    }
+    if (finished?.stage === "to_send" && finished.sendBack) {
+      return (
+        <Row
+          state="sent_back"
+          title={title}
+          detail="Fix it, then send new photos. GRIDGO cannot take the photos it already saw."
+          quote={finished.sendBack.note || "No reason was written. Message the GRIDGO Team to ask."}
+        />
+      );
+    }
+    return owed ? (
+      <Row
+        state="needed"
+        title={title}
+        detail="Photograph every finished piece, unpacked, and send the photos for GRIDGO's review. Do not pack yet."
+      />
+    ) : (
+      <Row state="done" title={title} detail="On the job." />
+    );
+  }
+  if (finished?.stage === "approved") {
+    return (
+      <Row
+        state="done"
+        title={title}
+        detail={`Approved ${formatDateTime(finished.review.at)}.`}
+      />
+    );
+  }
+  if (finished?.stage === "in_review") {
+    return (
+      <Row
+        state="waiting"
+        title={title}
+        detail="GRIDGO is checking them now."
+      />
+    );
+  }
+  return owed ? (
+    <Row
+      state="upcoming"
+      title={title}
+      detail="GRIDGO checks your photos before a rider is called."
+    />
+  ) : (
+    <Row state="done" title={title} detail="Approved." />
   );
 }
 
@@ -108,12 +226,15 @@ function Row({
   detail,
   detailId,
   action,
+  quote,
 }: {
   state: RowState;
   title: string;
   detail: string;
   detailId?: string;
   action?: ReactNode;
+  /** GRIDGO's own words, shown as written above the detail. */
+  quote?: string;
 }) {
   const chip = STATE_CHIP[state];
   return (
@@ -131,6 +252,11 @@ function Row({
         </span>
         <StatusChip tone={chip.tone} label={chip.label} icon={chip.icon} />
       </div>
+      {quote ? (
+        <blockquote className="border-outline text-body text-text-primary m-0 max-w-prose border-l-2 pl-3">
+          {quote}
+        </blockquote>
+      ) : null}
       <p
         id={detailId}
         className={

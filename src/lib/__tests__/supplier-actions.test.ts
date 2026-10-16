@@ -202,3 +202,117 @@ describe("claim hold", () => {
     ).toBeUndefined();
   });
 });
+
+describe("a rider-packs job (shop handover version 2, ord_de22bfb54b9d)", () => {
+  const released = [milestone("production_started", "released")];
+  const FINISHED = {
+    code: "production_finished_required",
+    message: "Submit photos of the finished, unpacked products for GRIDGO review first.",
+  };
+  const REVIEW = {
+    code: "production_review_required",
+    message: "Wait for GRIDGO to approve the finished-product photos before calling a rider.",
+  };
+  const submission = {
+    at: "2026-10-16T05:10:00Z",
+    by: "shop1",
+    supplierId: "shop1",
+    photoFileIds: ["file_a", "file_b"],
+  };
+
+  function riderPacks(state: string, extra: Record<string, unknown> = {}) {
+    return {
+      ...job(state, released),
+      supplierId: "shop1",
+      handoverFlow: "rider_packs" as const,
+      // The shop's progress photo is on the job, as on the reported order.
+      productionProgress: {
+        status: "photos_available" as const,
+        photos: [{ fileId: "file_p", contentType: "image/jpeg", at: "2026-10-16T04:52:00Z" }],
+      },
+      packingProgress: { status: "waiting_for_photo" as const, photos: [] },
+      ...extra,
+    };
+  }
+
+  it("asks for the finished work, never a packing photo, and counts it as the shop's to-do", () => {
+    const order = riderPacks("production", {
+      shopHandover: {},
+      transitionReadiness: {
+        ready_for_dispatch: { allowed: false, missing: [FINISHED, REVIEW] },
+      },
+    });
+    const actions = actionsForJob(order);
+    expect(actions.map((a) => [a.kind, a.label, a.blockedReason])).toEqual([
+      ["send_finished_photos", "Send finished work for review", undefined],
+    ]);
+    expect(needsSupplierAction(order)).toBe(true);
+  });
+
+  it("asks for new photos after a send-back", () => {
+    const order = riderPacks("production", {
+      shopHandover: {
+        finished: null,
+        review: null,
+        attempts: [
+          {
+            finished: submission,
+            review: {
+              at: "2026-10-16T05:20:00Z",
+              by: "ops1",
+              decision: "rejected",
+              note: "Page 12 is smudged",
+            },
+          },
+        ],
+      },
+    });
+    expect(primaryAction(order)?.label).toBe("Send new photos for review");
+  });
+
+  it("offers nothing while GRIDGO reviews, and says so", () => {
+    const order = riderPacks("supplier_self_qc", {
+      shopHandover: { finished: submission, review: null },
+      transitionReadiness: { ready_for_dispatch: { allowed: false, missing: [REVIEW] } },
+    });
+    expect(actionsForJob(order)).toEqual([]);
+    expect(needsSupplierAction(order)).toBe(false);
+    expect(supplierWaitingOn(order.state, order)).toMatch(
+      /GRIDGO is checking your photos of the finished, unpacked work/,
+    );
+  });
+
+  it("offers Ready for rider pickup once approved, and holds it for a claim", () => {
+    const approved = {
+      shopHandover: {
+        finished: submission,
+        review: { at: "2026-10-16T05:30:00Z", by: "ops1", decision: "approved", note: "" },
+      },
+    };
+    const order = riderPacks("supplier_self_qc", {
+      ...approved,
+      transitionReadiness: { ready_for_dispatch: { allowed: true, missing: [] } },
+    });
+    expect(actionsForJob(order).map((a) => [a.label, a.targetState, a.blockedReason])).toEqual([
+      ["Ready for rider pickup", "ready_for_dispatch", undefined],
+    ]);
+
+    const held = riderPacks("supplier_self_qc", {
+      ...approved,
+      transitionReadiness: {
+        ready_for_dispatch: {
+          allowed: false,
+          missing: [{ code: "claim_hold_active", message: "A claim holds payouts." }],
+        },
+      },
+    });
+    expect(primaryAction(held)?.blockedReason).toBe("A claim holds payouts.");
+    expect(needsSupplierAction(held)).toBe(false);
+  });
+
+  it("tells the shop not to pack while it waits for the rider", () => {
+    expect(
+      supplierWaitingOn("ready_for_dispatch", { handoverFlow: "rider_packs" }),
+    ).toMatch(/Do not pack yet/);
+  });
+});
