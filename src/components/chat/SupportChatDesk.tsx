@@ -46,6 +46,11 @@ import type {
 import { ChatAttachButton } from "@/components/chat/ChatAttachButton";
 import { ChatTranscript } from "@/components/chat/ChatTranscript";
 import { ConversationDetails } from "@/components/chat/ConversationDetails";
+import {
+  groupSupportChatThreads,
+  mergeSupportChatMessages,
+  supportChatCounterpartUserId,
+} from "@/components/chat/conversations";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -96,13 +101,7 @@ export function supportChatCounterpart(thread: SupportChatThread): {
   };
 }
 
-/** User id of the person on the other side of this thread. Staff-to-staff flips to the peer. */
-export function supportChatCounterpartUserId(thread: SupportChatThread): string {
-  if (thread.staffPeerUserId && thread.viewerUserId && thread.partyUserId === thread.viewerUserId) {
-    return thread.staffPeerUserId;
-  }
-  return thread.partyUserId;
-}
+export { supportChatCounterpartUserId };
 
 function errorCopy(error: unknown): string {
   if (error instanceof ApiError) {
@@ -132,7 +131,8 @@ type Props = {
 export function SupportChatDesk({ openWith = null }: Props = {}) {
   const [threads, setThreads] = useState<SupportChatThread[] | null>(null);
   const [messages, setMessages] = useState<SupportChatMessage[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** The selected person (counterpart user id): their threads read as one conversation. */
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [threadOpen, setThreadOpen] = useState(false);
   const [role, setRole] = useState<(typeof ROLE_FILTERS)[number]["value"]>("all");
   const [query, setQuery] = useState("");
@@ -156,54 +156,53 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
   const [error, setError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement | null>(null);
 
+  const conversations = useMemo(() => groupSupportChatThreads(threads ?? []), [threads]);
   const selected = useMemo(
-    () => threads?.find((thread) => thread.id === selectedId) ?? null,
-    [threads, selectedId],
+    () => conversations.find((conversation) => conversation.key === selectedKey) ?? null,
+    [conversations, selectedKey],
   );
-  const selectedPerson = selected ? supportChatCounterpart(selected) : null;
-  const staffConversation = Boolean(selected?.staffPeerUserId);
+  /** Replies go to the person's most recently active thread. */
+  const replyThread = selected?.lead ?? null;
+  const selectedPerson = replyThread ? supportChatCounterpart(replyThread) : null;
+  const staffConversation = Boolean(replyThread?.staffPeerUserId);
+  const threadIdsKey = selected ? selected.threads.map((thread) => thread.id).join(",") : "";
 
-  const loadThreads = useCallback(async (keepId?: string | null) => {
+  const loadThreads = useCallback(async () => {
     setError(null);
     const rows = await listSupportChatThreads({
       role: role === "all" ? undefined : role,
       q: query,
     });
-    setThreads((current) => {
-      const kept = keepId ? current?.find((row) => row.id === keepId) : null;
-      if (kept && !rows.some((row) => row.id === kept.id)) return [kept, ...rows];
-      return rows;
-    });
-    setSelectedId((current) => {
-      const preferred = keepId ?? current;
-      if (preferred && (rows.some((row) => row.id === preferred) || preferred === keepId)) {
-        return preferred;
+    setThreads(rows);
+    setSelectedKey((current) => {
+      if (current && rows.some((row) => supportChatCounterpartUserId(row) === current)) {
+        return current;
       }
-      return rows[0]?.id ?? null;
+      return rows[0] ? supportChatCounterpartUserId(rows[0]) : null;
     });
     return rows;
   }, [query, role]);
 
-  const loadThread = useCallback(async (threadId: string) => {
-    const detail = await getSupportChatThread(threadId);
-    setMessages(detail.messages);
-    setThreads((current) =>
-      (current ?? []).map((row) => (row.id === detail.thread.id ? detail.thread : row)),
+  const loadConversation = useCallback(async (threadIds: string[]) => {
+    const details = await Promise.all(threadIds.map((id) => getSupportChatThread(id)));
+    const fresh = new Map(details.map((detail) => [detail.thread.id, detail.thread]));
+    setThreads((current) => (current ?? []).map((row) => fresh.get(row.id) ?? row));
+    return mergeSupportChatMessages(...details.map((detail) => detail.messages));
+  }, []);
+
+  const loadPhotos = useCallback(async (threadIds: string[]) => {
+    const details = await Promise.all(
+      threadIds.map((id) => getSupportChatThread(id, { media: true })),
+    );
+    return mergeSupportChatMessages(...details.map((detail) => detail.messages)).flatMap(
+      (message) => message.attachments ?? [],
     );
   }, []);
 
-  const loadPhotos = useCallback(async (threadId: string) => {
-    const detail = await getSupportChatThread(threadId, { media: true });
-    setPhotos(detail.messages.flatMap((message) => message.attachments ?? []));
-  }, []);
-
-  const loadSearch = useCallback(async (threadId: string, q: string) => {
-    if (!q.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    const detail = await getSupportChatThread(threadId, { q });
-    setSearchResults(detail.messages);
+  const loadSearch = useCallback(async (threadIds: string[], q: string) => {
+    if (!q.trim()) return [];
+    const details = await Promise.all(threadIds.map((id) => getSupportChatThread(id, { q })));
+    return mergeSupportChatMessages(...details.map((detail) => detail.messages));
   }, []);
 
   useEffect(() => {
@@ -244,21 +243,48 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
     setPhotos([]);
     setPendingFiles([]);
     setConfirmDelete(false);
-  }, [selectedId]);
+  }, [selectedKey]);
 
   useEffect(() => {
-    if (!selectedId) {
+    if (!threadIdsKey) {
       setMessages([]);
       return;
     }
-    void loadThread(selectedId).catch((err) => setError(errorCopy(err)));
-    void loadPhotos(selectedId).catch(() => setPhotos([]));
-  }, [loadPhotos, loadThread, selectedId]);
+    let cancelled = false;
+    const ids = threadIdsKey.split(",");
+    void loadConversation(ids)
+      .then((rows) => {
+        if (!cancelled) setMessages(rows);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(errorCopy(err));
+      });
+    void loadPhotos(ids)
+      .then((rows) => {
+        if (!cancelled) setPhotos(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setPhotos([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadConversation, loadPhotos, threadIdsKey]);
 
   useEffect(() => {
-    if (!selectedId) return;
-    void loadSearch(selectedId, searchQuery).catch(() => setSearchResults([]));
-  }, [loadSearch, searchQuery, selectedId]);
+    if (!threadIdsKey) return;
+    let cancelled = false;
+    void loadSearch(threadIdsKey.split(","), searchQuery)
+      .then((rows) => {
+        if (!cancelled) setSearchResults(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setSearchResults([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadSearch, searchQuery, threadIdsKey]);
 
   useEffect(() => {
     if (!finding) return;
@@ -290,24 +316,20 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
           const others = current.filter((row) => row.id !== event.thread.id);
           return [event.thread, ...others];
         });
-        if (event.thread.id === selectedId) {
-          setMessages((current) => (
-            current.some((row) => row.id === event.message.id)
-              ? current
-              : [...current, event.message]
-          ));
+        if (supportChatCounterpartUserId(event.thread) === selectedKey) {
+          setMessages((current) => mergeSupportChatMessages(current, [event.message]));
         }
       },
     });
     return () => stream.close();
-  }, [selectedId]);
+  }, [selectedKey]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: "end" });
-  }, [messages.length, selectedId]);
+  }, [messages.length, selectedKey]);
 
   async function send() {
-    if (!selectedId || sending) return;
+    if (!replyThread || sending) return;
     if (!draft.trim() && !pendingFiles.length) return;
     setSending(true);
     try {
@@ -317,20 +339,20 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
         uploadedIds.push(stored.fileId);
       }
       const posted = uploadedIds.length
-        ? await replySupportChat(selectedId, draft.trim(), uploadedIds)
-        : await replySupportChat(selectedId, draft.trim());
+        ? await replySupportChat(replyThread.id, draft.trim(), uploadedIds)
+        : await replySupportChat(replyThread.id, draft.trim());
       setDraft("");
       setPendingFiles([]);
-      setMessages((current) => (
-        current.some((row) => row.id === posted.message.id) ? current : [...current, posted.message]
-      ));
+      setMessages((current) => mergeSupportChatMessages(current, [posted.message]));
       setThreads((current) => {
         if (!current) return current;
         const others = current.filter((row) => row.id !== posted.thread.id);
         return [posted.thread, ...others];
       });
-      if (uploadedIds.length) {
-        void loadPhotos(selectedId).catch(() => {});
+      if (uploadedIds.length && selected) {
+        void loadPhotos(selected.threads.map((thread) => thread.id))
+          .then(setPhotos)
+          .catch(() => {});
       }
     } catch (err) {
       setError(errorCopy(err));
@@ -359,14 +381,15 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
   }
 
   async function removeChat() {
-    if (!selectedId || deleting) return;
+    if (!selected || deleting) return;
     setDeleting(true);
     try {
-      const id = selectedId;
-      await deleteSupportChatThread(id);
+      const { key } = selected;
+      const ids = selected.threads.map((thread) => thread.id);
+      for (const id of ids) await deleteSupportChatThread(id);
       setConfirmDelete(false);
-      setThreads((current) => (current ?? []).filter((row) => row.id !== id));
-      setSelectedId((current) => (current === id ? null : current));
+      setThreads((current) => (current ?? []).filter((row) => !ids.includes(row.id)));
+      setSelectedKey((current) => (current === key ? null : current));
       setThreadOpen(false);
       setMessages([]);
     } catch (err) {
@@ -389,7 +412,7 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
         }
         return [opened.thread, ...rows];
       });
-      setSelectedId(opened.thread.id);
+      setSelectedKey(supportChatCounterpartUserId(opened.thread));
       if (!sideBySide()) setThreadOpen(true);
       setInboxPage(0);
       setFinding(false);
@@ -472,7 +495,11 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
           placeholder="Search name, email or preview"
           aria-label="Search conversations"
         />
-        <div className="min-w-0 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        {/* The five filters overflow the 18rem inbox, so the strip keeps a visible scrollbar. */}
+        <div
+          data-testid="role-filter-scroller"
+          className="min-w-0 overflow-x-auto pb-2 [scrollbar-color:var(--border)_transparent] [scrollbar-width:thin]"
+        >
         <ToggleGroup
           value={[role]}
           onValueChange={(values) => {
@@ -494,22 +521,23 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
         <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="Conversations">
               {loading && !threads ? (
                 <p className="text-body text-text-muted m-0 px-1 py-3">Loading conversations…</p>
-              ) : !threads?.length ? (
+              ) : !conversations.length ? (
                 <EmptyState
                   title="No conversations yet"
                   body="Start one from New conversation, or wait until a client, shop or rider writes in."
                 />
               ) : (
-                sliceInboxPage(threads, inboxPage).map((thread) => {
+                sliceInboxPage(conversations, inboxPage).map((conversation) => {
+                  const thread = conversation.lead;
                   const person = supportChatCounterpart(thread);
-                  const active = thread.id === selectedId;
+                  const active = conversation.key === selectedKey;
                   return (
                     <button
-                      key={thread.id}
+                      key={conversation.key}
                       type="button"
                       role="listitem"
                       onClick={() => {
-                        setSelectedId(thread.id);
+                        setSelectedKey(conversation.key);
                         setFinding(false);
                         setPeople(null);
                         setPeopleQuery("");
@@ -528,8 +556,8 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
                           <span className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
                             {person.name}
                           </span>
-                          {thread.unreadCount > 0 ? (
-                            <span className="text-caption text-text-primary">{thread.unreadCount}</span>
+                          {conversation.unreadCount > 0 ? (
+                            <span className="text-caption text-text-primary">{conversation.unreadCount}</span>
                           ) : null}
                         </span>
                         <span className="text-caption text-text-muted">
@@ -547,8 +575,8 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
                 })
               )}
             </div>
-        {threads?.length ? (
-          <InboxPager page={inboxPage} total={threads.length} onPageChange={setInboxPage} />
+        {conversations.length ? (
+          <InboxPager page={inboxPage} total={conversations.length} onPageChange={setInboxPage} />
         ) : null}
       </aside>
 
@@ -682,7 +710,7 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
               ) : (
                 <ChatTranscript
                   messages={messages}
-                  party={{ kind: "person", userId: supportChatCounterpartUserId(selected) }}
+                  party={{ kind: "person", userId: selected.key }}
                   otherName={(message) => message.senderName || roleLabel(selectedPerson.role)}
                 />
               )}

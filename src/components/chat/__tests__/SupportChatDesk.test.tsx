@@ -152,7 +152,8 @@ describe("SupportChatDesk", () => {
     const search = screen.getByLabelText("Search conversations");
     const filters = screen.getByRole("group", { name: "Filter conversations by role" });
     expect(search.compareDocumentPosition(filters) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(filters.parentElement).toHaveClass("overflow-x-auto", "[scrollbar-width:none]");
+    expect(filters.parentElement).toHaveClass("overflow-x-auto", "[scrollbar-width:thin]");
+    expect(filters.parentElement).not.toHaveClass("[scrollbar-width:none]");
     expect(filters).toHaveClass("flex-nowrap");
   });
 
@@ -309,6 +310,7 @@ describe("SupportChatDesk", () => {
     const many = Array.from({ length: 9 }, (_, index) => ({
       ...thread,
       id: `thread-${index}`,
+      partyUserId: `user_person_${index}`,
       partyName: `Person ${index}`,
       lastMessagePreview: `Preview ${index}`,
     }));
@@ -324,6 +326,114 @@ describe("SupportChatDesk", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
     expect(await screen.findByText("Preview 8")).toBeTruthy();
     expect(screen.queryByText("Preview 0")).toBeNull();
+  });
+
+  it("shows one conversation per person and merges their threads without duplicates", async () => {
+    const older = {
+      ...thread,
+      id: "thread-older",
+      lastMessageAt: "2026-09-19T03:00:00.000Z",
+      lastMessagePreview: "Older chat",
+      unreadCount: 2,
+    };
+    const other = {
+      ...thread,
+      id: "thread-other",
+      partyUserId: "user_other",
+      partyName: "Ben Client",
+      lastMessagePreview: "Hello",
+      unreadCount: 0,
+    };
+    listSupportChatThreads.mockResolvedValue([thread, other, older]);
+    const message = (id: string, threadId: string, body: string, createdAt: string) => ({
+      id,
+      threadId,
+      senderUserId: "user_client",
+      senderRole: "client",
+      senderName: "Ana Client",
+      body,
+      createdAt,
+      mine: false,
+    });
+    getSupportChatThread.mockImplementation(async (id: string) => {
+      if (id === "thread-older") {
+        return {
+          thread: { ...older, unreadCount: 0 },
+          messages: [message("m0", "thread-older", "First question", "2026-09-19T03:00:00.000Z")],
+        };
+      }
+      if (id === "thread-other") return { thread: other, messages: [] };
+      return {
+        thread: { ...thread, unreadCount: 0 },
+        messages: [message("m1", "thread-1", "Second question", "2026-09-20T03:00:00.000Z")],
+      };
+    });
+    replySupportChat.mockResolvedValue({
+      thread: { ...thread, lastMessagePreview: "On it", unreadCount: 0 },
+      message: {
+        id: "m2",
+        threadId: "thread-1",
+        senderUserId: "ops1",
+        senderRole: "ops_admin",
+        senderName: "Ops",
+        body: "On it",
+        createdAt: "2026-09-20T04:00:00.000Z",
+        mine: true,
+      },
+    });
+
+    render(<SupportChatDesk />);
+    const list = await screen.findByRole("list", { name: "Conversations" });
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(2));
+    expect(within(list).getAllByText("Ana Client")).toHaveLength(1);
+    expect(within(list).getByText("3")).toBeTruthy();
+
+    expect(await screen.findByText("First question")).toBeTruthy();
+    expect(screen.getAllByText("Second question").length).toBeGreaterThan(0);
+    const first = screen.getByText("First question");
+    const second = screen.getAllByText("Second question").at(-1)!;
+    expect(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Reply as Operations"), { target: { value: "On it" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(replySupportChat).toHaveBeenCalledWith("thread-1", "On it"));
+    expect((await screen.findAllByText("On it")).length).toBeGreaterThan(0);
+
+    // The stream echoes the same reply: it must not show twice.
+    act(() => {
+      chatStream.current?.onEvent({
+        type: "message",
+        thread: { ...thread, lastMessagePreview: "On it", unreadCount: 0 },
+        message: {
+          id: "m2",
+          threadId: "thread-1",
+          senderUserId: "ops1",
+          senderRole: "ops_admin",
+          senderName: "Ops",
+          body: "On it",
+          createdAt: "2026-09-20T04:00:00.000Z",
+          mine: true,
+        },
+      });
+    });
+    const transcript = screen.getByText("First question").closest("div.overflow-y-auto")!;
+    expect(within(transcript as HTMLElement).getAllByText("On it")).toHaveLength(1);
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(2));
+  });
+
+  it("deletes every thread of a merged conversation", async () => {
+    const older = { ...thread, id: "thread-older", lastMessageAt: "2026-09-19T03:00:00.000Z" };
+    listSupportChatThreads.mockResolvedValue([thread, older]);
+    render(<SupportChatDesk />);
+    await screen.findByLabelText("Reply as Operations");
+    fireEvent.click(screen.getByRole("button", { name: "Conversation details" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete chat" }));
+    expect(await screen.findByText("Are you sure you want to delete this chat?")).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete chat" }).at(-1)!);
+    await waitFor(() => expect(deleteSupportChatThread).toHaveBeenCalledTimes(2));
+    expect(deleteSupportChatThread).toHaveBeenCalledWith("thread-1");
+    expect(deleteSupportChatThread).toHaveBeenCalledWith("thread-older");
+    expect(await screen.findByText("No conversations yet")).toBeTruthy();
   });
 
   it("opens conversation details for search, photos, and delete", async () => {
