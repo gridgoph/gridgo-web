@@ -1,8 +1,8 @@
 import type { PricingFigure, PricingPeriod, PricingReport } from "@/lib/api/client";
 
 /**
- * Exit answers are the client's own words, so a cell that a spreadsheet would
- * read as a formula is written as text, the way the API's audit CSV does.
+ * Exit answers are the client's own words, so a cell that would open as a
+ * formula is written as text, the way the API's audit CSV does.
  */
 function cell(value: unknown): string {
   let text = value == null ? "" : String(value);
