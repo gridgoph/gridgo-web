@@ -1092,6 +1092,9 @@ export type PricingReport = {
   scope: string;
   brackets: { id: string; label: string }[];
   filters: { from: string; to: string; category: string; bracket: string; accountType: string; cohort: string };
+  /** The range actually read (gridgo-api#253): the last 30 days when no dates were sent. */
+  range?: { from: string; to: string; defaultDays: number; maxDays: number };
+  compareRange?: { from: string; to: string } | null;
   settings: { version: number | null; fixedCostsMinor: number | null; paymentFeeBps: number | null };
   period: PricingPeriod;
   compare: PricingPeriod | null;

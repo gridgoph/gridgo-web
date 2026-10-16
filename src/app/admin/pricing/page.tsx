@@ -27,9 +27,10 @@ import {
 } from "@/lib/api/client";
 import type { Taxonomy } from "@/lib/api/types";
 import { manilaToday } from "@/lib/audit";
-import { formatPhp, pesosToMinor } from "@/lib/format";
+import { formatDate, formatPhp, pesosToMinor } from "@/lib/format";
 import { categoryName, subcategoryName } from "@/lib/listings";
 import { pricingCsv } from "@/lib/pricing-csv";
+import { pricingRangeError, pricingRangeProblem } from "@/lib/pricing-range";
 
 const ANY = "any";
 
@@ -87,6 +88,14 @@ function thisMonth(): Filters {
     accountType: "",
     cohort: "",
   };
+}
+
+/**
+ * The API reads a date as that UTC day, so the range it returns is named by
+ * its calendar day, not shifted into Manila time.
+ */
+function rangeDay(iso: string): string {
+  return formatDate(`${iso.slice(0, 10)}T12:00:00+08:00`);
 }
 
 function money(figure: PricingFigure | undefined): string {
@@ -344,7 +353,7 @@ export default function PricingPage() {
       if (result.settings.fixedCostsMinor != null) setFixedCosts((result.settings.fixedCostsMinor / 100).toFixed(2));
       if (result.settings.paymentFeeBps != null) setPaymentPercent((result.settings.paymentFeeBps / 100).toString());
     } catch (err) {
-      setError(adminErrorMessage(err, "Could not load pricing."));
+      setError(pricingRangeError(err) ?? adminErrorMessage(err, "Could not load pricing."));
     } finally {
       setLoading(false);
     }
@@ -360,8 +369,11 @@ export default function PricingPage() {
     setFilters((current) => ({ ...current, [key]: value }));
   }
 
+  const rangeProblem = pricingRangeProblem(filters);
+
   function apply(event: FormEvent) {
     event.preventDefault();
+    if (rangeProblem) return;
     void load(filters);
   }
 
@@ -496,10 +508,15 @@ export default function PricingPage() {
           />
         </FieldGroup>
         <p className="text-caption text-text-muted m-0">
-          Dates are when the order was placed. Leave Compare empty to see one range.
+          Dates are when the order was placed, up to 366 days. Leave Compare empty to see one range.
         </p>
+        {rangeProblem ? (
+          <p className="text-body text-destructive m-0" role="alert">
+            {rangeProblem}
+          </p>
+        ) : null}
         <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={loading}>
+          <Button type="submit" disabled={loading || rangeProblem != null}>
             {loading ? "Loading…" : "Apply"}
           </Button>
           <Button type="button" variant="secondary" disabled={!report} onClick={download}>
@@ -573,9 +590,27 @@ export default function PricingPage() {
         />
       ) : null}
       {loading && !report ? <SkeletonDetail label="Loading pricing" /> : null}
-      {report ? <PeriodView title="Selected dates" period={report.period} taxonomy={taxonomy} /> : null}
+      {report ? (
+        <PeriodView
+          title={
+            report.range
+              ? `${rangeDay(report.range.from)} to ${rangeDay(report.range.to)}`
+              : "Selected dates"
+          }
+          period={report.period}
+          taxonomy={taxonomy}
+        />
+      ) : null}
       {report?.compare ? (
-        <PeriodView title="Comparison" period={report.compare} taxonomy={taxonomy} />
+        <PeriodView
+          title={
+            report.compareRange
+              ? `Comparison: ${rangeDay(report.compareRange.from)} to ${rangeDay(report.compareRange.to)}`
+              : "Comparison"
+          }
+          period={report.compare}
+          taxonomy={taxonomy}
+        />
       ) : null}
     </div>
   );
