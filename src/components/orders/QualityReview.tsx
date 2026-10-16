@@ -404,7 +404,7 @@ export function QualityReview({
       {problem ? (
         <div className="flex flex-col gap-2">
           <p className="text-body text-text-secondary m-0">
-            Something on this file is a problem. The client is told.
+            Something on this file is a problem. Write the client a note above, then choose how to tell them.
           </p>
           <div className="flex flex-wrap gap-2">
             <Button
