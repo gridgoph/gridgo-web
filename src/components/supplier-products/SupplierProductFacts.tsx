@@ -2,6 +2,8 @@ import { formatDateTime } from "@/lib/format";
 import type { Taxonomy } from "@/lib/api/types";
 import type { Listing } from "@/lib/listings";
 import { StatusChip } from "@/components/ui/StatusChip";
+import { ExpressChip } from "@/components/ui/ExpressChip";
+import { expressFactLine } from "@/lib/express";
 import {
   listingBoardState,
   listingReviewState,
@@ -42,6 +44,7 @@ export function SupplierProductFacts({
           {review ? (
             <StatusChip tone={review.tone} icon={review.icon} label={review.label} />
           ) : null}
+          {listing.express ? <ExpressChip /> : null}
           <span className="text-caption text-text-muted">
             Last change {formatDateTime(listing.updatedAt)}
           </span>
@@ -58,6 +61,12 @@ export function SupplierProductFacts({
         </dd>
         <dt className="text-caption text-text-muted">Specs</dt>
         <dd className="text-body text-text-primary m-0">{specSummary(listing)}</dd>
+        {listing.express != null ? (
+          <>
+            <dt className="text-caption text-text-muted">Express</dt>
+            <dd className="text-body text-text-primary m-0">{expressFactLine(listing.express)}</dd>
+          </>
+        ) : null}
       </dl>
       <PhotoStrip listing={listing} />
     </div>

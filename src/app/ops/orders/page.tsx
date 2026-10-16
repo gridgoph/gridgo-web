@@ -5,7 +5,7 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Eye } from "lucide-react";
+import { Eye, Zap } from "lucide-react";
 
 import {
   STAGES,
@@ -17,11 +17,13 @@ import {
 } from "@/app/ops/_lib/pipeline";
 import { FileCheckQueue } from "@/components/orders/FileCheckQueue";
 import { ShopModeChip } from "@/components/orders/ShopModeChip";
+import { ExpressChip } from "@/components/ui/ExpressChip";
 import { Button } from "@/components/ui/button";
 import {
   DataTable,
   DataTableRowAction,
   type DataTableColumn,
+  type DataTableFacet,
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -37,6 +39,7 @@ import {
   shopModeLabel,
   shopModeOf,
 } from "@/lib/baskets";
+import { isExpressOrder, ORDER_SPEED_OPTIONS, orderSpeed } from "@/lib/express";
 import { presentOrderState } from "@/lib/order-state";
 import { describeQuantity } from "@/lib/quantity";
 import { awaitingFinishedReview, finishedReviewWaitingCount } from "@/lib/shop-handover";
@@ -173,6 +176,19 @@ export default function OpsOrdersPage() {
             <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
           );
         },
+      },
+      {
+        // Express orders were promised for the client's deadline, which can be
+        // today. The tag is the reason to look; Standard stays quiet.
+        id: "speed",
+        header: "Speed",
+        sortValue: orderSpeed,
+        cell: (order) =>
+          isExpressOrder(order) ? (
+            <ExpressChip />
+          ) : (
+            <span className="text-body text-text-muted whitespace-nowrap">Standard</span>
+          ),
       },
       {
         id: "waiting",
@@ -335,6 +351,7 @@ export default function OpsOrdersPage() {
               getRowId={(order) => order.id}
               caption={`Orders at ${active?.label}`}
               filterPlaceholder="Filter orders…"
+              facets={SPEED_FACETS}
               rowActions={(order) => (
                 <DataTableRowAction
                   label="Open"
@@ -349,6 +366,16 @@ export default function OpsOrdersPage() {
     </div>
   );
 }
+
+const SPEED_FACETS: DataTableFacet[] = [
+  {
+    columnId: "speed",
+    title: "Speed",
+    options: ORDER_SPEED_OPTIONS.map((option) =>
+      option.value === "Express" ? { ...option, icon: Zap } : option,
+    ),
+  },
+];
 
 /** Whose move it is, when it is not Operations'. */
 function waitingOn(state: string): string {

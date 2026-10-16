@@ -13,6 +13,7 @@ import {
   Store,
   SquarePen,
   TriangleAlert,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -33,6 +34,7 @@ export const STATUS_ICONS: Record<StatusIconName, LucideIcon> = {
   "circle-dot": CircleDot,
   store: Store,
   split: Split,
+  zap: Zap,
 };
 
 const TONE: Record<

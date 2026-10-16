@@ -1156,3 +1156,72 @@ describe("listing editor section numbers", () => {
     ]);
   });
 });
+
+describe("listing editor Express (gridgo-api#224)", () => {
+  it("explains Express and saves only the switch, with the listing's version, at once", async () => {
+    stubLoad(catalogItem({ express: false }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+
+    const toggle = screen.getByRole("switch", { name: "Express" });
+    expect(toggle).not.toBeChecked();
+    expect(
+      screen.getByText(/Clients can pick any deadline from today, the same day included/),
+    ).toBeVisible();
+    expect(screen.getByText(/There is no extra charge/)).toBeVisible();
+    expect(screen.getByText(/Express is off/)).toBeVisible();
+
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(mocks.updateCatalogItem).toHaveBeenCalledWith("sci_1", 3, { express: true }),
+    );
+    expect(mocks.submitCatalogItemForReview).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Express is on/)).toBeVisible();
+    expect(screen.getByRole("switch", { name: "Express" })).toBeChecked();
+  });
+
+  it("moves the draft to the saved version so the next edit is not stale", async () => {
+    stubLoad(catalogItem({ express: true }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    fireEvent.click(screen.getByRole("switch", { name: "Express" }));
+    await waitFor(() =>
+      expect(mocks.updateCatalogItem).toHaveBeenCalledWith("sci_1", 3, { express: false }),
+    );
+    await screen.findByText(/Express is off/);
+
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers, glossy" } });
+    await waitFor(
+      () =>
+        expect(mocks.updateCatalogItem).toHaveBeenLastCalledWith(
+          "sci_1",
+          4,
+          expect.objectContaining({ name: "Flyers, glossy" }),
+        ),
+      AUTOSAVE_WAIT,
+    );
+    expect(mocks.updateCatalogItem.mock.calls[1][2]).not.toHaveProperty("express");
+  });
+
+  it("says why a refused change did not land and keeps the switch where it was", async () => {
+    stubLoad(catalogItem({ express: false }));
+    mocks.updateCatalogItem.mockRejectedValueOnce(
+      new ApiError(409, { error: "catalog_item_stale" }),
+    );
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    fireEvent.click(screen.getByRole("switch", { name: "Express" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "This listing changed on another screen",
+    );
+    expect(screen.getByRole("switch", { name: "Express" })).not.toBeChecked();
+  });
+
+  it("shows no switch against an API that predates Express", async () => {
+    stubLoad(catalogItem());
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    expect(screen.queryByRole("switch", { name: "Express" })).not.toBeInTheDocument();
+  });
+});
