@@ -3,11 +3,12 @@
 /**
  * The payout shares as an accordion, as many as the order's plan has and in the
  * API's order, each row readable without opening: the share, its amount, and
- * where it stands. Opening a row shows who filed
- * the Proof of Fulfilment and when, the one reason it cannot go out yet, or
- * the release action when it can. Pictures of those proofs live on Production
- * (and the dedicated payout desk when `emphasizeProof` is on). Wallet
- * receipts stay here.
+ * where it stands. Opening a row shows every proof picture once, as a
+ * numbered contact print that opens large and steps through, with who filed
+ * each and when; the one reason it cannot go out yet, or the release action
+ * when it can. A stage can carry up to 50 pictures (gridgo-api#254), so the
+ * print folds after a few. The dedicated payout desk (`emphasizeProof`) draws
+ * bigger frames. Wallet receipts stay here.
  *
  * Amounts are shares of the supplier's own price, so this is safe on the
  * supplier's surfaces too. Pass `onRelease` only from Operations; the API
@@ -22,6 +23,7 @@ import { useState } from "react";
 import { CircleCheck, Lock, Minus } from "lucide-react";
 
 import { EvidencePlate } from "@/components/orders/EvidencePreview";
+import { ProofGallery } from "@/components/orders/ProofGallery";
 import { SettlementPayouts } from "@/components/orders/SettlementPayouts";
 import {
   Accordion,
@@ -43,6 +45,7 @@ import { formatDateTime, formatPhp } from "@/lib/format";
 import { milestoneName, milestoneProofSource } from "@/lib/order-state";
 import { changeExtrasOnStage } from "@/lib/order-changes";
 import { stageNeedsProof } from "@/lib/payout-plan";
+import { proofCountLabel } from "@/lib/payout-proofs";
 import {
   describeProof,
   milestoneProofs,
@@ -51,6 +54,7 @@ import {
   readyWindowShare,
   releasableMilestones,
   releaseRecord,
+  type MilestoneProof,
   type MilestoneReadiness,
 } from "@/lib/payouts";
 import { cn } from "@/lib/utils";
@@ -201,28 +205,20 @@ export function PayoutMilestones({
                     </p>
                   ) : null}
                   {superseded ? null : proofs.length > 0 ? (
-                    emphasizeProof ? (
-                      <ul className="m-0 grid list-none grid-cols-1 gap-3 p-0 md:grid-cols-2">
-                        {proofs.map((proof) => (
-                          <li key={proof.fileId} className="min-w-0">
-                            <EvidencePlate fileId={proof.fileId} label={proof.label} deletable />
-                            <p className="text-caption text-text-muted m-0 mt-1">
-                              {describeProof(proof, formatDateTime)}
-                            </p>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <ul className="m-0 flex list-none flex-col gap-1 p-0">
-                        {proofs.map((proof) => (
-                          <li key={proof.fileId}>
-                            <p className="text-caption text-text-secondary m-0">
-                              {proof.label}. {describeProof(proof, formatDateTime)}.
-                            </p>
-                          </li>
-                        ))}
-                      </ul>
-                    )
+                    <div className="flex flex-col gap-2">
+                      <p className="text-caption text-text-secondary m-0">
+                        {proofCountLabel(proofs.length)}. {proofSummary(proofs)}
+                      </p>
+                      <ProofGallery
+                        fileIds={proofs.map((proof) => proof.fileId)}
+                        label={`${name} proof`}
+                        large={emphasizeProof}
+                        captionFor={(_fileId, index) =>
+                          proofs[index] ? describeProof(proofs[index], formatDateTime) : null
+                        }
+                        deletable
+                      />
+                    </div>
                   ) : needsProof ? (
                     <p className="text-body text-text-secondary m-0">
                       No proof on file yet. {milestoneProofSource(milestone, order)}.
@@ -345,6 +341,17 @@ function WindowClosedRelease({
       </Button>
     </div>
   );
+}
+
+/** "Filed Oct 16, 4:30 PM by Supplier", or the first and latest when there are several. */
+function proofSummary(proofs: readonly MilestoneProof[]): string {
+  if (proofs.length === 1) return `${describeProof(proofs[0], formatDateTime)}.`;
+  const dated = proofs.filter((proof) => proof.attachedAt).map((proof) => proof.attachedAt as string);
+  if (dated.length === 0) return "";
+  const sorted = [...dated].sort();
+  const first = formatDateTime(sorted[0]);
+  const last = formatDateTime(sorted[sorted.length - 1]);
+  return first === last ? `Filed ${first}.` : `First filed ${first}, latest ${last}.`;
 }
 
 /**

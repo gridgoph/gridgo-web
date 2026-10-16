@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -20,6 +20,22 @@ vi.mock("@/components/orders/EvidencePreview", () => ({
   ),
   EvidenceStrip: () => null,
 }));
+vi.mock("@/lib/api/client", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api/client")>(
+    "@/lib/api/client",
+  );
+  return {
+    ...actual,
+    getFile: async (fileId: string) => ({
+      fileId,
+      originalFilename: `${fileId}.jpg`,
+      declaredContentType: "image/jpeg",
+      detectedContentType: "image/jpeg",
+      state: "ready",
+    }),
+    getFileDownloadUrl: async (fileId: string) => `https://files.test/${fileId}`,
+  };
+});
 afterEach(cleanup);
 
 function milestone(code: string, p: Partial<PayoutMilestone> = {}): PayoutMilestone {
@@ -78,25 +94,52 @@ const fourShares = () => [
 ];
 
 describe("PayoutMilestones", () => {
-  it("opens every share that can be released and names the proof without a picture", () => {
+  it("opens every share that can be released and shows its proof as numbered frames", async () => {
     render(<PayoutMilestones order={order(fourShares())} onRelease={() => {}} />);
-    expect(screen.queryByRole("img", { name: "Proof of fulfilment" })).toBeNull();
-    expect(screen.getByText(/Proof of fulfilment\. Filed .* by Supplier/)).toBeInTheDocument();
+    expect(screen.getByText(/^1 proof on file\. Filed .* by Supplier\.$/)).toBeInTheDocument();
+    const frame = await screen.findByRole("button", { name: "Open printing in progress proof 1" });
+    await waitFor(() =>
+      expect(frame.querySelector("img")).toHaveAttribute("src", "https://files.test/pof_printing"),
+    );
+    expect(await screen.findByRole("button", { name: "Open packaging proof 1" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Release ₱500.00" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Release ₱150.00" })).toBeEnabled();
     // The two waiting shares stay closed: nothing to look at yet.
     expect(screen.queryByText(/No proof on file yet/)).toBeNull();
   });
 
-  it("still shows the pictures when the payout desk asks to emphasize them", () => {
+  it("draws every picture once, folds a long list, and steps through it large", async () => {
+    const user = userEvent.setup();
+    const ids = Array.from({ length: 29 }, (_, i) => `pof_${i + 1}`);
     render(
-      <PayoutMilestones order={order(fourShares())} emphasizeProof onRelease={() => {}} />,
+      <PayoutMilestones
+        order={order([
+          // An id listed twice is one picture.
+          milestone("printing", { status: "released", pofFileIds: [...ids, "pof_3"] }),
+          milestone("packaging_qc"),
+        ])}
+        defaultOpen={["printing"]}
+        emphasizeProof
+      />,
     );
-    const plates = screen.getAllByRole("img", { name: "Proof of fulfilment" });
-    expect(plates.map((img) => img.getAttribute("src"))).toEqual([
-      "plate:pof_printing",
-      "plate:pof_packing",
-    ]);
+    expect(screen.getByText(/^29 proofs on file\./)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open printing in progress proof 6" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open printing in progress proof 7" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Show all 29" }));
+    expect(await screen.findByRole("button", { name: "Open printing in progress proof 29" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open printing in progress proof 30" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Open printing in progress proof 29" }));
+    expect(await screen.findByRole("heading", { name: "Printing in progress proof 29 of 29" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Next/ }));
+    expect(await screen.findByRole("heading", { name: "Printing in progress proof 1 of 29" })).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole("img", { name: /Printing in progress proof 1: pof_1\.jpg/ })).toHaveAttribute(
+        "src",
+        "https://files.test/pof_1",
+      ),
+    );
   });
 
   it("reads each share's state from its header without opening it", () => {

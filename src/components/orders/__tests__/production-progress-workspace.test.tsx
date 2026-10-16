@@ -98,7 +98,7 @@ function productionRow() {
 }
 
 describe("progress photos on the order workspace", () => {
-  it("shows the gallery and marks the photo that is also the start proof", async () => {
+  it("shows the gallery once, leaving the start proof to the payout row", async () => {
     order = base({
       payoutMilestones: escrowStages({ production_started: proofOnFile("file_start") }),
       productionProgress: {
@@ -124,15 +124,45 @@ describe("progress photos on the order workspace", () => {
     render(<OrderWorkspace queueHref="/ops/orders" payoutsHref="/ops/payouts" />);
 
     const photo = await screen.findByRole("button", { name: /Open progress photo 1/ });
-    expect(photo.querySelector("img")).toHaveAttribute("src", "https://files.test/start.jpg");
-    expect(screen.getByRole("button", { name: /Open progress photo 2/ })).toBeInTheDocument();
+    // The start proof is drawn under Supplier payout, so the gallery skips it.
+    expect(photo.querySelector("img")).toHaveAttribute("src", "https://files.test/done.webp");
+    expect(screen.queryByRole("button", { name: /Open progress photo 2/ })).toBeNull();
     expect(screen.getByText("2 progress photos from the shop.")).toBeInTheDocument();
-    expect(screen.getByText("Also the payout proof for start of production")).toBeInTheDocument();
-    // The same picture is not repeated as a separate proof plate.
+    const row = productionRow();
+    expect(within(row).getByText("Production started:")).toBeInTheDocument();
+    expect(
+      within(row).getByText(/1 proof on file, shown under Supplier payout/),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Proof file_start")).toBeNull();
   });
 
-  it("keeps a PDF start proof visible beside the waiting frame", async () => {
+  it("draws no empty gallery when every photo is a payout proof", async () => {
+    order = base({
+      payoutMilestones: escrowStages({ production_started: proofOnFile("file_start") }),
+      productionProgress: {
+        status: "photos_available",
+        photos: [
+          {
+            fileId: "file_start",
+            contentType: "image/jpeg",
+            at: "2026-09-28T02:00:00Z",
+            downloadUrl: "https://files.test/start.jpg",
+            downloadUrlExpiresAt: "2999-01-01T00:00:00Z",
+          },
+        ],
+      },
+    });
+    render(<OrderWorkspace queueHref="/ops/orders" payoutsHref="/ops/payouts" />);
+
+    const row = await waitFor(() => productionRow());
+    expect(
+      await within(row).findByText(/1 proof on file, shown under Supplier payout/),
+    ).toBeInTheDocument();
+    expect(within(row).queryByText("Progress photos")).toBeNull();
+    expect(within(row).queryByRole("button", { name: /Open progress photo/ })).toBeNull();
+  });
+
+  it("points to a PDF start proof beside the waiting frame", async () => {
     order = base({
       payoutMilestones: escrowStages({ production_started: proofOnFile("file_pdf") }),
       productionProgress: WAITING,
@@ -142,7 +172,9 @@ describe("progress photos on the order workspace", () => {
     const row = await waitFor(() => productionRow());
     expect(await within(row).findByText("Waiting for a progress photo")).toBeInTheDocument();
     expect(within(row).getByText(/cannot pack this job until it does/)).toBeInTheDocument();
-    expect(within(row).getByText("Proof file_pdf")).toBeInTheDocument();
+    expect(
+      within(row).getByText(/1 proof on file, shown under Supplier payout/),
+    ).toBeInTheDocument();
   });
 });
 

@@ -240,7 +240,8 @@ function attachRow(
  * here rather than guessed from the file.
  */
 export function milestoneProofs(
-  order: Pick<Order, "timeline"> & Partial<Pick<Order, "deliveryEvidence">>,
+  order: Pick<Order, "timeline"> &
+    Partial<Pick<Order, "deliveryEvidence" | "supplierId" | "riderId">>,
   milestone: Pick<PayoutMilestone, "code" | "pofFileIds">,
 ): MilestoneProof[] {
   const seen = new Set<string>();
@@ -266,10 +267,24 @@ export function milestoneProofs(
       label:
         ids.length > 1 ? `Proof ${index + 1} of ${ids.length}` : "Proof of fulfilment",
       attachedAt: row?.at ?? evidence?.recordedAt ?? null,
-      attachedBy: row ? presentTimelineActor(row.by) || null : evidence ? "Rider" : null,
+      attachedBy: row ? proofFiler(order, row.by) : evidence ? "Rider" : null,
       inherited: Boolean(carried),
     };
   });
+}
+
+/**
+ * Who filed a proof. The attach row carries a user id, which the generic
+ * timeline words read as "Team"; on a proof it is almost always the order's
+ * own shop or rider, so it is named as that.
+ */
+function proofFiler(
+  order: Partial<Pick<Order, "supplierId" | "riderId">>,
+  by: string | null | undefined,
+): string | null {
+  if (by && order.supplierId && by === order.supplierId) return "the shop";
+  if (by && order.riderId && by === order.riderId) return "the rider";
+  return presentTimelineActor(by) || null;
 }
 
 /** "Filed Sep 15, 7:48 PM by Supplier", or where the file came from instead. */

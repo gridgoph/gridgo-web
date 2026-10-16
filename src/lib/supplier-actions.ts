@@ -151,7 +151,7 @@ export function packagingBlockedReason(order: ShopOrder): string | null {
   return order.payoutHold === true ? CLAIM_HOLD_PACKING_REASON : null;
 }
 
-type ShopProofWords = { label: string; noun: string; hint: string };
+export type ShopProofWords = { label: string; noun: string; hint: string };
 export type OwedShopProof = ShopProofWords & { code: ShopProofCode };
 
 /*
@@ -179,7 +179,8 @@ const SHOP_PROOF_WORDS: Readonly<Record<string, ShopProofWords>> = {
 const GENERIC_SHOP_PROOF_HINT =
   "Show this stage of the job on your floor — enough of it to recognise the job.";
 
-function shopProofWords(
+/** How the proof dialog names a shop stage and what its photos should show. */
+export function shopProofWords(
   milestone: Pick<PayoutMilestone, "code"> &
     Partial<Pick<PayoutMilestone, "label" | "sharePercent">>,
 ): ShopProofWords {
