@@ -34,6 +34,12 @@ import type {
   Order,
   ProductionPhoto,
 } from "@/lib/api/types";
+import {
+  presentOrderState,
+  type StatePresentation,
+  type StatusIconName,
+  type StatusTone,
+} from "@/lib/order-state";
 
 type FlowSource = Partial<Pick<Order, "handoverFlow">>;
 
@@ -252,6 +258,110 @@ export function finishedReviewWaitingCount(orders: readonly ReviewSource[]): num
 export function submissionWaitSeconds(order: ReviewSource, nowMs = Date.now()): number {
   const at = Date.parse(currentSubmission(order)?.at ?? "");
   return Number.isFinite(at) ? Math.max(0, Math.floor((nowMs - at) / 1000)) : 0;
+}
+
+// ---------------------------------------------------------------------------
+// The shop's side of the review
+// ---------------------------------------------------------------------------
+
+/** What the shop is told wherever a rider is called on a rider-packs job. */
+export const DO_NOT_PACK_YET =
+  "Prepare packing materials. Do not pack yet; the rider checks the unpacked items first.";
+
+/**
+ * Where the finished work stands for the shop, while the job is still its to
+ * finish (the same four stages as gridgo-supplier `lib/shopHandover.ts`):
+ *
+ * - `to_send`: photograph the finished, unpacked work and send it. When the
+ *   last try was sent back, `sendBack` is GRIDGO's answer, read word for word.
+ * - `in_review`: GRIDGO is checking it. Nothing is the shop's to do.
+ * - `approved`: the shop can mark the job ready for rider pickup.
+ * - `with_gridgo`: a staff correction moved the job on with nothing of this
+ *   shop's to review; the GRIDGO Team takes the next step.
+ */
+export type ShopFinishedStep =
+  | { stage: "to_send"; sendBack: FinishedReview | null }
+  | { stage: "in_review"; submission: FinishedSubmission }
+  | { stage: "approved"; submission: FinishedSubmission; review: FinishedReview }
+  | { stage: "with_gridgo" };
+
+type ShopStepSource = ReviewSource & Partial<Pick<Order, "supplierId">>;
+
+/** This shop's reviewed tries, oldest first: a replacement never reads another shop's. */
+function ownAttempts(order: ShopStepSource): FinishedAttempt[] {
+  return reviewAttempts(order).filter(
+    (attempt) =>
+      !order.supplierId ||
+      !attempt.finished.supplierId ||
+      attempt.finished.supplierId === order.supplierId,
+  );
+}
+
+/** The shop's step on the finished work, or null outside a rider-packs production. */
+export function shopFinishedStep(order: ShopStepSource): ShopFinishedStep | null {
+  if (!ridersPack(order)) return null;
+  if (order.state === "production") {
+    const last = ownAttempts(order).at(-1);
+    return {
+      stage: "to_send",
+      sendBack: last?.review.decision === "rejected" ? last.review : null,
+    };
+  }
+  if (order.state !== "supplier_self_qc") return null;
+  const submission = currentSubmission(order);
+  const review = order.shopHandover?.review ?? null;
+  if (!submission) return { stage: "with_gridgo" };
+  if (!review) return { stage: "in_review", submission };
+  if (review.decision === "approved") return { stage: "approved", submission, review };
+  return { stage: "with_gridgo" };
+}
+
+/**
+ * The shop's status chip where the state alone says the wrong thing on a
+ * rider-packs job: `supplier_self_qc` is GRIDGO's review there, not packing.
+ * Null where the ordinary state label is right.
+ */
+export function shopHandoverChip(
+  order: ShopStepSource,
+): { label: string; tone: StatusTone; icon: StatusIconName } | null {
+  const step = shopFinishedStep(order);
+  if (step?.stage === "to_send" && step.sendBack) {
+    return { label: "Needs a fix", tone: "warning", icon: "triangle-alert" };
+  }
+  if (step?.stage === "in_review") {
+    return { label: "GRIDGO reviewing", tone: "info", icon: "clock" };
+  }
+  if (step?.stage === "with_gridgo") {
+    return { label: "With GRIDGO", tone: "info", icon: "clock" };
+  }
+  if (step?.stage === "approved") {
+    return { label: "Approved", tone: "success", icon: "circle-check" };
+  }
+  if (ridersPack(order) && order.state === "ready_for_dispatch") {
+    return { label: "Ready for rider pickup", tone: "success", icon: "circle-check" };
+  }
+  return null;
+}
+
+/**
+ * A state on the shop's timeline, in the shop's words. On a rider-packs job
+ * the two packing states are GRIDGO's review and waiting for a rider. An
+ * entry records the moment it was made, so it is read by its state alone,
+ * never by where the review stands now.
+ */
+export function shopTimelineState(
+  order: FlowSource & Parameters<typeof presentOrderState>[1],
+  state: string,
+): StatePresentation {
+  if (ridersPack(order ?? {})) {
+    if (state === "supplier_self_qc") {
+      return { label: "GRIDGO review", tone: "info", icon: "clock" };
+    }
+    if (state === "ready_for_dispatch") {
+      return { label: "Ready for rider pickup", tone: "success", icon: "circle-check" };
+    }
+  }
+  return presentOrderState(state, order);
 }
 
 // ---------------------------------------------------------------------------

@@ -900,6 +900,48 @@ export async function attachPackingPhoto(
 }
 
 /**
+ * Store a photo of the finished, unpacked work on a rider-packs job
+ * (`gridgo-api/docs/SHOP_HANDOVER_API.md`). JPEG, PNG or WebP. It is not on
+ * the job until `attachFinishedProductPhoto`.
+ */
+export async function uploadFinishedProductPhoto(file: File): Promise<StoredFile> {
+  const body = new FormData();
+  body.append("purpose", "finished_product_photo");
+  body.append("file", file);
+  const uploaded = await request<{ file: StoredFile }>("/files", {
+    method: "POST",
+    body,
+  });
+  return uploaded.file;
+}
+
+/**
+ * Put a finished-work photo on the job, only while it is `production`
+ * (`409 finished_product_photo_upload_not_allowed` otherwise). It moves no
+ * state until `submitFinishedProducts`.
+ */
+export async function attachFinishedProductPhoto(
+  fileId: string,
+  orderId: string,
+): Promise<{ file: StoredFile; order?: Order }> {
+  return attachProductionPhoto(fileId, orderId);
+}
+
+/**
+ * Send every finished-work photo on the job that GRIDGO has not reviewed yet
+ * for review (the assigned shop). The job moves `production →
+ * supplier_self_qc` and waits for `reviewFinishedProducts`;
+ * `409 finished_product_photo_required` when there is no new photo.
+ */
+export async function submitFinishedProducts(orderId: string): Promise<Order> {
+  const result = await request<{ order: Order }>(
+    `/orders/${encodeURIComponent(orderId)}/production-finished`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+  return normalizeOrder(result.order);
+}
+
+/**
  * Ops / Super Admin. Stores the receipt screenshot first, then releases the
  * share with its id and the reference, so a refused screenshot never leaves
  * a released share with no proof behind it.

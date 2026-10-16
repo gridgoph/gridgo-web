@@ -30,6 +30,13 @@
  * claim above all, keeps Package for pickup on the page but disabled, with the
  * API's own sentence (`409 claim_hold_active`, gridgoph/gridgo-web#74). An
  * older API without the list falls back to `payoutHold` and the galleries.
+ *
+ * A rider-packs job (`handoverFlow`, `src/lib/shop-handover.ts`) owes neither
+ * photo above. The shop sends photos of the finished, unpacked work for
+ * GRIDGO's review (`POST /orders/:id/production-finished`), waits while the
+ * GRIDGO Team reviews it, and once approved marks it Ready for rider pickup
+ * with packing materials prepared and nothing packed. A send-back returns it
+ * to sending new photos.
  */
 
 import type { Order, PayoutMilestone } from "@/lib/api/types";
@@ -37,6 +44,7 @@ import { milestoneName } from "@/lib/order-state";
 import { isLegacyPayoutPlan, shopProofStages } from "@/lib/payout-plan";
 import { packagingCheck, packagingHold } from "@/lib/packaging-readiness";
 import { productionPhotoMissing } from "@/lib/production-progress";
+import { DO_NOT_PACK_YET, ridersPack, shopFinishedStep } from "@/lib/shop-handover";
 
 export type SupplierActionKind =
   | "accept"
@@ -45,7 +53,8 @@ export type SupplierActionKind =
   | "ready_for_pickup"
   | "add_proof"
   | "add_progress_photo"
-  | "add_packing_photo";
+  | "add_packing_photo"
+  | "send_finished_photos";
 
 /** A stage the shop files its own proof for. The order's plan decides which. */
 export type ShopProofCode =
@@ -89,6 +98,9 @@ type ShopOrder = Pick<Order, "state" | "payoutMilestones" | "payoutHold"> &
       | "packingProgress"
       | "transitionReadiness"
       | "shopAcceptance"
+      | "handoverFlow"
+      | "shopHandover"
+      | "supplierId"
     >
   >;
 
@@ -113,6 +125,8 @@ const PHOTO_OPEN_STATES = new Set(["production", "supplier_self_qc"]);
  * one; otherwise the gallery does, and an absent gallery owes nothing.
  */
 export function productionPhotoOwed(order: ShopOrder): boolean {
+  // A rider-packs job owes finished-work photos instead.
+  if (ridersPack(order)) return false;
   const check = packagingCheck(order);
   if (check) return check.missing.some((item) => item.kind === "production_photo");
   return productionPhotoMissing(order);
@@ -120,6 +134,8 @@ export function productionPhotoOwed(order: ShopOrder): boolean {
 
 /** The separate packing photo is still owed, by the same rule. */
 export function packingPhotoOwed(order: ShopOrder): boolean {
+  // On a rider-packs job the rider photographs the packed job, at the counter.
+  if (ridersPack(order)) return false;
   if (!PHOTO_OPEN_STATES.has(order.state)) return false;
   const check = packagingCheck(order);
   if (check) return check.missing.some((item) => item.kind === "packing_photo");
@@ -251,6 +267,45 @@ function packageStep(order: ShopOrder): SupplierAction {
   return blockedReason ? { ...PACKAGE_FOR_PICKUP, blockedReason } : PACKAGE_FOR_PICKUP;
 }
 
+const SEND_FINISHED_PHOTOS: SupplierAction = {
+  kind: "send_finished_photos",
+  label: "Send finished work for review",
+  targetState: null,
+  primary: true,
+};
+
+/** The rider-packs step that replaces Package for pickup: nothing is packed yet. */
+const READY_FOR_RIDER_PICKUP: SupplierAction = {
+  kind: "ready_for_pickup",
+  label: "Ready for rider pickup",
+  targetState: "ready_for_dispatch",
+  primary: true,
+};
+
+/**
+ * The shop's steps before a rider is called on a rider-packs job. A claim or
+ * a stop keeps the step on the page, disabled with its reason, because the
+ * API refuses both the submission and the readiness while it stands.
+ */
+function riderPacksSteps(order: ShopOrder): SupplierAction[] {
+  const step = shopFinishedStep(order);
+  const blockedReason = packagingBlockedReason(order);
+  const held = (action: SupplierAction) =>
+    blockedReason ? { ...action, blockedReason } : action;
+  if (step?.stage === "to_send") {
+    return [
+      held(
+        step.sendBack
+          ? { ...SEND_FINISHED_PHOTOS, label: "Send new photos for review" }
+          : SEND_FINISHED_PHOTOS,
+      ),
+    ];
+  }
+  if (step?.stage === "approved") return [held(READY_FOR_RIDER_PICKUP)];
+  // GRIDGO is reviewing, or moved the job on itself: nothing is the shop's.
+  return [];
+}
+
 export function actionsForJob(order: ShopOrder): SupplierAction[] {
   if (shopLetJobGo(order)) return [];
   const owed = nextShopProof(order);
@@ -286,6 +341,7 @@ export function actionsForJob(order: ShopOrder): SupplierAction[] {
       // While a shop proof is still empty, that is the only step. Packaging
       // the job for a rider before the photo exists is the bug this blocks.
       if (owed) return [proofAction(owed)];
+      if (ridersPack(order)) return riderPacksSteps(order);
       // Proof filed as a PDF, or no proof stage at all: still no picture of
       // the job, and the API refuses to pack it without one.
       if (productionPhotoOwed(order)) return [ADD_PROGRESS_PHOTO];
@@ -321,12 +377,37 @@ export function shopProofOutstanding(order: ShopOrder): boolean {
  */
 export function supplierWaitingOn(
   state: string,
-  order: Partial<Pick<Order, "payoutPlanVersion" | "payoutMilestones" | "shopAcceptance">> = {},
+  order: Partial<
+    Pick<
+      Order,
+      | "payoutPlanVersion"
+      | "payoutMilestones"
+      | "shopAcceptance"
+      | "handoverFlow"
+      | "shopHandover"
+      | "supplierId"
+    >
+  > = {},
 ): string | null {
   if (shopLetJobGo({ state, shopAcceptance: order.shopAcceptance })) {
     return order.shopAcceptance?.status === "timed_out"
       ? "The hour to answer this offer passed, so GRIDGO is giving it to another shop."
       : "You declined this job. GRIDGO is giving it to another shop.";
+  }
+  if (ridersPack(order)) {
+    const step = shopFinishedStep({ ...order, state });
+    if (step?.stage === "in_review") {
+      return "GRIDGO is checking your photos of the finished, unpacked work. Your production time is paused until it answers.";
+    }
+    if (step?.stage === "with_gridgo") {
+      return "The GRIDGO Team moved this job on and takes the next step. Nothing for you to do yet.";
+    }
+    if (state === "ready_for_dispatch") {
+      return `Waiting for a rider. ${DO_NOT_PACK_YET}`;
+    }
+    if (state === "rider_assigned") {
+      return "A rider is on the way. They check the items unpacked, you pack them in front of the rider, then you sign on the rider's phone.";
+    }
   }
   switch (state) {
     case "awaiting_downpayment":

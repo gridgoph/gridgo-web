@@ -184,6 +184,7 @@ import {
   FORCED_BY_GRIDGO,
   awaitingFinishedReview,
   checksAForceSkips,
+  currentSubmission,
   finishedReviewStatus,
   forcedByGridgo,
   forcedReasonCodes,
@@ -783,6 +784,10 @@ export function OrderWorkspace({
                     setCorrectError(null);
                     setCorrecting(true);
                   }}
+                  reviewing={acting === "finished-review"}
+                  reviewError={reviewError}
+                  onApproveFinished={() => void reviewFinished("approved")}
+                  onSendBackFinished={(reason) => void reviewFinished("rejected", reason)}
                 />
                 {/*
                 Between the shop and the road: the rider's count and six
@@ -873,25 +878,16 @@ export function OrderWorkspace({
                     heading="Handover"
                     summary={handoverSummary(order)}
                     marker={
-                      awaitingFinishedReview(order)
-                        ? { icon: TriangleAlert, tone: "current" }
-                        : finishedReviewStatus(order) === "approved" ||
-                            counterStep(order) === "done"
-                          ? { icon: CircleCheck, tone: "success" }
-                          : { icon: CircleDot, tone: "muted" }
+                      finishedReviewStatus(order) === "approved" ||
+                      counterStep(order) === "done"
+                        ? { icon: CircleCheck, tone: "success" }
+                        : { icon: CircleDot, tone: "muted" }
                     }
-                    trailing={awaitingFinishedReview(order) ? "Your call" : undefined}
-                    current={awaitingFinishedReview(order)}
                   >
                     <HandoverPanel
                       order={order}
                       corrections={staffCorrections(order.forcedSteps, corrections)}
                       names={names}
-                      busy={busy}
-                      reviewing={acting === "finished-review"}
-                      reviewError={reviewError}
-                      onApprove={() => void reviewFinished("approved")}
-                      onSendBack={(reason) => void reviewFinished("rejected", reason)}
                     />
                   </SectionRow>
                 ) : null}
@@ -1125,7 +1121,6 @@ export function defaultOpenSections(order: Order): SectionId[] {
   if (releasableMilestones(order).length > 0) ids.add("payout");
   if (recoveryNeedsOperations(order.shopRecovery)) ids.add("shop");
   if (rescheduleNeedsOperations(order.rescheduleRequest)) ids.add("deadline");
-  if (awaitingFinishedReview(order)) ids.add("handover");
   if (pinPaymentAwaitingOperations(order)) ids.add("delivery-pin");
   if (changePaymentAwaitingStaff(order)) ids.add("instructions");
   if (isCancelled(order)) ids.add("history");
@@ -1180,7 +1175,7 @@ function CounterRow({
 function handoverSummary(order: Order): string {
   const status = finishedReviewStatus(order);
   if (status === "pending") {
-    return "The shop's photos of the finished, unpacked work are waiting for your review.";
+    return "The shop's photos of the finished, unpacked work are waiting for your review under With the shop.";
   }
   if (status === "sent_back") {
     const last = sentBackAttempts(order).at(-1);
@@ -1211,43 +1206,22 @@ function handoverSummary(order: Order): string {
 }
 
 /**
- * The Handover row: GRIDGO's decision when the shop's finished work is
- * waiting, the steps in this order's flow, then every forced step with its
- * reason and the checks it went past.
+ * The Handover row: the steps in this order's flow, every review of the
+ * finished work, then every forced step with its reason and the checks it
+ * went past. The review itself is decided in the With the shop step.
  */
 function HandoverPanel({
   order,
   corrections,
   names,
-  busy,
-  reviewing,
-  reviewError,
-  onApprove,
-  onSendBack,
 }: {
   order: Order;
   corrections: ProductionCorrection[];
   names: Record<string, string>;
-  busy: boolean;
-  reviewing: boolean;
-  reviewError: string | null;
-  onApprove: () => void;
-  onSendBack: (reason: string) => void;
 }) {
   const reviews = order.shopHandover?.attempts ?? [];
   return (
     <div className="flex flex-col gap-4">
-      {awaitingFinishedReview(order) ? (
-        <FinishedReviewPanel
-          order={order}
-          shopName={order.supplierId ? names[order.supplierId] || null : null}
-          busy={busy || reviewing}
-          error={reviewError}
-          onApprove={onApprove}
-          onSendBack={onSendBack}
-          ticket={false}
-        />
-      ) : null}
       <HandoverTimeline order={order} />
       {reviews.length ? (
         <section aria-label="Finished-work reviews" className="flex flex-col gap-2">
@@ -1442,6 +1416,11 @@ type StepRowProps = {
   corrections: ProductionCorrection[];
   names: Record<string, string>;
   onCorrectProduction: () => void;
+  /** Rider-packs: GRIDGO's decision on the shop's finished, unpacked work. */
+  reviewing: boolean;
+  reviewError: string | null;
+  onApproveFinished: () => void;
+  onSendBackFinished: (reason: string) => void;
 };
 
 function StepRow({
@@ -1465,6 +1444,10 @@ function StepRow({
   corrections,
   names,
   onCorrectProduction,
+  reviewing,
+  reviewError,
+  onApproveFinished,
+  onSendBackFinished,
 }: StepRowProps) {
   const definition = STAGES.find((entry) => entry.id === step.id);
   const current = step.status === "current";
@@ -1483,7 +1466,9 @@ function StepRow({
       : step.status === "done"
         ? "Done"
         : current
-          ? "You are here"
+          ? step.id === "production" && awaitingFinishedReview(order)
+            ? "Your call"
+            : "You are here"
           : "Locked";
 
   return (
@@ -1611,6 +1596,10 @@ function StepRow({
           names={names}
           busy={busy}
           onCorrect={onCorrectProduction}
+          reviewing={reviewing}
+          reviewError={reviewError}
+          onApproveFinished={onApproveFinished}
+          onSendBackFinished={onSendBackFinished}
         />
       ) : null}
 
@@ -1842,6 +1831,10 @@ function ProductionStep({
   names,
   busy,
   onCorrect,
+  reviewing,
+  reviewError,
+  onApproveFinished,
+  onSendBackFinished,
 }: {
   order: Order;
   hint?: string;
@@ -1849,11 +1842,22 @@ function ProductionStep({
   names: Record<string, string>;
   busy: boolean;
   onCorrect: () => void;
+  reviewing: boolean;
+  reviewError: string | null;
+  onApproveFinished: () => void;
+  onSendBackFinished: (reason: string) => void;
 }) {
   const progress = productionProgressOf(order);
-  const photos = progressPhotos(order);
-  const photoMissing = productionPhotoMissing(order);
-  const showProgress = progress !== null && progressReached(order);
+  const riderPacks = ridersPack(order);
+  const pending = awaitingFinishedReview(order);
+  // The photos under review are shown large in the review; not twice.
+  const underReview = new Set(pending ? (currentSubmission(order)?.photoFileIds ?? []) : []);
+  const photos = progressPhotos(order).filter((photo) => !underReview.has(photo.fileId));
+  // A rider-packs order owes no progress photo: no empty frame asks for one.
+  const photoMissing = !riderPacks && productionPhotoMissing(order);
+  const showProgress =
+    progress !== null && progressReached(order) && (!riderPacks || photos.length > 0);
+  const finishedNotes = finishedPhotoNotes(order);
   // An API that predates the gallery does not take the correction either.
   const correctable = progress !== null && canCorrectProduction(order);
   const shopProofs = shopProofStages(order).map((milestone) => ({
@@ -1878,12 +1882,33 @@ function ProductionStep({
     }))
     .filter((entry) => entry.proofs.length > 0);
 
-  if (!showProgress && !order.packingProgress && filed.length === 0 && corrections.length === 0 && !correctable) {
+  const finishedWork = riderPacks ? (
+    <FinishedWorkStep
+      order={order}
+      names={names}
+      busy={busy}
+      reviewing={reviewing}
+      reviewError={reviewError}
+      onApprove={onApproveFinished}
+      onSendBack={onSendBackFinished}
+    />
+  ) : null;
+
+  if (
+    !finishedWork &&
+    !showProgress &&
+    !order.packingProgress &&
+    filed.length === 0 &&
+    corrections.length === 0 &&
+    !correctable
+  ) {
     return <p className="text-body text-text-secondary m-0">{hint}</p>;
   }
 
   return (
     <div className="flex flex-col gap-4">
+      {finishedWork}
+
       {showProgress ? (
         <div>
           <p
@@ -1910,6 +1935,8 @@ function ProductionStep({
             <ProgressGallery
               photos={photos}
               noteFor={(photo) => {
+                const finished = finishedNotes.get(photo.fileId);
+                if (finished) return finished;
                 const stage = proofOf.get(photo.fileId);
                 return stage ? `Also the payout proof for ${stage.toLowerCase()}` : null;
               }}
@@ -1951,21 +1978,123 @@ function ProductionStep({
       {correctable ? (
         <div className="border-outline-subtle flex flex-col items-start gap-2 border-t pt-3">
           <p className="text-caption text-text-muted m-0 max-w-prose">
-            {ridersPack(order)
-              ? awaitingFinishedReview(order)
-                ? "Review the finished work in the Handover row. Force it past the review only if the photos cannot reach you; you will be asked why."
-                : "If you have checked the finished work yourself, you can force this job to ready for rider pickup. You will be asked why, and the order shows it was forced."
+            {riderPacks
+              ? pending
+                ? "Only if the photos cannot reach you: force this job past the review to ready for rider pickup. You will be asked why, and the order shows it was forced."
+                : finishedReviewStatus(order) === "approved"
+                  ? "Only if the shop cannot mark it ready itself: force this job to ready for rider pickup. You will be asked why, and the order shows it was forced."
+                  : "Only if the shop cannot send photos and you have checked the finished work yourself: force this job to ready for rider pickup. You will be asked why, and the order shows it was forced."
               : photoMissing
                 ? "If you have seen the finished job yourself, you can move it on without the photo. You will be asked why."
                 : "The shop has not marked this job ready for dispatch yet. You can move it on for them. You will be asked why."}
           </p>
           <Button variant="secondary" disabled={busy} onClick={onCorrect}>
-            {ridersPack(order) ? "Force to ready for pickup" : "Move to ready for dispatch"}
+            {riderPacks ? "Force to ready for pickup" : "Move to ready for dispatch"}
           </Button>
         </div>
       ) : null}
     </div>
   );
+}
+
+/** Each reviewed finished-work photo, labelled with GRIDGO's answer to it. */
+function finishedPhotoNotes(order: Order): Map<string, string> {
+  const notes = new Map<string, string>();
+  for (const attempt of order.shopHandover?.attempts ?? []) {
+    const label =
+      attempt.review?.decision === "approved"
+        ? "Finished work, approved"
+        : "Finished work, sent back";
+    for (const fileId of attempt.finished?.photoFileIds ?? []) notes.set(fileId, label);
+  }
+  return notes;
+}
+
+/**
+ * The finished work on a rider-packs order, where the team decides it. While
+ * the shop's photos wait, the review itself: the photos, the three checks,
+ * Approve, and Send back with a reason the shop reads. Before they arrive,
+ * what the shop still owes, with the last send-back's reason as the shop read
+ * it. Force stays below, as the exception (`gridgo-api/docs/SHOP_HANDOVER_API.md`).
+ */
+function FinishedWorkStep({
+  order,
+  names,
+  busy,
+  reviewing,
+  reviewError,
+  onApprove,
+  onSendBack,
+}: {
+  order: Order;
+  names: Record<string, string>;
+  busy: boolean;
+  reviewing: boolean;
+  reviewError: string | null;
+  onApprove: () => void;
+  onSendBack: (reason: string) => void;
+}) {
+  const status = finishedReviewStatus(order);
+  const shopName = order.supplierId ? names[order.supplierId] || null : null;
+  if (status === "pending") {
+    return (
+      <section aria-labelledby="finished-review-heading" className="flex flex-col gap-3">
+        <h3
+          id="finished-review-heading"
+          className="text-body text-text-primary m-0"
+          style={{ fontFamily: "var(--font-medium)" }}
+        >
+          Finished work to review
+        </h3>
+        <FinishedReviewPanel
+          order={order}
+          shopName={shopName}
+          busy={busy || reviewing}
+          error={reviewError}
+          onApprove={onApprove}
+          onSendBack={onSendBack}
+          ticket={false}
+        />
+      </section>
+    );
+  }
+  if (status === "not_submitted" || status === "sent_back") {
+    if (order.state !== "production") return null;
+    const last = status === "sent_back" ? sentBackAttempts(order).at(-1) : null;
+    return (
+      <WaitingForPhoto
+        title={
+          last
+            ? `Sent back ${formatDateTime(last.review.at)}`
+            : "No finished-work photos yet"
+        }
+        body={
+          last
+            ? "Waiting for the shop's new photos. It reads your reason word for word:"
+            : "The shop photographs the finished, unpacked work and sends it here. You approve it or send it back with a reason, and the shop calls a rider only after you approve."
+        }
+      >
+        {last ? (
+          <blockquote className="border-outline text-body text-text-primary m-0 max-w-prose border-l-2 pl-3">
+            {last.review.note || "No reason recorded."}
+          </blockquote>
+        ) : null}
+      </WaitingForPhoto>
+    );
+  }
+  if (status === "approved" && order.state === "supplier_self_qc") {
+    const review = latestReview(order);
+    const who = (review?.by && names[review.by]) || "GRIDGO";
+    return (
+      <p className="text-body text-text-secondary m-0 max-w-prose">
+        {review
+          ? `Finished work approved by ${who}, ${formatDateTime(review.at)}. `
+          : "Finished work approved. "}
+        The shop marks it ready for rider pickup next.
+      </p>
+    );
+  }
+  return null;
 }
 
 /** Who moved the job, the edge, whether a photo existed, and the reason in their words. */

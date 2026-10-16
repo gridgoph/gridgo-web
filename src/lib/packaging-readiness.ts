@@ -14,21 +14,41 @@
  * job read from an older API has no list, and the screens keep their older
  * photo gates. A receipt scan is optional and never in the list.
  *
+ * The shop's own steps depend on the order's handover (`handoverFlow`,
+ * `src/lib/shop-handover.ts`). A legacy job owes a production photo and a
+ * packing photo. A rider-packs job owes neither: it owes photos of the
+ * finished, unpacked work and GRIDGO's review of them
+ * (`production_finished_required`, `production_review_required`), and is
+ * packed later, in front of the rider. Those two codes are the shop's step
+ * and GRIDGO's answer, never "something else" held by someone else.
+ *
  * Pure functions: no React, no fetch.
  */
 
 import { ApiError } from "@/lib/api/client";
-import type { Order, TransitionReadiness } from "@/lib/api/types";
+import type { HandoverFlow, Order, TransitionReadiness } from "@/lib/api/types";
 
 /** What a shop can do about one requirement, in its own vocabulary. */
 export type RequirementKind =
-  "production_photo" | "packing_photo" | "claim" | "job_stopped" | "moved_on" | "other";
+  | "production_photo"
+  | "packing_photo"
+  /** Rider-packs: photos of the finished, unpacked work, sent for review. */
+  | "finished_photos"
+  /** Rider-packs: GRIDGO's review of those photos. */
+  | "review"
+  | "claim"
+  | "job_stopped"
+  | "moved_on"
+  | "other";
 
 export type Requirement = { kind: RequirementKind; code: string; message: string };
 
 const REQUIREMENT_KINDS: Record<string, RequirementKind> = {
   production_photo_required: "production_photo",
   packing_photo_required: "packing_photo",
+  production_finished_required: "finished_photos",
+  finished_product_photo_required: "finished_photos",
+  production_review_required: "review",
   claim_hold_active: "claim",
   refund_fulfillment_stopped: "job_stopped",
   reschedule_fulfillment_stopped: "job_stopped",
@@ -42,6 +62,12 @@ const FALLBACK_SENTENCES: Record<string, string> = {
     "Add a progress photo before packing this job. A start-of-production photo counts; a PDF does not.",
   packing_photo_required:
     "Add a photo of the finished prints packed and ready before marking Ready for dispatch.",
+  production_finished_required:
+    "Send photos of the finished, unpacked work for GRIDGO's review first.",
+  finished_product_photo_required:
+    "A photo GRIDGO reviewed is no longer on the job. Ask the GRIDGO Team what to send.",
+  production_review_required:
+    "Wait for GRIDGO to approve the finished-work photos before calling a rider. Do not pack yet.",
   claim_hold_active:
     "A claim is holding payouts on this order. Operations must clear the claim before you package it for pickup.",
   refund_fulfillment_stopped:
@@ -91,18 +117,36 @@ export function readRequirements(value: unknown): Requirement[] {
   return value.map(requirementOf).filter((item): item is Requirement => item !== null);
 }
 
+/** The shop's own steps before a rider is called, in either handover. */
+export type PackagingStepKind = Extract<
+  RequirementKind,
+  "production_photo" | "packing_photo" | "finished_photos" | "review"
+>;
+
 export type PackagingCheck = {
   /** The API would take "Ready for dispatch" as of this read. */
   allowed: boolean;
   /** Still needed, in the API's order. */
   missing: Requirement[];
-  /** Both photos, ticked or not, so a shop sees what is done as well as what is not. */
-  photos: { kind: "production_photo" | "packing_photo"; done: boolean }[];
+  /** Which handover the steps belong to. */
+  flow: HandoverFlow;
+  /**
+   * The shop's steps, ticked or not, so a shop sees what is done as well as
+   * what is not: both photos on a legacy job, the finished-work photos and
+   * GRIDGO's review on a rider-packs job.
+   */
+  steps: { kind: PackagingStepKind; done: boolean }[];
   /** True once a receipt scan is on the job. It never holds the step. */
   receiptAttached: boolean;
 };
 
-type ReadinessOrder = Pick<Order, "state"> & Partial<Pick<Order, "transitionReadiness">>;
+type ReadinessOrder = Pick<Order, "state"> &
+  Partial<Pick<Order, "transitionReadiness" | "handoverFlow">>;
+
+const STEP_KINDS: Record<HandoverFlow, PackagingStepKind[]> = {
+  legacy: ["production_photo", "packing_photo"],
+  rider_packs: ["finished_photos", "review"],
+};
 
 /** The check for the job's packaging step, or null where there is none to show. */
 export function packagingCheck(order: ReadinessOrder): PackagingCheck | null {
@@ -112,24 +156,30 @@ export function packagingCheck(order: ReadinessOrder): PackagingCheck | null {
   if (!raw || typeof raw !== "object") return null;
   const missing = readRequirements(raw.missing);
   const owes = (kind: RequirementKind) => missing.some((item) => item.kind === kind);
+  // An API that does not name the flow predates the rider-packs handover.
+  const flow: HandoverFlow = order.handoverFlow === "rider_packs" ? "rider_packs" : "legacy";
   return {
     allowed: raw.allowed === true && missing.length === 0,
     missing,
-    photos: [
-      { kind: "production_photo", done: !owes("production_photo") },
-      { kind: "packing_photo", done: !owes("packing_photo") },
-    ],
+    flow,
+    steps: STEP_KINDS[flow].map((kind) => ({ kind, done: !owes(kind) })),
     receiptAttached: raw.receiptScan?.attached === true,
   };
 }
 
-export function isPhotoRequirement(kind: RequirementKind): boolean {
-  return kind === "production_photo" || kind === "packing_photo";
+/** A step the shop takes itself, or GRIDGO's review of it: never a hold. */
+export function isShopStep(kind: RequirementKind): boolean {
+  return (
+    kind === "production_photo" ||
+    kind === "packing_photo" ||
+    kind === "finished_photos" ||
+    kind === "review"
+  );
 }
 
-/** Requirements the shop cannot meet itself: a claim, a stopped job, a job that moved on. */
+/** Requirements outside the shop's steps: a claim, a stopped job, a job that moved on. */
 export function otherRequirements(check: PackagingCheck): Requirement[] {
-  return check.missing.filter((item) => !isPhotoRequirement(item.kind));
+  return check.missing.filter((item) => !isShopStep(item.kind));
 }
 
 /**
@@ -141,8 +191,8 @@ export function packagingHold(check: PackagingCheck | null): Requirement | null 
   return check ? (otherRequirements(check)[0] ?? null) : null;
 }
 
-/** The API's sentence for a photo it still needs, if it needs it. */
-export function photoRequirement(
+/** The API's sentence for a step it still needs, if it needs it. */
+export function stepRequirement(
   check: PackagingCheck,
   kind: RequirementKind,
 ): Requirement | null {
@@ -161,6 +211,10 @@ export function requirementTitle(kind: RequirementKind): string {
       return "Production photo";
     case "packing_photo":
       return "Packing photo";
+    case "finished_photos":
+      return "Photos of the finished work";
+    case "review":
+      return "GRIDGO's review";
     case "claim":
       return "Client claim open";
     case "job_stopped":
