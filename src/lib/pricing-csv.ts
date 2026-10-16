@@ -1,7 +1,12 @@
 import type { PricingFigure, PricingPeriod, PricingReport } from "@/lib/api/client";
 
+/**
+ * Exit answers are the client's own words, so a cell that a spreadsheet would
+ * read as a formula is written as text, the way the API's audit CSV does.
+ */
 function cell(value: unknown): string {
-  const text = value == null ? "" : String(value);
+  let text = value == null ? "" : String(value);
+  if (/^[\s]*[=+@-]|^[\t\r\n]/.test(text)) text = `'${text}`;
   return `"${text.replaceAll('"', '""')}"`;
 }
 

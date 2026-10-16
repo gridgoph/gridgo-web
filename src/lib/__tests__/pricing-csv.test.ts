@@ -71,4 +71,21 @@ describe("pricing CSV", () => {
     expect(csv).toContain('"6"');
     expect(csv).toContain("compare");
   });
+
+  it("writes a client's exit answer that looks like a formula as text", () => {
+    const answered: PricingReport = {
+      ...report,
+      period: {
+        ...period,
+        funnel: {
+          ...period.funnel,
+          exitQuestion: { asked: true, message: null, answers: [{ answer: "=HYPERLINK(\"x\")", count: 1 }] },
+        },
+      },
+      compare: null,
+    };
+    const csv = pricingCsv(answered);
+    expect(csv).toContain(`"'=HYPERLINK(""x"")"`);
+    expect(csv).not.toContain(`"=HYPERLINK`);
+  });
 });

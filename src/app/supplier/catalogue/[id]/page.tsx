@@ -1423,8 +1423,8 @@ export default function ListingEditorPage() {
  * Where the shop is in the seven steps, and what is still ahead.
  *
  * The current step is marked. Steps before it can be opened again. Later
- * steps stay in the row and read as not done yet. This is a desktop track,
- * not the phone rail.
+ * steps stay in the row and read as not done yet. On a phone only the
+ * current step is named; the rest keep their numbers.
  */
 function ListingStepNav({
   step,
@@ -1485,6 +1485,8 @@ function ListingStepNav({
               <span
                 className={cn(
                   "text-caption",
+                  // Seven labels do not fit a phone; it names only the step it is on.
+                  !selected && "max-sm:sr-only",
                   selected && "text-text-primary",
                   done && "text-text-secondary",
                   !selected && !done && "text-text-muted",

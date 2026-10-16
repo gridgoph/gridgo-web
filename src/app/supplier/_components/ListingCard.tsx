@@ -309,7 +309,7 @@ function CardStatus({ standing }: { standing: BoardStanding }) {
   }
 
   return (
-    <div data-status-line className="flex flex-col gap-1">
+    <div data-status-line className="flex flex-col items-start gap-1">
       <StatusChip tone={standing.tone} label={standing.label} icon={standing.icon} />
       {standing.note ? (
         <p className="text-caption text-text-secondary m-0 line-clamp-2">{standing.note}</p>

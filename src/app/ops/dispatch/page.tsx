@@ -118,7 +118,8 @@ function LocationColumn({ order, cell }: { order: Order; cell: LocationCell }) {
           <Button variant="secondary" disabled aria-describedby={reasonId}>
             {route.label}
           </Button>
-          <span id={reasonId} className="text-caption text-text-muted">
+          {/* The chip above already says why; this names it for the disabled button. */}
+          <span id={reasonId} className="sr-only">
             {route.reason}
           </span>
         </>
