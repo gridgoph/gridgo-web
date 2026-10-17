@@ -33,6 +33,7 @@ import {
   ArtworkGuidanceRecord,
 } from "@/components/orders/ArtworkGuidanceRecord";
 import { PrintLayoutRecord } from "@/components/orders/PrintLayoutRecord";
+import { CoverSpineRecord } from "@/components/orders/CoverSpineRecord";
 import { ExactColoursRecord } from "@/components/orders/ExactColours";
 import { ColourPricingRecord } from "@/components/orders/ColourPricingRecord";
 import { allAttachments, showsAttachmentList } from "@/lib/artwork-attachments";
@@ -593,6 +594,7 @@ function PassDialog({
           <OrderArtwork order={order} review />
           <ArtworkGuidanceRecord order={order} audience="staff" />
           <PrintLayoutRecord order={order} />
+          <CoverSpineRecord order={order} audience="staff" />
           <ExactColoursRecord order={order} audience="staff" />
           <ColourPricingRecord order={order} audience="staff" />
           <QaChecklistFields

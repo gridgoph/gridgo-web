@@ -32,6 +32,7 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import type { Order, ProductionItem } from "@/lib/api/types";
+import { coverRecordLabel, isGiven, NOT_GIVEN, spineSummaryOf } from "@/lib/cover-spine";
 import { artworkSource } from "@/lib/design-links";
 import { formatDateTime } from "@/lib/format";
 import { isKnownLayout, layoutSpec, ticketLayoutLine } from "@/lib/print-layout";
@@ -263,6 +264,22 @@ function TicketLayout({ item }: { item: ProductionItem }) {
 }
 
 /**
+ * A hardbound line's cover and what its spine says: a wrong title on a bound
+ * book is only the shop's fault when the client gave the spine.
+ */
+function TicketCoverSpine({ item }: { item: ProductionItem }) {
+  const record = item.coverSpine;
+  if (!record) return null;
+  return (
+    <span className="text-caption text-text-secondary">
+      {isGiven(record)
+        ? `Cover: ${coverRecordLabel(record.cover)}. Spine: ${spineSummaryOf(record)}`
+        : `Cover and spine: ${NOT_GIVEN}`}
+    </span>
+  );
+}
+
+/**
  * What the work was printed to. A comparison needs both halves in view, so
  * the ticket stays beside the photos on a wide screen and follows them on a
  * narrow one.
@@ -304,6 +321,7 @@ export function JobTicket({ order }: { order: Order }) {
               ) : null}
               <TicketLayout item={item} />
               <TicketColours item={item} />
+              <TicketCoverSpine item={item} />
             </li>
           ))}
         </ul>

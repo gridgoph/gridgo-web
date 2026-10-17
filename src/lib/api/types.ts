@@ -655,7 +655,49 @@ export type ProductionItem = {
   colourPricing?: ColourQuote | null;
   /** The latest colour correction the client agreed to (and paid for) on this line. */
   agreedColourCorrection?: (ColourCorrection & { id: string; appliedAt: string }) | null;
+  /**
+   * A hardbound book's cover and spine, agreed at checkout and frozen with
+   * the order. `null` on products that do not ask and on older orders,
+   * absent on an older API. Read through `@/lib/cover-spine`.
+   */
+  coverSpine?: CoverSpineRecord | null;
 };
+
+// ---- Hardbound cover and spine ----
+// Contract: gridgo-api docs/HARDBOUND_COVER_API.md.
+
+export type CoverChoice = "first_page" | "separate_file" | "text_only";
+
+/** What is lettered on the spine, as GRIDGO stores it. */
+export type SpineDetails = {
+  institutionCode: string | null;
+  title: string;
+  author: string;
+  month: number;
+  year: number;
+};
+
+/**
+ * An order line's cover and spine. `cover` is an open string: a choice added
+ * after this build must never break a screen.
+ */
+export type CoverSpineRecord =
+  | {
+      status: "given";
+      cover: CoverChoice | (string & {});
+      coverFileId: string | null;
+      spine: SpineDetails;
+      spineDate?: string | null;
+      spineSummary?: string | null;
+    }
+  | {
+      status: "not_given";
+      cover?: null;
+      coverFileId?: null;
+      spine?: null;
+      spineDate?: null;
+      spineSummary?: null;
+    };
 
 // ---- Exact colours ----
 // Contract: gridgo-api docs/EXACT_COLOURS_API.md.
@@ -1830,6 +1872,11 @@ export type PlatformSettings = {
   /** Super Admin handover codes gate; issued codes survive disabling it. */
   handoverOtpEnabled?: boolean;
   /**
+   * Super Admin: checkout refuses a hardbound line without its cover and
+   * spine while on. Off by default; absent on an older API.
+   */
+  coverSpineRequired?: boolean;
+  /**
    * The hub's pick-up hours and flat fee. Every role reads it; only Super
    * Admin writes it. Absent on an API that predates hub pick-up.
    */
@@ -1890,6 +1937,11 @@ export type UpdateSettingsInput = {
   hubPickupEnabled?: boolean;
   /** Super Admin handover codes gate; issued codes survive disabling it. */
   handoverOtpEnabled?: boolean;
+  /**
+   * Super Admin: checkout refuses a hardbound line without its cover and
+   * spine while on. Off by default; absent on an older API.
+   */
+  coverSpineRequired?: boolean;
   /** Super Admin only, always `{schedule, feeMinor}`; the point is read-only. */
   hubPickup?: Pick<HubPickup, "schedule" | "feeMinor">;
   /** Pricing dashboard. Whole centavos of monthly fixed cost. */
