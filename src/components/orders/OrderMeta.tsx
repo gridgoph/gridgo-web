@@ -18,6 +18,7 @@ import { ArtworkAttachments } from "@/components/orders/ArtworkAttachments";
 import { ArtworkGuidanceRecord } from "@/components/orders/ArtworkGuidanceRecord";
 import { DesignLinkLead, DesignLinkList } from "@/components/orders/DesignLinks";
 import { PrintLayoutRecord } from "@/components/orders/PrintLayoutRecord";
+import { CoverSpineRecord } from "@/components/orders/CoverSpineRecord";
 import { EvidencePlate } from "@/components/orders/EvidencePreview";
 import { ExactColoursRecord } from "@/components/orders/ExactColours";
 import { ColourPricingRecord } from "@/components/orders/ColourPricingRecord";
@@ -145,6 +146,11 @@ export function OrderMeta({ order, showMoney = true, fromJobDetails = false }: P
         Only on products whose shop offers the choice.
       */}
       <PrintLayoutRecord order={order} />
+      {/*
+        A hardbound book's cover and spine: how the cover is made and what
+        the spine says. Only on products that ask.
+      */}
+      <CoverSpineRecord order={order} audience="shop" />
       {/*
         Each page's strong colour, tier and the shop's own sheet rate, as
         GRIDGO measured it at checkout. Only on colour-priced and one-colour
