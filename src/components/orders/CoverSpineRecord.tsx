@@ -102,7 +102,7 @@ function GivenBlock({
   const lines = spineLines(record);
   return (
     <div className="flex flex-wrap items-start gap-4">
-      <SpineDrawing lines={lines.map((line) => line.text)} />
+      <SpineDrawing lines={lines} />
       <div className="flex min-w-0 flex-1 basis-56 flex-col gap-2">
         <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
           <dt className="text-caption text-text-muted">Cover</dt>
@@ -145,20 +145,29 @@ function GivenBlock({
  * The spine standing up, lettered top to bottom as the shop letters it. A
  * picture of the order, not a proof: it is not drawn to size.
  */
-function SpineDrawing({ lines }: { lines: string[] }) {
+function SpineDrawing({ lines }: { lines: { label: string; text: string }[] }) {
   return (
     <div
       aria-hidden
-      className="flex h-56 w-12 shrink-0 items-center justify-center overflow-hidden rounded-field border border-outline bg-surface-variant py-3"
+      className="flex h-72 w-12 shrink-0 items-center justify-center overflow-hidden rounded-field border border-outline bg-surface-variant py-3"
       data-testid="spine-drawing"
     >
       <span
-        className="text-caption text-text-primary flex max-h-full items-center gap-3 overflow-hidden whitespace-nowrap [writing-mode:vertical-rl]"
+        className="text-caption text-text-primary flex max-h-full min-h-0 items-center gap-3 overflow-hidden whitespace-nowrap [writing-mode:vertical-rl]"
         style={{ fontFamily: "var(--font-medium)" }}
       >
-        {lines.map((text, index) => (
-          <span key={index} className="truncate">
-            {text}
+        {lines.map((line) => (
+          // The code and the date are short and stay whole; a long title or
+          // author gives way first.
+          <span
+            key={line.label}
+            className={
+              line.label === "Title" || line.label === "Author"
+                ? "min-h-0 truncate"
+                : "shrink-0"
+            }
+          >
+            {line.text}
           </span>
         ))}
       </span>
