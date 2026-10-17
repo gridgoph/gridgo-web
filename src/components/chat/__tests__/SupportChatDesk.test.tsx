@@ -355,7 +355,14 @@ describe("SupportChatDesk", () => {
       createdAt,
       mine: false,
     });
+    // The desk opens the first conversation on its own, and reading its threads
+    // clears their unread counts. Hold those reads until the inbox count is checked.
+    let releaseReads!: () => void;
+    const readsHeld = new Promise<void>((resolve) => {
+      releaseReads = resolve;
+    });
     getSupportChatThread.mockImplementation(async (id: string) => {
+      await readsHeld;
       if (id === "thread-older") {
         return {
           thread: { ...older, unreadCount: 0 },
@@ -388,6 +395,7 @@ describe("SupportChatDesk", () => {
     expect(within(list).getAllByText("Ana Client")).toHaveLength(1);
     expect(within(list).getByText("3")).toBeTruthy();
 
+    releaseReads();
     expect(await screen.findByText("First question")).toBeTruthy();
     expect(screen.getAllByText("Second question").length).toBeGreaterThan(0);
     const first = screen.getByText("First question");
