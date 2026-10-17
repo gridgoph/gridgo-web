@@ -2,7 +2,7 @@
 
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Banknote, CircleAlert, Clock3, Eye } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -22,24 +22,23 @@ import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { isExpressOrder } from "@/lib/express";
 import { formatDateTime, formatPhp } from "@/lib/format";
-import { presentOrderState } from "@/lib/order-state";
-import { shopHandoverChip } from "@/lib/shop-handover";
-import { needsSupplierAction, primaryAction } from "@/lib/supplier-actions";
+import { needsSupplierAction, presentSupplierJobStatus, primaryAction } from "@/lib/supplier-actions";
+import { useAcceptDeadlines } from "@/lib/use-accept-clock";
 import { activitySortValue, jobActivity, relativeTime } from "../_lib/job-activity";
 
 /** The label the queue shows — and therefore facets on — for a job with nothing owed. */
 const NO_ACTION = "No action needed";
 
-function nextStepLabel(job: Order): string {
-  const action = primaryAction(job);
+function nextStepLabel(job: Order, now: Date): string {
+  const action = primaryAction(job, now);
   if (!action) return NO_ACTION;
   // A claim hold blocks packing: the shop waits on Operations, not on itself.
   return action.blockedReason ? "Waiting on Operations (claim)" : action.label;
 }
 
-/** The job's status in the shop's words: a rider-packs review is not packing. */
+/** The job's status in the shop's words: a stop speaks over the plain state. */
 function jobStatus(job: Order) {
-  return shopHandoverChip(job) ?? presentOrderState(job.state);
+  return presentSupplierJobStatus(job);
 }
 
 /** Whether a due date falls inside the next `hours`. */
@@ -106,6 +105,17 @@ export default function SupplierJobsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const rows = useMemo(() => jobs ?? [], [jobs]);
+  const now = useAcceptDeadlines(rows);
+  const opened = useRef(true);
+  useEffect(() => {
+    if (opened.current) {
+      opened.current = false;
+      return;
+    }
+    void load();
+  }, [now, load]);
 
   const columns = useMemo<DataTableColumn<Order>[]>(
     () => [
@@ -208,17 +218,15 @@ export default function SupplierJobsPage() {
         id: "next",
         header: "Next step",
         // Matches the rendered text so the facet's values are the words on screen.
-        sortValue: nextStepLabel,
-        filterValue: nextStepLabel,
+        sortValue: (job) => nextStepLabel(job, now),
+        filterValue: (job) => nextStepLabel(job, now),
         cell: (job) => (
-          <span className="text-body text-text-secondary">{nextStepLabel(job)}</span>
+          <span className="text-body text-text-secondary">{nextStepLabel(job, now)}</span>
         ),
       },
     ],
-    [],
+    [now],
   );
-
-  const rows = useMemo(() => jobs ?? [], [jobs]);
 
   const facets = useMemo<DataTableFacet[]>(
     () => [
@@ -230,10 +238,10 @@ export default function SupplierJobsPage() {
       {
         columnId: "next",
         title: "Next step",
-        options: facetOptions(rows, nextStepLabel),
+        options: facetOptions(rows, (job) => nextStepLabel(job, now)),
       },
     ],
-    [rows],
+    [rows, now],
   );
 
   const pending = loading && !jobs;
@@ -264,7 +272,7 @@ export default function SupplierJobsPage() {
     );
   }
 
-  const actionRequired = rows.filter((j) => needsSupplierAction(j)).length;
+  const actionRequired = rows.filter((j) => needsSupplierAction(j, now)).length;
   const dueSoon = rows.filter((j) => isDueWithin(j.readyBy ?? j.deadline, 24)).length;
   const onTheBoard = rows.reduce((total, j) => total + (j.supplierSubtotalMinor ?? 0), 0);
 
