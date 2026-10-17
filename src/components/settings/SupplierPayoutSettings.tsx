@@ -65,6 +65,9 @@ const PROVIDERS: { value: PayoutProvider; label: string; detail: string }[] = [
 const PLATE_COPY =
   "The receiving QR from your wallet app, or a clear photo of the plate on your counter. Operations scans it to send each payout.";
 
+export const PAYOUT_STALE =
+  "Your payout account changed somewhere else while this screen was open. Load the latest so nothing you cannot see is overwritten, then make your change again.";
+
 type Draft = {
   provider: PayoutProvider | null;
   accountName: string;
@@ -119,7 +122,7 @@ function payoutErrorMessage(err: unknown, fallback: string): string {
     switch (err.code) {
       case "payout_account_stale":
       case "expected_version_required":
-        return "Your payout account changed somewhere else. The latest has been loaded; make your change again.";
+        return PAYOUT_STALE;
       case "invalid_payout_qr":
       case "file_already_attached":
         return "That picture could not be used as your QR. Choose it again and save.";
@@ -153,8 +156,14 @@ export function SupplierPayoutSettings() {
   const [account, setAccount] = useState<SupplierPayoutAccount | null>(null);
   const [draft, setDraft] = useState<Draft>(draftFrom(null));
   const [loaded, setLoaded] = useState(false);
-  // The first read seeds the form; later live reads must not swallow typing.
+  // The first read seeds the form. A later read must not replace the version
+  // under a draft the shop has already changed.
   const seeded = useRef(false);
+  const accountRef = useRef(account);
+  const draftRef = useRef(draft);
+  accountRef.current = account;
+  draftRef.current = draft;
+  const [conflict, setConflict] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -168,10 +177,28 @@ export function SupplierPayoutSettings() {
       setError(null);
       try {
         const next = await getMyPayoutAccount();
-        setAccount(next);
         const adopt = adoptDraft || !seeded.current;
         seeded.current = true;
-        setDraft((current) => (adopt ? draftFrom(next) : current));
+        if (adopt) {
+          setAccount(next);
+          setDraft(draftFrom(next));
+          setConflict(null);
+          setLoaded(true);
+          return;
+        }
+        const dirty = Object.keys(payoutPatchFrom(accountRef.current, draftRef.current)).length > 0;
+        const loadedVersion = accountRef.current?.version ?? null;
+        const nextVersion = next?.version ?? null;
+        if (dirty && loadedVersion !== nextVersion) {
+          setConflict(PAYOUT_STALE);
+          setLoaded(true);
+          return;
+        }
+        if (!dirty) {
+          setAccount(next);
+          setDraft(draftFrom(next));
+          setConflict(null);
+        }
         setLoaded(true);
       } catch (err) {
         setError(payoutErrorMessage(err, "Could not load where you get paid."));
@@ -245,13 +272,14 @@ export function SupplierPayoutSettings() {
           : "Saved. Operations will send to this name and number until you add a QR.",
       );
     } catch (err) {
-      setSaveError(payoutErrorMessage(err, "Could not save where you get paid."));
       if (
         isApiError(err) &&
         (err.code === "payout_account_stale" || err.code === "expected_version_required")
       ) {
-        await load(true);
+        setConflict(PAYOUT_STALE);
+        return;
       }
+      setSaveError(payoutErrorMessage(err, "Could not save where you get paid."));
     } finally {
       setBusy(false);
     }
@@ -486,6 +514,14 @@ export function SupplierPayoutSettings() {
         <p className="text-body text-success m-0" role="status">
           {saveOk}
         </p>
+      ) : null}
+      {conflict ? (
+        <div className="flex flex-col items-start gap-2" role="alert">
+          <p className="text-body text-error m-0 max-w-prose">{conflict}</p>
+          <Button variant="secondary" disabled={busy} onClick={() => void load(true)}>
+            Load the latest
+          </Button>
+        </div>
       ) : null}
       {saveError ? (
         <p className="text-body text-error m-0" role="alert">
