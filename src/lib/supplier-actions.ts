@@ -40,11 +40,15 @@
  */
 
 import type { Order, PayoutMilestone } from "@/lib/api/types";
-import { milestoneName } from "@/lib/order-state";
+import { milestoneName, presentOrderState, type StatePresentation } from "@/lib/order-state";
 import { isLegacyPayoutPlan, shopProofStages } from "@/lib/payout-plan";
 import { packagingCheck, packagingHold } from "@/lib/packaging-readiness";
 import { productionPhotoMissing } from "@/lib/production-progress";
-import { DO_NOT_PACK_YET, ridersPack, shopFinishedStep } from "@/lib/shop-handover";
+import { acceptWindow } from "@/lib/supplier-accept-window";
+import { keptShopEarnings, refundNotice, refundStanding, refundStatus } from "@/lib/supplier-refund";
+import { shopRelease } from "@/lib/supplier-recovery";
+import { rescheduleNotice, rescheduleStopped } from "@/lib/supplier-reschedule";
+import { DO_NOT_PACK_YET, ridersPack, shopFinishedStep, shopHandoverChip } from "@/lib/shop-handover";
 
 export type SupplierActionKind =
   | "accept"
@@ -98,9 +102,15 @@ type ShopOrder = Pick<Order, "state" | "payoutMilestones" | "payoutHold"> &
       | "packingProgress"
       | "transitionReadiness"
       | "shopAcceptance"
+      | "shopRecovery"
+      | "rescheduleRequest"
+      | "refundHold"
+      | "refundDisposition"
+      | "pickupChecklist"
       | "handoverFlow"
       | "shopHandover"
       | "supplierId"
+      | "supplierSettlementPayouts"
     >
   >;
 
@@ -307,7 +317,67 @@ function riderPacksSteps(order: ShopOrder): SupplierAction[] {
   return [];
 }
 
-export function actionsForJob(order: ShopOrder): SupplierAction[] {
+/**
+ * The chip for one job. A refund speaks over a recovery, which speaks over a
+ * held deadline, which speaks over a failed counter check. The handover chip
+ * and the plain state follow only when none of those has stopped the job.
+ */
+export function presentSupplierJobStatus(order: ShopOrder): StatePresentation {
+  const refund = refundStatus(order);
+  if (refund) return refund;
+  const released = shopRelease(order);
+  if (released) return released.chip;
+  if (order.rescheduleRequest?.workHeld) {
+    return { label: "Paused", tone: "warning", icon: "clock" };
+  }
+  if (order.state === "rider_assigned") {
+    const check = order.pickupChecklist?.status;
+    if (check === "failed_escalated") {
+      return { label: "Pickup blocked", tone: "error", icon: "circle-x" };
+    }
+    if (check === "escalation_resolved") {
+      return { label: "Rider will check again", tone: "info", icon: "clock" };
+    }
+  }
+  return shopHandoverChip(order) ?? presentOrderState(order.state);
+}
+
+/**
+ * Why this job offers the shop nothing, and who resolves it. Null while the
+ * job is still the shop's to move. An hour that has just run out is said by
+ * the acceptance clock, not here.
+ */
+export function shopStopNotice(
+  order: ShopOrder,
+): { title: string; body: string } | null {
+  const refund = refundNotice(order, keptShopEarnings(order));
+  if (refund) return { title: refund.title, body: refund.body };
+  const released = shopRelease(order);
+  if (released) return { title: released.title, body: released.body };
+  if (order.rescheduleRequest && rescheduleStopped(order.rescheduleRequest)) {
+    const notice = rescheduleNotice(order.rescheduleRequest);
+    return { title: notice.title, body: notice.body };
+  }
+  return null;
+}
+
+/**
+ * True when a refund, a recovery, a held deadline, or an expired answer hour
+ * has stopped the job. File uploads and commitments follow this, not the
+ * order's old state. A claim payout hold is not one of these stops.
+ */
+export function shopWorkStopped(order: ShopOrder, now: Date = new Date()): boolean {
+  if (refundStanding(order) !== "none") return true;
+  if (shopRelease(order)) return true;
+  if (rescheduleStopped(order.rescheduleRequest)) return true;
+  return acceptWindow(order, now).kind === "expired";
+}
+
+export function actionsForJob(order: ShopOrder, now: Date = new Date()): SupplierAction[] {
+  // A refund, a job this shop let go, a declined deadline, or an hour that
+  // has run out: GRIDGO refuses the next step, so none is offered. A claim
+  // hold is not one of these — Package for pickup stays, disabled, below.
+  if (shopWorkStopped(order, now)) return [];
   if (shopLetJobGo(order)) return [];
   const owed = nextShopProof(order);
 
@@ -354,12 +424,12 @@ export function actionsForJob(order: ShopOrder): SupplierAction[] {
   }
 }
 
-export function primaryAction(order: ShopOrder): SupplierAction | null {
-  return actionsForJob(order).find((a) => a.primary) ?? null;
+export function primaryAction(order: ShopOrder, now: Date = new Date()): SupplierAction | null {
+  return actionsForJob(order, now).find((a) => a.primary) ?? null;
 }
 
-export function needsSupplierAction(order: ShopOrder): boolean {
-  return actionsForJob(order).some((a) => a.primary && !a.blockedReason);
+export function needsSupplierAction(order: ShopOrder, now: Date = new Date()): boolean {
+  return actionsForJob(order, now).some((a) => a.primary && !a.blockedReason);
 }
 
 /**
@@ -384,12 +454,15 @@ export function supplierWaitingOn(
       | "payoutPlanVersion"
       | "payoutMilestones"
       | "shopAcceptance"
+      | "shopRecovery"
       | "handoverFlow"
       | "shopHandover"
       | "supplierId"
     >
   > = {},
 ): string | null {
+  const release = shopRelease({ state, ...order });
+  if (release) return `${release.title}. ${release.body}`;
   if (shopLetJobGo({ state, shopAcceptance: order.shopAcceptance })) {
     return order.shopAcceptance?.status === "timed_out"
       ? "The hour to answer this offer passed, so GRIDGO is giving it to another shop."

@@ -45,6 +45,7 @@ import { refundNeedsStaff } from "@/lib/refunds";
 import { finishedReviewWaitingCount } from "@/lib/shop-handover";
 import { buildNeedsOperations } from "@/lib/shop-changes";
 import { needsSupplierAction } from "@/lib/supplier-actions";
+import { useAcceptDeadlines } from "@/lib/use-accept-clock";
 import { readColourPriceChecks } from "@/lib/colour-pricing";
 
 type CountSource = {
@@ -217,6 +218,41 @@ export function useNavCounts(): NavCounts {
  * One reader per count. A failed read keeps the last good number: the badge
  * is a hint, and each page owns its own error copy.
  */
+/**
+ * The supplier rail's "needs action" badge. An answer hour that runs out on
+ * this screen drops the count immediately; it does not wait for a live event.
+ * A window that pauses across closed hours waits until its deadline.
+ */
+const NO_JOBS: Order[] = [];
+
+function JobsActionCount({
+  onCount,
+}: {
+  onCount: (source: NavCountKey, count: number) => void;
+}) {
+  const [jobs, setJobs] = useState<Order[] | null>(null);
+  const load = useSerializedLoad(
+    useCallback(async () => {
+      try {
+        setJobs(await listJobs());
+      } catch {
+        /* Keep the last good list, and the count derived from it. */
+      }
+    }, []),
+  );
+  useLiveReload(["jobs"], load);
+  useEffect(() => {
+    void load();
+  }, [load]);
+  const now = useAcceptDeadlines(jobs ?? NO_JOBS);
+  const count = jobs?.filter((job) => needsSupplierAction(job, now)).length;
+  useEffect(() => {
+    if (count == null) return;
+    onCount("jobs-need-action", count);
+  }, [count, onCount]);
+  return null;
+}
+
 function NavCountSource({
   source,
   pathname,
@@ -310,7 +346,9 @@ export function NavCountsProvider({
         <OrderCountsSource sources={orderSources} onCount={onCount} />
       ) : null}
       {sources.map((source) =>
-        isOrderCount(source) ? null : (
+        isOrderCount(source) ? null : source === "jobs-need-action" ? (
+          <JobsActionCount key={source} onCount={onCount} />
+        ) : (
           <NavCountSource key={source} source={source} pathname={pathname} onCount={onCount} />
         ),
       )}

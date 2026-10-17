@@ -71,7 +71,6 @@ import {
   shopChangeErrorMessage,
   type DeclineReasonId,
 } from "@/lib/order-changes";
-import { presentOrderState } from "@/lib/order-state";
 import { packagingCheck, stepRefusal } from "@/lib/packaging-readiness";
 import {
   PRODUCTION_PHOTO_COPY,
@@ -88,20 +87,25 @@ import {
   DO_NOT_PACK_YET,
   ridersPack,
   shopFinishedStep,
-  shopHandoverChip,
   shopTimelineState,
 } from "@/lib/shop-handover";
+import { AcceptWindowCard } from "@/app/supplier/_components/AcceptWindowCard";
+import { acceptWindow } from "@/lib/supplier-accept-window";
 import {
   CLAIM_HOLD_PACKING_REASON,
   actionsForJob,
   packingPhotoOwed,
+  presentSupplierJobStatus,
   productionPhotoOwed,
   shopLetJobGo,
   shopProofOutstanding,
   shopProofWords,
+  shopStopNotice,
+  shopWorkStopped,
   supplierWaitingOn,
   type SupplierAction,
 } from "@/lib/supplier-actions";
+import { useAcceptClock } from "@/lib/use-accept-clock";
 import { jobActivity, relativeTime } from "@/app/supplier/_lib/job-activity";
 
 /** The two shop photos a job takes before packing, each with its own words. */
@@ -219,6 +223,16 @@ export default function SupplierJobDetailPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const now = useAcceptClock(job);
+  const answerExpired = job != null && acceptWindow(job, now).kind === "expired";
+  const reloadedExpiry = useRef<string | null>(null);
+  useEffect(() => {
+    if (!answerExpired) return;
+    if (reloadedExpiry.current === orderId) return;
+    reloadedExpiry.current = orderId;
+    void load();
+  }, [answerExpired, load, orderId]);
 
   function openPhoto(kind: PhotoKind = "progress") {
     setActionError(null);
@@ -403,9 +417,12 @@ export default function SupplierJobDetailPage() {
     );
   }
 
-  const status = shopHandoverChip(job) ?? presentOrderState(job.state);
+  const status = presentSupplierJobStatus(job);
   const activity = jobActivity(job);
-  const actions = actionsForJob(job);
+  const actions = actionsForJob(job, now);
+  const stopped = shopWorkStopped(job, now);
+  const stop = shopStopNotice(job);
+  const answer = acceptWindow(job, now);
   const proofMilestone =
     job.payoutMilestones?.find((milestone) => milestone.code === proofStage) ?? null;
   const primary = actions.find((a) => a.primary);
@@ -421,7 +438,7 @@ export default function SupplierJobDetailPage() {
   const photos = allPhotos.filter((photo) => !proofIds.has(photo.fileId));
   const proofPhotos = allPhotos.length - photos.length;
   const photoMissing = productionPhotoMissing(job);
-  const photoOpenState = canAddProgressPhoto(job);
+  const photoOpenState = canAddProgressPhoto(job) && !stopped;
   const check = packagingCheck(job);
   const riderPacks = ridersPack(job);
   const finished = shopFinishedStep(job);
@@ -433,7 +450,7 @@ export default function SupplierJobDetailPage() {
   const photoWords = PHOTO_WORDS[photoKind];
   const notes = itemInstructions(job);
   const needsTick = primary?.kind === "accept" && hasSpecialInstructions(job);
-  const changeAllowed = canRequestChange(job);
+  const changeAllowed = canRequestChange(job) && !stopped;
   const changeRequest = currentChangeRequest(job);
   const earlierChanges = changeRequestsOf(job).filter((row) => row.id !== changeRequest?.id);
 
@@ -484,6 +501,16 @@ export default function SupplierJobDetailPage() {
           </div>
         ) : null}
 
+        {answer.kind !== "none" ? <AcceptWindowCard order={job} now={now} /> : null}
+        {stop ? (
+          <section className="border-outline-subtle bg-surface-variant flex flex-col gap-1 rounded-field border px-3 py-2">
+            <p className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+              {stop.title}
+            </p>
+            <p className="text-body text-text-secondary m-0 max-w-prose">{stop.body}</p>
+          </section>
+        ) : null}
+
         <div className="flex flex-col gap-2 border-t border-outline-subtle pt-3">
           <div
             className="flex flex-col gap-3 sm:flex-row sm:flex-wrap"
@@ -530,7 +557,7 @@ export default function SupplierJobDetailPage() {
             ))}
             <JobFilesDialog order={job} />
           </div>
-          {!primary && !secondary.length ? (
+          {!primary && !secondary.length && !stop && answer.kind !== "expired" ? (
             <p className="text-body text-text-secondary m-0">
               {waiting ??
                 "Nothing for you to do on this job right now. The timeline below shows where it has got to."}
@@ -659,7 +686,7 @@ export default function SupplierJobDetailPage() {
       */}
       <div className="grid w-full gap-3 lg:grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] lg:items-start">
         <div className="flex min-w-0 flex-col gap-3">
-          {check ? <PackagingChecklist check={check} finished={finished} /> : null}
+          {check && !stopped ? <PackagingChecklist check={check} finished={finished} /> : null}
 
           {/*
             The client's own words come before the docket: they are the part of
@@ -670,7 +697,7 @@ export default function SupplierJobDetailPage() {
             <SpecialInstructionsCard
               notes={notes}
               readAt={instructionsReadAt(job)}
-              offer={job.state === "supplier_assigned" && !shopLetJobGo(job)}
+              offer={job.state === "supplier_assigned" && !shopLetJobGo(job) && !stopped}
               onRequestChange={
                 changeAllowed && !needsTick ? () => setChangeOpen(true) : undefined
               }
@@ -826,16 +853,21 @@ export default function SupplierJobDetailPage() {
                 : `${job.payoutMilestones.length} parts of your own price, each released by Operations once they have seen the proof for that stage.`}
             </p>
             <p className="text-caption text-text-muted m-0 mb-3 max-w-prose">
-              Add as many proof photos as you like to your own stages, even after a
-              part is paid. The client sees your photos on their order too.
+              {stopped
+                ? "Proof stays as it was filed. Nothing more is added while this job is stopped."
+                : "Add as many proof photos as you like to your own stages, even after a part is paid. The client sees your photos on their order too."}
             </p>
             <MilestoneList
               order={job}
-              onAddProof={(milestone) => {
-                setActionError(null);
-                setFiledNote(null);
-                setProofStage(milestone.code);
-              }}
+              onAddProof={
+                stopped
+                  ? undefined
+                  : (milestone) => {
+                      setActionError(null);
+                      setFiledNote(null);
+                      setProofStage(milestone.code);
+                    }
+              }
               addDisabled={acting !== null}
             />
           </section>
