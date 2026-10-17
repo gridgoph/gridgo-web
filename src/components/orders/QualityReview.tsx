@@ -6,6 +6,7 @@ import { SamplePhoto, ZoomablePhoto } from "@/app/supplier/_components/SamplePho
 import { PinMap } from "@/components/riders/RiderMap";
 import { FileDownload } from "@/components/orders/EvidencePreview";
 import { ColorChip, ReadColoursPanel, useUploadedNames } from "@/components/orders/ExactColours";
+import { OpenCoverPage } from "@/components/orders/CoverSpineRecord";
 import { QaChecklistFields, type QaPanelStatus } from "@/components/orders/QaChecklist";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +26,7 @@ import {
 } from "@/lib/api/client";
 import type { Order, StoredFile } from "@/lib/api/types";
 import { colourComparisonRows, itemsWithColours, swatchNote } from "@/lib/color-targets";
+import { coverSpineComparisonRows } from "@/lib/cover-spine";
 import { orderDesignLinks } from "@/lib/design-links";
 import { fileLooksLikeImage } from "@/lib/evidence";
 import { saveRemoteFile } from "@/lib/file-save";
@@ -170,6 +172,8 @@ export function QualityReview({
     itemsWithColours(order).flatMap(({ read }) => read.map((entry) => entry.fileId)),
   );
   const colourRows = colourComparisonRows(order, (fileId) => colourNames[fileId]);
+  // A hardbound book's cover and spine, agreed at checkout, checked by eye.
+  const coverSpineRows = coverSpineComparisonRows(order);
   const money = quantityFacts(order);
   const warning = acceptedUploadWarning(loadedFiles);
   const problem = hasProblem(facts, comparison.rows);
@@ -312,6 +316,19 @@ export function QualityReview({
               <th scope="row" className="text-body text-text-secondary py-2 pr-3 [font-weight:inherit]">{row.item}</th>
               <td className="text-body text-text-secondary py-2 pr-3">{row.ordered}</td>
               <td className="text-body text-text-secondary py-2 pr-3">{row.file}</td>
+              <td className="text-body text-text-primary py-2">{row.match}</td>
+            </tr>
+          ))}
+          {coverSpineRows.map((row) => (
+            <tr key={`cover:${row.item}`} className="border-b border-outline-subtle align-top" data-testid="cover-spine-row">
+              <th scope="row" className="text-body text-text-secondary py-2 pr-3 [font-weight:inherit]">{row.item}</th>
+              <td className="text-body text-text-secondary py-2 pr-3 break-words">{row.ordered}</td>
+              <td className="text-body text-text-secondary py-2 pr-3">
+                <span className="flex flex-col gap-1">
+                  <span>{row.file}</span>
+                  {row.coverFile ? <OpenCoverPage file={row.coverFile} /> : null}
+                </span>
+              </td>
               <td className="text-body text-text-primary py-2">{row.match}</td>
             </tr>
           ))}

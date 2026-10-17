@@ -41,6 +41,7 @@ import {
 import { CheckoutPayment, checkoutPaymentLabel } from "@/components/settings/CheckoutPayment";
 import { DeliveryZones, DeliveryZonesSkeleton } from "@/components/settings/DeliveryZones";
 import { HandoverCodeSettings } from "@/components/settings/HandoverCodeSettings";
+import { CoverSpineSettings } from "@/components/settings/CoverSpineSettings";
 import { ColourDetectionSettings } from "@/components/settings/ColourDetectionSettings";
 import { RiderTrackingSettings } from "@/components/settings/RiderTrackingSettings";
 import { HubPickupSettings } from "@/components/settings/HubPickupSettings";
@@ -923,6 +924,17 @@ export function OperationalSettings() {
       />
 
       <ArtworkGuidanceSettings
+        settings={settings}
+        canEdit
+        disabled={busy}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={() => load(true)}
+      />
+
+      <CoverSpineSettings
         settings={settings}
         canEdit
         disabled={busy}
