@@ -2595,6 +2595,7 @@ export type Issue = {
   orderId: string;
   clientId: string;
   description: string;
+  /** The client's problem type: `material_quality | damage | wrong_item | delivery | other`. */
   kind: string;
   status: IssueStatus;
   consequence: string;
@@ -2604,6 +2605,156 @@ export type Issue = {
   resolvedAt: string | null;
   resolvedBy: string | null;
   resolution: string | null;
+  /**
+   * Concurrency version (gridgo-api docs/REFUNDS_AND_FAULT_API.md). Decisions,
+   * approval and resolving a decided case send it back as `expectedVersion`.
+   * Absent on issues an older API wrote; the API reads that as 1.
+   */
+  version?: number;
+  /** The client's problem photos. Staff and the client only. */
+  photoFileIds?: string[];
+  /** Staff only: what the API gathered when the problem was reported. */
+  evidenceSnapshot?: IssueEvidenceSnapshot | null;
+  faultDecision?: FaultDecision | null;
+  /** Staff only: every decision snapshot, in write order. */
+  faultDecisionHistory?: FaultDecision[];
+};
+
+/** The fixed evidence groups; each id is also a valid decision citation. */
+export type IssueEvidenceGroupId =
+  | "specification"
+  | "approvals"
+  | "file_check"
+  | "shop_qa"
+  | "rider_check"
+  | "delivery"
+  | "client_photos";
+
+export type IssueEvidenceGroup = {
+  id: IssueEvidenceGroupId | (string & {});
+  kind: string;
+  /** The captured facts. Empty, null or missing means not recorded. */
+  data: unknown;
+};
+
+/** The server's automatic structural check of an uploaded artwork file. */
+export type ArtworkUploadCheck = {
+  status: "passed" | "failed" | (string & {});
+  checkedAt: string;
+  reason: string | null;
+  message: string;
+};
+
+export type IssueEvidenceFile = {
+  fileId: string;
+  purpose?: string;
+  originalFilename?: string;
+  detectedContentType?: string | null;
+  size?: number;
+  contentSha256?: string;
+  state?: string;
+  createdAt?: string;
+  readyAt?: string | null;
+  artworkCheck?: ArtworkUploadCheck | null;
+  detected?: DetectedArtwork;
+  /** Not recorded, deleted, or not an evidence file: never proof of anything. */
+  unavailable: boolean;
+};
+
+export type IssueEvidenceSnapshot = {
+  version: number;
+  capturedAt: string;
+  groups: IssueEvidenceGroup[];
+  files: IssueEvidenceFile[];
+};
+
+export type FaultParty = "shop" | "rider" | "gridgo" | "client";
+export type FaultRemedy =
+  | "reprint"
+  | "replacement"
+  | "partial_refund"
+  | "full_refund"
+  | "none";
+
+/**
+ * Operations' recorded finding on a problem report. A human record: it moves
+ * no money and changes no claim. Funding and staff identity are staff only.
+ */
+export type FaultDecision = {
+  id: string;
+  fault: FaultParty | (string & {});
+  remedy: FaultRemedy | (string & {});
+  reason: string;
+  evidenceIds?: string[];
+  alternativesReason?: string | null;
+  costMinor?: number;
+  gridgoCostMinor?: number;
+  recordedBy?: string;
+  recordedAt: string;
+  status: "approved" | "awaiting_approval" | (string & {});
+  approvedBy?: string;
+  approvedAt?: string;
+  approvalReason?: string;
+};
+
+// ---- Shop performance (gridgo-api docs/SUPPLIER_PERFORMANCE_API.md) ----
+
+export type PerformanceEventKind =
+  | "late_finish"
+  | "on_time_finish"
+  | "declined"
+  | "timed_out"
+  | "cancelled"
+  | "arrived_packed"
+  | "no_fault";
+
+export type PerformanceTier = "minor" | "moderate" | "severe";
+
+export type PerformanceEvent = {
+  id: string;
+  orderId: string;
+  kind: PerformanceEventKind | (string & {});
+  /** When it happened. */
+  at: string;
+  /** When the API wrote it down. */
+  recordedAt: string;
+  reason: string | null;
+  reasonCode: string | null;
+  /** The written notice; null for outcomes that sent none. */
+  message: string | null;
+  tier: PerformanceTier | (string & {}) | null;
+  deadlineAt: string | null;
+  hoursLate: number | null;
+  workingLateMs: number | null;
+  graceMinutes: number | null;
+  exempt: boolean;
+  exemptionReason: string | null;
+  warningCodes: string[];
+  active: boolean;
+};
+
+export type SupplierPerformance = {
+  supplierId: string;
+  asOf: string;
+  policy: "warnings_only" | (string & {});
+  windowDays: number;
+  graceMinutes: number;
+  counts: {
+    declines: number;
+    timeouts: number;
+    lateFinishes: number;
+    cancellations: number;
+    arrivedPacked: number;
+  };
+  rosterReview: boolean;
+  topPick: { hidden: boolean; hiddenUntil: string | null; allHiddenFallback: boolean };
+  onTime: { completed: number; onTime: number; late: number; rate: number | null };
+  /** Warnings recorded in the last `windowDays`, newest first. */
+  warnings: PerformanceEvent[];
+  /** Every written late-finish notice, newest first. */
+  notices: PerformanceEvent[];
+  /** Every recorded outcome, incident and no-fault declaration, newest first. */
+  events: PerformanceEvent[];
 };
 
 // ---- Audit ----

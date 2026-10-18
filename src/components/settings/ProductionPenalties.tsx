@@ -10,8 +10,9 @@
  * The card saves on its own, not with "Save settings", so a rate change is
  * never carried along with an unrelated edit. Both go through the same `expectedVersion`
  * handshake. The switch saves the moment it is confirmed, with the rates in
- * force, because it is the one control here that moves real money: turning
- * it on says so in a dialog that cannot be confirmed by reflex.
+ * force. Since the warnings-only decision (gridgo-api#223, decision B) the
+ * API takes no new deduction whatever the switch says, so only turning it
+ * off is offered.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -57,11 +58,10 @@ import { cn } from "@/lib/utils";
 
 export const PENALTY_COPY = (
   <>
-    What a shop loses when it marks a job ready after its ready-by time. Every late job
-    gets a warning first that explains the penalty. A deduction comes off what GRIDGO
-    still owes the shop on that one order, never more than that, and nothing carries over
-    to another order. Recent late jobs also lower the shop&rsquo;s quality ranking in
-    matching.
+    The rates from before late jobs became warnings only. No new late job takes money
+    from a shop, whatever these say: each late finish is a written notice on the
+    shop&rsquo;s performance record. Deductions already applied stay as they were. Recent
+    late jobs still lower the shop&rsquo;s quality ranking in matching.
   </>
 );
 
@@ -198,22 +198,25 @@ export function ProductionPenalties({
             Real deductions from shop payouts
           </span>
           <span className="text-body text-text-secondary max-w-prose">
+            {/* Warnings only since gridgo-api#223 decision B: the API takes no
+                new deduction whatever this says (SUPPLIER_PERFORMANCE_API.md). */}
             {stored.deductionsEnabled
-              ? "On. A late job that began with this on loses its tier's share of what the shop is still owed on it."
-              : "Off. A late job is warned and its ranking drops, but no money is taken. A lapse that begins while this is off stays a warning, even after it is turned on."}
+              ? "Left on, but it no longer takes money: late jobs are warnings only. Turn it off so the setting says what happens."
+              : "Off. Late jobs are warnings only and no money is taken. Deductions cannot come back without a separate release."}
           </span>
         </div>
         <div className="flex items-center gap-3">
           <StatusChip
             tone={stored.deductionsEnabled ? "warning" : "neutral"}
             icon={stored.deductionsEnabled ? "triangle-alert" : "circle-dashed"}
-            label={stored.deductionsEnabled ? "Deducting" : "Warnings only"}
+            label={stored.deductionsEnabled ? "Left on" : "Warnings only"}
           />
           {canEdit ? (
             <Switch
               id="penalty-deductions"
               checked={stored.deductionsEnabled}
-              disabled={locked}
+              // Only turning it off is offered: the API ignores it being on.
+              disabled={locked || !stored.deductionsEnabled}
               onCheckedChange={(checked) => {
                 setUnderstood(false);
                 setConfirm(checked ? "on" : "off");
@@ -249,7 +252,7 @@ export function ProductionPenalties({
         {formatPhp(PENALTY_EXAMPLE_BALANCE_MINOR)} still owed to the shop, rounded half-up
         to the centavo.
         {canEdit
-          ? " New rates apply to lapses that begin after saving."
+          ? " Saving keeps them on file; it charges no shop."
           : " Only Super Admin changes these."}
       </p>
 

@@ -191,6 +191,15 @@ export function notificationHref(role: Role, notification: Notification): string
     if (role === "ops_admin") return `/ops/supplier-invoices?order=${order}`;
   }
 
+  // A shop performance notice names only its order (SUPPLIER_PERFORMANCE_API.md):
+  // staff land on the list, which opens the shop holding that order. The
+  // shop's own copy falls through to its job.
+  if (type === "supplier_performance_notice" && notification.orderId) {
+    const order = encodeURIComponent(notification.orderId);
+    if (role === "super_admin") return `/admin/shop-performance?order=${order}`;
+    if (role === "ops_admin") return `/ops/shop-performance?order=${order}`;
+  }
+
   if (type === "ops_issue_report_filed") {
     if (role === "super_admin") return "/admin/issue-reports";
     if (role === "ops_admin") return "/ops/issue-reports";
