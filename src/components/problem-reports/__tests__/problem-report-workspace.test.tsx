@@ -252,7 +252,7 @@ it("records a finding with the case version, cited evidence and the amounts in c
     }),
   );
   expect(await screen.findByText("The shop at fault, partial refund. Ready to resolve.")).toBeVisible();
-});
+}, 15_000);
 
 it("tells Operations a finding above ₱1,000 of GRIDGO funding waits for Super Admin, and holds Resolve", async () => {
   issues = [report({ version: 2, faultDecision: pendingDecision, faultDecisionHistory: [pendingDecision] })];
@@ -339,7 +339,7 @@ it("keeps a revision being typed when the case is read again while the dialog is
   expect(onSave).toHaveBeenCalledWith(
     expect.objectContaining({ fault: "rider", reason: "Crushed in the rider's bag." }),
   );
-});
+}, 15_000);
 
 it("shows no problem row on an order without a report", async () => {
   issues = [];

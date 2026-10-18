@@ -332,6 +332,7 @@ export default function OpsRecoveryPage() {
                   <DataTableRowAction
                     label="Resolve"
                     icon={CheckCircle}
+                    disabled={issue?.faultDecision?.status === "awaiting_approval"}
                     onClick={() => {
                       if (issue) {
                         setResolveTarget(issue);
