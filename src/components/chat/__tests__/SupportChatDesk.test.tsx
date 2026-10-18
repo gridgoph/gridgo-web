@@ -575,6 +575,57 @@ describe("SupportChatDesk", () => {
       "Today",
     ]);
   });
+
+  it("shows a teammate's reply when it is the conversation's latest message", async () => {
+    const answered = {
+      ...thread,
+      lastMessageAt: "2026-09-20T05:12:00.000Z",
+      lastMessagePreview: "Thank you, we'll take a look into this.",
+      lastMessageSenderRole: "ops_admin" as const,
+      unreadCount: 0,
+    };
+    listSupportChatThreads.mockResolvedValue([answered]);
+    getSupportChatThread.mockResolvedValue({
+      thread: answered,
+      messages: [
+        deskLine({ id: "ask", body: "The colours look off.", createdAt: "2026-09-20T04:44:00.000Z" }),
+        {
+          ...deskLine({
+            id: "teammate",
+            body: "Thank you, we'll take a look into this.",
+            createdAt: "2026-09-20T05:12:00.000Z",
+          }),
+          senderUserId: "user_teammate",
+          senderRole: "ops_admin" as const,
+          senderName: "Rina Ops",
+          senderImageUrl: "https://img.clerk.com/rina.jpg",
+        },
+      ],
+    });
+    render(<SupportChatDesk />);
+    const runs = await screen.findAllByTestId("chat-run");
+    expect(runs).toHaveLength(2);
+    expect(runs[0]).toHaveAttribute("data-side", "incoming");
+    expect(runs[0]).toHaveTextContent("The colours look off.");
+    expect(runs[1]).toHaveAttribute("data-side", "outgoing");
+    expect(runs[1]).toHaveTextContent("Rina Ops");
+    expect(runs[1]).not.toHaveTextContent("You");
+    expect(runs[1]).toHaveTextContent("Thank you, we'll take a look into this.");
+    expect(within(runs[1]!).getByTestId("chat-bubble")).not.toHaveClass(
+      "bg-[var(--color-action-yellow)]",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Conversation details" }));
+    expect(screen.getByText("Media & files")).toBeTruthy();
+    expect(screen.queryByLabelText("Ana Client, profile photo")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Search in conversation" }));
+    fireEvent.change(await screen.findByLabelText("Search this chat"), {
+      target: { value: "look" },
+    });
+    const when = formatDateTime("2026-09-20T05:12:00.000Z");
+    expect(
+      await screen.findByLabelText(`Rina Ops, Thank you, we'll take a look into this., ${when}`),
+    ).toBeTruthy();
+  });
 });
 
 function deskLine({

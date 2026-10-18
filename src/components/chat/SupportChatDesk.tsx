@@ -711,7 +711,7 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
                 <ChatTranscript
                   messages={messages}
                   party={{ kind: "person", userId: selected.key }}
-                  otherName={(message) => message.senderName || roleLabel(selectedPerson.role)}
+                  otherName={(message) => message.senderName || roleLabel(message.senderRole)}
                 />
               )}
               <div ref={endRef} />
@@ -757,7 +757,9 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
           <ConversationDetails
             name={selectedPerson.name}
             subtitle={[roleLabel(selectedPerson.role), selectedPerson.email].filter(Boolean).join(" · ")}
-            imageUrl={messages.find((message) => !message.mine)?.senderImageUrl}
+            imageUrl={
+              messages.find((message) => message.senderUserId === selected.key)?.senderImageUrl
+            }
             searchValue={messageQuery}
             onSearchValueChange={setMessageQuery}
             searchResults={searchResults}

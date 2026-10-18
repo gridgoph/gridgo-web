@@ -28,14 +28,14 @@ export type ChatRun = {
 export type ChatTranscriptItem = ChatDayChip | ChatRun;
 
 /**
- * `null` when the sender is neither the viewer (`mine`) nor this thread's other party.
- * That line is left unplaced: it is not the client's side, and it is not a third column.
+ * The party's lines come in; everything else is the viewer's side. On the desk that
+ * includes a teammate's reply: it is the desk answering, so it sits with the viewer's
+ * lines under the teammate's name, never dropped.
  */
-export function transcriptSide(message: SupportChatMessage, party: ChatParty): ChatSide | null {
+export function transcriptSide(message: SupportChatMessage, party: ChatParty): ChatSide {
   if (message.mine) return "outgoing";
   if (party.kind === "operations") return "incoming";
-  if (message.senderUserId === party.userId) return "incoming";
-  return null;
+  return message.senderUserId === party.userId ? "incoming" : "outgoing";
 }
 
 export function chatDayKey(iso: string): string {
@@ -70,19 +70,13 @@ export function buildChatTranscript(
   party: ChatParty,
   otherName: (message: SupportChatMessage) => string,
   now = new Date(),
-): { items: ChatTranscriptItem[]; unplaced: SupportChatMessage[] } {
+): { items: ChatTranscriptItem[] } {
   const items: ChatTranscriptItem[] = [];
-  const unplaced: SupportChatMessage[] = [];
   let dayKey: string | null = null;
   let run: ChatRun | null = null;
 
   for (const message of messages) {
     const side = transcriptSide(message, party);
-    if (!side) {
-      unplaced.push(message);
-      run = null;
-      continue;
-    }
     const key = chatDayKey(message.createdAt);
     if (key !== dayKey) {
       dayKey = key;
@@ -102,7 +96,7 @@ export function buildChatTranscript(
       key: message.id,
       side,
       senderUserId: message.senderUserId,
-      name: side === "outgoing" ? "You" : otherName(message),
+      name: message.mine ? "You" : otherName(message),
       imageUrl: message.senderImageUrl ?? null,
       timeIso: message.createdAt,
       messages: [message],
@@ -110,5 +104,5 @@ export function buildChatTranscript(
     items.push(run);
   }
 
-  return { items, unplaced };
+  return { items };
 }
