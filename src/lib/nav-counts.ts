@@ -37,6 +37,11 @@ export const NAV_COUNT_MEANING: Record<NavCountKey, CountMeaning> = {
   },
   "claims-open": { phrase: (count) => `${compactCount(count)} open`, attention: false },
   "chat-unread": { phrase: (count) => `${compactCount(count)} unread`, attention: false },
+  // Unread messages across order conversations; no order waits on reading them.
+  "order-chats-unread": {
+    phrase: (count) => `${compactCount(count)} unread`,
+    attention: false,
+  },
   "issue-reports-new": {
     phrase: (count) => `${compactCount(count)} new`,
     attention: false,

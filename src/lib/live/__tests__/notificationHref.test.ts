@@ -230,6 +230,22 @@ describe("notificationHref", () => {
     expect(notificationHref("super_admin", row)).not.toMatch(/^\/ops\//);
   });
 
+  it("opens an order conversation notice on Order chats with that order open", () => {
+    for (const type of [
+      "client_shop_chat_activity",
+      "client_shop_chat_reported",
+      "client_shop_chat_flagged",
+    ]) {
+      const row = note({ type, orderId: "ord_1" });
+      expect(notificationHref("ops_admin", row)).toBe("/ops/order-chats?order=ord_1");
+      expect(notificationHref("super_admin", row)).toBe("/admin/order-chats?order=ord_1");
+    }
+    // An approval record opens its order, where the Client approval row shows it.
+    const approval = note({ type: "order_approval_recorded", orderId: "ord_1" });
+    expect(notificationHref("ops_admin", approval)).toBe("/ops/orders/ord_1");
+    expect(notificationHref("super_admin", approval)).toBe("/admin/orders/ord_1");
+  });
+
   it("opens role events on the Super Admin roles desk", () => {
     const privileged = note({ type: "privileged_role_changed" });
     expect(notificationHref("super_admin", privileged)).toBe("/admin/roles");

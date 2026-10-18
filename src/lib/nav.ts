@@ -53,6 +53,7 @@ export type NavIconKey =
   | "seasons"
   | "broadcast"
   | "chat"
+  | "order-chats"
   | "account-deletion"
   | "reports"
   | "tracker"
@@ -118,6 +119,7 @@ export type NavCountKey =
   | "escalations-open"
   | "claims-open"
   | "chat-unread"
+  | "order-chats-unread"
   | "issue-reports-new"
   | "jobs-need-action"
   | "tracker-needs-decision"
@@ -284,6 +286,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "chat-unread",
+        },
+        {
+          id: "ops-order-chats",
+          href: "/ops/order-chats",
+          label: "Order chats",
+          title: "Order chats",
+          icon: "order-chats",
+          ready: true,
+          placeholderBody: "",
+          count: "order-chats-unread",
         },
         { id: "ops-account-deletion", href: "/ops/account-deletion", label: "Account deletion", title: "Account deletion", icon: "account-deletion", ready: true, placeholderBody: "" },
         {
@@ -599,6 +611,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "chat-unread",
+        },
+        {
+          id: "admin-order-chats",
+          href: "/admin/order-chats",
+          label: "Order chats",
+          title: "Order chats",
+          icon: "order-chats",
+          ready: true,
+          placeholderBody: "",
+          count: "order-chats-unread",
         },
         { id: "admin-account-deletion", href: "/admin/account-deletion", label: "Account deletion", title: "Account deletion", icon: "account-deletion", ready: true, placeholderBody: "" },
         {

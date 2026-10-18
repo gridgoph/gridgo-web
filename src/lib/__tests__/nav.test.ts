@@ -44,6 +44,7 @@ describe("ROLE_NAV", () => {
     expect(hrefs).toEqual([
       "/ops/overview",
       "/ops/chat",
+      "/ops/order-chats",
       "/ops/account-deletion",
       "/ops/issue-reports",
       "/ops/orders",
@@ -79,6 +80,7 @@ describe("ROLE_NAV", () => {
     expect(hrefs).toEqual([
       "/admin/overview",
       "/admin/chat",
+      "/admin/order-chats",
       "/admin/account-deletion",
       "/admin/issue-reports",
       "/admin/survey-responses",
@@ -145,6 +147,7 @@ describe("ROLE_NAV", () => {
       "/admin/late-production",
       "/admin/legal",
       "/admin/listing-reviews",
+      "/admin/order-chats",
       "/admin/organizations",
       "/admin/overview",
       "/admin/planning",
@@ -179,6 +182,7 @@ describe("ROLE_NAV", () => {
       "/ops/late-production",
       "/ops/legal",
       "/ops/listing-reviews",
+      "/ops/order-chats",
       "/ops/orders",
       "/ops/organizations",
       "/ops/overview",
@@ -252,6 +256,7 @@ describe("ROLE_NAV", () => {
     expect(ROLE_NAV_GROUPS.ops_admin[0]?.items.map((n) => n.href)).toEqual([
       "/ops/overview",
       "/ops/chat",
+      "/ops/order-chats",
       "/ops/account-deletion",
       "/ops/issue-reports",
     ]);
@@ -303,6 +308,7 @@ describe("ROLE_NAV", () => {
     ).toEqual([
       "/admin/overview",
       "/admin/chat",
+      "/admin/order-chats",
       "/admin/account-deletion",
       "/admin/issue-reports",
       "/admin/survey-responses",

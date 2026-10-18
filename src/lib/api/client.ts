@@ -14,6 +14,10 @@ import { withRequestDeadline } from "@/lib/api/requestDeadline";
 
 import type {
   AccountDeletionRequest,
+  ApprovalProofRead,
+  ClientShopChatList,
+  ClientShopChatPosted,
+  ClientShopChatRead,
   Voucher,
   VoucherCampaign,
   VoucherCampaignInput,
@@ -3728,4 +3732,95 @@ export async function collectSupplierInvoice(
     `/ops/finance/supplier-invoices/${encodeURIComponent(orderId)}/collect`,
     { method: "POST", body: JSON.stringify({ expectedVersion }) },
   );
+}
+
+/* ----------------------------------------------------------------------------
+ * Masked client–shop order conversation (gridgo-api
+ * docs/ORDER_CLIENT_SHOP_CHAT_API.md). Operations and Super Admin read every
+ * thread with the original text and reports, and post as "GRIDGO".
+ * -------------------------------------------------------------------------- */
+
+const CLIENT_SHOP_CHAT_PAGE = 100;
+
+/**
+ * The whole conversation, every page in order. Each read marks only the
+ * messages it returned as read, so the first page's `chat.unread` is the
+ * count before this visit.
+ */
+export async function getClientShopChat(orderId: string): Promise<ClientShopChatRead> {
+  const path = `/orders/${encodeURIComponent(orderId)}/client-shop-chat`;
+  const first = await request<ClientShopChatRead>(
+    `${path}${buildQuery({ limit: CLIENT_SHOP_CHAT_PAGE })}`,
+  );
+  const messages = [...(first.messages ?? [])];
+  let after = first.nextAfter;
+  let latest = first;
+  while (after) {
+    latest = await request<ClientShopChatRead>(
+      `${path}${buildQuery({ limit: CLIENT_SHOP_CHAT_PAGE, after })}`,
+    );
+    messages.push(...(latest.messages ?? []));
+    after = latest.nextAfter;
+  }
+  return {
+    chat: first.chat,
+    messages,
+    nextAfter: null,
+    reports: latest.reports ?? first.reports ?? [],
+  };
+}
+
+/** Staff post into the thread; the API labels it "GRIDGO". */
+export async function postClientShopChatMessage(
+  orderId: string,
+  body: string,
+  attachmentFileIds: string[] = [],
+): Promise<ClientShopChatPosted> {
+  return request<ClientShopChatPosted>(
+    `/orders/${encodeURIComponent(orderId)}/client-shop-chat/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify({ body, attachmentFileIds }),
+    },
+  );
+}
+
+/** Ops / Super Admin. Conversations with messages, newest activity first. */
+export async function listClientShopChats(
+  filter: { flagged?: boolean; limit?: number; offset?: number } = {},
+): Promise<ClientShopChatList> {
+  const result = await request<ClientShopChatList>(
+    `/ops/client-shop-chats${buildQuery({
+      flagged: filter.flagged ? 1 : undefined,
+      limit: filter.limit,
+      offset: filter.offset,
+    })}`,
+  );
+  return { threads: result.threads ?? [], nextOffset: result.nextOffset ?? null };
+}
+
+/** JPEG, PNG, WebP or PDF; images come back re-encoded without metadata. */
+export async function uploadClientShopChatAttachment(file: File): Promise<StoredFile> {
+  return uploadPurpose("client_shop_chat_attachment", file);
+}
+
+/* ----------------------------------------------------------------------------
+ * Approval proof (gridgo-api docs/APPROVAL_PROOF_API.md).
+ * -------------------------------------------------------------------------- */
+
+/** Every frozen record for the order, plus the current review candidate. */
+export async function getApprovalProof(orderId: string): Promise<ApprovalProofRead> {
+  const result = await request<ApprovalProofRead>(
+    `/orders/${encodeURIComponent(orderId)}/approval-proof`,
+  );
+  return {
+    requirement: result.requirement ?? null,
+    approvalProofs: result.approvalProofs ?? [],
+    review: result.review,
+  };
+}
+
+/** The rendered PDF of every record. `404 approval_proof_not_found` when none. */
+export async function downloadApprovalProof(orderId: string): Promise<Blob> {
+  return requestBlob(`/orders/${encodeURIComponent(orderId)}/approval-proof/download`);
 }

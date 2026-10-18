@@ -19,6 +19,7 @@ import {
   listApprovalCases,
   listCatalogReviews,
   listClaims,
+  listClientShopChats,
   listColourPriceChecks,
   listEscalations,
   listIssueReports,
@@ -119,6 +120,18 @@ const NAV_COUNT_SOURCES: Record<Exclude<NavCountKey, OrderCountKey>, CountSource
     load: async () =>
       (await listSupportChatThreads()).reduce(
         (total, thread) => total + Math.max(0, thread.unreadCount ?? 0),
+        0,
+      ),
+  },
+  // Unread order-conversation messages, over the newest 100 conversations:
+  // past that the badge is a floor and the desk has the rest.
+  "order-chats-unread": {
+    resources: ["chat"],
+    // Reading a thread marks it read without a ping, like support chat.
+    refreshOnNavigate: true,
+    load: async () =>
+      (await listClientShopChats({ limit: 100 })).threads.reduce(
+        (total, thread) => total + Math.max(0, thread.unread ?? 0),
         0,
       ),
   },

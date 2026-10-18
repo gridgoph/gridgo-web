@@ -1223,6 +1223,18 @@ export type Order = {
   /** Verified change payments on top of the checkout total. Absent until one is confirmed. */
   supplementalTotalMinor?: number;
   totalIncludingSupplementsMinor?: number;
+  /**
+   * The masked client–shop conversation's window (gridgo-api
+   * `docs/ORDER_CLIENT_SHOP_CHAT_API.md`). Counts live on the conversation
+   * read, never here. Absent for riders and other shops.
+   */
+  clientShopChat?: ClientShopChatWindow | null;
+  /**
+   * What the client approved (gridgo-api `docs/APPROVAL_PROOF_API.md`): a
+   * summary only; the full records come from `getApprovalProof`. Absent for
+   * riders and for parties the API does not let read it.
+   */
+  approvalProof?: OrderApprovalProofSummary | null;
 };
 
 // ---- Special instructions and change requests (gridgo-api docs/ORDER_CHANGES_API.md) ----
@@ -3980,4 +3992,207 @@ export type SupplierInvoiceMonth = {
 export type SupplierInvoiceEnvelope = {
   invoice: SupplierInvoice;
   reminder: string;
+};
+
+/* --------------------------------------------------------------------------
+ * Masked client–shop order conversation (gridgo-api
+ * `docs/ORDER_CLIENT_SHOP_CHAT_API.md`). Participants are labels only, never
+ * names; staff alone receive the original text and the reports.
+ * ------------------------------------------------------------------------ */
+
+export type ClientShopChatStatus = "open" | "read_only" | "unavailable";
+
+export type ClientShopChatLabel = "Client" | "Print shop" | "GRIDGO";
+
+export type ClientShopChatWindow = {
+  status: ClientShopChatStatus;
+  /** The order's snapshotted complaint-window end; null until delivery sets it. */
+  closesAt: string | null;
+  participants: ClientShopChatLabel[];
+  /** Beside the composer: chat never changes price, specification or deadline. */
+  reminder: string;
+};
+
+export type ClientShopChatState = ClientShopChatWindow & {
+  /** Messages from others the caller had not read before this read. */
+  unread: number;
+  /** Staff: the whole thread's attempts. A party: its own. */
+  contactAttempts: number;
+  warning?: string;
+  /** Staff only. */
+  flaggedAt?: string | null;
+  reportCount?: number;
+  contactThreshold?: number;
+};
+
+export type ClientShopChatAttachment = {
+  fileId: string;
+  contentType: string;
+  size: number;
+  /** Always "image.png" or "document.pdf"; the real name is never kept. */
+  originalFilename: string;
+};
+
+export type ClientShopChatMessage = {
+  id: string;
+  senderLabel: ClientShopChatLabel;
+  /** Masked: what the client and the shop read. */
+  body: string;
+  mine: boolean;
+  createdAt: string;
+  attachments: ClientShopChatAttachment[];
+  /** Staff only: what the sender typed, kept as evidence. */
+  originalBody?: string;
+  /** Staff only: the message carried at least one recognised contact. */
+  contactAttempt?: boolean;
+};
+
+export type ClientShopChatReportReason =
+  | "contact_sharing"
+  | "inappropriate"
+  | "change_request"
+  | "other";
+
+export type ClientShopChatReport = {
+  id: string;
+  messageId: string;
+  reporterLabel: ClientShopChatLabel;
+  reason: ClientShopChatReportReason | (string & {});
+  createdAt: string;
+};
+
+export type ClientShopChatRead = {
+  chat: ClientShopChatState;
+  messages: ClientShopChatMessage[];
+  nextAfter: string | null;
+  /** Staff only. */
+  reports?: ClientShopChatReport[];
+};
+
+export type ClientShopChatPosted = {
+  chat: ClientShopChatState;
+  message: ClientShopChatMessage;
+  warning?: string;
+};
+
+export type ClientShopChatListEntry = ClientShopChatState & {
+  orderId: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ClientShopChatList = {
+  threads: ClientShopChatListEntry[];
+  nextOffset: number | null;
+};
+
+/* --------------------------------------------------------------------------
+ * Approval proof (gridgo-api `docs/APPROVAL_PROOF_API.md`). Records are
+ * append-only; `legacy_unrecorded` means no approval was collected.
+ * ------------------------------------------------------------------------ */
+
+export type ApprovalMethod = "drawn" | "one_tap";
+
+export type ApprovalRequirement = {
+  version: number;
+  required: boolean;
+  method: ApprovalMethod;
+};
+
+export type ApprovalProofRecordSummary = {
+  id: string;
+  phase: "checkout" | "sample";
+  status: "approved" | "legacy_unrecorded";
+  method: ApprovalMethod | null;
+  at: string;
+  snapshotSha256: string;
+};
+
+export type OrderApprovalProofSummary = {
+  requirement: ApprovalRequirement | null;
+  records: ApprovalProofRecordSummary[];
+  readUrl: string;
+  downloadUrl: string;
+};
+
+export type ApprovalSnapshotOption = {
+  groupNameSnapshot?: string;
+  optionLabelSnapshot?: string;
+  groupKindSnapshot?: string;
+};
+
+/** One agreed line, frozen. Fields a historical snapshot lacks stay absent. */
+export type ApprovalSnapshotItem = {
+  id?: string;
+  itemNameSnapshot?: string;
+  descriptionSnapshot?: string | null;
+  quantity?: number;
+  quantityMode?: string | null;
+  measurement?: OrderLineMeasurement | null;
+  documentPages?: unknown;
+  options?: ApprovalSnapshotOption[];
+  artworkFileId?: string | null;
+  artworkLinks?: ArtworkLink[];
+  specialInstructions?: string | null;
+  artworkGuidance?: { files?: { fileId?: string; warnings?: ArtworkGuidanceWarning[] }[] } | null;
+  colorTargets?: unknown[] | null;
+  printLayout?: unknown;
+  coverSpine?: unknown;
+  colourPricing?: unknown;
+};
+
+export type ApprovalSnapshotQuoteLine = {
+  label?: string;
+  quantity?: number;
+  size?: string;
+  material?: string;
+  finish?: string;
+  specialInstructions?: string | null;
+};
+
+export type ApprovalSnapshotArtwork = {
+  fileId: string;
+  contentSha256?: string;
+  originalFilename?: string;
+  detectedContentType?: string;
+  size?: number;
+};
+
+export type ApprovalSnapshot = {
+  orderId: string;
+  basketId?: string | null;
+  quoteVersion?: number | null;
+  sampleRoundAt?: string | null;
+  quoteLines?: ApprovalSnapshotQuoteLine[];
+  items?: ApprovalSnapshotItem[];
+  specification?: {
+    title?: string;
+    quantity?: number;
+    size?: string;
+    material?: string;
+    finish?: string;
+    specialInstructions?: string | null;
+    artworkLinks?: ArtworkLink[];
+  };
+  artwork?: ApprovalSnapshotArtwork[];
+};
+
+export type ApprovalProofRecord = ApprovalProofRecordSummary & {
+  version: number;
+  account: { id?: string; name?: string | null; email?: string | null; accountType?: string | null } | null;
+  device: { id?: string; platform?: string; appVersion?: string } | null;
+  userAgent: string | null;
+  statement: string | null;
+  signatureFileId: string | null;
+  samplePhotoFileId: string | null;
+  evidence: { fileId: string; purpose?: string; contentSha256?: string; detectedContentType?: string; size?: number }[];
+  sampleRoundAt: string | null;
+  snapshot: ApprovalSnapshot;
+};
+
+export type ApprovalProofRead = {
+  requirement: ApprovalRequirement | null;
+  approvalProofs: ApprovalProofRecord[];
+  /** The current review candidate: not signed evidence. */
+  review: { snapshot: ApprovalSnapshot; snapshotSha256: string };
 };
