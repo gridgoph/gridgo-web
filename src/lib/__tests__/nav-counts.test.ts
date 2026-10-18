@@ -82,6 +82,7 @@ describe("rail counts", () => {
       supplier: ["supplier-jobs:jobs-need-action"],
       ops_admin: [
         "ops-chat:chat-unread",
+        "ops-order-chats:order-chats-unread",
         "ops-issue-reports:issue-reports-new",
         "ops-orders:orders-waiting",
         "ops-finished-work:finished-work-waiting",
@@ -95,6 +96,7 @@ describe("rail counts", () => {
       ],
       super_admin: [
         "admin-chat:chat-unread",
+        "admin-order-chats:order-chats-unread",
         "admin-issue-reports:issue-reports-new",
         "admin-verification:signups-waiting",
         "admin-listing-reviews:listing-reviews-waiting",

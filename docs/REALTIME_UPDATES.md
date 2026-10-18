@@ -149,6 +149,15 @@ alert: the chime, the toast and (when on) the desktop alert. A file-check queue 
 already open re-reads on the `orders` invalidation and marks the newly arrived row **New**
 with a polite screen-reader announcement.
 
+Client–shop order conversation notices (`client_shop_chat_activity`,
+`client_shop_chat_reported`, `client_shop_chat_flagged`; gridgo-api
+`docs/ORDER_CLIENT_SHOP_CHAT_API.md`) open the Order chats desk with that conversation
+open: `/ops/order-chats?order=:id` or `/admin/order-chats?order=:id`. Staff receive a
+`chat` invalidation for the order on every message and report; the desk, the open thread,
+the workspace's Client and shop chat row and the rail's unread count re-read on it. An
+approval record (`order_approval_recorded`) opens its order, where the Client approval row
+shows it.
+
 A listing take-down or restore (`listing_suspended`, `listing_restored`) reaches only the
 owning shop and opens that listing's editor (`/supplier/catalogue/:catalogItemId`), or the
 catalogue when the notice has no id. The API addresses catalogue invalidation to the shop,
