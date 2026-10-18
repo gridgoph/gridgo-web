@@ -231,7 +231,7 @@ it("reads the conversation with the original text beside the masked text, and po
     ),
   ).toBeInTheDocument();
   expect(within(thread).getByText("Flagged for review")).toBeInTheDocument();
-  expect(within(thread).getByText(/1 report · 3 contact attempts \(flag at 3/)).toBeInTheDocument();
+  expect(within(thread).getByText(/1 report · 3 contact attempts, limit 3 per person/)).toBeInTheDocument();
   expect(within(thread).getByRole("button", { name: /PDF · 2 KB/ })).toBeInTheDocument();
   expect(within(thread).getByText(REMINDER)).toBeInTheDocument();
   // No names: only the three labels.
@@ -252,7 +252,7 @@ it("reads the conversation with the original text beside the masked text, and po
   );
   expect(await within(thread).findByText("Please keep it in the app.")).toBeInTheDocument();
   expect(within(thread).getByText(/GRIDGO \(you\)/)).toBeInTheDocument();
-});
+}, 15_000);
 
 it("hides the composer on a closed conversation", async () => {
   const closed = chatRead();

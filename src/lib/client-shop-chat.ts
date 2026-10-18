@@ -89,7 +89,7 @@ export function chatFlagReasons(chat: ClientShopChatState): string[] {
     const attempts =
       chat.contactAttempts === 1 ? "1 contact attempt" : `${chat.contactAttempts} contact attempts`;
     reasons.push(
-      chat.contactThreshold ? `${attempts} (flag at ${chat.contactThreshold} from one sender)` : attempts,
+      chat.contactThreshold ? `${attempts}, limit ${chat.contactThreshold} per person` : attempts,
     );
   }
   return reasons;

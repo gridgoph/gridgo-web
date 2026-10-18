@@ -270,10 +270,14 @@ export function OrderChatThread({
   // Staff hear about every message and report as a `chat` invalidation for the order.
   useLiveReload(["chat"], load, { matchId: orderId });
 
+  // Keep the newest message in view: on each new message, and when a photo
+  // finishes loading below it, unless the reader has scrolled up.
+  const pinned = useRef(true);
   const messageCount = read?.messages.length ?? 0;
   useEffect(() => {
     const box = transcriptRef.current;
     if (box) box.scrollTop = box.scrollHeight;
+    pinned.current = true;
   }, [messageCount]);
 
   function addFiles(list: FileList | null) {
@@ -396,6 +400,14 @@ export function OrderChatThread({
         )}
         role="log"
         aria-label="Client and shop conversation"
+        onScroll={(event) => {
+          const box = event.currentTarget;
+          pinned.current = box.scrollHeight - box.scrollTop - box.clientHeight < 80;
+        }}
+        onLoadCapture={() => {
+          const box = transcriptRef.current;
+          if (box && pinned.current) box.scrollTop = box.scrollHeight;
+        }}
       >
         {messages.length === 0 ? (
           <p className="text-body text-text-muted m-0">No messages yet.</p>

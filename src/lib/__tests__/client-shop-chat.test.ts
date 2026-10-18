@@ -60,7 +60,7 @@ describe("flags", () => {
       chatFlagReasons(
         state({ reportCount: 2, contactAttempts: 4, contactThreshold: 3, flaggedAt: "x" }),
       ),
-    ).toEqual(["2 reports", "4 contact attempts (flag at 3 from one sender)"]);
+    ).toEqual(["2 reports", "4 contact attempts, limit 3 per person"]);
     expect(chatFlagReasons(state({ reportCount: 1, contactAttempts: 1 }))).toEqual([
       "1 report",
       "1 contact attempt",

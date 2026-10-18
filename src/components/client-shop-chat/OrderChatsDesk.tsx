@@ -212,7 +212,7 @@ export function OrderChatsDesk({ tree }: { tree: "ops" | "admin" }) {
                       className="text-body text-text-primary min-w-0 break-words"
                       style={{ fontFamily: "var(--font-medium)" }}
                     >
-                      {titles[entry.orderId] ?? "Order"}
+                      {titles[entry.orderId] ?? `Order ${entry.orderId}`}
                     </span>
                     {entry.unread > 0 ? (
                       <span
@@ -223,9 +223,11 @@ export function OrderChatsDesk({ tree }: { tree: "ops" | "admin" }) {
                       </span>
                     ) : null}
                   </span>
-                  <span className="text-caption text-text-muted break-all">
-                    Order {entry.orderId}
-                  </span>
+                  {titles[entry.orderId] ? (
+                    <span className="text-caption text-text-muted break-all">
+                      Order {entry.orderId}
+                    </span>
+                  ) : null}
                   <span className="text-caption text-text-secondary flex flex-wrap items-center gap-x-3 gap-y-1">
                     <StatusMark tone={status.tone} icon={status.icon} label={status.label} />
                     {isFlagged(entry) ? (
