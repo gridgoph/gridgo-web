@@ -21,6 +21,7 @@ import {
   Lock,
   MapPin,
   MessageSquareText,
+  MessagesSquare,
   ScrollText,
   ShieldAlert,
   TriangleAlert,
@@ -70,6 +71,14 @@ import { BasketPanel } from "@/components/orders/BasketPanel";
 import { BasketPayment } from "@/components/orders/BasketPayment";
 import { OrderMoneyLines } from "@/components/orders/OrderMoneyLines";
 import { PaymentSummary } from "@/components/orders/PaymentSummary";
+import { ApprovalProofPanel } from "@/components/orders/ApprovalProof";
+import { OrderChatThread } from "@/components/client-shop-chat/OrderChatThread";
+import {
+  approvalRowSummary,
+  approvalRowTone,
+  approvalRowVisible,
+} from "@/lib/approval-proof";
+import { chatRowSummary, isFlagged } from "@/lib/client-shop-chat";
 import { ShopModeChip } from "@/components/orders/ShopModeChip";
 import { ExpressChip } from "@/components/ui/ExpressChip";
 import { isExpressOrder } from "@/lib/express";
@@ -152,6 +161,7 @@ import {
 } from "@/lib/api/client";
 import type {
   Basket,
+  ClientShopChatRead,
   Escalation,
   Order,
   PaymentInstallment,
@@ -237,6 +247,7 @@ type Props = {
 
 /** The workspace's sections, in the order the work happens. */
 type SectionId =
+  | "approval"
   | "payment"
   | "qa"
   | "production"
@@ -251,6 +262,7 @@ type SectionId =
   | "payout"
   | "refund"
   | "physical-invoice"
+  | "chat"
   | "history"
   | "audit";
 
@@ -300,6 +312,8 @@ export function OrderWorkspace({
   const [resolveId, setResolveId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [refunds, setRefunds] = useState<RefundRequest[] | null>(null);
+  /** The client–shop conversation, once its row has been opened and read. */
+  const [chatRead, setChatRead] = useState<ClientShopChatRead | null>(null);
   /** The multi-shop basket this order is one group of; null for a single-shop order. */
   const [basket, setBasket] = useState<Basket | null>(null);
   const [basketError, setBasketError] = useState<string | null>(null);
@@ -743,6 +757,20 @@ export function OrderWorkspace({
             onValueChange={(value) => setOpen(value as SectionId[])}
             className="gg-card-flush"
           >
+            {/*
+              What the client approved at checkout (or for a sample): the
+              frozen record that defines a correct print in a dispute.
+            */}
+            {approvalRowVisible(order.approvalProof) && order.approvalProof ? (
+              <SectionRow
+                id="approval"
+                heading="Client approval"
+                summary={approvalRowSummary(order.approvalProof)}
+                marker={APPROVAL_MARKER[approvalRowTone(order.approvalProof)]}
+              >
+                <ApprovalProofPanel orderId={order.id} />
+              </SectionRow>
+            ) : null}
             {steps.map((step) => (
               <Fragment key={step.id}>
                 <StepRow
@@ -976,6 +1004,36 @@ export function OrderWorkspace({
               </Fragment>
             ))}
 
+            {/*
+              The masked conversation between the client and the shop, from
+              acceptance until the complaint window closes. Read on opening,
+              because a read marks the messages read for this account.
+            */}
+            {order.clientShopChat ? (
+              <SectionRow
+                id="chat"
+                heading="Client and shop chat"
+                summary={chatRowSummary(order.clientShopChat, chatRead)}
+                marker={
+                  chatRead && isFlagged(chatRead.chat)
+                    ? { icon: TriangleAlert, tone: "current" }
+                    : { icon: MessagesSquare, tone: "muted" }
+                }
+              >
+                <OrderChatThread orderId={order.id} onLoaded={setChatRead} />
+                <p className="text-caption text-text-muted m-0 mt-3">
+                  Every order&rsquo;s conversation, flagged ones first:{" "}
+                  <Link
+                    href={`/${tree}/order-chats?order=${encodeURIComponent(order.id)}`}
+                    className="text-text-secondary underline-offset-2 hover:underline"
+                  >
+                    open Order chats
+                  </Link>
+                  .
+                </p>
+              </SectionRow>
+            ) : null}
+
             {hasPayout ? (
               <SectionRow
                 id="payout"
@@ -1157,6 +1215,12 @@ export function defaultOpenSections(order: Order): SectionId[] {
   if (isCancelled(order)) ids.add("history");
   return [...ids];
 }
+
+const APPROVAL_MARKER: Record<ReturnType<typeof approvalRowTone>, MarkerSpec> = {
+  approved: { icon: CircleCheck, tone: "success" },
+  waiting: { icon: CircleDot, tone: "current" },
+  quiet: { icon: CircleDot, tone: "muted" },
+};
 
 const COUNTER_MARKER: Record<ReturnType<typeof counterRow>["marker"], MarkerSpec> = {
   success: { icon: CircleCheck, tone: "success" },

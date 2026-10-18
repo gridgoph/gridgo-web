@@ -8,9 +8,13 @@ import { Button } from "@/components/ui/button";
 export function ChatAttachButton({
   disabled,
   onFiles,
+  accept = "image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp",
+  label = "Add photos",
 }: {
   disabled?: boolean;
   onFiles: (files: FileList | null) => void;
+  accept?: string;
+  label?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -19,7 +23,7 @@ export function ChatAttachButton({
       <input
         ref={inputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+        accept={accept}
         multiple
         className="sr-only"
         tabIndex={-1}
@@ -34,7 +38,7 @@ export function ChatAttachButton({
         variant="secondary"
         size="icon"
         disabled={disabled}
-        aria-label="Add photos"
+        aria-label={label}
         onClick={() => inputRef.current?.click()}
       >
         <File />

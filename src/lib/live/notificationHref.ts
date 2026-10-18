@@ -197,6 +197,15 @@ export function notificationHref(role: Role, notification: Notification): string
     return null;
   }
 
+  // A client–shop order conversation: a message, a report or a first flag
+  // (gridgo-api docs/ORDER_CLIENT_SHOP_CHAT_API.md). Staff land on the
+  // Order chats desk with that conversation open.
+  if (type.startsWith("client_shop_chat_") && notification.orderId) {
+    const order = encodeURIComponent(notification.orderId);
+    if (role === "super_admin") return `/admin/order-chats?order=${order}`;
+    if (role === "ops_admin") return `/ops/order-chats?order=${order}`;
+  }
+
   if (type === "ops_support_message") {
     if (role === "super_admin") return "/admin/chat";
     if (role === "ops_admin") return "/ops/chat";
