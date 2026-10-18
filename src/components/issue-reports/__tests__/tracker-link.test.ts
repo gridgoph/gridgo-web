@@ -4,6 +4,7 @@ import {
   checkTrackerIssueUrl,
   parseTrackerIssueUrl,
   trackerIssueLabel,
+  withoutGithubLinks,
 } from "@/components/issue-reports/tracker-link";
 
 describe("tracker issue links", () => {
@@ -36,5 +37,17 @@ describe("tracker issue links", () => {
     ]) {
       expect(checkTrackerIssueUrl(bad).ok, bad).toBe(false);
     }
+  });
+});
+
+describe("withoutGithubLinks", () => {
+  it("hides GitHub addresses and keeps every other link and word", () => {
+    expect(
+      withoutGithubLinks(
+        "See https://github.com/gridgoph/gridgo-web/issues/62, https://api.github.com/x and https://raw.githubusercontent.com/a/b and https://files.example/a.png",
+      ),
+    ).toBe("See [link hidden] [link hidden] and [link hidden] and https://files.example/a.png");
+    expect(withoutGithubLinks("No links here")).toBe("No links here");
+    expect(withoutGithubLinks("https://notgithub.com/x")).toBe("https://notgithub.com/x");
   });
 });

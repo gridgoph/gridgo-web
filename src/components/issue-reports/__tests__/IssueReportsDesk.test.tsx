@@ -125,7 +125,7 @@ describe("IssueReportsDesk", () => {
       reports: [{ ...report, status: "tracked", trackerIssueUrl: TRACKER_URL }],
       counts: { new: 0, tracked: 1, published: 0, dismissed: 0 },
     });
-    render(<IssueReportsDesk />);
+    render(<IssueReportsDesk trackerLinks />);
     const list = await screen.findByRole("list", { name: "Issue reports" });
     const link = await within(list).findByRole("link", { name: /Tracked: gridgo-web #62/ });
     expect(link).toHaveAttribute("href", TRACKER_URL);
@@ -141,7 +141,7 @@ describe("IssueReportsDesk", () => {
       reports: [{ ...report, status: "published", publishedIn: "09-25-2026", trackerIssueUrl: TRACKER_URL }],
       counts: { new: 0, tracked: 0, published: 1, dismissed: 0 },
     });
-    render(<IssueReportsDesk />);
+    render(<IssueReportsDesk trackerLinks />);
     const list = await screen.findByRole("list", { name: "Issue reports" });
     expect(await within(list).findByText("Published 09-25-2026")).toBeInTheDocument();
     expect(within(list).getByRole("link", { name: /Tracked: gridgo-web #62/ })).toHaveAttribute("href", TRACKER_URL);
@@ -156,7 +156,7 @@ describe("IssueReportsDesk", () => {
   });
 
   it("marks a report tracked with a pasted GitHub issue link", async () => {
-    render(<IssueReportsDesk />);
+    render(<IssueReportsDesk trackerLinks />);
     await screen.findByRole("heading", { name: /Report 50D4F603/ });
     fireEvent.change(screen.getByLabelText("GitHub tracker issue"), {
       target: { value: ` ${TRACKER_URL}/#issuecomment-1 ` },
@@ -177,7 +177,7 @@ describe("IssueReportsDesk", () => {
     ["https://github.com/gridgoph/gridgo-web/pull/62", "That is not a GitHub issue link."],
     ["gridgo-web #62", "That is not a GitHub issue link."],
   ])("refuses %j before sending it", async (value, message) => {
-    render(<IssueReportsDesk />);
+    render(<IssueReportsDesk trackerLinks />);
     await screen.findByRole("heading", { name: /Report 50D4F603/ });
     const input = screen.getByLabelText("GitHub tracker issue");
     fireEvent.change(input, { target: { value } });
@@ -192,7 +192,7 @@ describe("IssueReportsDesk", () => {
       reports: [{ ...report, status: "tracked", trackerIssueUrl: TRACKER_URL }],
       counts: { new: 0, tracked: 1, published: 0, dismissed: 0 },
     });
-    render(<IssueReportsDesk />);
+    render(<IssueReportsDesk trackerLinks />);
     await screen.findByRole("heading", { name: /Report 50D4F603/ });
     expect(screen.getByLabelText("GitHub tracker issue")).toHaveValue(TRACKER_URL);
     fireEvent.change(screen.getByPlaceholderText("09-25-2026"), { target: { value: "09-26-2026" } });
@@ -204,6 +204,96 @@ describe("IssueReportsDesk", () => {
         trackerIssueUrl: TRACKER_URL,
       }),
     );
+  });
+
+  describe("for Operations", () => {
+    const LINKED = { ...report, issue: `Seen again, see ${TRACKER_URL} for details.`, trackerIssueUrl: TRACKER_URL };
+
+    it("shows a tracked report with no GitHub link, link field or GitHub wording", async () => {
+      // An older API may still send the link; the desk must not show it.
+      listIssueReports.mockResolvedValue({
+        reports: [{ ...LINKED, status: "tracked" }],
+        counts: { new: 0, tracked: 1, published: 0, dismissed: 0 },
+      });
+      const { container } = render(<IssueReportsDesk />);
+      await screen.findByRole("heading", { name: /Report 50D4F603/ });
+      expect(screen.getAllByText("Tracked", { selector: "span" }).length).toBeGreaterThan(0);
+      expect(screen.queryByRole("link", { name: /Tracked/ })).toBeNull();
+      expect(screen.queryByLabelText(/tracker issue/i)).toBeNull();
+      expect(screen.queryByRole("button", { name: "Save link" })).toBeNull();
+      expect(screen.getByText(/Seen again, see \[link hidden\] for details\./, { selector: "p" })).toBeInTheDocument();
+      expect(container.innerHTML).not.toMatch(/github/i);
+    });
+
+    it("marks a new report tracked without sending a link", async () => {
+      render(<IssueReportsDesk />);
+      await screen.findByRole("heading", { name: /Report 50D4F603/ });
+      expect(screen.queryByLabelText(/tracker issue/i)).toBeNull();
+      fireEvent.click(screen.getByRole("button", { name: "Mark tracked" }));
+      await waitFor(() =>
+        expect(updateIssueReport).toHaveBeenCalledWith(report.id, { status: "tracked", publishedIn: null }),
+      );
+    });
+
+    it("publishes a tracked report and moves it back without touching its link", async () => {
+      listIssueReports.mockResolvedValue({
+        reports: [{ ...LINKED, status: "tracked" }],
+        counts: { new: 0, tracked: 1, published: 0, dismissed: 0 },
+      });
+      render(<IssueReportsDesk />);
+      await screen.findByRole("heading", { name: /Report 50D4F603/ });
+      fireEvent.change(screen.getByPlaceholderText("09-25-2026"), { target: { value: "09-26-2026" } });
+      fireEvent.click(screen.getByRole("button", { name: "Mark published" }));
+      await waitFor(() =>
+        expect(updateIssueReport).toHaveBeenCalledWith(report.id, { status: "published", publishedIn: "09-26-2026" }),
+      );
+    });
+
+    it("shows a published report without its tracker chip and can move it back to Tracked", async () => {
+      listIssueReports.mockResolvedValue({
+        reports: [{ ...LINKED, status: "published", publishedIn: "09-25-2026" }],
+        counts: { new: 0, tracked: 0, published: 1, dismissed: 0 },
+      });
+      const { container } = render(<IssueReportsDesk />);
+      const list = await screen.findByRole("list", { name: "Issue reports" });
+      expect(await within(list).findByText("Published 09-25-2026")).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: /Tracked/ })).toBeNull();
+      expect(container.innerHTML).not.toMatch(/github/i);
+      fireEvent.click(screen.getByRole("button", { name: "Move back to Tracked" }));
+      await waitFor(() =>
+        expect(updateIssueReport).toHaveBeenCalledWith(report.id, { status: "tracked", publishedIn: null }),
+      );
+    });
+
+    it("hides a GitHub address in the reports page date", async () => {
+      listIssueReports.mockResolvedValue({
+        reports: [{ ...report, status: "published", publishedIn: `Release ${TRACKER_URL}` }],
+        counts: { new: 0, tracked: 0, published: 1, dismissed: 0 },
+      });
+      const { container } = render(<IssueReportsDesk />);
+      const list = await screen.findByRole("list", { name: "Issue reports" });
+      expect(await within(list).findByText("Published Release [link hidden]")).toBeInTheDocument();
+      expect(container.innerHTML).not.toMatch(/github/i);
+    });
+
+    it("says the tracked tab is empty without naming GitHub", async () => {
+      listIssueReports.mockResolvedValue({ reports: [], counts: { new: 0, tracked: 0, published: 0, dismissed: 0 } });
+      render(<IssueReportsDesk />);
+      fireEvent.click(await screen.findByRole("button", { name: "Tracked · 0" }));
+      expect(await screen.findByText("No tracked reports")).toBeInTheDocument();
+      expect(document.body.innerHTML).not.toMatch(/github/i);
+    });
+  });
+
+  it("shows Super Admin the full report text, GitHub links included", async () => {
+    listIssueReports.mockResolvedValue({
+      reports: [{ ...report, status: "tracked", issue: `See ${TRACKER_URL}`, trackerIssueUrl: TRACKER_URL }],
+      counts: { new: 0, tracked: 1, published: 0, dismissed: 0 },
+    });
+    render(<IssueReportsDesk trackerLinks />);
+    expect(await screen.findByText(`See ${TRACKER_URL}`, { selector: "p" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mark tracked" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Save link" })).toBeInTheDocument();
   });
 
   it("reloads when issue reports change and keeps the open report", async () => {
