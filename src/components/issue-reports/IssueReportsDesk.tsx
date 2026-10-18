@@ -15,6 +15,7 @@ import {
   parseTrackerIssueUrl,
   trackerIssueLabel,
   TRACKER_URL_EXAMPLE,
+  withoutGithubLinks,
 } from "@/components/issue-reports/tracker-link";
 import {
   appendPage,
@@ -69,17 +70,18 @@ export function reportReference(id: string): string {
 const EMPTY_BODY: Record<ReportFilter, string> = {
   priorities: "Pin a report to keep it here. It stays in its original status tab too.",
   new: "A report appears here as soon as someone sends one from the website.",
-  tracked: "Reports linked to a GitHub tracker issue land here.",
+  tracked: "Reports the team is tracking land here.",
   published: "Reports named in a dated reports page land here.",
   dismissed: "Reports you dismiss land here.",
 };
 
-function publishedChip(report: IssueReport) {
+function publishedChip(report: IssueReport, trackerLinks: boolean) {
+  const publishedIn = report.publishedIn && !trackerLinks ? withoutGithubLinks(report.publishedIn) : report.publishedIn;
   return (
     <StatusChip
       tone="success"
       icon="circle-check"
-      label={report.publishedIn ? `Published ${report.publishedIn}` : "Published"}
+      label={publishedIn ? `Published ${publishedIn}` : "Published"}
     />
   );
 }
@@ -101,12 +103,13 @@ function trackedChip(url: string) {
 
 /**
  * Every chip a report carries: its status, and its tracker issue when it has
- * one. A published report that was tracked first shows both.
+ * one and the reader may see it. A published report that was tracked first
+ * shows both.
  */
-function statusChips(report: IssueReport) {
-  const tracker = report.trackerIssueUrl ?? null;
+function statusChips(report: IssueReport, trackerLinks: boolean) {
+  const tracker = trackerLinks ? (report.trackerIssueUrl ?? null) : null;
   const chips = [];
-  if (report.status === "published") chips.push(<span key="published">{publishedChip(report)}</span>);
+  if (report.status === "published") chips.push(<span key="published">{publishedChip(report, trackerLinks)}</span>);
   if (report.status === "dismissed") {
     chips.push(
       <span key="dismissed">
@@ -176,16 +179,21 @@ function DetailSkeleton() {
 
 /**
  * Issues anyone filed from the landing site's /report page. Operations and
- * Super Admin read them here, then mark each one tracked (with the GitHub
- * tracker issue it became), published (with the reports page date) or
- * dismissed.
+ * Super Admin read them here, then mark each one tracked, published (with the
+ * reports page date) or dismissed.
+ *
+ * `trackerLinks` is Super Admin's: the GitHub tracker issue a report became,
+ * its chip and the field that sets it. Without it the desk never shows a
+ * GitHub link or sends one; the API keeps the stored link, omits it from
+ * Operations' responses and refuses one from Operations (403
+ * `tracker_issue_url_forbidden`).
  *
  * The desk fills the window under the header: the list scrolls on its own
  * and loads a page at a time, and the open report keeps its actions pinned
  * at the bottom of its panel. Below 1024px it is one pane at a time (the
  * list, then the report with a way back).
  */
-export function IssueReportsDesk() {
+export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: boolean } = {}) {
   const [status, setStatus] = useState<ReportFilter>("new");
   const [reports, setReports] = useState<IssueReport[] | null>(null);
   const [counts, setCounts] = useState<IssueReportCounts | null>(null);
@@ -348,16 +356,18 @@ export function IssueReportsDesk() {
   // Refill the form whenever a different report (or a changed one) is shown.
   // Done while rendering, not in an effect, so the fields never show a frame
   // of the previous report's values.
+  const storedTrackerUrl = trackerLinks ? (selected?.trackerIssueUrl ?? null) : null;
   const formKey = selected
-    ? `${selected.id}|${selected.publishedIn ?? ""}|${selected.trackerIssueUrl ?? ""}`
+    ? `${selected.id}|${selected.publishedIn ?? ""}|${storedTrackerUrl ?? ""}`
     : null;
   const [filledFor, setFilledFor] = useState<string | null>(null);
   if (formKey !== filledFor) {
     setFilledFor(formKey);
     setActionError(null);
     setTrackerError(null);
-    setPublishedIn(selected?.publishedIn ?? "");
-    setTrackerUrl(selected?.trackerIssueUrl ?? "");
+    const storedPublishedIn = selected?.publishedIn ?? "";
+    setPublishedIn(trackerLinks ? storedPublishedIn : withoutGithubLinks(storedPublishedIn));
+    setTrackerUrl(storedTrackerUrl ?? "");
   }
 
   function changeStatus(next: ReportFilter) {
@@ -406,8 +416,9 @@ export function IssueReportsDesk() {
       publishedIn: next === "published" ? publishedIn.trim() || null : null,
     };
     // Tracked needs a link. Published keeps one if the field holds it; the
-    // API clears the link on New and Dismissed by itself.
-    if (next === "tracked" || (next === "published" && (trackerUrl.trim() || selected.trackerIssueUrl))) {
+    // API clears the link on New and Dismissed by itself. Operations sends no
+    // link at all, and the API keeps the stored one.
+    if (trackerLinks && (next === "tracked" || (next === "published" && (trackerUrl.trim() || storedTrackerUrl)))) {
       if (next === "published" && !trackerUrl.trim()) {
         input.trackerIssueUrl = null;
       } else {
@@ -434,7 +445,7 @@ export function IssueReportsDesk() {
       if (!stays && !sideBySide()) backToList();
     } catch (err) {
       setActionError(
-        isApiError(err) && err.kind === "validation"
+        trackerLinks && isApiError(err) && err.kind === "validation"
           ? "The server refused that change. Check the GitHub issue link and try again."
           : "Could not update this report. Try again.",
       );
@@ -563,7 +574,9 @@ export function IssueReportsDesk() {
                   const active = report.id === selectedId;
                   // New and Dismissed rows sit in their own tab; the chip would repeat it.
                   const chips =
-                    report.status === "tracked" || report.status === "published" ? statusChips(report) : [];
+                    report.status === "tracked" || report.status === "published"
+                      ? statusChips(report, trackerLinks)
+                      : [];
                   return (
                     <div
                       key={report.id}
@@ -596,7 +609,7 @@ export function IssueReportsDesk() {
                           className="text-body text-text-primary line-clamp-2"
                           style={{ fontFamily: "var(--font-medium)" }}
                         >
-                          {firstLine(report.issue)}
+                          {firstLine(trackerLinks ? report.issue : withoutGithubLinks(report.issue))}
                         </span>
                         <span className="text-caption text-text-muted">
                           {reportReference(report.id)} ·{" "}
@@ -680,7 +693,7 @@ export function IssueReportsDesk() {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  {statusChips(selected)}
+                  {statusChips(selected, trackerLinks)}
                   <PriorityButton
                     priority={!!selected.priority}
                     name={`report ${reportReference(selected.id)}`}
@@ -700,7 +713,7 @@ export function IssueReportsDesk() {
               className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain p-4"
             >
               <p className="text-body text-text-primary m-0 max-w-[72ch] whitespace-pre-wrap break-words">
-                {selected.issue}
+                {trackerLinks ? selected.issue : withoutGithubLinks(selected.issue)}
               </p>
 
               {selected.screenshots.length > 0 ? (
@@ -739,43 +752,45 @@ export function IssueReportsDesk() {
             <div className="flex shrink-0 flex-col gap-3 border-t border-outline bg-surface p-4">
               {selected.status === "new" || selected.status === "tracked" ? (
                 <>
-                  <Field data-invalid={trackerError ? true : undefined} className="gap-1">
-                    {/* Type and colour stay off merged primitives (AGENTS.md). */}
-                    <FieldLabel htmlFor="tracker-issue-url">
-                      <span className="text-caption text-text-secondary">GitHub tracker issue</span>
-                    </FieldLabel>
-                    <div className="flex flex-wrap gap-2">
-                      <Input
-                        id="tracker-issue-url"
-                        type="url"
-                        inputMode="url"
-                        value={trackerUrl}
-                        onChange={(event) => {
-                          setTrackerUrl(event.target.value);
-                          setTrackerError(null);
-                        }}
-                        placeholder={TRACKER_URL_EXAMPLE}
-                        aria-invalid={trackerError ? true : undefined}
-                        aria-describedby={trackerError ? "tracker-issue-url-error" : "tracker-issue-url-help"}
-                        maxLength={300}
-                        className="min-w-0 max-w-md flex-1"
-                      />
-                      <Button disabled={saving} onClick={() => void mark("tracked")}>
-                        {selected.status === "tracked" ? "Save link" : "Mark tracked"}
-                      </Button>
-                    </div>
-                    {trackerError ? (
-                      <FieldError id="tracker-issue-url-error">
-                        <span className="text-caption text-error">{trackerError}</span>
-                      </FieldError>
-                    ) : (
-                      <FieldDescription id="tracker-issue-url-help">
-                        <span className="text-caption text-text-muted">
-                          Paste the link of the issue this report was filed as, or linked to.
-                        </span>
-                      </FieldDescription>
-                    )}
-                  </Field>
+                  {trackerLinks ? (
+                    <Field data-invalid={trackerError ? true : undefined} className="gap-1">
+                      {/* Type and colour stay off merged primitives (AGENTS.md). */}
+                      <FieldLabel htmlFor="tracker-issue-url">
+                        <span className="text-caption text-text-secondary">GitHub tracker issue</span>
+                      </FieldLabel>
+                      <div className="flex flex-wrap gap-2">
+                        <Input
+                          id="tracker-issue-url"
+                          type="url"
+                          inputMode="url"
+                          value={trackerUrl}
+                          onChange={(event) => {
+                            setTrackerUrl(event.target.value);
+                            setTrackerError(null);
+                          }}
+                          placeholder={TRACKER_URL_EXAMPLE}
+                          aria-invalid={trackerError ? true : undefined}
+                          aria-describedby={trackerError ? "tracker-issue-url-error" : "tracker-issue-url-help"}
+                          maxLength={300}
+                          className="min-w-0 max-w-md flex-1"
+                        />
+                        <Button disabled={saving} onClick={() => void mark("tracked")}>
+                          {selected.status === "tracked" ? "Save link" : "Mark tracked"}
+                        </Button>
+                      </div>
+                      {trackerError ? (
+                        <FieldError id="tracker-issue-url-error">
+                          <span className="text-caption text-error">{trackerError}</span>
+                        </FieldError>
+                      ) : (
+                        <FieldDescription id="tracker-issue-url-help">
+                          <span className="text-caption text-text-muted">
+                            Paste the link of the issue this report was filed as, or linked to.
+                          </span>
+                        </FieldDescription>
+                      )}
+                    </Field>
+                  ) : null}
                   <div className="flex flex-wrap items-end gap-2">
                     <label className="flex min-w-0 flex-col gap-1">
                       <span className="text-caption text-text-secondary">Reports page date (optional)</span>
@@ -793,6 +808,11 @@ export function IssueReportsDesk() {
                     <Button disabled={saving} onClick={() => void mark("dismissed")}>
                       Dismiss
                     </Button>
+                    {!trackerLinks && selected.status === "new" ? (
+                      <Button disabled={saving} onClick={() => void mark("tracked")}>
+                        Mark tracked
+                      </Button>
+                    ) : null}
                     {selected.status === "tracked" ? (
                       <Button disabled={saving} onClick={() => void mark("new")}>
                         Move back to New
@@ -802,7 +822,7 @@ export function IssueReportsDesk() {
                 </>
               ) : (
                 <div className="flex flex-wrap gap-2">
-                  {selected.status === "published" && selected.trackerIssueUrl ? (
+                  {selected.status === "published" && (storedTrackerUrl || !trackerLinks) ? (
                     <Button disabled={saving} onClick={() => void mark("tracked")}>
                       Move back to Tracked
                     </Button>

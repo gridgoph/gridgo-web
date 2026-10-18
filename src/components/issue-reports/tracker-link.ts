@@ -43,3 +43,22 @@ export function checkTrackerIssueUrl(input: string): TrackerUrlCheck {
     error: `That is not a GitHub issue link. It should look like ${TRACKER_URL_EXAMPLE}.`,
   };
 }
+
+const GITHUB_HOSTS = ["github.com", "githubusercontent.com", "github.io"];
+
+/**
+ * Report text with every GitHub address replaced, for a reader who may not
+ * see tracker links (Operations). The API already does this for Operations;
+ * the desk repeats it so an older API cannot put a link on screen.
+ */
+export function withoutGithubLinks(text: string): string {
+  return text.replace(/https?:\/\/[^\s<>"']+/gi, (url) => {
+    let host: string;
+    try {
+      host = new URL(url).hostname.toLowerCase();
+    } catch {
+      return url;
+    }
+    return GITHUB_HOSTS.some((domain) => host === domain || host.endsWith(`.${domain}`)) ? "[link hidden]" : url;
+  });
+}
