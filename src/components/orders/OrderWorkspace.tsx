@@ -98,6 +98,7 @@ import {
   type ReleaseTarget,
 } from "@/components/orders/ReleaseMilestoneDialog";
 import { Timeline } from "@/components/orders/Timeline";
+import { ProblemReportPanel } from "@/components/problem-reports/ProblemReportPanel";
 import { FileRefundDialog, type FiledRequest } from "@/components/refunds/dialogs";
 import {
   Accordion,
@@ -147,6 +148,7 @@ import {
   getUser,
   listAudit,
   listEscalations,
+  listIssues,
   listOrderRefunds,
   listShopFailures,
   newIdempotencyKey,
@@ -163,6 +165,7 @@ import type {
   Basket,
   ClientShopChatRead,
   Escalation,
+  Issue,
   Order,
   PaymentInstallment,
   PayoutMilestone,
@@ -171,6 +174,7 @@ import type {
 } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
+import { issueIsOpen, problemRowSummary } from "@/lib/problem-reports";
 import {
   DESK_WINDOW_LABEL,
   deskInstant,
@@ -260,6 +264,7 @@ type SectionId =
   | "delivery"
   | "rider-location"
   | "payout"
+  | "problem"
   | "refund"
   | "physical-invoice"
   | "chat"
@@ -312,6 +317,8 @@ export function OrderWorkspace({
   const [resolveId, setResolveId] = useState<string | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
   const [refunds, setRefunds] = useState<RefundRequest[] | null>(null);
+  /** The client's problem reports; null when they could not be read. */
+  const [issues, setIssues] = useState<Issue[] | null>([]);
   /** The client–shop conversation, once its row has been opened and read. */
   const [chatRead, setChatRead] = useState<ClientShopChatRead | null>(null);
   /** The multi-shop basket this order is one group of; null for a single-shop order. */
@@ -340,7 +347,7 @@ export function OrderWorkspace({
       try {
         // The attempt history is its own read: if it fails, the order and its
         // latest counter check still show, with a line saying so.
-        const [next, history, orderRefunds, overrides] = await Promise.all([
+        const [next, history, orderRefunds, overrides, orderIssues] = await Promise.all([
           getOrder(orderId),
           listEscalations({ orderId }).then(
             (list) => ({ list, error: null }),
@@ -355,6 +362,8 @@ export function OrderWorkspace({
           // Best effort: staff corrections of the production step, from the
           // audit log that records them. Without it the step still shows.
           listAudit({ orderId, action: PRODUCTION_OVERRIDE_ACTION }).catch(() => null),
+          // Best effort: the problem row says so when it could not be read.
+          listIssues({ orderId }).catch(() => null),
         ]);
         // A shop's timeouts, declines and cancellations are their own read,
         // made only when the order has been through a recovery. Best effort:
@@ -389,6 +398,7 @@ export function OrderWorkspace({
           setBasketError(null);
         }
         setRefunds(orderRefunds);
+        setIssues(orderIssues);
         setCorrections(productionCorrections(overrides, orderId));
         setOrder(next);
         if (history.list) setEscalations(history.list);
@@ -429,6 +439,14 @@ export function OrderWorkspace({
     }
   }, [order]);
 
+  // An open problem report waits on Operations: its row opens once, like the
+  // other rows that need a decision, and stays as the reader leaves it.
+  const problemOpen = Boolean(issues?.some(issueIsOpen));
+  useEffect(() => {
+    if (!problemOpen) return;
+    setOpen((current) => (current.includes("problem") ? current : [...current, "problem"]));
+  }, [problemOpen]);
+
   const steps = useMemo(() => (order ? stepsFor(order) : []), [order]);
 
   // The rider's location while they have the order, re-read on its own clock
@@ -457,6 +475,13 @@ export function OrderWorkspace({
     for (const correction of staffCorrections(order?.forcedSteps, corrections)) {
       if (correction.actorId) ids.add(correction.actorId);
     }
+    // Who recorded and approved a problem report's findings.
+    for (const issue of issues ?? []) {
+      for (const decision of issue.faultDecisionHistory ?? []) {
+        if (decision.recordedBy) ids.add(decision.recordedBy);
+        if (decision.approvedBy) ids.add(decision.approvedBy);
+      }
+    }
     // Who decided the shop's finished work.
     for (const attempt of order?.shopHandover?.attempts ?? []) {
       if (attempt.review?.by) ids.add(attempt.review.by);
@@ -484,7 +509,7 @@ export function OrderWorkspace({
       if (group.order.riderId) ids.add(group.order.riderId);
     }
     return [...ids].sort().join(",");
-  }, [order, escalations, corrections, failures, basket]);
+  }, [order, escalations, corrections, failures, basket, issues]);
 
   useEffect(() => {
     const missing = people.split(",").filter((id) => id && !(id in names));
@@ -1062,6 +1087,22 @@ export function OrderWorkspace({
                     .
                   </p>
                 ) : null}
+              </SectionRow>
+            ) : null}
+
+            {issues === null || issues.length ? (
+              <SectionRow
+                id="problem"
+                heading="Problem report"
+                summary={problemRowSummary(issues)}
+                marker={problemMarker(issues)}
+              >
+                <ProblemReportPanel
+                  issues={issues}
+                  tree={tree}
+                  names={names}
+                  onChanged={load}
+                />
               </SectionRow>
             ) : null}
 
@@ -2503,6 +2544,16 @@ function SpecRail({
 // Keep the milestone type in this module's public surface for callers that
 // pass a release target through.
 export type { PayoutMilestone };
+
+// ---------------------------------------------------------------------------
+// Problem report
+// ---------------------------------------------------------------------------
+
+function problemMarker(issues: Issue[] | null): MarkerSpec {
+  if (issues === null) return { icon: TriangleAlert, tone: "current" };
+  if (issues.some(issueIsOpen)) return { icon: TriangleAlert, tone: "current" };
+  return { icon: CircleCheck, tone: "success" };
+}
 
 // ---------------------------------------------------------------------------
 // Client refund

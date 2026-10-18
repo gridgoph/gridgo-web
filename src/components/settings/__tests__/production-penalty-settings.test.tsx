@@ -114,59 +114,36 @@ it("refuses a later tier that takes less before anything is sent", async () => {
   expect(screen.getByRole("button", { name: "Save penalty rates" })).toBeDisabled();
 });
 
-it("needs an explicit acknowledgement before turning real deductions on", async () => {
+it("never offers to turn deductions on: the API takes none (decision B)", async () => {
   getSettings.mockResolvedValue(stored);
-  updateSettings.mockResolvedValue({
-    ...stored,
-    version: 8,
-    productionPenalty: { ...penalty, deductionsEnabled: true },
-  });
   render(<OperationalSettings />);
 
   expect(await screen.findByTestId("penalty-gate")).toHaveTextContent("Warnings only");
-  fireEvent.click(screen.getByRole("switch", { name: "Deduct from shop payouts" }));
-
-  const dialog = await screen.findByRole("alertdialog");
-  expect(
-    within(dialog).getByText("Deduct real money from shops' payouts?"),
-  ).toBeInTheDocument();
-  expect(within(dialog).getByTestId("penalty-confirm-terms")).toHaveTextContent(
-    "5% / 15% / 30%",
-  );
-  const turnOn = within(dialog).getByRole("button", { name: "Turn on deductions" });
-  expect(turnOn).toBeDisabled();
+  const toggle = screen.getByRole("switch", { name: "Deduct from shop payouts" });
+  expect(toggle).not.toBeChecked();
+  expect(toggle).toHaveAttribute("data-disabled");
+  fireEvent.click(toggle);
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   expect(updateSettings).not.toHaveBeenCalled();
-
-  fireEvent.click(within(dialog).getByRole("checkbox"));
-  expect(turnOn).toBeEnabled();
-  fireEvent.click(turnOn);
-
-  await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(1));
-  expect(updateSettings).toHaveBeenCalledWith({
-    expectedVersion: 7,
-    productionPenalty: { ...penalty, deductionsEnabled: true },
-    reason: "Late-production penalties from the portal: real deductions turned on",
-  });
 });
 
-it("keeps deductions off when the dialog is dismissed", async () => {
-  getSettings.mockResolvedValue(stored);
+it("offers to turn a switch left on off, and says it takes no money", async () => {
+  const leftOn = { ...stored, productionPenalty: { ...penalty, deductionsEnabled: true } };
+  getSettings.mockResolvedValue(leftOn);
+  updateSettings.mockResolvedValue({ ...stored, version: 8 });
   render(<OperationalSettings />);
 
-  fireEvent.click(
-    await screen.findByRole("switch", { name: "Deduct from shop payouts" }),
-  );
+  const gate = await screen.findByTestId("penalty-gate");
+  expect(gate).toHaveTextContent("Left on");
+  expect(gate).toHaveTextContent("no longer takes money");
+  fireEvent.click(screen.getByRole("switch", { name: "Deduct from shop payouts" }));
   fireEvent.click(
     within(await screen.findByRole("alertdialog")).getByRole("button", {
-      name: "Keep warnings only",
+      name: "Turn off deductions",
     }),
   );
-
-  await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
-  expect(updateSettings).not.toHaveBeenCalled();
-  expect(
-    screen.getByRole("switch", { name: "Deduct from shop payouts" }),
-  ).not.toBeChecked();
+  await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(1));
+  expect(updateSettings.mock.calls[0][0].productionPenalty.deductionsEnabled).toBe(false);
 });
 
 it("reloads underneath a stale version", async () => {

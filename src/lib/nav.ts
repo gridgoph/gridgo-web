@@ -39,6 +39,7 @@ export type NavIconKey =
   | "riders"
   | "rankings"
   | "lapses"
+  | "performance"
   | "escalations"
   | "claims"
   | "settings"
@@ -431,6 +432,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Late production",
           title: "Late production",
           icon: "lapses",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "ops-shop-performance",
+          href: "/ops/shop-performance",
+          label: "Shop performance",
+          title: "Shop performance",
+          icon: "performance",
           ready: true,
           placeholderBody: "",
         },
@@ -854,6 +864,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          id: "admin-shop-performance",
+          href: "/admin/shop-performance",
+          label: "Shop performance",
+          title: "Shop performance",
+          icon: "performance",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "admin-shop-changes",
           href: "/admin/shop-changes",
           label: "Dropouts & delays",
@@ -1078,6 +1097,7 @@ export function contextTitleForPath(
     return "Shop's late jobs";
   }
   if (/^\/(ops|admin)\/shop-hours\/[^/]+/.test(pathname)) return "Shop's hours";
+  if (/^\/(ops|admin)\/shop-performance\/[^/]+/.test(pathname)) return "Shop's performance";
   if (pathname === "/admin/escalations" || pathname.startsWith("/admin/escalations/")) {
     return "Pickup escalations";
   }

@@ -22,6 +22,7 @@ import { DeductionGate } from "@/components/production-lapses/DeductionGate";
 import { LapseMeter } from "@/components/production-lapses/LapseMeter";
 import { NoCommunicationDialog } from "@/components/production-lapses/NoCommunicationDialog";
 import { orderHref, type LapseTree } from "@/components/production-lapses/paths";
+import { ShopPerformanceSummary } from "@/components/shop-performance/ShopPerformanceSummary";
 import { formatRatePercent } from "@/components/settings/service-fee";
 import { Button } from "@/components/ui/button";
 import {
@@ -353,6 +354,7 @@ export function ShopLapses({
           </div>
         ) : null}
         <DeductionGate policy={data.policy} tree={tree} />
+        <ShopPerformanceSummary tree={tree} supplierId={supplierId} />
         {!data.ordersRead ? (
           <p className="text-body text-text-secondary m-0" role="status">
             The order list could not be read, so how late each job was shows as its

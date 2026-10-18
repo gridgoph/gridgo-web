@@ -10,8 +10,9 @@
  * The card saves on its own, not with "Save settings", so a rate change is
  * never carried along with an unrelated edit. Both go through the same `expectedVersion`
  * handshake. The switch saves the moment it is confirmed, with the rates in
- * force, because it is the one control here that moves real money: turning
- * it on says so in a dialog that cannot be confirmed by reflex.
+ * force. Since the warnings-only decision (gridgo-api#223, decision B) the
+ * API takes no new deduction whatever the switch says, so only turning it
+ * off is offered.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -198,22 +199,25 @@ export function ProductionPenalties({
             Real deductions from shop payouts
           </span>
           <span className="text-body text-text-secondary max-w-prose">
+            {/* Warnings only since gridgo-api#223 decision B: the API takes no
+                new deduction whatever this says (SUPPLIER_PERFORMANCE_API.md). */}
             {stored.deductionsEnabled
-              ? "On. A late job that began with this on loses its tier's share of what the shop is still owed on it."
-              : "Off. A late job is warned and its ranking drops, but no money is taken. A lapse that begins while this is off stays a warning, even after it is turned on."}
+              ? "Left on, but it no longer takes money: late jobs are warnings only. Turn it off so the setting says what happens."
+              : "Off. Late jobs are warnings only and no money is taken. Deductions cannot come back without a separate release."}
           </span>
         </div>
         <div className="flex items-center gap-3">
           <StatusChip
             tone={stored.deductionsEnabled ? "warning" : "neutral"}
             icon={stored.deductionsEnabled ? "triangle-alert" : "circle-dashed"}
-            label={stored.deductionsEnabled ? "Deducting" : "Warnings only"}
+            label={stored.deductionsEnabled ? "Left on" : "Warnings only"}
           />
           {canEdit ? (
             <Switch
               id="penalty-deductions"
               checked={stored.deductionsEnabled}
-              disabled={locked}
+              // Only turning it off is offered: the API ignores it being on.
+              disabled={locked || !stored.deductionsEnabled}
               onCheckedChange={(checked) => {
                 setUnderstood(false);
                 setConfirm(checked ? "on" : "off");
