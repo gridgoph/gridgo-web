@@ -43,9 +43,11 @@ export function NoFaultDialog({
 }) {
   const id = useId();
   const [reason, setReason] = useState("");
+  // Keyed on the notice, not the object: a reload while open must keep the reason.
+  const eventId = event?.id ?? null;
   useEffect(() => {
-    if (event) setReason("");
-  }, [event]);
+    if (eventId) setReason("");
+  }, [eventId]);
   const text = reason.trim();
   const ready = text.length > 0 && reason.length <= NO_FAULT_REASON_MAX;
   const late = event ? hoursLateText(event) : null;

@@ -10,7 +10,7 @@
  * Above ₱1,000 of GRIDGO funding, Operations' finding waits for Super Admin.
  */
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -77,14 +77,18 @@ export function DecisionDialog({
   const prefix = useId();
   const [draft, setDraft] = useState<DecisionDraft>(() => draftFrom(issue.faultDecision));
   const [tried, setTried] = useState(false);
+  const [seededOpen, setSeededOpen] = useState(open);
 
-  useEffect(() => {
+  // A reopened dialog starts from the case as it now stands. Only opening
+  // reseeds it: a refetch while it is open hands in a new issue object, and
+  // that must never wipe what is being typed.
+  if (open !== seededOpen) {
+    setSeededOpen(open);
     if (open) {
       setDraft(draftFrom(issue.faultDecision));
       setTried(false);
     }
-    // A reopened dialog starts from the case as it now stands.
-  }, [open, issue.faultDecision]);
+  }
 
   const problems = decisionProblems(draft);
   const ready = Object.keys(problems).length === 0;

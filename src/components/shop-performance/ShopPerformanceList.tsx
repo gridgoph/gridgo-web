@@ -232,7 +232,9 @@ export function ShopPerformanceList({ tree }: { tree: PerformanceTree }) {
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex max-w-prose flex-col gap-2">
-          <StatusChip tone="neutral" icon="circle-dashed" label="Warnings only" />
+          <span className="self-start">
+            <StatusChip tone="neutral" icon="circle-dashed" label="Warnings only" />
+          </span>
           <p className="text-body text-text-secondary m-0">
             How each shop has kept its commitments over the last {PERFORMANCE_WINDOW_DAYS}{" "}
             days. A job finished more than an hour (in shop hours) after its ready-by gets a

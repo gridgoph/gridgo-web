@@ -58,11 +58,10 @@ import { cn } from "@/lib/utils";
 
 export const PENALTY_COPY = (
   <>
-    What a shop loses when it marks a job ready after its ready-by time. Every late job
-    gets a warning first that explains the penalty. A deduction comes off what GRIDGO
-    still owes the shop on that one order, never more than that, and nothing carries over
-    to another order. Recent late jobs also lower the shop&rsquo;s quality ranking in
-    matching.
+    The rates from before late jobs became warnings only. No new late job takes money
+    from a shop, whatever these say: each late finish is a written notice on the
+    shop&rsquo;s performance record. Deductions already applied stay as they were. Recent
+    late jobs still lower the shop&rsquo;s quality ranking in matching.
   </>
 );
 
@@ -253,7 +252,7 @@ export function ProductionPenalties({
         {formatPhp(PENALTY_EXAMPLE_BALANCE_MINOR)} still owed to the shop, rounded half-up
         to the centavo.
         {canEdit
-          ? " New rates apply to lapses that begin after saving."
+          ? " Saving keeps them on file; it charges no shop."
           : " Only Super Admin changes these."}
       </p>
 

@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { OrderWorkspace } from "@/components/orders/OrderWorkspace";
+import { DecisionDialog } from "@/components/problem-reports/DecisionDialog";
 import { setTokenProvider } from "@/lib/api/client";
 import type { FaultDecision, Issue, Order } from "@/lib/api/types";
 import { PEOPLE, passedOrder } from "@/test/counter-check";
@@ -261,6 +262,8 @@ it("tells Operations a finding above ₱1,000 of GRIDGO funding waits for Super 
   expect(within(section).getByRole("button", { name: "Resolve" })).toBeDisabled();
   expect(within(section).queryByRole("button", { name: /Approve/ })).toBeNull();
   expect(within(section).getAllByText("₱1,500.00", { selector: "dd" })[0]).toBeVisible();
+  // Who recorded it, by name.
+  expect(await within(section).findByText(/^Operations One,/)).toBeVisible();
 });
 
 it("lets Super Admin approve the pending finding with the case version", async () => {
@@ -312,6 +315,30 @@ it("resolves with the case version and re-reads a stale case in plain words", as
   );
   dialog = screen.queryByRole("alertdialog")!;
   expect(await screen.findByText("Problem report resolved.")).toBeVisible();
+});
+
+it("keeps a revision being typed when the case is read again while the dialog is open", async () => {
+  const user = userEvent.setup();
+  const approved = { ...pendingDecision, status: "approved" as const };
+  const onSave = vi.fn();
+  const props = { open: true, superAdmin: false, busy: false, error: null, onCancel: () => {}, onSave };
+  const { rerender } = render(
+    <DecisionDialog {...props} issue={report({ version: 3, faultDecision: approved })} />,
+  );
+  const dialog = await screen.findByRole("dialog", { name: "Revise the finding" });
+  fireEvent.click(within(dialog).getByRole("radio", { name: "The rider" }));
+  const finding = within(dialog).getByLabelText("Finding");
+  await user.clear(finding);
+  await user.type(finding, "Crushed in the rider's bag.");
+
+  // A refetch hands in an equal case as a new object.
+  rerender(<DecisionDialog {...props} issue={structuredClone(report({ version: 3, faultDecision: approved }))} />);
+  expect(within(dialog).getByLabelText("Finding")).toHaveValue("Crushed in the rider's bag.");
+  expect(within(dialog).getByRole("radio", { name: "The rider" })).toBeChecked();
+  await user.click(within(dialog).getByRole("button", { name: "Save the revised finding" }));
+  expect(onSave).toHaveBeenCalledWith(
+    expect.objectContaining({ fault: "rider", reason: "Crushed in the rider's bag." }),
+  );
 });
 
 it("shows no problem row on an order without a report", async () => {

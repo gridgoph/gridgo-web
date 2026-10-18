@@ -17,7 +17,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { getFile, getFileDownloadUrl } from "@/lib/api/client";
+import { getFile, getFileDownloadUrl, isApiError } from "@/lib/api/client";
 import type { IssueEvidenceFile } from "@/lib/api/types";
 import { fileIsGone } from "@/lib/file-retention";
 import { formatDateTime } from "@/lib/format";
@@ -53,7 +53,9 @@ export function EvidenceFileRow({ file }: { file: IssueEvidenceFile }) {
       setProblem(
         fileIsGone(err)
           ? "This file has been deleted since the report was filed."
-          : "This file could not be opened. Try again.",
+          : isApiError(err) && err.code === "storage_object_missing"
+            ? "This file is on record, but its stored copy is missing, so it cannot be opened."
+            : "This file could not be opened. Try again.",
       );
     } finally {
       setBusy(false);
