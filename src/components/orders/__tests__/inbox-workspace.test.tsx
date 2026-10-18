@@ -161,6 +161,7 @@ it.each([
       }
       if (url.pathname === `/orders/${order.id}`) return json({ order });
       if (url.pathname === "/orders") return json({ orders: [order] });
+      if (url.pathname === "/issues") return json({ issues: [] });
       if (url.pathname === "/escalations")
         return json({
           escalations: [

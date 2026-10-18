@@ -66,6 +66,8 @@ import type {
   EligibleSuppliersResult,
   Escalation,
   HealthResult,
+  FaultParty,
+  FaultRemedy,
   Issue,
   LocationDiagnostics,
   LocationPing,
@@ -73,6 +75,7 @@ import type {
   Notification,
   Order,
   PaymentInstallment,
+  SupplierPerformance,
   PhysicalInvoiceRequest,
   PayoutMilestone,
   PayoutMilestoneCode,
@@ -1225,6 +1228,37 @@ export async function listSupplierProductionLapses(
   );
 }
 
+// Shop performance (gridgo-api docs/SUPPLIER_PERFORMANCE_API.md): warnings only.
+
+/** Ops / Super Admin. Every shop's performance, one entry per shop profile. */
+export async function listShopPerformance(): Promise<SupplierPerformance[]> {
+  const result = await request<{ shops: SupplierPerformance[] }>(`/ops/shops/performance`);
+  return result.shops;
+}
+
+/** Ops / Super Admin. One shop's performance; `404 supplier_not_found` otherwise. */
+export async function getShopPerformance(supplierId: string): Promise<SupplierPerformance> {
+  const result = await request<{ performance: SupplierPerformance }>(
+    `/ops/shops/${encodeURIComponent(supplierId)}/performance`,
+  );
+  return result.performance;
+}
+
+/**
+ * Super Admin. Exempts one order and shop from performance counts. A retry
+ * returns the existing declaration and never replaces its reason.
+ */
+export async function recordPerformanceNoFault(
+  orderId: string,
+  input: { reason: string; supplierId?: string },
+): Promise<SupplierPerformance> {
+  const result = await request<{ performance: SupplierPerformance }>(
+    `/orders/${encodeURIComponent(orderId)}/performance-no-fault`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.performance;
+}
+
 /**
  * Ops / Super Admin. Records that the shop on an overdue, unfinished order
  * could not be reached, which makes the lapse severe. Audited; the reason is
@@ -2261,7 +2295,7 @@ export async function listIssues(filters?: {
     status: filters?.status,
   });
   const result = await request<{ issues: Issue[] }>(`/issues${q}`);
-  return result.issues;
+  return result.issues ?? [];
 }
 
 export async function getIssue(issueId: string): Promise<Issue> {
@@ -2287,12 +2321,51 @@ export async function resolveIssue(
     reason?: string;
     status?: "resolved" | "dismissed";
     releasePayout?: boolean;
+    /** Required once the case carries a fault decision (`409 issue_stale`). */
+    expectedVersion?: number;
   },
 ): Promise<Issue> {
   const result = await request<{ issue: Issue }>(`/issues/${issueId}/resolve`, {
     method: "POST",
     body: JSON.stringify(input),
   });
+  return result.issue;
+}
+
+/**
+ * Ops / Super Admin. Records a human fault and remedy finding on a problem
+ * report. Moves no money and changes no claim. GRIDGO funding above ₱1,000
+ * recorded by Operations waits for Super Admin (`status: awaiting_approval`).
+ */
+export async function recordIssueDecision(
+  issueId: string,
+  input: {
+    expectedVersion: number;
+    fault: FaultParty;
+    remedy: FaultRemedy;
+    reason: string;
+    evidenceIds: string[];
+    alternativesReason?: string;
+    costMinor: number;
+    gridgoCostMinor: number;
+  },
+): Promise<Issue> {
+  const result = await request<{ issue: Issue }>(
+    `/issues/${encodeURIComponent(issueId)}/decision`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.issue;
+}
+
+/** Super Admin. Approves only the current pending decision. */
+export async function approveIssueDecision(
+  issueId: string,
+  input: { expectedVersion: number; decisionId: string; reason: string },
+): Promise<Issue> {
+  const result = await request<{ issue: Issue }>(
+    `/issues/${encodeURIComponent(issueId)}/approve-decision`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
   return result.issue;
 }
 

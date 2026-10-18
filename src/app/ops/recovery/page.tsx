@@ -43,6 +43,13 @@ import {
 import type { Claim, Issue, Order } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
+import {
+  issueVersion,
+  problemReportErrorCopy,
+  problemRowSummary,
+  shouldReload,
+} from "@/lib/problem-reports";
+import { opsErrorMessage } from "@/app/ops/_lib/errors";
 
 export default function OpsRecoveryPage() {
   const [orders, setOrders] = useState<Order[] | null>(null);
@@ -107,16 +114,18 @@ export default function OpsRecoveryPage() {
         status: "resolved",
         // Do not auto-release payout — money actions stay on Claims.
         releasePayout: false,
+        // A case with a recorded finding is refused without its version.
+        expectedVersion: issueVersion(resolveTarget),
       });
       setResolveTarget(null);
       setResolution("");
       await load();
     } catch (err) {
-      if (err instanceof ApiError) {
-        setActionError(`Could not resolve issue (${err.code}).`);
-      } else {
-        setActionError("Network error while resolving. Try again.");
-      }
+      setActionError(
+        problemReportErrorCopy(err) ??
+          opsErrorMessage(err, "Could not resolve the issue. Try again."),
+      );
+      if (shouldReload(err)) await load();
     } finally {
       setResolving(false);
     }
@@ -253,6 +262,9 @@ export default function OpsRecoveryPage() {
                     />
                   </div>
                   <p className="text-body text-text-secondary m-0">{issue.description}</p>
+                  <p className="text-body text-text-primary m-0">
+                    {problemRowSummary([issue])}
+                  </p>
                   <p className="text-caption text-text-muted m-0">
                     Resolving records the fix. Active payout holds stay until released on
                     Claims.
@@ -260,6 +272,14 @@ export default function OpsRecoveryPage() {
                   <div className="flex flex-wrap gap-2">
                     <Button
                       variant="secondary"
+                      nativeButton={false}
+                      render={<Link href={`/ops/orders/${issue.orderId}`} />}
+                    >
+                      Open the evidence and finding
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      disabled={issue.faultDecision?.status === "awaiting_approval"}
                       onClick={() => {
                         setResolveTarget(issue);
                         setResolution("");
@@ -275,15 +295,6 @@ export default function OpsRecoveryPage() {
                     >
                       Open claims
                     </Button>
-                    {order ? (
-                      <Button
-                        variant="secondary"
-                        nativeButton={false}
-                        render={<Link href={`/ops/orders/${order.id}`} />}
-                      >
-                        Open order
-                      </Button>
-                    ) : null}
                   </div>
                 </li>
               );
@@ -321,6 +332,7 @@ export default function OpsRecoveryPage() {
                   <DataTableRowAction
                     label="Resolve"
                     icon={CheckCircle}
+                    disabled={issue?.faultDecision?.status === "awaiting_approval"}
                     onClick={() => {
                       if (issue) {
                         setResolveTarget(issue);

@@ -12,6 +12,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useClerk, useUser } from "@clerk/nextjs";
 import {
+  Activity,
   AlertTriangle,
   ArrowLeftRight,
   BadgeCheck,
@@ -191,6 +192,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   riders: Bike,
   rankings: Trophy,
   lapses: TimerOff,
+  performance: Activity,
   escalations: Siren,
   claims: Scale,
   settings: Settings,
