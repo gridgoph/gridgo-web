@@ -6,7 +6,7 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Ban, RotateCcw, ShieldAlert, TriangleAlert, UserCog, UserX } from "lucide-react";
+import { Ban, Eye, RotateCcw, ShieldAlert, TriangleAlert, UserCog, UserX } from "lucide-react";
 
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
 import {
@@ -51,6 +51,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   listApprovalCases,
   listUsers,
@@ -58,6 +59,13 @@ import {
   updateUserRole,
 } from "@/lib/api/client";
 import type { Role, User } from "@/lib/api/types";
+import {
+  FOUNDING_TESTER_LABEL,
+  showsFoundingTesterBadge,
+  TESTER_FILTERS,
+  testerFilterQuery,
+  type TesterFilter,
+} from "@/lib/founding-testers";
 
 // Account is accreditation (the approval case); Standing is whether the person
 // may use GRIDGO at all. They are independent, so each has its own column and
@@ -104,19 +112,25 @@ export default function AdminRolesPage() {
   const [accountAction, setAccountAction] = useState<AccountAction | null>(null);
   const [accountReason, setAccountReason] = useState("");
   const [accountTypedConfirm, setAccountTypedConfirm] = useState("");
+  // Founding Testers / Not yet ask the API for client rows only.
+  const [testerFilter, setTesterFilter] = useState<TesterFilter>("all");
+  // The filter the rows on screen answer; a newer choice shows skeleton rows.
+  const [shownFilter, setShownFilter] = useState<TesterFilter>("all");
 
   const load = useSerializedLoad(
     useCallback(async () => {
       setLoading(true);
       setError(null);
+      const query = testerFilterQuery(testerFilter);
       try {
         const [directory, suspendedCases] = await Promise.all([
-          listUsers(),
+          listUsers(query.role, { foundingTester: query.foundingTester }),
           // A suspension without this list still shows from the person's own
           // status; the case adds business clients and the reason.
           listApprovalCases({ status: "suspended" }).catch(() => null),
         ]);
         setUsers(directory);
+        setShownFilter(testerFilter);
         setSuspensions(
           suspensionsByUser({
             cases: suspendedCases?.approvalCases ?? [],
@@ -135,7 +149,7 @@ export default function AdminRolesPage() {
       } finally {
         setLoading(false);
       }
-    }, []),
+    }, [testerFilter]),
   );
 
   useLiveReload(["identity", "approvals"], load);
@@ -170,9 +184,15 @@ export default function AdminRolesPage() {
         header: "Platform role",
         sortValue: (u) => presentRole(u.role),
         filterValue: (u) => presentRole(u.role),
-        cell: (u) => (
-          <span className="text-body text-text-primary">{presentRole(u.role)}</span>
-        ),
+        cell: (u) =>
+          showsFoundingTesterBadge(u) ? (
+            <div className="flex min-w-0 flex-col items-start gap-1">
+              <span className="text-body text-text-primary">{presentRole(u.role)}</span>
+              <StatusChip tone="info" label={FOUNDING_TESTER_LABEL} icon="award" />
+            </div>
+          ) : (
+            <span className="text-body text-text-primary">{presentRole(u.role)}</span>
+          ),
       },
       {
         id: "account",
@@ -432,7 +452,48 @@ export default function AdminRolesPage() {
         </div>
       ) : null}
 
-      {!pending && !users?.length ? (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="text-caption text-text-muted" id="tester-filter-label">
+          Founding Tester
+        </span>
+        <ToggleGroup
+          value={[testerFilter]}
+          onValueChange={(values) => {
+            const next = values[0] as TesterFilter | undefined;
+            if (next) setTesterFilter(next);
+          }}
+          variant="outline"
+          spacing={0}
+          aria-labelledby="tester-filter-label"
+        >
+          {TESTER_FILTERS.map((option) => (
+            <ToggleGroupItem key={option.value} value={option.value}>
+              {option.label}
+            </ToggleGroupItem>
+          ))}
+        </ToggleGroup>
+        {testerFilter !== "all" ? (
+          <span className="text-caption text-text-muted">Client accounts only.</span>
+        ) : null}
+      </div>
+
+      {!pending && !users?.length && shownFilter !== "all" ? (
+        <EmptyState
+          title={
+            shownFilter === "earned" ? "No Founding Testers yet" : "Every client has the label"
+          }
+          body={
+            shownFilter === "earned"
+              ? "A client earns the label by placing, receiving and rating an order."
+              : "No client account is still working towards the Founding Tester label."
+          }
+          action={
+            <Button variant="secondary" onClick={() => setTesterFilter("all")}>
+              Show everyone
+            </Button>
+          }
+        />
+      ) : !pending && !users?.length ? (
         <EmptyState
           title="No users"
           body="The directory is empty. Users appear once accounts exist on the demo API."
@@ -446,7 +507,7 @@ export default function AdminRolesPage() {
         <DataTable
           columns={columns}
           data={users ?? []}
-          loading={pending}
+          loading={pending || shownFilter !== testerFilter}
           getRowId={(u) => u.id}
           caption="Platform users and roles"
           filterPlaceholder="Filter people…"
@@ -458,6 +519,13 @@ export default function AdminRolesPage() {
             const status = u.accountStatus ?? "active";
             return (
               <>
+                {u.role === "client" ? (
+                  <DataTableRowAction
+                    label="Open client account"
+                    icon={Eye}
+                    href={`/admin/founding-testers/${encodeURIComponent(u.id)}`}
+                  />
+                ) : null}
                 {suspensions.has(u.id) ? (
                   <DataTableRowAction
                     label="Review suspension"

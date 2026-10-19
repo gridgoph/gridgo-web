@@ -69,6 +69,7 @@ export type NavIconKey =
   | "colour-price-checks"
   | "featured-prints"
   | "vouchers"
+  | "founding-testers"
   | "legal"
   | "acceptances"
   | "privacy"
@@ -537,6 +538,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          id: "ops-founding-testers",
+          href: "/ops/founding-testers",
+          label: "Founding Testers",
+          title: "Founding Testers",
+          icon: "founding-testers",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "ops-claims",
           href: "/ops/claims",
           label: "Claims & holds",
@@ -694,6 +704,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Roles",
           title: "Roles",
           icon: "roles",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-founding-testers",
+          href: "/admin/founding-testers",
+          label: "Founding Testers",
+          title: "Founding Testers",
+          icon: "founding-testers",
           ready: true,
           placeholderBody: "",
         },
@@ -1137,6 +1156,7 @@ export function contextTitleForPath(
   }
   if (pathname.startsWith("/admin/supplier-products/")) return "Supplier product";
   if (pathname.startsWith("/admin/vouchers/")) return "Voucher campaign";
+  if (/^\/(ops|admin)\/founding-testers\/[^/]+/.test(pathname)) return "Client account";
   if (/^\/(ops|admin)\/legal\/[^/]+/.test(pathname)) return "Legal document";
   if (/^\/(ops|admin)\/organizations\/[^/]+\/statement$/.test(pathname)) {
     return "Organization statement";

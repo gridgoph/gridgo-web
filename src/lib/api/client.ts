@@ -15,6 +15,7 @@ import { withRequestDeadline } from "@/lib/api/requestDeadline";
 import type {
   AccountDeletionRequest,
   ApprovalProofRead,
+  ClientAccount,
   ClientShopChatList,
   ClientShopChatPosted,
   ClientShopChatRead,
@@ -86,6 +87,7 @@ import type {
   PostAnnouncementInput,
   StoredFile,
   FileRetentionReport,
+  FoundingTestersPage,
   SupplierService,
   PublicCatalogShop,
   PublicCatalogShopSummary,
@@ -1717,8 +1719,15 @@ export async function seasonPushDryRun(): Promise<SeasonPushDryRun> {
 // Users, roles, verification
 // ---------------------------------------------------------------------------
 
-export async function listUsers(role?: RoleOrString): Promise<User[]> {
-  const q = buildQuery({ role });
+/**
+ * `foundingTester` narrows client rows to accounts that have (true) or have
+ * not yet (false) earned the label; the API answers it only with `role=client`.
+ */
+export async function listUsers(
+  role?: RoleOrString,
+  filter: { foundingTester?: boolean } = {},
+): Promise<User[]> {
+  const q = buildQuery({ role, foundingTester: filter.foundingTester });
   const result = await request<{ users: User[] }>(`/users${q}`);
   return result.users;
 }
@@ -1726,6 +1735,23 @@ export async function listUsers(role?: RoleOrString): Promise<User[]> {
 export async function getUser(userId: string): Promise<User> {
   const result = await request<{ user: User }>(`/users/${userId}`);
   return result.user;
+}
+
+/** The same `GET /users/:id`, read for a client: its Founding Tester progress. */
+export async function getClientAccount(userId: string): Promise<ClientAccount> {
+  const result = await request<{ user: ClientAccount }>(
+    `/users/${encodeURIComponent(userId)}`,
+  );
+  return result.user;
+}
+
+/** Operations/Super Admin: every client's missions, read-only, by offset. */
+export async function listFoundingTesters(
+  page: { offset?: number; limit?: number } = {},
+): Promise<FoundingTestersPage> {
+  return request<FoundingTestersPage>(
+    `/ops/founding-testers${buildQuery({ offset: page.offset ?? 0, limit: page.limit ?? 100 })}`,
+  );
 }
 
 /** Super Admin only. */
