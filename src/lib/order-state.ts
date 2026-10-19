@@ -46,7 +46,9 @@ export type StatusIconName =
   | "store"
   | "split"
   // An Express order or listing (docs/EXPRESS_API.md in gridgo-api).
-  | "zap";
+  | "zap"
+  // A test account's order (docs/REVIEW_DATA_API.md in gridgo-api).
+  | "flask-conical";
 
 export type StatePresentation = {
   label: string;

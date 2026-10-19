@@ -7,7 +7,7 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RoleGate } from "@/components/shell/RoleGate";
-import { ApiError } from "@/lib/api/client";
+import { ApiError, isTestOperationsSession } from "@/lib/api/client";
 
 const {
   authState,
@@ -63,8 +63,21 @@ vi.mock("@/lib/api/client", async (importOriginal) => {
 });
 
 vi.mock("@/components/shell/AppShell", () => ({
-  AppShell: ({ children, role }: { children: React.ReactNode; role: string }) => (
-    <div data-testid={`shell-${role}`}>{children}</div>
+  AppShell: ({
+    children,
+    role,
+    testOperations,
+  }: {
+    children: React.ReactNode;
+    role: string;
+    testOperations?: boolean;
+  }) => (
+    <div
+      data-testid={`shell-${role}`}
+      data-test-operations={String(Boolean(testOperations))}
+    >
+      {children}
+    </div>
   ),
 }));
 
@@ -476,5 +489,45 @@ describe("RoleGate navigation revalidation", () => {
     expect(getPortalRoleProjectionMock).toHaveBeenLastCalledWith("ops_admin", {
       refreshToken: true,
     });
+  });
+});
+
+describe("RoleGate test operations", () => {
+  it("fences an Operations login the projection marks as test operations", async () => {
+    getPortalRoleProjectionMock.mockResolvedValueOnce({
+      ...projection("ops_admin"),
+      testOperations: true,
+    });
+    const { unmount } = render(
+      <RoleGate allow="ops_admin">
+        <p>Test desk</p>
+      </RoleGate>,
+    );
+    expect(await screen.findByText("Test desk")).toBeVisible();
+    expect(screen.getByTestId("shell-ops_admin")).toHaveAttribute(
+      "data-test-operations",
+      "true",
+    );
+    expect(isTestOperationsSession()).toBe(true);
+    unmount();
+    expect(isTestOperationsSession()).toBe(false);
+  });
+
+  it("leaves ordinary Operations and other trees unfenced", async () => {
+    getPortalRoleProjectionMock.mockResolvedValueOnce({
+      ...projection("super_admin"),
+      testOperations: true,
+    });
+    render(
+      <RoleGate allow="super_admin">
+        <p>Admin desk</p>
+      </RoleGate>,
+    );
+    expect(await screen.findByText("Admin desk")).toBeVisible();
+    expect(screen.getByTestId("shell-super_admin")).toHaveAttribute(
+      "data-test-operations",
+      "false",
+    );
+    expect(isTestOperationsSession()).toBe(false);
   });
 });

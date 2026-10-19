@@ -143,6 +143,7 @@ import type {
   WebPushSubscriptionInput,
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
+import { acceptsReviewData, withReviewData } from "@/lib/review-data";
 import {
   normalizeShopHours,
   normalizeShopHoursList,
@@ -313,6 +314,22 @@ export function getWorkspaceRole(): PortalRole | null {
         : null;
 }
 
+let testOperationsSession = false;
+
+/**
+ * A test operations login sees test data only, so every list read that takes
+ * the review-data flag sends it (`src/lib/review-data.ts`). `RoleGate` sets
+ * this from the Operations projection before the workspace mounts, and clears
+ * it for every other tree.
+ */
+export function setTestOperationsSession(on: boolean): void {
+  testOperationsSession = on;
+}
+
+export function isTestOperationsSession(): boolean {
+  return testOperationsSession;
+}
+
 async function send(
   path: string,
   init: RequestInit,
@@ -321,6 +338,14 @@ async function send(
   tokenOptions?: TokenProviderOptions,
 ): Promise<Response> {
   const role = path.startsWith("/auth/") ? null : getWorkspaceRole();
+  if (
+    testOperationsSession &&
+    role === "ops_admin" &&
+    (init.method ?? "GET").toUpperCase() === "GET" &&
+    acceptsReviewData(path)
+  ) {
+    path = withReviewData(path);
+  }
   const headers: Record<string, string> = {
     Accept: accept,
     ...(role ? { "X-GRIDGO-Role": role } : {}),
@@ -440,8 +465,14 @@ export async function getPortalRoleProjection<R extends PortalRole>(
 // Orders / jobs
 // ---------------------------------------------------------------------------
 
-export async function listOrders(): Promise<Order[]> {
-  const result = await request<{ orders: Order[] }>("/orders");
+/**
+ * Staff may add test orders with `includeReviewData` (Orders queue and
+ * Finished work, "Show test orders"); without it the API leaves them out.
+ */
+export async function listOrders(options?: { includeReviewData?: boolean }): Promise<Order[]> {
+  const result = await request<{ orders: Order[] }>(
+    options?.includeReviewData ? withReviewData("/orders") : "/orders",
+  );
   return normalizeOrders(result.orders);
 }
 

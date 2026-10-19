@@ -80,6 +80,7 @@ import {
 } from "@/lib/approval-proof";
 import { chatRowSummary, isFlagged } from "@/lib/client-shop-chat";
 import { ShopModeChip } from "@/components/orders/ShopModeChip";
+import { TestOrderChip } from "@/components/orders/TestOrders";
 import { ExpressChip } from "@/components/ui/ExpressChip";
 import { isExpressOrder } from "@/lib/express";
 import { ProgressGallery, WaitingForPhoto } from "@/components/orders/ProductionProgress";
@@ -723,6 +724,7 @@ export function OrderWorkspace({
                 />
               ) : null}
               {isExpressOrder(order) ? <ExpressChip /> : null}
+              <TestOrderChip order={order} />
               {order.basketId && order.groupLabel ? (
                 <span className="text-caption text-text-secondary">
                   This is {order.groupLabel}

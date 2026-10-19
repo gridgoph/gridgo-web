@@ -417,7 +417,7 @@ The following shared surfaces mount one implementation for Operations and Super 
 | `src/components/approvals/ServiceLines.tsx`       | `/ops/service-lines` and the Service-lines tab of `/admin/verification`       |
 | `src/components/riders/RiderLiveView.tsx`         | `/ops/riders`, `/admin/riders` (orders open in the caller's own tree) |
 
-- AppShell renders `navGroupsForRole(role)` only. Do **not** maintain separate nav arrays in components.
+- AppShell renders `navGroupsForRole(role, { testOperations })` only (a test operations login sees `TEST_OPERATIONS_NAV_IDS`). Do **not** maintain separate nav arrays in components.
 - Middleware authenticates only; `RoleGate` refuses a role URL through its fixed database
   projection. Nav is not a security boundary.
 - Yellow on the rail is the **selected item’s text and icon** only — no left bar, no yellow pill or yellow fill. The active row also keeps the default sidebar-accent wash (same quiet highlight hover uses). Do not force `data-active:bg-transparent`. Elsewhere, yellow is at most one `Button variant="primary"` on a page. The rail must never become a yellow column.
