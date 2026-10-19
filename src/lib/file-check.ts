@@ -35,6 +35,7 @@ import {
 import { stageOf } from "@/app/ops/_lib/pipeline";
 import { ATTACHMENTS_QA_CHECK_LABEL, showsAttachmentList } from "@/lib/artwork-attachments";
 import { artworkQaCheckLabel, artworkSource } from "@/lib/design-links";
+import { prohibitedItemHold } from "@/lib/prohibited-item";
 
 /** A wait this long is worth a second look (portal choice, not an API rule). */
 export const FILE_CHECK_LONG_WAIT_SECONDS = 30 * 60;
@@ -152,6 +153,8 @@ export type FileCheckQueue = {
   awaitingPayment: FileCheckRow[];
   /** Sent back; the client is fixing the artwork. */
   sentBack: Order[];
+  /** On hold for a prohibited item; only Operations can release or cancel it. */
+  held: Order[];
 };
 
 function oldestFirst(a: FileCheckRow, b: FileCheckRow): number {
@@ -172,20 +175,23 @@ export function buildFileCheckQueue(
   const ready: FileCheckRow[] = [];
   const awaitingPayment: FileCheckRow[] = [];
   const sentBack: Order[] = [];
+  const held: Order[] = [];
   for (const order of orders) {
     const waitSeconds = fileCheckWaitSeconds(order, nowMs, hours);
     if (canDecideFileCheck(order)) {
       ready.push({ order, waitSeconds });
     } else if (order.state === "client_correction") {
-      sentBack.push(order);
+      (prohibitedItemHold(order) ? held : sentBack).push(order);
     } else if (waitSeconds !== null && stageOf(order) === "payment") {
       awaitingPayment.push({ order, waitSeconds });
     }
   }
   ready.sort(oldestFirst);
   awaitingPayment.sort(oldestFirst);
-  sentBack.sort((a, b) => (a.updatedAt || "").localeCompare(b.updatedAt || ""));
-  return { ready, awaitingPayment, sentBack };
+  const byUpdate = (a: Order, b: Order) => (a.updatedAt || "").localeCompare(b.updatedAt || "");
+  sentBack.sort(byUpdate);
+  held.sort(byUpdate);
+  return { ready, awaitingPayment, sentBack, held };
 }
 
 /** The send-back reason the client reads. The API refuses a blank one. */

@@ -9,7 +9,10 @@
  * oldest first, the wait keeps counting while the page is open, and a long
  * wait is marked in words and colour together. Pass and Send back work from
  * the row: Pass shows the artwork and the four checks before it sends the job
- * to the shop; Send back asks for the reason the client will read.
+ * to the shop; Send back asks for the reason the client will read; Prohibited
+ * item holds the order or cancels it with a full refund (ProhibitedItem.tsx).
+ * Held orders are listed apart from ordinary send-backs, because only
+ * Operations can move them on.
  *
  * Orders whose payment is still being checked are already waiting on their
  * file too. They are listed beneath with the same clock, because a backlog
@@ -24,7 +27,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { CircleCheck, Eye, Undo2 } from "lucide-react";
+import { Ban, CircleCheck, Eye, Undo2 } from "lucide-react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { OrderArtwork } from "@/components/orders/DesignLinks";
@@ -81,6 +84,8 @@ import { OperatingHoursStrip } from "@/components/orders/OperatingHoursStrip";
 import { formatDateTime } from "@/lib/format";
 import { basketShopCounts, groupPositionLabel, shopModeOf } from "@/lib/baskets";
 import { QaChecklistFields } from "./QaChecklist";
+import { ProhibitedItemDialog } from "./ProhibitedItem";
+import { PROHIBITED_HOLD_STATE } from "@/lib/prohibited-item";
 import { ShopModeChip } from "@/components/orders/ShopModeChip";
 import { TestOrderChip } from "@/components/orders/TestOrders";
 import { ExpressChip } from "@/components/ui/ExpressChip";
@@ -115,7 +120,7 @@ type Props = {
   hours?: OperatingHours | null;
 };
 
-type Decision = { kind: "pass" | "send-back"; order: Order };
+type Decision = { kind: "pass" | "send-back" | "prohibited"; order: Order };
 
 export function FileCheckQueue({
   orders,
@@ -296,6 +301,14 @@ export function FileCheckQueue({
                 }}
               />
               <DataTableRowAction
+                label="Prohibited item"
+                icon={Ban}
+                onClick={() => {
+                  setDone(null);
+                  setDecision({ kind: "prohibited", order: row.order });
+                }}
+              />
+              <DataTableRowAction
                 label="Open"
                 icon={Eye}
                 href={orderHref(row.order.id)}
@@ -378,6 +391,59 @@ export function FileCheckQueue({
         </section>
       ) : null}
 
+      {queue.held.length ? (
+        <section className="gg-card p-3" aria-labelledby="file-check-held-heading">
+          <h2 id="file-check-held-heading" className="text-h3 text-text-primary m-0">
+            On hold for a prohibited item ({queue.held.length})
+          </h2>
+          <p className="text-body text-text-secondary m-0 mt-1 max-w-prose">
+            The client cannot resubmit these. Open the order to release the hold or cancel
+            it with a full refund.
+          </p>
+          <ul className="m-0 mt-2 flex list-none flex-col p-0">
+            {queue.held.map((order) => {
+              const check = fileCheckOf(order);
+              return (
+                <li
+                  key={order.id}
+                  className="flex flex-col gap-1 border-b border-outline-subtle py-2 last:border-b-0"
+                >
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <Link
+                      href={orderHref(order.id)}
+                      className="text-body text-text-primary min-w-0 truncate underline-offset-2 hover:underline"
+                    >
+                      {order.title || "Untitled order"}
+                    </Link>
+                    <span className="text-caption text-text-muted">
+                      {check?.reviewedAt
+                        ? formatDateTime(check.reviewedAt)
+                        : formatDateTime(order.updatedAt)}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <StatusChip {...PROHIBITED_HOLD_STATE} />
+                    <TestOrderChip order={order} />
+                  </div>
+                  {check?.reason ? (
+                    <p className="text-body text-text-secondary m-0">
+                      &ldquo;{check.reason}&rdquo;
+                    </p>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
+
+      <ProhibitedItemDialog
+        order={decision?.kind === "prohibited" ? decision.order : null}
+        mode="decide"
+        holdClosed={Boolean(decision && fileCheckReviewSlot(decision.order, now, hours)?.closed)}
+        onCancel={() => setDecision(null)}
+        onDone={(message) => decided(message)}
+      />
       <PassDialog
         order={decision?.kind === "pass" ? decision.order : null}
         slot={decision ? fileCheckReviewSlot(decision.order, now, hours) : null}

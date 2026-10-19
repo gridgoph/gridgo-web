@@ -291,3 +291,52 @@ it("holds approve and send back while GRIDGO is closed, and keeps cancel", async
   expect(qa.getByRole("button", { name: "Send back for changes" })).toBeDisabled();
   expect(qa.getByRole("button", { name: "Cancel this order" })).toBeEnabled();
 });
+
+it("holds the order for a prohibited item from the Quality check row", async () => {
+  order.state = "needs_qa";
+  order.fileCheck = {
+    ...order.fileCheck!,
+    status: "pending",
+    reviewedAt: null,
+    reviewedBy: null,
+    checklist: null,
+  };
+  const qa = await openQuality();
+  fireEvent.click(qa.getByRole("button", { name: "Prohibited item" }));
+  const dialog = await screen.findByRole("dialog");
+  fireEvent.change(within(dialog).getByLabelText("Why it cannot be printed"), {
+    target: { value: "This design copies a registered brand logo." },
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Hold the order" }));
+  await waitFor(() => expect(posts).toHaveLength(1));
+  expect(posts[0]).toEqual({
+    state: "client_correction",
+    reasonCode: "prohibited_item",
+    note: "This design copies a registered brand logo.",
+  });
+});
+
+it("shows a prohibited-item hold in the header and the Quality check row", async () => {
+  order.state = "client_correction";
+  order.fileCheck = {
+    ...order.fileCheck!,
+    status: "failed",
+    reason: "This design copies a registered brand logo.",
+    reasonCode: "prohibited_item",
+    checklist: null,
+  };
+  const qa = await openQuality();
+  // The header chip and the row both carry the hold.
+  expect(screen.getAllByText("On hold: prohibited item").length).toBeGreaterThanOrEqual(2);
+  expect(qa.getByText("On hold for a prohibited item.")).toBeInTheDocument();
+  expect(qa.getByText("“This design copies a registered brand logo.”")).toBeInTheDocument();
+  capture("prohibited-hold");
+  fireEvent.click(qa.getByRole("button", { name: "Release to the file check" }));
+  const dialog = await screen.findByRole("dialog");
+  fireEvent.change(within(dialog).getByLabelText("Why the hold is lifted"), {
+    target: { value: "The client showed written permission." },
+  });
+  fireEvent.click(within(dialog).getByRole("button", { name: "Release to the file check" }));
+  await waitFor(() => expect(posts).toHaveLength(1));
+  expect(posts[0]).toEqual({ state: "needs_qa", note: "The client showed written permission." });
+});
