@@ -3331,7 +3331,13 @@ export async function getRefund(refundId: string): Promise<RefundRequest> {
  */
 export async function fileRefundRequest(
   orderId: string,
-  input: { kind: FileableRefundKind; reason: string; evidenceFileIds?: string[] },
+  input: {
+    kind: FileableRefundKind;
+    reason: string;
+    evidenceFileIds?: string[];
+    /** A prohibited-item cancellation from the file check (cancellation only). */
+    reasonCode?: "prohibited_item";
+  },
   key: string,
 ): Promise<RefundRequest> {
   const result = await request<{ refund: RefundRequest }>(

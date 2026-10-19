@@ -1403,6 +1403,10 @@ export type FileCheck = {
   reviewedBy?: string | null;
   /** Why the file was sent back, in words the client reads. */
   reason: string | null;
+  /** `prohibited_item` when Operations held or cancelled it for a prohibited item. */
+  reasonCode?: string | null;
+  /** The full cancellation refund a prohibited-item decision opened. */
+  refundRequestId?: string | null;
   /** Computed by the API at read time; 0 once decided. */
   waitingSeconds: number;
 };
