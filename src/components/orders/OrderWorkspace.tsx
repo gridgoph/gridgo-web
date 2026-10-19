@@ -102,6 +102,13 @@ import { Timeline } from "@/components/orders/Timeline";
 import { ProblemReportPanel } from "@/components/problem-reports/ProblemReportPanel";
 import { FileRefundDialog, type FiledRequest } from "@/components/refunds/dialogs";
 import {
+  ProhibitedItemDialog,
+  ProhibitedItemPanel,
+  type ProhibitedItemMode,
+} from "@/components/orders/ProhibitedItem";
+import { toast } from "@/components/ui/toast";
+import { prohibitedItemCancelled, prohibitedItemHold } from "@/lib/prohibited-item";
+import {
   Accordion,
   AccordionContent,
   AccordionHeader,
@@ -332,6 +339,7 @@ export function OrderWorkspace({
   const [correctError, setCorrectError] = useState<string | null>(null);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [filing, setFiling] = useState(false);
+  const [prohibited, setProhibited] = useState<ProhibitedItemMode | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const fileKey = useRef<{ signature: string; key: string } | null>(null);
   // The mount point says which tree this is; links stay inside it.
@@ -872,6 +880,8 @@ export function OrderWorkspace({
                   reviewError={reviewError}
                   onApproveFinished={() => void reviewFinished("approved")}
                   onSendBackFinished={(reason) => void reviewFinished("rejected", reason)}
+                  refunds={refunds}
+                  onProhibited={setProhibited}
                 />
                 {/*
                 Between the shop and the road: the rider's count and six
@@ -1218,6 +1228,18 @@ export function OrderWorkspace({
         onFile={(request) => void fileRefund(request)}
       />
 
+      <ProhibitedItemDialog
+        order={prohibited ? order : null}
+        mode={prohibited ?? "decide"}
+        holdClosed={Boolean(fileCheckReviewSlot(order)?.closed)}
+        onCancel={() => setProhibited(null)}
+        onDone={async (message) => {
+          setProhibited(null);
+          toast.add({ type: "success", title: "Prohibited item", description: message });
+          await load();
+        }}
+      />
+
       {release ? (
         <ReleaseMilestoneDialog
           target={release}
@@ -1560,6 +1582,9 @@ type StepRowProps = {
   reviewError: string | null;
   onApproveFinished: () => void;
   onSendBackFinished: (reason: string) => void;
+  /** The order's refund requests, for a prohibited-item cancellation's status. */
+  refunds: RefundRequest[] | null;
+  onProhibited: (mode: ProhibitedItemMode) => void;
 };
 
 function StepRow({
@@ -1588,6 +1613,8 @@ function StepRow({
   reviewError,
   onApproveFinished,
   onSendBackFinished,
+  refunds,
+  onProhibited,
 }: StepRowProps) {
   const definition = STAGES.find((entry) => entry.id === step.id);
   const current = step.status === "current";
@@ -1714,12 +1741,26 @@ function StepRow({
               >
                 Cancel this order
               </Button>
+              <Button variant="secondary" onClick={() => onProhibited("decide")} disabled={busy}>
+                Prohibited item
+              </Button>
             </div>
             <p className="text-caption text-text-muted m-0">
               Sending back keeps the client&rsquo;s payment. Both a change request and a
-              cancellation need a reason — the client is told what you write.
+              cancellation need a reason — the client is told what you write. For artwork
+              that goes against the Prohibited Items policy, use Prohibited item.
             </p>
           </div>
+        ) : prohibitedItemHold(order) || prohibitedItemCancelled(order) ? (
+          <ProhibitedItemPanel
+            order={order}
+            refunds={refunds}
+            names={names}
+            tree={tree}
+            busy={busy}
+            onRelease={() => onProhibited("release")}
+            onCancelOrder={() => onProhibited("cancel")}
+          />
         ) : step.status === "done" || order.fileCheck?.reviewedAt ? (
           <QaChecklistRecord order={order} names={names} />
         ) : (
@@ -1775,6 +1816,8 @@ function stepSummary(order: Order, step: WorkspaceStep): string {
       const waiting = fileCheckWaitLine(order);
       if (waiting) return waiting;
     }
+    if (prohibitedItemHold(order)) return "On hold for a prohibited item.";
+    if (prohibitedItemCancelled(order)) return "Cancelled for a prohibited item.";
     if (step.status === "done" && check?.status === "passed" && check.reviewedAt) {
       return `File passed ${formatDateTime(check.reviewedAt)}.`;
     }
