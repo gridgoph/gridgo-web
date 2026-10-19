@@ -55,7 +55,9 @@ export type StatusIconName =
   // An Express order or listing (docs/EXPRESS_API.md in gridgo-api).
   | "zap"
   // A test account's order (docs/REVIEW_DATA_API.md in gridgo-api).
-  | "flask-conical";
+  | "flask-conical"
+  // The Founding Tester label (docs/VOUCHERS_API.md in gridgo-api).
+  | "award";
 
 export type StatePresentation = {
   label: string;

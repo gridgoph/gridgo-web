@@ -339,3 +339,11 @@ it("opens voucher activity on the Super Admin log and the Operations lookup", ()
     expect(notificationHref("supplier", note({ type }))).toBeNull();
   }
 });
+
+it("opens Founding Tester notices on the progress view in each staff tree", () => {
+  for (const type of ["founding_tester_reminder", "founding_tester_awarded"]) {
+    expect(notificationHref("super_admin", note({ type }))).toBe("/admin/founding-testers");
+    expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/founding-testers");
+    expect(notificationHref("supplier", note({ type }))).toBeNull();
+  }
+});

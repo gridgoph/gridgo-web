@@ -138,6 +138,14 @@ export function notificationHref(role: Role, notification: Notification): string
     return null;
   }
 
+  // Founding Tester reminders and awards (gridgo-api#293) name no client for
+  // staff, so staff land on the progress view in their own tree.
+  if (type.startsWith("founding_tester_")) {
+    if (role === "super_admin") return "/admin/founding-testers";
+    if (role === "ops_admin") return "/ops/founding-testers";
+    return null;
+  }
+
   // Client refund notices name the order, not the request, so staff land on
   // the refund inbox with that order and it opens the request. The shop's copy
   // falls through to its job, where the settled payout shows. A shop
