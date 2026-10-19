@@ -17,6 +17,11 @@ import {
 } from "@/app/ops/_lib/pipeline";
 import { FileCheckQueue } from "@/components/orders/FileCheckQueue";
 import { ShopModeChip } from "@/components/orders/ShopModeChip";
+import {
+  ShowTestOrdersSwitch,
+  TestOrderChip,
+  useShowTestOrders,
+} from "@/components/orders/TestOrders";
 import { ExpressChip } from "@/components/ui/ExpressChip";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,13 +70,15 @@ export default function OpsOrdersPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [stage, setStage] = useState<Stage>(requested ?? "payment");
+  const testOrders = useShowTestOrders();
+  const includeReviewData = testOrders.include;
 
   const load = useSerializedLoad(
     useCallback(async () => {
       setLoading(true);
       setError(null);
       try {
-        setOrders(await listOrders());
+        setOrders(await listOrders({ includeReviewData }));
       } catch (err) {
         setOrders(null);
         setError(
@@ -82,7 +89,7 @@ export default function OpsOrdersPage() {
       } finally {
         setLoading(false);
       }
-    }, []),
+    }, [includeReviewData]),
   );
 
   useLiveReload("orders", load);
@@ -153,6 +160,7 @@ export default function OpsOrdersPage() {
                   {order.title || "Untitled order"}
                 </p>
                 <ShopModeChip mode={shopModeOf(order, shopCounts)} />
+                <TestOrderChip order={order} />
               </div>
               <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
                 {position ? `${position} · ` : ""}Order {order.id}
@@ -259,54 +267,64 @@ export default function OpsOrdersPage() {
         them left to right is reading the order's own journey; a vertical list
         would say these are alternatives, which they are not.
       */}
-      <nav aria-label="Order stages" className="flex flex-wrap gap-2">
-        {STAGES.map((entry) => {
-          const selected = entry.id === stage;
-          const needsYou = waiting[entry.id];
-          return (
-            <button
-              key={entry.id}
-              type="button"
-              aria-pressed={selected}
-              onClick={() => {
-                setStage(entry.id);
-                router.replace(`/ops/orders?stage=${entry.id}`, { scroll: false });
-              }}
-              className="gg-chip min-h-11 flex items-center gap-2 px-3"
-              // The monochrome structural fill (`--primary`). `--color-accent`
-              // is remapped to shadcn's light hover wash, which left the
-              // selected stage's white label unreadable.
-              style={{
-                background: selected ? "var(--primary)" : "var(--color-surface)",
-                color: selected
-                  ? "var(--primary-foreground)"
-                  : "var(--color-text-secondary)",
-                borderColor: selected ? "var(--primary)" : "var(--color-outline)",
-              }}
-            >
-              <span className="text-body">{entry.label}</span>
-              <span
-                className="text-caption tabular-nums"
-                style={{ opacity: selected ? 0.75 : 0.6 }}
+      <div className="flex flex-wrap items-center gap-2">
+        <nav aria-label="Order stages" className="flex flex-wrap gap-2">
+          {STAGES.map((entry) => {
+            const selected = entry.id === stage;
+            const needsYou = waiting[entry.id];
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => {
+                  setStage(entry.id);
+                  router.replace(`/ops/orders?stage=${entry.id}`, { scroll: false });
+                }}
+                className="gg-chip min-h-11 flex items-center gap-2 px-3"
+                // The monochrome structural fill (`--primary`). `--color-accent`
+                // is remapped to shadcn's light hover wash, which left the
+                // selected stage's white label unreadable.
+                style={{
+                  background: selected ? "var(--primary)" : "var(--color-surface)",
+                  color: selected
+                    ? "var(--primary-foreground)"
+                    : "var(--color-text-secondary)",
+                  borderColor: selected ? "var(--primary)" : "var(--color-outline)",
+                }}
               >
-                {counts[entry.id]}
-              </span>
-              {needsYou > 0 ? (
+                <span className="text-body">{entry.label}</span>
                 <span
-                  className="text-caption tabular-nums rounded-pill px-1.5"
-                  style={{
-                    background: "var(--color-action-yellow)",
-                    color: "var(--color-action-yellow-on)",
-                    fontFamily: "var(--font-bold)",
-                  }}
+                  className="text-caption tabular-nums"
+                  style={{ opacity: selected ? 0.75 : 0.6 }}
                 >
-                  {needsYou}
+                  {counts[entry.id]}
                 </span>
-              ) : null}
-            </button>
-          );
-        })}
-      </nav>
+                {needsYou > 0 ? (
+                  <span
+                    className="text-caption tabular-nums rounded-pill px-1.5"
+                    style={{
+                      background: "var(--color-action-yellow)",
+                      color: "var(--color-action-yellow-on)",
+                      fontFamily: "var(--font-bold)",
+                    }}
+                  >
+                    {needsYou}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </nav>
+        {testOrders.switchable ? (
+          <div className="ml-auto">
+            <ShowTestOrdersSwitch
+              checked={testOrders.show}
+              onCheckedChange={testOrders.setShow}
+            />
+          </div>
+        ) : null}
+      </div>
 
       {stage === "qa" ? (
         // The file check is its own queue: oldest first, a live wait, and Pass

@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { TestOrderChip } from "@/components/orders/TestOrders";
 import { ExpressChip } from "@/components/ui/ExpressChip";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { isExpressOrder } from "@/lib/express";
@@ -266,6 +267,7 @@ export default function OpsDispatchPage() {
                 {o.title}
               </p>
               {isExpressOrder(o) ? <ExpressChip /> : null}
+              <TestOrderChip order={o} />
             </div>
             <p className="text-caption text-text-muted m-0 mt-0.5">Order {o.id}</p>
             <p className="text-caption text-text-muted m-0 mt-0.5">

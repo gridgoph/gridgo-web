@@ -12,7 +12,12 @@ import {
 import { AppShell } from "@/components/shell/AppShell";
 import { accountHold, type AccountHold } from "@/lib/accountHold";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
-import { getPortalRoleProjection, isApiError, onForbidden } from "@/lib/api/client";
+import {
+  getPortalRoleProjection,
+  isApiError,
+  onForbidden,
+  setTestOperationsSession,
+} from "@/lib/api/client";
 import type { PortalRole } from "@/lib/api/types";
 import { withdrawnStanding, type WithdrawnStanding } from "@/lib/auth/account-standing";
 import { useAuth } from "@/lib/auth/AuthProvider";
@@ -57,6 +62,9 @@ const FORBIDDEN_RECHECK_GAP_MS = 5_000;
  * each projection carries it again, so a hold that lands mid-session shows on
  * the next navigation, or at once when any endpoint answers
  * `403 account_suspended` / `account_removed`.
+ *
+ * A test operations login (`testOperations` on the Operations projection) gets
+ * a fenced workspace: test data only, and only the pages a test order needs.
  */
 export function RoleGate({ allow, children }: Props) {
   const auth = useAuth();
@@ -65,6 +73,7 @@ export function RoleGate({ allow, children }: Props) {
   const [projectionStatus, setProjectionStatus] = useState<ProjectionStatus>("idle");
   const [standing, setStanding] = useState<WithdrawnStanding | null>(null);
   const [projectionHold, setProjectionHold] = useState<AccountHold | null>(null);
+  const [testOperations, setTestOperations] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const lastForbiddenRecheck = useRef(0);
 
@@ -88,6 +97,13 @@ export function RoleGate({ allow, children }: Props) {
             ? await getPortalRoleProjection(allow, { refreshToken: true })
             : await getPortalRoleProjection(allow);
           if (!active) return;
+          // Set before the tree mounts, so its first reads already ask for
+          // test data only.
+          const testOps =
+            allow === "ops_admin" &&
+            (projection as { testOperations?: boolean }).testOperations === true;
+          setTestOperationsSession(testOps);
+          setTestOperations(testOps);
           const held = accountHold(projection.user);
           setProjectionHold(held);
           if (held) {
@@ -129,6 +145,9 @@ export function RoleGate({ allow, children }: Props) {
       active = false;
     };
   }, [allow, attempt, auth.status, auth.revision, pathname, router]);
+
+  // Leaving this tree ends its test operations scope.
+  useEffect(() => () => setTestOperationsSession(false), []);
 
   useEffect(() => {
     if (projectionStatus !== "allowed") return;
@@ -217,5 +236,9 @@ export function RoleGate({ allow, children }: Props) {
     );
   }
 
-  return <AppShell role={allow}>{children}</AppShell>;
+  return (
+    <AppShell role={allow} testOperations={testOperations}>
+      {children}
+    </AppShell>
+  );
 }

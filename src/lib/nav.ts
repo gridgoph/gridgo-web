@@ -1008,9 +1008,12 @@ export type NavSection = {
 };
 
 /** Consecutive groups with the same `section` share one heading. */
-export function navSectionsForRole(role: Role | string): readonly NavSection[] {
+export function navSectionsForRole(
+  role: Role | string,
+  scope: NavScope = {},
+): readonly NavSection[] {
   const sections: { label: string; groups: NavGroup[] }[] = [];
-  for (const group of navGroupsForRole(role)) {
+  for (const group of navGroupsForRole(role, scope)) {
     const last = sections[sections.length - 1];
     if (last && last.label === group.section) last.groups.push(group);
     else sections.push({ label: group.section, groups: [group] });
@@ -1033,13 +1036,64 @@ export function isPortalRole(role: Role | string): role is PortalRole {
   return role === "supplier" || role === "ops_admin" || role === "super_admin";
 }
 
-export function navGroupsForRole(role: Role | string): readonly NavGroup[] {
+/**
+ * Who is reading the rail beyond their role. A test operations login is an
+ * Operations membership the API fences to test data
+ * (`gridgoph/gridgo-api` docs/REVIEW_DATA_API.md).
+ */
+export type NavScope = { testOperations?: boolean };
+
+/**
+ * The Operations pages a test operations login needs to run a test order end
+ * to end, and nothing else: no money, legal and privacy, account deletion,
+ * issue reports or shop administration. The API refuses the rest
+ * (`403 test_operations_forbidden`); this list keeps the rail and the address
+ * bar from leading there.
+ */
+export const TEST_OPERATIONS_NAV_IDS: ReadonlySet<string> = new Set([
+  "ops-overview",
+  "ops-chat",
+  "ops-order-chats",
+  "ops-orders",
+  "ops-finished-work",
+  "ops-approvals",
+  "ops-listing-reviews",
+  "ops-colour-price-checks",
+  "ops-dispatch",
+  "ops-riders",
+  "ops-hub",
+  "ops-escalations",
+]);
+
+export function navGroupsForRole(
+  role: Role | string,
+  scope: NavScope = {},
+): readonly NavGroup[] {
   if (!isPortalRole(role)) return [];
-  return ROLE_NAV_GROUPS[role];
+  const groups = ROLE_NAV_GROUPS[role];
+  if (!scope.testOperations || role !== "ops_admin") return groups;
+  return groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => TEST_OPERATIONS_NAV_IDS.has(item.id)),
+    }))
+    .filter((group) => group.items.length > 0);
 }
 
-export function navForRole(role: Role | string): readonly NavItem[] {
-  return flattenNavGroups(navGroupsForRole(role));
+export function navForRole(role: Role | string, scope: NavScope = {}): readonly NavItem[] {
+  return flattenNavGroups(navGroupsForRole(role, scope));
+}
+
+/**
+ * Whether a test operations login may open `pathname`: a rail page or a page
+ * beneath one (an order's workspace under Orders). Everything else in the
+ * Operations tree shows "Not available for test operations" without reading.
+ */
+export function testOperationsAllowsPath(pathname: string): boolean {
+  if (pathname === "/ops" || pathname === "/ops/") return true;
+  return navForRole("ops_admin", { testOperations: true }).some(
+    (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
+  );
 }
 
 /** Best matching nav item for a pathname (longest href prefix wins). */
