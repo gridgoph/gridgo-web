@@ -213,6 +213,20 @@ describe("notificationHref", () => {
     expect(notificationHref("super_admin", row)).toBe("/admin/escalations");
   });
 
+  it("opens a shop performance notice on the staff list, which finds the shop", () => {
+    const row = note({ type: "supplier_performance_notice", orderId: "ord_1" });
+    expect(notificationHref("ops_admin", row)).toBe("/ops/shop-performance?order=ord_1");
+    expect(notificationHref("super_admin", row)).toBe("/admin/shop-performance?order=ord_1");
+    // The shop's own copy opens its job.
+    expect(notificationHref("supplier", row)).toBe("/supplier/jobs/ord_1");
+  });
+
+  it("opens a problem report decision on the order, where the case is", () => {
+    const row = note({ type: "issue_decision", orderId: "ord_1" });
+    expect(notificationHref("ops_admin", row)).toBe("/ops/orders/ord_1");
+    expect(notificationHref("super_admin", row)).toBe("/admin/orders/ord_1");
+  });
+
   it("opens a filed issue report on that role's reports desk", () => {
     const row = note({ type: "ops_issue_report_filed" });
     expect(notificationHref("ops_admin", row)).toBe("/ops/issue-reports");

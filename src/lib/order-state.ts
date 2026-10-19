@@ -4,6 +4,7 @@
  */
 
 import type {
+  Order,
   OrderPayments,
   PaymentInstallment,
   PayoutMilestone,
@@ -26,6 +27,12 @@ import {
   type PaymentSource,
   type PaymentSplitSource,
 } from "@/lib/payments";
+import {
+  PROHIBITED_CANCELLED_STATE,
+  PROHIBITED_HOLD_STATE,
+  prohibitedItemCancelled,
+  prohibitedItemHold,
+} from "@/lib/prohibited-item";
 
 export type StatusTone = "success" | "warning" | "error" | "info" | "neutral";
 export type StatusIconName =
@@ -46,7 +53,9 @@ export type StatusIconName =
   | "store"
   | "split"
   // An Express order or listing (docs/EXPRESS_API.md in gridgo-api).
-  | "zap";
+  | "zap"
+  // A test account's order (docs/REVIEW_DATA_API.md in gridgo-api).
+  | "flask-conical";
 
 export type StatePresentation = {
   label: string;
@@ -62,6 +71,17 @@ export function presentOrderState(
   state: string,
   order?: PaymentSplitSource,
 ): StatePresentation {
+  // A prohibited-item decision at the file check reads as itself wherever the
+  // order's own current state is shown (ORDER_MATCH_API.md).
+  if (order && "fileCheck" in order) {
+    const current = order as Pick<Order, "fileCheck" | "state">;
+    if (current.state === state && state === "client_correction" && prohibitedItemHold(current)) {
+      return PROHIBITED_HOLD_STATE;
+    }
+    if (current.state === state && state === "cancelled" && prohibitedItemCancelled(current)) {
+      return PROHIBITED_CANCELLED_STATE;
+    }
+  }
   // The rider-packs handover renames the two packing states
   // (`gridgo-api/docs/SHOP_HANDOVER_API.md`): nothing is packed at the shop.
   if (order && "handoverFlow" in order && order.handoverFlow === "rider_packs") {

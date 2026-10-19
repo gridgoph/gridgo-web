@@ -103,6 +103,17 @@ vi.mock("@/lib/live/LiveProvider", () => ({
   useLiveOptional: () => liveRef.current,
 }));
 
+const forbiddenRef = vi.hoisted(() => {
+  const listeners = new Set<(error: { code: string }) => void>();
+  return {
+    subscribe: (listener: (error: { code: string }) => void) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    emit: (code: string) => listeners.forEach((listener) => listener({ code })),
+  };
+});
+
 const { ordersRef, listOrdersMock, countMocks } = vi.hoisted(() => {
   const ordersRef = { current: [] as Array<Record<string, unknown>> };
   return {
@@ -149,6 +160,7 @@ vi.mock("@/lib/api/client", () => ({
   listIssueReports: countMocks.listIssueReports,
   listJobs: countMocks.listJobs,
   getTracker: countMocks.getTracker,
+  onForbidden: forbiddenRef.subscribe,
 }));
 
 vi.mock("@/lib/api/support-chat", () => ({
@@ -998,5 +1010,60 @@ describe("AppShell chrome", () => {
       expect(countMocks.listEscalations).not.toHaveBeenCalled();
       expect(countMocks.listJobs).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("test operations", () => {
+  function renderTestOps(pathname: string) {
+    pathnameRef.current = pathname;
+    window.history.replaceState(null, "", pathname);
+    return render(
+      <TooltipProvider>
+        <AppShell role="ops_admin" testOperations>
+          <p>Workspace body</p>
+        </AppShell>
+      </TooltipProvider>,
+    );
+  }
+
+  it("keeps the test data banner on screen and the rail to the test desk", () => {
+    renderTestOps("/ops/orders");
+    expect(screen.getByRole("note", { name: "Test operations" })).toHaveTextContent(
+      "Test operations. You only see test data.",
+    );
+    const rail = within(screen.getByRole("navigation", { name: "Primary navigation" }));
+    expect(rail.queryByText("Money")).toBeNull();
+    expect(rail.queryByText("Legal & privacy")).toBeNull();
+    expect(rail.queryByText("Account deletion")).toBeNull();
+    expect(rail.queryByText("Issue reports")).toBeNull();
+    expect(rail.getByText("Orders")).toBeInTheDocument();
+    expect(screen.getByText("Workspace body")).toBeInTheDocument();
+  });
+
+  it("shows a calm unavailable page instead of a page outside the test desk", () => {
+    renderTestOps("/ops/payouts");
+    expect(
+      screen.getByRole("heading", { name: "Not available for test operations" }),
+    ).toBeVisible();
+    expect(screen.queryByText("Workspace body")).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("says once, calmly, when the API refuses part of an allowed page", async () => {
+    renderTestOps("/ops/overview");
+    expect(screen.queryByText(/Part of this page/)).toBeNull();
+    React.act(() => {
+      forbiddenRef.emit("test_operations_forbidden");
+      forbiddenRef.emit("test_operations_forbidden");
+    });
+    expect(
+      screen.getAllByText("Part of this page is not available for test operations."),
+    ).toHaveLength(1);
+    expect(screen.getByText("Workspace body")).toBeInTheDocument();
+  });
+
+  it("shows no banner for ordinary Operations", () => {
+    renderShell("/ops/orders");
+    expect(screen.queryByRole("note", { name: "Test operations" })).toBeNull();
   });
 });

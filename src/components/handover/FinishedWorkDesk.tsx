@@ -58,6 +58,11 @@ import {
   submissionWaitSeconds,
 } from "@/lib/shop-handover";
 import { cn } from "@/lib/utils";
+import {
+  ShowTestOrdersSwitch,
+  TestOrderChip,
+  useShowTestOrders,
+} from "@/components/orders/TestOrders";
 
 type Tab = "waiting" | "sent_back" | "approved";
 
@@ -101,6 +106,8 @@ export function FinishedWorkDesk({ tree }: { tree: "ops" | "admin" }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const now = useNow(TICK_MS);
+  const testOrders = useShowTestOrders();
+  const includeReviewData = testOrders.include;
 
   const shopsRead = useRef(false);
   const load = useSerializedLoad(
@@ -121,12 +128,12 @@ export function FinishedWorkDesk({ tree }: { tree: "ops" | "admin" }) {
         );
       }
       try {
-        setOrders(await listOrders());
+        setOrders(await listOrders({ includeReviewData }));
         setLoadError(null);
       } catch (err) {
         setLoadError(opsErrorMessage(err, "The orders could not be loaded. Try again."));
       }
-    }, []),
+    }, [includeReviewData]),
   );
   useLiveReload(["orders", "jobs"], load);
   useEffect(() => {
@@ -240,9 +247,17 @@ export function FinishedWorkDesk({ tree }: { tree: "ops" | "admin" }) {
           Shops send photos of finished, unpacked work. No rider is called until you
           approve it.
         </p>
-        <Button size="sm" onClick={() => void load()}>
-          Refresh
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          {testOrders.switchable ? (
+            <ShowTestOrdersSwitch
+              checked={testOrders.show}
+              onCheckedChange={testOrders.setShow}
+            />
+          ) : null}
+          <Button size="sm" onClick={() => void load()}>
+            Refresh
+          </Button>
+        </div>
       </div>
 
       <div aria-live="polite" className="shrink-0 empty:hidden">
@@ -475,6 +490,7 @@ function QueueRow({
             {photos.length ? `, ${photoCount(photos.length)}` : ""}
           </span>
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1 pt-0.5">
+            <TestOrderChip order={order} />
             {tab === "waiting" ? (
               <>
                 <WaitMark seconds={submissionWaitSeconds(order, now)} />

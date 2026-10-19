@@ -66,6 +66,8 @@ import type {
   EligibleSuppliersResult,
   Escalation,
   HealthResult,
+  FaultParty,
+  FaultRemedy,
   Issue,
   LocationDiagnostics,
   LocationPing,
@@ -73,6 +75,7 @@ import type {
   Notification,
   Order,
   PaymentInstallment,
+  SupplierPerformance,
   PhysicalInvoiceRequest,
   PayoutMilestone,
   PayoutMilestoneCode,
@@ -140,6 +143,7 @@ import type {
   WebPushSubscriptionInput,
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
+import { acceptsReviewData, withReviewData } from "@/lib/review-data";
 import {
   normalizeShopHours,
   normalizeShopHoursList,
@@ -310,6 +314,22 @@ export function getWorkspaceRole(): PortalRole | null {
         : null;
 }
 
+let testOperationsSession = false;
+
+/**
+ * A test operations login sees test data only, so every list read that takes
+ * the review-data flag sends it (`src/lib/review-data.ts`). `RoleGate` sets
+ * this from the Operations projection before the workspace mounts, and clears
+ * it for every other tree.
+ */
+export function setTestOperationsSession(on: boolean): void {
+  testOperationsSession = on;
+}
+
+export function isTestOperationsSession(): boolean {
+  return testOperationsSession;
+}
+
 async function send(
   path: string,
   init: RequestInit,
@@ -318,6 +338,14 @@ async function send(
   tokenOptions?: TokenProviderOptions,
 ): Promise<Response> {
   const role = path.startsWith("/auth/") ? null : getWorkspaceRole();
+  if (
+    testOperationsSession &&
+    role === "ops_admin" &&
+    (init.method ?? "GET").toUpperCase() === "GET" &&
+    acceptsReviewData(path)
+  ) {
+    path = withReviewData(path);
+  }
   const headers: Record<string, string> = {
     Accept: accept,
     ...(role ? { "X-GRIDGO-Role": role } : {}),
@@ -437,8 +465,14 @@ export async function getPortalRoleProjection<R extends PortalRole>(
 // Orders / jobs
 // ---------------------------------------------------------------------------
 
-export async function listOrders(): Promise<Order[]> {
-  const result = await request<{ orders: Order[] }>("/orders");
+/**
+ * Staff may add test orders with `includeReviewData` (Orders queue and
+ * Finished work, "Show test orders"); without it the API leaves them out.
+ */
+export async function listOrders(options?: { includeReviewData?: boolean }): Promise<Order[]> {
+  const result = await request<{ orders: Order[] }>(
+    options?.includeReviewData ? withReviewData("/orders") : "/orders",
+  );
   return normalizeOrders(result.orders);
 }
 
@@ -1223,6 +1257,37 @@ export async function listSupplierProductionLapses(
   return request<SupplierProductionLapses>(
     `/users/${encodeURIComponent(supplierId)}/production-lapses`,
   );
+}
+
+// Shop performance (gridgo-api docs/SUPPLIER_PERFORMANCE_API.md): warnings only.
+
+/** Ops / Super Admin. Every shop's performance, one entry per shop profile. */
+export async function listShopPerformance(): Promise<SupplierPerformance[]> {
+  const result = await request<{ shops: SupplierPerformance[] }>(`/ops/shops/performance`);
+  return result.shops;
+}
+
+/** Ops / Super Admin. One shop's performance; `404 supplier_not_found` otherwise. */
+export async function getShopPerformance(supplierId: string): Promise<SupplierPerformance> {
+  const result = await request<{ performance: SupplierPerformance }>(
+    `/ops/shops/${encodeURIComponent(supplierId)}/performance`,
+  );
+  return result.performance;
+}
+
+/**
+ * Super Admin. Exempts one order and shop from performance counts. A retry
+ * returns the existing declaration and never replaces its reason.
+ */
+export async function recordPerformanceNoFault(
+  orderId: string,
+  input: { reason: string; supplierId?: string },
+): Promise<SupplierPerformance> {
+  const result = await request<{ performance: SupplierPerformance }>(
+    `/orders/${encodeURIComponent(orderId)}/performance-no-fault`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.performance;
 }
 
 /**
@@ -2261,7 +2326,7 @@ export async function listIssues(filters?: {
     status: filters?.status,
   });
   const result = await request<{ issues: Issue[] }>(`/issues${q}`);
-  return result.issues;
+  return result.issues ?? [];
 }
 
 export async function getIssue(issueId: string): Promise<Issue> {
@@ -2287,12 +2352,51 @@ export async function resolveIssue(
     reason?: string;
     status?: "resolved" | "dismissed";
     releasePayout?: boolean;
+    /** Required once the case carries a fault decision (`409 issue_stale`). */
+    expectedVersion?: number;
   },
 ): Promise<Issue> {
   const result = await request<{ issue: Issue }>(`/issues/${issueId}/resolve`, {
     method: "POST",
     body: JSON.stringify(input),
   });
+  return result.issue;
+}
+
+/**
+ * Ops / Super Admin. Records a human fault and remedy finding on a problem
+ * report. Moves no money and changes no claim. GRIDGO funding above ₱1,000
+ * recorded by Operations waits for Super Admin (`status: awaiting_approval`).
+ */
+export async function recordIssueDecision(
+  issueId: string,
+  input: {
+    expectedVersion: number;
+    fault: FaultParty;
+    remedy: FaultRemedy;
+    reason: string;
+    evidenceIds: string[];
+    alternativesReason?: string;
+    costMinor: number;
+    gridgoCostMinor: number;
+  },
+): Promise<Issue> {
+  const result = await request<{ issue: Issue }>(
+    `/issues/${encodeURIComponent(issueId)}/decision`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return result.issue;
+}
+
+/** Super Admin. Approves only the current pending decision. */
+export async function approveIssueDecision(
+  issueId: string,
+  input: { expectedVersion: number; decisionId: string; reason: string },
+): Promise<Issue> {
+  const result = await request<{ issue: Issue }>(
+    `/issues/${encodeURIComponent(issueId)}/approve-decision`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
   return result.issue;
 }
 
@@ -3227,7 +3331,13 @@ export async function getRefund(refundId: string): Promise<RefundRequest> {
  */
 export async function fileRefundRequest(
   orderId: string,
-  input: { kind: FileableRefundKind; reason: string; evidenceFileIds?: string[] },
+  input: {
+    kind: FileableRefundKind;
+    reason: string;
+    evidenceFileIds?: string[];
+    /** A prohibited-item cancellation from the file check (cancellation only). */
+    reasonCode?: "prohibited_item";
+  },
   key: string,
 ): Promise<RefundRequest> {
   const result = await request<{ refund: RefundRequest }>(

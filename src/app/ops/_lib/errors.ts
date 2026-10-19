@@ -75,6 +75,17 @@ const CODE_COPY: Record<string, string> = {
     "This job has left production, so it no longer takes progress photos. Refresh the order.",
   file_check_reason_required:
     "Say what the client needs to fix. The file cannot be sent back without a reason.",
+  // Prohibited items at the file check (ORDER_MATCH_API.md).
+  prohibited_item_before_production_only:
+    "Production has already started on this order, so it can no longer be held or cancelled from the file check.",
+  prohibited_item_file_check_required:
+    "This order is no longer at the file check. Refresh to see where it stands.",
+  prohibited_item_hold:
+    "This order is on hold for a prohibited item. Release the hold or cancel it from the Quality check row first.",
+  prohibited_item_refund_required:
+    "This order was paid, so it is cancelled through a full refund. Use Cancel with a full refund.",
+  prohibited_item_full_refund_required:
+    "A prohibited-item cancellation refunds everything the client paid, with nothing kept for the shop or rider. Preview the settlement again at the full amount.",
   shop_recovery_pending:
     "This order is already waiting on a replacement or a refund. Refresh to see where it stands.",
   shop_cancel_not_available:
@@ -221,6 +232,8 @@ const CODE_COPY: Record<string, string> = {
   refund_settlement_payout_hold:
     "A refund settlement replaced this order's remaining shares. Pay what the shop is still owed as the settlement payout.",
   refund_not_found: "That refund request was not found. Refresh the inbox.",
+  test_operations_forbidden:
+    "Not available for test operations. This step works with real customers, shops or riders.",
 };
 
 export function opsErrorMessage(err: unknown, fallback: string): string {

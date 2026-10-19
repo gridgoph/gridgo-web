@@ -95,7 +95,7 @@ export function ConversationDetails({
             <p className="text-body text-text-muted m-0 pt-2">No messages match that search.</p>
           ) : (
             searchResults.map((message) => {
-              const sender = message.mine ? "You" : name;
+              const sender = message.mine ? "You" : message.senderName || name;
               const text = snippet(message);
               const when = formatDateTime(message.createdAt);
               return (

@@ -65,6 +65,9 @@ vi.mock("@/lib/auth/AuthProvider", () => ({
   useAuth: () => ({ user: { id: "admin_me", name: "Admin", email: "", role: "super_admin" } }),
 }));
 
+const saved = vi.hoisted(() => ({ saveCsv: vi.fn() }));
+vi.mock("@/components/survey-responses/save-csv", () => saved);
+
 vi.mock("@/lib/api/client", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
   return { ...actual, ...api };
@@ -73,6 +76,7 @@ vi.mock("@/lib/api/client", async () => {
 import { ApiError } from "@/lib/api/client";
 import { SupplierInvoicesDesk } from "@/components/supplier-invoices/SupplierInvoicesDesk";
 import { SupplierInvoicesSummary } from "@/components/supplier-invoices/SupplierInvoicesSummary";
+import { manilaMonth, monthLabel } from "@/lib/supplier-invoices";
 
 function invoice(patch: Partial<SupplierInvoice>): SupplierInvoice {
   return {
@@ -381,5 +385,67 @@ describe("SupplierInvoicesSummary on Finance", () => {
       "href",
       "/admin/supplier-invoices",
     );
+  });
+
+  it("downloads the whole month's receipt scans as the accountant's CSV", async () => {
+    const thisMonth = manilaMonth();
+    const month = (row: SupplierInvoice) => ({ ...row, month: thisMonth });
+    api.listSupplierInvoices
+      .mockResolvedValueOnce({ ...october, month: thisMonth, invoices: [] })
+      .mockResolvedValueOnce({
+        ...october,
+        month: thisMonth,
+        invoices: [month(scannedA)],
+        nextCursor: "order_1",
+      })
+      .mockResolvedValueOnce({
+        ...october,
+        month: thisMonth,
+        invoices: [month(missingA), month(collectedB)],
+        nextCursor: null,
+      });
+    render(<SupplierInvoicesSummary tree="admin" />);
+    await screen.findByText(/3 expected/);
+
+    await userEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+
+    expect(
+      await screen.findByText(`Saved 3 invoices for ${monthLabel(thisMonth)}.`),
+    ).toBeInTheDocument();
+    expect(api.listSupplierInvoices).toHaveBeenNthCalledWith(2, thisMonth, { limit: 100 });
+    expect(api.listSupplierInvoices).toHaveBeenNthCalledWith(3, thisMonth, {
+      limit: 100,
+      after: "order_1",
+    });
+    const [blob, name] = saved.saveCsv.mock.calls[0] as [Blob, string];
+    expect(name).toBe(`gridgo-receipt-scans-${thisMonth}.csv`);
+    // jsdom's Blob has no text(); FileReader reads it the same way.
+    const text = await new Promise<string>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.readAsText(blob);
+    });
+    const lines = text.replace(/^\uFEFF/, "").trim().split("\r\n");
+    expect(lines).toHaveLength(4);
+    expect(lines[1]).toBe(
+      `"order_1","Flyers A5","Shop A","INV-001","2026-10-01","1250.00","2026-10-03 11:00","2026-10-03 10:00","Scan in","Original to collect","http://localhost:3000/admin/supplier-invoices?month=${thisMonth}&order=order_1"`,
+    );
+    expect(lines[2]).toContain('"order_2","Tarpaulin 3x6","Shop A","","","","","2026-10-03 10:00","No scan yet"');
+    expect(lines[3]).toContain('"order_3","Calling cards","Shop B"');
+  });
+
+  it("saves nothing when the month cannot be read, and says why", async () => {
+    api.listSupplierInvoices
+      .mockResolvedValueOnce(october)
+      .mockRejectedValueOnce(new ApiError(503, { error: "server_error" }));
+    render(<SupplierInvoicesSummary tree="admin" />);
+    await screen.findByText(/3 expected/);
+
+    await userEvent.click(screen.getByRole("button", { name: "Download CSV" }));
+
+    expect(
+      await screen.findByText("The API could not answer just now. Retry in a moment."),
+    ).toBeInTheDocument();
+    expect(saved.saveCsv).not.toHaveBeenCalled();
   });
 });
