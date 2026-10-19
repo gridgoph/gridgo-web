@@ -652,7 +652,15 @@ describe("SupportChatDesk", () => {
     });
     render(<SupportChatDesk />);
     const run = await screen.findByTestId("chat-run");
-    expect(await within(run).findByRole("img", { name: "proof.jpg" })).toBeTruthy();
+    const photo = await within(run).findByRole("img", { name: "proof.jpg" });
+    fireEvent.click(photo);
+    const preview = await screen.findByRole("img", { name: "proof.jpg preview" });
+    expect(preview).toBeTruthy();
+    expect(screen.getByText("100%")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(screen.getByText("150%")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("img", { name: "proof.jpg preview" })).toBeNull();
   });
 
   it("shows a date chip when a new day starts", async () => {
