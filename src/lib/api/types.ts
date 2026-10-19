@@ -275,6 +275,8 @@ export type SupplierPortalRoleProjection = PortalRoleProjectionBase<"supplier"> 
 };
 
 export type OpsPortalRoleProjection = PortalRoleProjectionBase<"ops_admin"> & {
+  /** A test operations login: the API shows and acts on test data only. */
+  testOperations?: boolean;
   capabilities: {
     manageApprovalCases: boolean;
     manageOperations: boolean;
@@ -856,6 +858,8 @@ export type PhysicalInvoiceRequest = {
 
 export type Order = {
   id: string;
+  /** A test account's simulated order (docs/REVIEW_DATA_API.md in gridgo-api). */
+  reviewData?: boolean;
   clientId: string;
   supplierId: string | null;
   riderId: string | null;

@@ -137,7 +137,15 @@ import {
   writeRailOpen,
   type GroupOpenState,
 } from "@/components/shell/rail-state";
+import {
+  TestOperationsBanner,
+  TestOperationsPartialNotice,
+  TestOperationsUnavailable,
+} from "@/components/shell/TestOperations";
 import { ThemeToggle } from "@/components/shell/ThemeToggle";
+import { onForbidden } from "@/lib/api/client";
+import { TestOperationsProvider, useTestOperations } from "@/lib/auth/test-operations";
+import { TEST_OPERATIONS_FORBIDDEN } from "@/lib/review-data";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { LiveProvider } from "@/lib/live/LiveProvider";
 import { syncWebPush } from "@/lib/pwa/webPush";
@@ -155,6 +163,7 @@ import {
   navGroupsForRole,
   navItemForPath,
   navSectionsForRole,
+  testOperationsAllowsPath,
   type NavCountKey,
   type NavGroup,
   type NavIconKey,
@@ -240,9 +249,9 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
 };
 
 /** Each count source this rail shows, once — read once for the whole rail. */
-function railCountSources(role: Role): NavCountKey[] {
+function railCountSources(role: Role, testOperations: boolean): NavCountKey[] {
   const sources = new Set<NavCountKey>();
-  for (const group of navGroupsForRole(role)) {
+  for (const group of navGroupsForRole(role, { testOperations })) {
     for (const item of group.items) if (item.count) sources.add(item.count);
   }
   return [...sources];
@@ -407,6 +416,8 @@ function NavUser({ role }: { role: Role }) {
 
 type Props = {
   role: Role;
+  /** A test operations login (`RoleGate`, from `/auth/me/ops`). */
+  testOperations?: boolean;
   children: ReactNode;
 };
 
@@ -725,8 +736,11 @@ function RailNavGroups({
   const { state, isMobile } = useSidebar();
   // The mobile sheet is always the full rail, whatever the desktop fold says.
   const iconRail = state === "collapsed" && !isMobile;
-  const sections = navSectionsForRole(role);
-  const parents = navGroupsForRole(role).filter((group) => group.label);
+  const testOperations = useTestOperations();
+  const sections = navSectionsForRole(role, { testOperations });
+  const parents = navGroupsForRole(role, { testOperations }).filter(
+    (group) => group.label,
+  );
 
   const [openGroups, setOpenGroups] = useState<GroupOpenState>(() => {
     const remembered = readGroupOpenState();
@@ -817,7 +831,7 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
   const pathname = usePathname();
   const { setOpenMobile } = useSidebar();
   const closeMobile = () => setOpenMobile(false);
-  const countSources = railCountSources(role);
+  const countSources = railCountSources(role, useTestOperations());
 
   return (
     <Sidebar collapsible="icon">
@@ -873,8 +887,21 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
   );
 }
 
-export function AppShell({ role, children }: Props) {
+export function AppShell({ role, testOperations = false, children }: Props) {
   const pathname = usePathname();
+  // A test operations login opens only the test desk's pages; anything else
+  // in the tree says so instead of reading. A refusal on an allowed page
+  // (`403 test_operations_forbidden`) adds one calm line for that page.
+  const fenced =
+    testOperations && pathname.startsWith("/ops") && !testOperationsAllowsPath(pathname);
+  const [refusedOn, setRefusedOn] = useState<string | null>(null);
+  useEffect(() => {
+    if (!testOperations) return;
+    return onForbidden((error) => {
+      if (error.code === TEST_OPERATIONS_FORBIDDEN)
+        setRefusedOn(window.location.pathname);
+    });
+  }, [testOperations]);
   // Folded or expanded is remembered per browser; Ctrl/Cmd+B, the header
   // toggle and the rail edge all go through here.
   const [railOpen, setRailOpen] = useState(readRailOpen);
@@ -898,76 +925,89 @@ export function AppShell({ role, children }: Props) {
   }, [role, accountId]);
 
   return (
-    <LiveProvider
-      role={role}
-      onOpenNotification={(notification) => {
-        const href = notificationHref(role, notification);
-        if (href) router.push(href);
-      }}
-    >
-      <SidebarProvider
-        open={railOpen}
-        onOpenChange={onRailOpenChange}
-        // The rail has to clear GRIDGO's 44x44 control floor. shadcn's 3rem
-        // assumes a 32px button, which leaves the label clipped mid-word.
-        style={{ "--sidebar-width-icon": "3.75rem" } as CSSProperties}
+    <TestOperationsProvider value={testOperations}>
+      <LiveProvider
+        role={role}
+        onOpenNotification={(notification) => {
+          const href = notificationHref(role, notification);
+          if (href) router.push(href);
+        }}
       >
-        <PortalSidebar role={role} />
+        <SidebarProvider
+          open={railOpen}
+          onOpenChange={onRailOpenChange}
+          // The rail has to clear GRIDGO's 44x44 control floor. shadcn's 3rem
+          // assumes a 32px button, which leaves the label clipped mid-word.
+          style={{ "--sidebar-width-icon": "3.75rem" } as CSSProperties}
+        >
+          <PortalSidebar role={role} />
 
-        <SidebarInset className="bg-canvas min-w-0">
-          <header className="sticky top-0 z-30 flex h-14 shrink-0 items-stretch gap-2 border-b border-outline bg-surface pl-1.5 pr-3">
-            {/* The only navigation toggle in the shell. Tight left padding keeps
+          <SidebarInset className="bg-canvas min-w-0">
+            <header className="sticky top-0 z-30 flex h-14 shrink-0 items-stretch gap-2 border-b border-outline bg-surface pl-1.5 pr-3">
+              {/* The only navigation toggle in the shell. Tight left padding keeps
                 it next to the rail; the header has no second account control. */}
-            <div className="flex items-center">
-              <SidebarTrigger aria-label="Toggle primary navigation" />
-            </div>
-            <Separator orientation="vertical" className="hidden sm:block" />
+              <div className="flex items-center">
+                <SidebarTrigger aria-label="Toggle primary navigation" />
+              </div>
+              <Separator orientation="vertical" className="hidden sm:block" />
 
-            <div className="flex min-w-0 flex-1 items-center">
-              {isNested && parentItem ? (
-                <>
-                  <h1 className="sr-only">{title}</h1>
-                  <Breadcrumb className="min-w-0">
-                    <BreadcrumbList>
-                      <BreadcrumbItem>
-                        <Tooltip>
-                          <TooltipTrigger
-                            render={
-                              <BreadcrumbLink
-                                render={<Link href={parentItem.href} />}
-                                aria-label={`Back to ${parentItem.label}`}
-                              />
-                            }
-                          >
-                            {parentItem.label}
-                          </TooltipTrigger>
-                          <TooltipContent>{`Back to ${parentItem.label}`}</TooltipContent>
-                        </Tooltip>
-                      </BreadcrumbItem>
-                      <BreadcrumbSeparator />
-                      <BreadcrumbItem>
-                        <BreadcrumbPage className="text-h3 text-text-primary truncate">
-                          {title}
-                        </BreadcrumbPage>
-                      </BreadcrumbItem>
-                    </BreadcrumbList>
-                  </Breadcrumb>
-                </>
+              <div className="flex min-w-0 flex-1 items-center">
+                {isNested && parentItem ? (
+                  <>
+                    <h1 className="sr-only">{title}</h1>
+                    <Breadcrumb className="min-w-0">
+                      <BreadcrumbList>
+                        <BreadcrumbItem>
+                          <Tooltip>
+                            <TooltipTrigger
+                              render={
+                                <BreadcrumbLink
+                                  render={<Link href={parentItem.href} />}
+                                  aria-label={`Back to ${parentItem.label}`}
+                                />
+                              }
+                            >
+                              {parentItem.label}
+                            </TooltipTrigger>
+                            <TooltipContent>{`Back to ${parentItem.label}`}</TooltipContent>
+                          </Tooltip>
+                        </BreadcrumbItem>
+                        <BreadcrumbSeparator />
+                        <BreadcrumbItem>
+                          <BreadcrumbPage className="text-h3 text-text-primary truncate">
+                            {title}
+                          </BreadcrumbPage>
+                        </BreadcrumbItem>
+                      </BreadcrumbList>
+                    </Breadcrumb>
+                  </>
+                ) : (
+                  <h1 className="text-h3 text-text-primary m-0 truncate">{title}</h1>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                <ThemeToggle />
+                <InboxBell role={role} />
+              </div>
+            </header>
+
+            {testOperations ? <TestOperationsBanner /> : null}
+
+            <div id="main-content" className="flex-1 p-3 md:px-4 md:py-3">
+              {fenced ? (
+                <TestOperationsUnavailable />
               ) : (
-                <h1 className="text-h3 text-text-primary m-0 truncate">{title}</h1>
+                <>
+                  {testOperations && refusedOn === pathname ? (
+                    <TestOperationsPartialNotice />
+                  ) : null}
+                  {children}
+                </>
               )}
             </div>
-            <div className="flex items-center gap-1">
-              <ThemeToggle />
-              <InboxBell role={role} />
-            </div>
-          </header>
-
-          <div id="main-content" className="flex-1 p-3 md:px-4 md:py-3">
-            {children}
-          </div>
-        </SidebarInset>
-      </SidebarProvider>
-    </LiveProvider>
+          </SidebarInset>
+        </SidebarProvider>
+      </LiveProvider>
+    </TestOperationsProvider>
   );
 }

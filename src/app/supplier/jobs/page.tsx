@@ -15,6 +15,7 @@ import {
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { StatCard } from "@/components/ui/StatCard";
+import { TestOrderChip } from "@/components/orders/TestOrders";
 import { ExpressChip } from "@/components/ui/ExpressChip";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, listJobs } from "@/lib/api/client";
@@ -189,6 +190,7 @@ export default function SupplierJobsPage() {
               {formatDateTime(job.deadline)}
             </span>
             {isExpressOrder(job) ? <ExpressChip /> : null}
+            <TestOrderChip order={job} />
           </div>
         ),
       },

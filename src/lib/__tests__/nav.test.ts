@@ -7,6 +7,7 @@ import {
   navItemForPath,
   ROLE_NAV,
   ROLE_NAV_GROUPS,
+  testOperationsAllowsPath,
 } from "@/lib/nav";
 
 describe("ROLE_NAV", () => {
@@ -502,5 +503,62 @@ describe("nav helpers", () => {
   it("finds the longest matching nav item", () => {
     const item = navItemForPath("/ops/orders/ord_1", "ops_admin");
     expect(item?.href).toBe("/ops/orders");
+  });
+});
+
+describe("test operations rail", () => {
+  const hrefs = navForRole("ops_admin", { testOperations: true }).map((item) => item.href);
+
+  it("keeps only the pages a test order runs through", () => {
+    expect(hrefs).toEqual([
+      "/ops/overview",
+      "/ops/chat",
+      "/ops/order-chats",
+      "/ops/orders",
+      "/ops/finished-work",
+      "/ops/service-lines",
+      "/ops/listing-reviews",
+      "/ops/colour-price-checks",
+      "/ops/dispatch",
+      "/ops/riders",
+      "/ops/hub",
+      "/ops/escalations",
+    ]);
+  });
+
+  it("drops Money, Legal & privacy, account deletion and issue reports", () => {
+    const labels = navGroupsForRole("ops_admin", { testOperations: true }).map(
+      (group) => group.label,
+    );
+    expect(labels).not.toContain("Money");
+    expect(labels).not.toContain("Legal & privacy");
+    for (const hidden of [
+      "/ops/account-deletion",
+      "/ops/issue-reports",
+      "/ops/payouts",
+      "/ops/refunds",
+      "/ops/privacy-requests",
+      "/ops/settings",
+    ]) {
+      expect(hrefs).not.toContain(hidden);
+    }
+  });
+
+  it("changes nothing for ordinary Operations or another role", () => {
+    expect(navForRole("ops_admin")).toEqual(ROLE_NAV.ops_admin);
+    expect(navForRole("super_admin", { testOperations: true })).toEqual(
+      ROLE_NAV.super_admin,
+    );
+  });
+
+  it("opens rail pages and the pages beneath them, nothing else", () => {
+    expect(testOperationsAllowsPath("/ops/orders")).toBe(true);
+    expect(testOperationsAllowsPath("/ops/orders/ord_1")).toBe(true);
+    expect(testOperationsAllowsPath("/ops")).toBe(true);
+    expect(testOperationsAllowsPath("/ops/payouts/ord_1")).toBe(false);
+    expect(testOperationsAllowsPath("/ops/settings")).toBe(false);
+    expect(testOperationsAllowsPath("/ops/audit")).toBe(false);
+    expect(testOperationsAllowsPath("/ops/issue-reports")).toBe(false);
+    expect(testOperationsAllowsPath("/ops/organizations/usr_1")).toBe(false);
   });
 });

@@ -221,6 +221,8 @@ const CODE_COPY: Record<string, string> = {
   refund_settlement_payout_hold:
     "A refund settlement replaced this order's remaining shares. Pay what the shop is still owed as the settlement payout.",
   refund_not_found: "That refund request was not found. Refresh the inbox.",
+  test_operations_forbidden:
+    "Not available for test operations. This step works with real customers, shops or riders.",
 };
 
 export function opsErrorMessage(err: unknown, fallback: string): string {
