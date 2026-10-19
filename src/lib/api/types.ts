@@ -221,6 +221,57 @@ export type User = {
   verifiedAt?: string | null;
   verifiedBy?: string | null;
   createdAt?: string;
+  /**
+   * Client rows of `GET /users` only: whether the account has earned the
+   * Founding Tester label. Never present on a shop or rider row.
+   */
+  foundingTester?: boolean;
+};
+
+// ---- Founding Tester missions ----
+// Contract: gridgo-api docs/VOUCHERS_API.md, "Founding Tester missions".
+
+export type FoundingTesterMission = "placed" | "received" | "rated";
+
+/**
+ * `issued` is a new ₱15 voucher; `existing_survey_reward` means the client's
+ * earlier survey voucher became this reward, with no new money or expiry.
+ */
+export type FoundingTesterRewardStatus =
+  | "pending"
+  | "ineligible"
+  | "issued"
+  | "existing_survey_reward";
+
+/** One client's missions, label and reward, as staff read it. */
+export type FoundingTesterProgress = {
+  eligible: boolean;
+  label: "Founding Tester" | null;
+  awardedAt: string | null;
+  missions: Record<FoundingTesterMission, boolean>;
+  completedCount: number;
+  rewardStatus: FoundingTesterRewardStatus;
+  /** The wallet item. Its private `code` is the client's; this portal never shows it. */
+  reward: Voucher | null;
+};
+
+/** `GET /users/:id` for a client: the full Founding Tester projection. */
+export type ClientAccount = Omit<User, "foundingTester"> & {
+  foundingTester?: FoundingTesterProgress;
+  reviewData?: boolean;
+};
+
+/** One row of `GET /ops/founding-testers`. */
+export type FoundingTesterRow = {
+  clientId: string;
+  name: string;
+  foundingTester: FoundingTesterProgress;
+};
+
+export type FoundingTestersPage = {
+  serverTime: string;
+  total: number;
+  clients: FoundingTesterRow[];
 };
 
 /** Identity fields shared by every fixed `/auth/me/*` projection. */
@@ -1897,6 +1948,12 @@ export type PlatformSettings = {
    */
   coverSpineRequired?: boolean;
   /**
+   * Founding Tester cutoff: only client accounts created strictly before this
+   * UTC instant can earn the label. Null means every client account can.
+   * Super Admin writes it; absent on an API from before the missions.
+   */
+  foundingTesterLaunchAt?: string | null;
+  /**
    * The hub's pick-up hours and flat fee. Every role reads it; only Super
    * Admin writes it. Absent on an API that predates hub pick-up.
    */
@@ -1962,6 +2019,11 @@ export type UpdateSettingsInput = {
    * spine while on. Off by default; absent on an older API.
    */
   coverSpineRequired?: boolean;
+  /**
+   * Super Admin: only client accounts created strictly before this UTC
+   * instant can earn the Founding Tester label; null opens it to every client.
+   */
+  foundingTesterLaunchAt?: string | null;
   /** Super Admin only, always `{schedule, feeMinor}`; the point is read-only. */
   hubPickup?: Pick<HubPickup, "schedule" | "feeMinor">;
   /** Pricing dashboard. Whole centavos of monthly fixed cost. */

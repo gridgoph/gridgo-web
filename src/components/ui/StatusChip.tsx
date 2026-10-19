@@ -1,4 +1,5 @@
 import {
+  Award,
   Ban,
   CircleCheck,
   CircleDashed,
@@ -37,6 +38,7 @@ export const STATUS_ICONS: Record<StatusIconName, LucideIcon> = {
   split: Split,
   zap: Zap,
   "flask-conical": FlaskConical,
+  award: Award,
 };
 
 const TONE: Record<
