@@ -60,6 +60,7 @@ import {
   createCatalogOptionGroup,
   deleteCatalogItem,
   deleteCatalogItemPrepStep,
+  reorderCatalogItemPrepSteps,
   deleteCatalogOption,
   deleteCatalogOptionGroup,
   getCatalogItem,
@@ -436,6 +437,7 @@ export default function ListingEditorPage() {
   const [services, setServices] = useState<ServiceLine[]>([]);
   const [taxonomy, setTaxonomy] = useState<Taxonomy | null>(null);
   const [prepSteps, setPrepSteps] = useState<PrepStep[]>([]);
+  const [prepLoadError, setPrepLoadError] = useState<string | null>(null);
   const [formats, setFormats] = useState<
     Array<{ code: string; displayName: string; inputKind: "file" | "url" }>
   >([]);
@@ -486,7 +488,10 @@ export default function ListingEditorPage() {
             getCatalogItem(id),
             loadShopServiceLines().catch(() => ({ services: [] })),
             getTaxonomy(),
-            listCatalogItemPrepSteps(id).catch(() => ({ prepSteps: [] })),
+            listCatalogItemPrepSteps(id).then(
+              (body) => ({ ok: true as const, body }),
+              () => ({ ok: false as const, body: null }),
+            ),
             listAcceptedFileFormats().catch(() => []),
             getSupplierReadiness().then(normalizeListingReadiness, () => null),
             listCatalogItems({ limit: 1 }).then(normalizeBoardPage, () => null),
@@ -498,7 +503,12 @@ export default function ListingEditorPage() {
         setReadiness(ready?.get(next.id) ?? null);
         setServices(normalizeServiceLines(servicesBody));
         setTaxonomy(tax);
-        setPrepSteps(normalizePrepSteps(stepsBody));
+        if (stepsBody.ok) {
+          setPrepSteps(normalizePrepSteps(stepsBody.body));
+          setPrepLoadError(null);
+        } else {
+          setPrepLoadError("Could not load the preparation steps. They are not an empty list.");
+        }
         setFormats(formatList);
         if (board) setListingCount(board.total);
         setError(null);
@@ -891,7 +901,7 @@ export default function ListingEditorPage() {
       );
       await load();
       setPhotoNotice(
-        listing.photos.length === 0 ? "Wide sample added." : "Photo added at the end.",
+        listing.photos.length === 0 ? "Board photo added." : "Photo added at the end.",
       );
     } catch (err) {
       setActionError(listingErrorMessage(err, "Could not add that sample photo."));
@@ -1024,6 +1034,26 @@ export default function ListingEditorPage() {
     }
   }
 
+  async function moveStep(index: number, direction: -1 | 1) {
+    if (!listing) return;
+    const next = index + direction;
+    if (next < 0 || next >= prepSteps.length) return;
+    const order = prepSteps.map((step) => step.id);
+    const [moved] = order.splice(index, 1);
+    order.splice(next, 0, moved);
+    setBusy(true);
+    try {
+      await reorderCatalogItemPrepSteps(listing.id, listing.version, order);
+      await load();
+    } catch (err) {
+      setActionError(
+        listingErrorMessage(err, "GRIDGO refused that order. Refresh the steps and try again."),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function addStep() {
     if (!listing) return;
     setBusy(true);
@@ -1046,7 +1076,7 @@ export default function ListingEditorPage() {
 
   async function saveStep(step: PrepStep, patch: { title?: string; body?: string }) {
     try {
-      await updateCatalogItemPrepStep(id, step.id, patch);
+      await updateCatalogItemPrepStep(id, step.id, listing?.version ?? null, patch);
       await load();
     } catch (err) {
       setActionError(listingErrorMessage(err, "Could not save that step."));
@@ -1055,7 +1085,7 @@ export default function ListingEditorPage() {
 
   async function dropStep(step: PrepStep) {
     try {
-      await deleteCatalogItemPrepStep(id, step.id);
+      await deleteCatalogItemPrepStep(id, step.id, listing?.version ?? null);
       await load();
     } catch (err) {
       setActionError(listingErrorMessage(err, "Could not remove that step."));
@@ -1224,7 +1254,7 @@ export default function ListingEditorPage() {
                 <Section
                   id="section-photos"
                   title="Sample photos"
-                  help="Up to eight samples of this kind of work. The wide sample is the one clients see first. Use Edit on a photo to replace it, remove it, or make it the wide sample."
+                  help="Up to eight samples of this kind of work. The Board photo is the wide sample clients see first. Use Edit on a photo to replace it, remove it, or make it the Board photo. A preview is not a stored sample until it finishes uploading."
                 >
                   <ListingPhotoManager
                     photos={listing.photos}
@@ -1585,7 +1615,7 @@ export default function ListingEditorPage() {
                   ) : null}
                   {specs(listing).length < LISTING_CAPS.specGroups ? (
                     <div>
-                      <Button onClick={() => void addChoice("spec")}>Add a step</Button>
+                      <Button onClick={() => void addChoice("spec")}>Add a client choice</Button>
                     </div>
                   ) : null}
                 </Section>
@@ -1624,19 +1654,44 @@ export default function ListingEditorPage() {
                   title="How can the client help you?"
                   help="What a client should do before sending work. Numbered — they read it in order."
                 >
-                  {prepSteps.length === 0 ? (
+                  {prepLoadError ? (
+                    <p className="text-body text-error m-0" role="alert">{prepLoadError}</p>
+                  ) : null}
+                  {prepSteps.length === 0 && !prepLoadError ? (
                     <p className="text-body text-text-secondary m-0 max-w-prose">
                       Nothing yet. On specialised work this is where a job is won or lost —
                       flatten the art, outline the fonts, export the 3MF at the right scale.
                     </p>
-                  ) : (
+                  ) : prepSteps.length > 0 ? (
                     <div className="grid gap-3 xl:grid-cols-2">
                       {prepSteps.map((prep, index) => (
                         <div
                           key={prep.id}
                           className="rounded-card border-outline flex flex-col gap-2 border p-3"
                         >
-                          <p className="text-caption text-text-muted m-0">{index + 1}.</p>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-caption text-text-muted m-0">{index + 1}.</p>
+                            <div className="flex gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={index === 0 || busy}
+                                onClick={() => void moveStep(index, -1)}
+                              >
+                                Earlier
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={index === prepSteps.length - 1 || busy}
+                                onClick={() => void moveStep(index, 1)}
+                              >
+                                Later
+                              </Button>
+                            </div>
+                          </div>
                           <Input
                             defaultValue={prep.title}
                             aria-label={`Step ${index + 1} title`}
@@ -1661,10 +1716,13 @@ export default function ListingEditorPage() {
                         </div>
                       ))}
                     </div>
-                  )}
+                  ) : null}
                   {prepSteps.length < LISTING_CAPS.prepSteps ? (
                     <div>
                       <Button onClick={() => void addStep()}>Add a step</Button>
+                      <p className="text-caption text-text-muted m-0">
+                        A preparation instruction the client reads before sending work. Not a product choice.
+                      </p>
                     </div>
                   ) : null}
                 </Section>

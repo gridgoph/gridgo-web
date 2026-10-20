@@ -18,9 +18,9 @@
 
 export type PhotoAction = "remove" | "replace" | "make-first" | "earlier" | "later";
 
-/** Plain name for the photo at `index`: "wide sample", then "photo 2", "photo 3"… */
+/** Plain name for the photo at `index`: "Board photo", then "photo 2", "photo 3"… */
 export function photoName(index: number): string {
-  return index === 0 ? "wide sample" : `photo ${index + 1}`;
+  return index === 0 ? "Board photo" : `photo ${index + 1}`;
 }
 
 /** `photoName` for the start of a sentence or a label. */
@@ -82,8 +82,8 @@ export function removalCopy(index: number, count: number): RemovalCopy {
   }
   if (index === 0) {
     return {
-      title: "Remove the wide sample?",
-      body: "It comes off this listing. Photo 2 becomes the wide sample clients see first.",
+      title: "Remove the Board photo?",
+      body: "It comes off this listing. Photo 2 becomes the Board photo clients see first.",
       action,
     };
   }
@@ -111,11 +111,11 @@ export function changeNotice(
   if (action === "remove") {
     if (after.length === 0)
       return "Photo removed. Add a photo to put this listing on the board.";
-    if (from === 0) return "Wide sample removed. The next photo is now the wide sample.";
+    if (from === 0) return "Board photo removed. The next photo is now the Board photo.";
     return `${photoTitle(from)} removed.`;
   }
   const to = after.indexOf(fileId);
-  if (to === 0) return `${photoTitle(from)} is now the wide sample.`;
+  if (to === 0) return `${photoTitle(from)} is now the Board photo.`;
   return `${photoTitle(from)} is now ${photoName(to)}.`;
 }
 

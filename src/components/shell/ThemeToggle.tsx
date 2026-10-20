@@ -1,60 +1,55 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Moon, Sun } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { applyTheme, resolveTheme, type ResolvedTheme } from "@/lib/theme";
+import { applyTheme, clearTheme, readThemePreference, type ThemePreference } from "@/lib/theme";
+
+type Choice = ThemePreference | "system";
+
+const CHOICES: { id: Choice; label: string }[] = [
+  { id: "system", label: "System" },
+  { id: "light", label: "Light" },
+  { id: "dark", label: "Dark" },
+];
 
 /**
- * One control that switches the portal between light and dark.
- *
- * It shows the theme you would get by pressing it, the way a light switch
- * does, and remembers the choice for this browser. Until pressed, the portal
- * follows the device preference.
+ * System, Light, or Dark. System clears the stored choice so the device
+ * preference applies. Light and Dark stay on this browser.
  */
 export function ThemeToggle() {
-  // Rendered as light on the server; corrected on the client before paint matters.
-  const [theme, setTheme] = useState<ResolvedTheme>("light");
+  const [choice, setChoice] = useState<Choice>("system");
 
   useEffect(() => {
-    const update = () => setTheme(resolveTheme());
+    const update = () => setChoice(readThemePreference() ?? "system");
     update();
-    const media =
-      typeof window.matchMedia === "function"
-        ? window.matchMedia("(prefers-color-scheme: dark)")
-        : null;
-    media?.addEventListener("change", update);
     const observer = new MutationObserver(update);
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["class"],
     });
-    return () => {
-      media?.removeEventListener("change", update);
-      observer.disconnect();
-    };
+    return () => observer.disconnect();
   }, []);
 
-  const next: ResolvedTheme = theme === "dark" ? "light" : "dark";
-  const label = next === "dark" ? "Switch to dark mode" : "Switch to light mode";
+  function pick(next: Choice) {
+    if (next === "system") clearTheme();
+    else applyTheme(next);
+    setChoice(next);
+  }
 
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label={label}
-            onClick={() => applyTheme(next)}
-          />
-        }
-      >
-        {next === "dark" ? <Moon aria-hidden /> : <Sun aria-hidden />}
-      </TooltipTrigger>
-      <TooltipContent>{label}</TooltipContent>
-    </Tooltip>
+    <div role="group" aria-label="Colour theme" className="flex items-center gap-1">
+      {CHOICES.map((entry) => (
+        <Button
+          key={entry.id}
+          variant={choice === entry.id ? "secondary" : "ghost"}
+          size="sm"
+          aria-pressed={choice === entry.id}
+          onClick={() => pick(entry.id)}
+        >
+          {entry.label}
+        </Button>
+      ))}
+    </div>
   );
 }

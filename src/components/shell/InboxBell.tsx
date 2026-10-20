@@ -59,9 +59,11 @@ export { presentSlip, shortRef, slipFamily } from "@/components/shell/slip";
 function SlipRow({
   notification,
   onOpen,
+  onDelete,
 }: {
   notification: Notification;
   onOpen: (notification: Notification) => void;
+  onDelete?: (notification: Notification) => void;
 }) {
   const unread = !notification.read;
   const reminder = isProductionReminder(notification.type);
@@ -132,6 +134,18 @@ function SlipRow({
           ) : null}
         </span>
       </button>
+      {onDelete ? (
+        <div className="px-4 pb-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onDelete(notification)}
+          >
+            Delete this notice
+          </Button>
+        </div>
+      ) : null}
     </li>
   );
 }
@@ -139,11 +153,15 @@ function SlipRow({
 function InboxList({
   notifications,
   onOpen,
+  onDelete,
   fill,
+  role,
 }: {
   notifications: Notification[];
   onOpen: (notification: Notification) => void;
+  onDelete?: (notification: Notification) => void;
   fill: boolean;
+  role: Role;
 }) {
   if (notifications.length === 0) {
     return (
@@ -155,7 +173,9 @@ function InboxList({
           The desk is clear
         </p>
         <p className="text-caption text-text-muted m-0">
-          Payments, sign-ups, pickup holds, and shop progress land here
+          {role === "supplier"
+            ? "Job offers, pickup messages, and shop progress land here."
+            : "Payments, sign-ups, pickup holds, and shop progress land here"}
         </p>
       </div>
     );
@@ -169,7 +189,12 @@ function InboxList({
       )}
     >
       {notifications.map((notification) => (
-        <SlipRow key={notification.id} notification={notification} onOpen={onOpen} />
+        <SlipRow
+          key={notification.id}
+          notification={notification}
+          onOpen={onOpen}
+          onDelete={onDelete}
+        />
       ))}
     </ul>
   );
@@ -214,6 +239,8 @@ function InboxPanel({
   markError,
   onMarkAllRead,
   onOpen,
+  onDelete,
+  onDeleteVisible,
   fill,
 }: {
   role: Role;
@@ -222,6 +249,8 @@ function InboxPanel({
   markError: string | null;
   onMarkAllRead: () => void;
   onOpen: (notification: Notification) => void;
+  onDelete?: (notification: Notification) => void;
+  onDeleteVisible?: () => void;
   fill: boolean;
 }) {
   return (
@@ -248,6 +277,11 @@ function InboxPanel({
               Mark all read
             </Button>
           ) : null}
+          {onDeleteVisible && notifications.length > 0 ? (
+            <Button variant="outline" size="sm" onClick={onDeleteVisible}>
+              Delete these
+            </Button>
+          ) : null}
           <SoundToggle />
         </span>
       </div>
@@ -257,7 +291,13 @@ function InboxPanel({
       <DesktopAlertsPrompt role={role} />
       {/* The tear line: what is above is the desk, what is below are the slips. */}
       <div className="border-outline mx-4 border-t border-dashed" aria-hidden />
-      <InboxList notifications={notifications} onOpen={onOpen} fill={fill} />
+      <InboxList
+        role={role}
+        notifications={notifications}
+        onOpen={onOpen}
+        onDelete={onDelete}
+        fill={fill}
+      />
       <DesktopAlertsRow role={role} />
     </div>
   );
@@ -302,7 +342,7 @@ function bellTrigger(unreadCount: number) {
 export function InboxBell({ role }: { role: Role }) {
   const router = useRouter();
   const isMobile = useIsMobile();
-  const { notifications, unreadCount, live, markRead, markAllRead } = useLive();
+  const { notifications, unreadCount, live, markRead, markAllRead, remove } = useLive();
   const [open, setOpen] = useState(false);
   const [markError, setMarkError] = useState<string | null>(null);
 
@@ -318,6 +358,37 @@ export function InboxBell({ role }: { role: Role }) {
     }
     const href = notificationHref(role, notification);
     if (href) router.push(href);
+  }
+
+  async function handleDelete(notification: Notification) {
+    const confirmed = window.confirm("Delete this notice on every device?");
+    if (!confirmed) return;
+    setMarkError(null);
+    try {
+      await remove(notification.id);
+    } catch {
+      setMarkError("Could not delete that notice. It is still here.");
+    }
+  }
+
+  async function handleDeleteVisible() {
+    const ids = notifications.map((row) => row.id);
+    const confirmed = window.confirm(
+      `Delete these ${ids.length} notices on every device? A notice that arrives after this stays.`,
+    );
+    if (!confirmed) return;
+    setMarkError(null);
+    const failed: string[] = [];
+    for (const id of ids) {
+      try {
+        await remove(id);
+      } catch {
+        failed.push(id);
+      }
+    }
+    if (failed.length) {
+      setMarkError("Some notices could not be deleted. They are still here.");
+    }
   }
 
   async function handleMarkAllRead() {
@@ -368,6 +439,8 @@ export function InboxBell({ role }: { role: Role }) {
             markError={markError}
             onMarkAllRead={() => void handleMarkAllRead()}
             onOpen={(notification) => void openNotification(notification)}
+            onDelete={role === "supplier" ? (notification) => void handleDelete(notification) : undefined}
+            onDeleteVisible={role === "supplier" ? () => void handleDeleteVisible() : undefined}
             fill
           />
         </SheetContent>
@@ -407,6 +480,8 @@ export function InboxBell({ role }: { role: Role }) {
           markError={markError}
           onMarkAllRead={() => void handleMarkAllRead()}
           onOpen={(notification) => void openNotification(notification)}
+          onDelete={role === "supplier" ? (notification) => void handleDelete(notification) : undefined}
+          onDeleteVisible={role === "supplier" ? () => void handleDeleteVisible() : undefined}
           fill={false}
         />
       </PopoverContent>

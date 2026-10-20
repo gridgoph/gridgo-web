@@ -39,6 +39,16 @@ export function resolveTheme(): ResolvedTheme {
     : "light";
 }
 
+/** Drops the stored choice so the device preference applies. */
+export function clearTheme(): void {
+  document.documentElement.classList.remove("light", "dark");
+  try {
+    window.localStorage.removeItem(THEME_STORAGE_KEY);
+  } catch {
+    /* The class is already gone, so this page follows the device. */
+  }
+}
+
 /** Sets the explicit theme on `<html>` and remembers it for this browser. */
 export function applyTheme(preference: ThemePreference): void {
   const root = document.documentElement.classList;

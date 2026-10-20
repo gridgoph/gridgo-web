@@ -6,7 +6,6 @@ import React from "react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { ThemeToggle } from "@/components/shell/ThemeToggle";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { THEME_STORAGE_KEY } from "@/lib/theme";
 
 vi.stubGlobal("React", React);
@@ -30,48 +29,41 @@ function prefersDark(matches: boolean) {
 }
 
 function mount() {
-  return render(
-    <TooltipProvider>
-      <ThemeToggle />
-    </TooltipProvider>,
-  );
+  return render(<ThemeToggle />);
 }
 
-it("offers dark mode on a light device, applies it, and remembers it", async () => {
+it("offers System, Light, and Dark, and Dark persists", async () => {
   prefersDark(false);
   mount();
-  const button = await screen.findByRole("button", { name: "Switch to dark mode" });
-  fireEvent.click(button);
+  fireEvent.click(await screen.findByRole("button", { name: "Dark" }));
   await waitFor(() => expect(document.documentElement).toHaveClass("dark"));
   expect(document.documentElement).not.toHaveClass("light");
   expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
-  expect(
-    screen.getByRole("button", { name: "Switch to light mode" }),
-  ).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "true");
 });
 
-it("offers light mode on a dark device and forces light with an explicit class", async () => {
+it("Light forces an explicit class on a dark device", async () => {
   prefersDark(true);
   mount();
-  const button = await screen.findByRole("button", { name: "Switch to light mode" });
-  fireEvent.click(button);
+  fireEvent.click(await screen.findByRole("button", { name: "Light" }));
   await waitFor(() => expect(document.documentElement).toHaveClass("light"));
   expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("light");
 });
 
-it("starts from a remembered choice already applied to the document", async () => {
+it("System clears the stored choice and the class", async () => {
   prefersDark(false);
   document.documentElement.classList.add("dark");
+  window.localStorage.setItem(THEME_STORAGE_KEY, "dark");
   mount();
-  expect(
-    await screen.findByRole("button", { name: "Switch to light mode" }),
-  ).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("button", { name: "System" }));
+  await waitFor(() => expect(document.documentElement).not.toHaveClass("dark"));
+  expect(document.documentElement).not.toHaveClass("light");
+  expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBeNull();
 });
 
 it("meets the 44px control floor", async () => {
   prefersDark(false);
   mount();
-  const button = await screen.findByRole("button", { name: "Switch to dark mode" });
+  const button = await screen.findByRole("button", { name: "System" });
   expect(button.className).toMatch(/min-h-11/);
-  expect(button.className).toMatch(/min-w-11/);
 });
