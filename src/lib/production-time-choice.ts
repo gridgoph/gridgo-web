@@ -195,6 +195,22 @@ export function withDays(
 const MAX_PRODUCTION_MINUTES = 2_147_483_647;
 
 /**
+ * Hours as the whole minutes the API stores, or null when they are not.
+ * The API's own round trip: the nearest minute, then the hours must be
+ * exactly that minute over 60. So 31 minutes read back as 31 / 60 hours
+ * (31.000000000000004 when multiplied out) is 31, and 1 / 7 hour is refused.
+ */
+export function wholeMinutesOf(hours: number): number | null {
+  if (typeof hours !== "number" || !Number.isFinite(hours)) return null;
+  const minutes = Math.round(hours * 60);
+  if (hours !== minutes / 60) return null;
+  if (!Number.isSafeInteger(minutes) || minutes <= 0 || minutes > MAX_PRODUCTION_MINUTES) {
+    return null;
+  }
+  return minutes;
+}
+
+/**
  * Why a choice cannot be saved, in the shop's words. Null when it can. The
  * messages are the shop app's (`gridgo-supplier/lib/productionDays.ts`), so the
  * same bad input reads the same on both. Exact hours of a working day or more
@@ -203,11 +219,7 @@ const MAX_PRODUCTION_MINUTES = 2_147_483_647;
  */
 export function choiceProblem(choice: ProductionTimeChoice): string | null {
   if (choice.mode === "same_day") {
-    const minutes = choice.hours * 60;
-    if (!(minutes > 0) || !Number.isInteger(minutes) || minutes > MAX_PRODUCTION_MINUTES) {
-      return "Choose how many hours this takes.";
-    }
-    return null;
+    return wholeMinutesOf(choice.hours) == null ? "Choose how many hours this takes." : null;
   }
   if (
     !Number.isInteger(choice.minDays) ||

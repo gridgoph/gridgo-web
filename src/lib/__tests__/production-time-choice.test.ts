@@ -13,6 +13,7 @@ import {
   readProductionTimeChoice,
   readProductionTimeReview,
   sameDayHourSteps,
+  wholeMinutesOf,
   withDays,
 } from "@/lib/production-time-choice";
 import { ApiError } from "@/lib/api/client";
@@ -92,6 +93,22 @@ describe("production time choice (gridgo-api#292 release 2)", () => {
       "Production time is at least 1 working day.",
     );
     expect(choiceProblem({ mode: "days", minDays: 1, maxDays: 2 })).toBeNull();
+  });
+
+  it("reads hours as the API's whole minutes, round trip included", () => {
+    // 31 minutes come back as 31 / 60 hours, which multiplies out to 31.000000000000004.
+    expect(wholeMinutesOf(31 / 60)).toBe(31);
+    expect(choiceProblem({ mode: "same_day", hours: 31 / 60 })).toBeNull();
+    // Longer than a working day, with a leftover minute.
+    expect(wholeMinutesOf(751 / 60)).toBe(751);
+    expect(choiceProblem({ mode: "same_day", hours: 751 / 60 })).toBeNull();
+    // Not a whole minute, or not a duration at all.
+    expect(wholeMinutesOf(1 / 7)).toBeNull();
+    expect(wholeMinutesOf(0.501)).toBeNull();
+    expect(wholeMinutesOf(0)).toBeNull();
+    expect(wholeMinutesOf(-0.5)).toBeNull();
+    expect(wholeMinutesOf(Number.NaN)).toBeNull();
+    expect(wholeMinutesOf(2_147_483_648 / 60)).toBeNull();
   });
 
   it("builds the preview query the contract takes", () => {

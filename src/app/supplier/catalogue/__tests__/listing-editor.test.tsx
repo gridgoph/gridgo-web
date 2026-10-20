@@ -554,6 +554,34 @@ describe("listing editor: How long does this take? (gridgo-api#292)", () => {
     );
   });
 
+  it("previews and keeps an exact 31 minutes the API returns as fractional hours", async () => {
+    const exact = { mode: "same_day", hours: 31 / 60 } as const;
+    stubLoad(
+      catalogItem({
+        productionTime: exact,
+        productionDayMinutes: 600,
+        productionTimeReview: {
+          required: true,
+          reasons: ["legacy_one_working_day"],
+          message: "Check your production time",
+        },
+      }),
+    );
+    mocks.updateCatalogItem.mockResolvedValue(catalogItem({ productionTime: exact, version: 4 }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    await waitFor(() => expect(mocks.previewProductionTime).toHaveBeenCalledWith("sci_1", exact));
+    expect(screen.queryByText("Choose how many hours this takes.")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    expect(await screen.findByRole("button", { name: "Use for all my listings" })).toBeEnabled();
+
+    const banner = screen.getByRole("region", { name: "Check your production time" });
+    fireEvent.click(within(banner).getByRole("button", { name: /^Keep / }));
+    await waitFor(() =>
+      expect(mocks.updateCatalogItem).toHaveBeenCalledWith("sci_1", 3, { productionTime: exact }),
+    );
+  });
+
   it("shows an older mixed hours-and-days range as it is, never as not set", async () => {
     stubLoad(
       catalogItem({
@@ -849,6 +877,74 @@ describe("listing editor: Use for all my listings (gridgo-api#292)", () => {
       expect(mocks.getCatalogItem).toHaveBeenCalledTimes(readsBefore + 1);
       await openEditorStep("Price");
       expect(screen.getByLabelText("Your price")).toHaveValue("500.00");
+    },
+  );
+
+  it.each(["fails", "succeeds"])(
+    "reads the listing again when a refresh started before bulk apply lands after it %s",
+    async (outcome) => {
+      const choice = { mode: "days", minDays: 1, maxDays: 3 } as const;
+      const row = (price: number, version: number) => ({
+        ...catalogItem().item,
+        basePriceMinor: price,
+        version,
+        productionTime: choice,
+      });
+      stubLoad(catalogItem({ productionTime: choice }));
+      let listener!: (ping: InvalidatePing) => void;
+      const live: LiveContextValue = {
+        notifications: [],
+        unreadCount: 0,
+        snapshot: null,
+        live: true,
+        subscribe: (next) => {
+          listener = next;
+          return () => undefined;
+        },
+        markRead: async () => {},
+        markAllRead: async () => {},
+        remove: async () => {},
+        refreshInbox: async () => {},
+      };
+      render(
+        <LiveContext.Provider value={live}>
+          <ListingEditorPage />
+        </LiveContext.Provider>,
+      );
+      await openEditorStep("Speed");
+      let landRefresh!: (body: unknown) => void;
+      mocks.getCatalogItem.mockReturnValueOnce(
+        new Promise((resolve) => {
+          landRefresh = resolve;
+        }),
+      );
+      act(() => listener({ resource: "catalog" } as InvalidatePing));
+      await act(() => new Promise((resolve) => setTimeout(resolve, LIVE_RELOAD_COALESCE_MS + 100)));
+      await waitFor(() => expect(mocks.getCatalogItem).toHaveBeenCalledTimes(2));
+
+      if (outcome === "fails") {
+        mocks.applyProductionTimeToAll.mockRejectedValue(
+          new ApiError(409, { error: "catalog_items_stale" }),
+        );
+      } else {
+        mocks.applyProductionTimeToAll.mockResolvedValue({ items: [row(40000, 4)], total: 1 });
+      }
+      fireEvent.click(screen.getByRole("button", { name: "More options" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Use for all my listings" }));
+      fireEvent.click(
+        within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Use for all" }),
+      );
+      await screen.findByText(
+        outcome === "fails" ? /One of your listings changed while/ : /^Done\. Your listing takes/,
+      );
+
+      // The old refresh lands after the request settled: dropped, and read again.
+      mocks.getCatalogItem.mockResolvedValue({ item: row(50000, 6) });
+      await act(async () => landRefresh({ item: row(45000, 5) }));
+      await waitFor(() => expect(mocks.getCatalogItem).toHaveBeenCalledTimes(3));
+      await openEditorStep("Price");
+      await waitFor(() => expect(screen.getByLabelText("Your price")).toHaveValue("500.00"));
+      expect(mocks.updateCatalogItem).not.toHaveBeenCalled();
     },
   );
 

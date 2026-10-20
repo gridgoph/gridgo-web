@@ -449,10 +449,12 @@ export default function ListingEditorPage() {
   const load = useSerializedLoad(
     useCallback(async () => {
       const generation = loadGeneration.current;
-      // Started or finished while Use for all ran: drop it and read again after.
+      // Started or finished while Use for all ran: drop it and read again,
+      // after the request if it is still running, or now if it has ended.
       const held = () => {
         if (!applyingRef.current && generation === loadGeneration.current) return false;
-        reloadHeld.current = true;
+        if (applyingRef.current) reloadHeld.current = true;
+        else void loadRef.current().catch(() => undefined);
         return true;
       };
       if (held()) return;
@@ -496,6 +498,9 @@ export default function ListingEditorPage() {
       }
     }, [id]),
   );
+
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
   useLiveReload(["catalog", "services"], load);
 
