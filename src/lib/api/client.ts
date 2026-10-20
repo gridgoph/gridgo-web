@@ -3623,13 +3623,14 @@ export async function uploadVerificationDocument(file: File): Promise<StoredFile
   return uploadPurpose("verification_document", file);
 }
 
+/** `documentType` is `business_permit`, `valid_id` or `sample_work`; any other field is `400 unexpected_target_field`. */
 export async function attachVerificationDocument(
   fileId: string,
-  documentKind: string,
+  documentType: string,
 ): Promise<StoredFile> {
   const result = await request<{ file: StoredFile }>(`/files/${encodeURIComponent(fileId)}/attach`, {
     method: "POST",
-    body: JSON.stringify({ documentKind }),
+    body: JSON.stringify({ documentType }),
   });
   return result.file;
 }

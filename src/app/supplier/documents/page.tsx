@@ -168,7 +168,7 @@ export default function SupplierDocumentsPage() {
                   {state.detail}
                 </p>
               ) : (
-                <p className="text-caption text-text-muted m-0">Not sent yet.</p>
+                <p className="text-caption text-text-muted m-0">Nothing sent from this screen yet. Papers sent from the shop app are already with Operations.</p>
               )}
             </div>
           );
