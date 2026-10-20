@@ -37,8 +37,8 @@ function nextStepLabel(job: Order, now: Date): string {
 }
 
 /** The job's status in the shop's words: a stop speaks over the plain state. */
-function jobStatus(job: Order) {
-  return presentSupplierJobStatus(job);
+function jobStatus(job: Order, now: Date) {
+  return presentSupplierJobStatus(job, now);
 }
 
 /** Whether a due date falls inside the next `hours`. */
@@ -146,10 +146,10 @@ export default function SupplierJobsPage() {
       {
         id: "status",
         header: "Status",
-        sortValue: (job) => jobStatus(job).label,
-        filterValue: (job) => jobStatus(job).label,
+        sortValue: (job) => jobStatus(job, now).label,
+        filterValue: (job) => jobStatus(job, now).label,
         cell: (job) => {
-          const status = jobStatus(job);
+          const status = jobStatus(job, now);
           return (
             <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
           );
@@ -233,7 +233,7 @@ export default function SupplierJobsPage() {
       {
         columnId: "status",
         title: "Status",
-        options: facetOptions(rows, (job) => jobStatus(job).label),
+        options: facetOptions(rows, (job) => jobStatus(job, now).label),
       },
       {
         columnId: "next",

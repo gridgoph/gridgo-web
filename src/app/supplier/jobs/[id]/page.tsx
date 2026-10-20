@@ -90,6 +90,9 @@ import {
   shopTimelineState,
 } from "@/lib/shop-handover";
 import { AcceptWindowCard } from "@/app/supplier/_components/AcceptWindowCard";
+import { SupplierCounterRead } from "@/app/supplier/_components/SupplierCounterRead";
+import { SupplierForcedNotice } from "@/app/supplier/_components/SupplierForcedNotice";
+import { HandoverTimeline } from "@/components/handover/HandoverTimeline";
 import { acceptWindow } from "@/lib/supplier-accept-window";
 import {
   CLAIM_HOLD_PACKING_REASON,
@@ -98,7 +101,6 @@ import {
   presentSupplierJobStatus,
   productionPhotoOwed,
   shopLetJobGo,
-  shopProofOutstanding,
   shopProofWords,
   shopStopNotice,
   shopWorkStopped,
@@ -277,7 +279,14 @@ export default function SupplierJobDetailPage() {
       return;
     }
     if (action.blockedReason) return;
-    if (action.kind === "ready_for_pickup" && shopProofOutstanding(job)) return;
+    // A payout proof is not a packing gate. A missing progress or packing
+    // photo still is, and those replace this action before it is offered.
+    if (
+      action.kind === "ready_for_pickup" &&
+      (productionPhotoOwed(job) || packingPhotoOwed(job))
+    ) {
+      return;
+    }
     if (action.kind === "decline") {
       openDecline(null);
       return;
@@ -417,7 +426,7 @@ export default function SupplierJobDetailPage() {
     );
   }
 
-  const status = presentSupplierJobStatus(job);
+  const status = presentSupplierJobStatus(job, now);
   const activity = jobActivity(job);
   const actions = actionsForJob(job, now);
   const stopped = shopWorkStopped(job, now);
@@ -442,7 +451,8 @@ export default function SupplierJobDetailPage() {
   const check = packagingCheck(job);
   const riderPacks = ridersPack(job);
   const finished = shopFinishedStep(job);
-  const heldByChecklist = Boolean(primary?.blockedReason && check);
+  const blocked = actions.find((action) => action.blockedReason) ?? null;
+  const heldByChecklist = Boolean(blocked?.blockedReason && check);
   const packingPhotos = (job.packingProgress?.photos ?? []).filter(
     (photo) => photo?.fileId,
   );
@@ -510,6 +520,9 @@ export default function SupplierJobDetailPage() {
             <p className="text-body text-text-secondary m-0 max-w-prose">{stop.body}</p>
           </section>
         ) : null}
+        <SupplierCounterRead order={job} />
+        <SupplierForcedNotice order={job} />
+        <HandoverTimeline order={job} audience="shop" />
 
         <div className="flex flex-col gap-2 border-t border-outline-subtle pt-3">
           <div
@@ -548,7 +561,14 @@ export default function SupplierJobDetailPage() {
                 variant={action.destructive ? "danger" : "secondary"}
                 size="lg"
                 className="w-full sm:w-auto sm:min-w-40"
-                disabled={acting !== null}
+                disabled={acting !== null || Boolean(action.blockedReason)}
+                aria-describedby={
+                  action.blockedReason
+                    ? heldByChecklist
+                      ? "packaging-hold-reason"
+                      : "packing-blocked-reason"
+                    : undefined
+                }
                 onClick={() => void runAction(action)}
               >
                 {action.destructive ? <X data-icon="inline-start" aria-hidden /> : null}
@@ -575,22 +595,24 @@ export default function SupplierJobDetailPage() {
               Waiting on Operations. The list below says why.
             </p>
           ) : null}
-          {primary?.blockedReason && !heldByChecklist ? (
+          {blocked?.blockedReason && !heldByChecklist ? (
             <p
-              id="primary-blocked-reason"
+              id={
+                blocked === primary ? "primary-blocked-reason" : "packing-blocked-reason"
+              }
               className="text-body text-text-primary m-0 flex max-w-prose items-start gap-2"
             >
               <Scale className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
-              {primary.blockedReason}
+              {blocked.blockedReason}
             </p>
           ) : null}
           {primary && waiting ? (
             <p className="text-caption text-text-muted m-0">{waiting}</p>
           ) : null}
-          {primary?.kind === "ready_for_pickup" && riderPacks ? (
+          {actions.some((action) => action.kind === "ready_for_pickup") && riderPacks ? (
             <p className="text-body text-text-secondary m-0 max-w-prose">{DO_NOT_PACK_YET}</p>
           ) : null}
-          {primary?.kind === "add_progress_photo" && !check ? (
+          {actions.some((action) => action.kind === "add_progress_photo") && !check ? (
             <p className="text-caption text-text-muted m-0 max-w-prose">
               {PRODUCTION_PHOTO_COPY.supplierRule}
             </p>
