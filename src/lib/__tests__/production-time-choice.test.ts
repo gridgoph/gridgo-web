@@ -9,6 +9,7 @@ import {
   PRODUCTION_TIME_REFUSED,
   presentPreviewDay,
   productionTimeSaveError,
+  previewErrorMessage,
   previewParams,
   readProductionTimeChoice,
   readProductionTimeReview,
@@ -162,6 +163,29 @@ describe("production time choice (gridgo-api#292 release 2)", () => {
     expect(choiceLine({ mode: "days", minDays: 1, maxDays: 3 })).toBe("1 to 3 working days");
     expect(choiceLine({ mode: "days", minDays: 2, maxDays: 2 })).toBe("2 working days");
     expect(choiceLine(null)).toBe("Not set yet");
+  });
+
+  it("says why the dates preview failed in the shop app's words", () => {
+    const refused = (code: string) => previewErrorMessage(new ApiError(409, { error: code }));
+    expect(refused("catalog_item_not_found")).toBe(
+      "This listing is no longer on your board, so there are no dates to show.",
+    );
+    expect(refused("production_day_length_unavailable")).toBe(
+      "The dates cannot be worked out until every open day has the same hours. Pick one opening and closing time for all your open days.",
+    );
+    expect(refused("shop_never_open")).toBe(
+      "GRIDGO could not fit this work into your open hours in the coming weeks. Check your open days and hours.",
+    );
+    expect(refused("invalid_schedule")).toBe(
+      "GRIDGO could not read your shop hours. Set your open days and hours again, then try again.",
+    );
+    expect(refused("invalid_production_time")).toBe(
+      "GRIDGO could not show dates for this time. Change it, then try again.",
+    );
+    expect(previewErrorMessage(new TypeError("Failed to fetch"))).toBe(
+      "Cannot reach GRIDGO to show the dates clients will see. Check your connection, then try again.",
+    );
+    expect(refused("server_error")).toBe("The dates could not be loaded. Try again.");
   });
 
   it("reads both API refusals of a production time the same way", () => {

@@ -33,6 +33,7 @@ import {
   manilaDayLabel,
   normalizePreview,
   presentPreviewDay,
+  previewErrorMessage,
   previewSummary,
   sameDayHourSteps,
   sameDayTooLong,
@@ -308,8 +309,8 @@ export function HowLongField({
 
       {tooLong ? (
         <p className="text-caption text-text-secondary m-0 max-w-prose" role="note">
-          This is more than one of your working days, so the work carries on into the
-          next working day. The dates below count that in.
+          This is one working day of open hours or more. GRIDGO keeps it exactly, so the
+          work is ready on a later working day; the dates below show when.
         </p>
       ) : problem ? (
         <p className="text-caption text-destructive m-0 max-w-prose" role="alert">
@@ -430,8 +431,10 @@ function DatesPreview({
   const [state, setState] = useState<
     | { kind: "loading" }
     | { kind: "ready"; key: string; preview: ProductionTimePreview }
-    | { kind: "error" }
+    | { kind: "error"; message: string }
   >({ kind: "loading" });
+  // Bumped by Try again: the same answer, asked again.
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (!valid) return;
@@ -442,15 +445,15 @@ function DatesPreview({
         .then((body) => {
           if (live) setState({ kind: "ready", key, preview: normalizePreview(body) });
         })
-        .catch(() => {
-          if (live) setState({ kind: "error" });
+        .catch((err: unknown) => {
+          if (live) setState({ kind: "error", message: previewErrorMessage(err) });
         });
     }, delayMs);
     return () => {
       live = false;
       window.clearTimeout(timer);
     };
-  }, [itemId, key, valid, delayMs]);
+  }, [itemId, key, valid, delayMs, attempt]);
 
   const stale = state.kind === "ready" && state.key !== key;
 
@@ -475,9 +478,21 @@ function DatesPreview({
               Fix the time above to see the dates.
             </p>
           ) : state.kind === "error" ? (
-            <p className="text-caption text-text-secondary m-0" role="status">
-              The dates could not be loaded. They will show when you change the time again.
-            </p>
+            <div className="flex flex-col items-start gap-2">
+              <p className="text-caption text-text-secondary m-0" role="status">
+                {state.message}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => {
+                  setState({ kind: "loading" });
+                  setAttempt((count) => count + 1);
+                }}
+              >
+                Try again
+              </Button>
+            </div>
           ) : state.kind === "ready" ? (
             <p className="text-caption text-text-secondary m-0" role="status">
               {previewSummary(choice, state.preview)}

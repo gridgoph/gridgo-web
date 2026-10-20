@@ -256,6 +256,33 @@ export function previewParams(
 export const PRODUCTION_TIME_REFUSED =
   "GRIDGO could not save this production time. Choose Same day with a number of hours, or Days with whole working days.";
 
+/** Why the dates preview could not be shown, in the shop app's words. */
+const PREVIEW_REFUSED: Record<string, string> = {
+  catalog_item_not_found: "This listing is no longer on your board, so there are no dates to show.",
+  production_day_length_unavailable:
+    "The dates cannot be worked out until every open day has the same hours. Pick one opening and closing time for all your open days.",
+  shop_never_open:
+    "GRIDGO could not fit this work into your open hours in the coming weeks. Check your open days and hours.",
+  invalid_schedule:
+    "GRIDGO could not read your shop hours. Set your open days and hours again, then try again.",
+  invalid_production_time: "GRIDGO could not show dates for this time. Change it, then try again.",
+};
+
+/**
+ * The preview's failure line. An answer from GRIDGO is read by its code (the
+ * API client's `ApiError`, read by shape because the client imports this
+ * module); no answer at all is a connection problem.
+ */
+export function previewErrorMessage(err: unknown): string {
+  const answered =
+    err != null && typeof err === "object" && typeof (err as { status?: unknown }).status === "number";
+  if (!answered) {
+    return "Cannot reach GRIDGO to show the dates clients will see. Check your connection, then try again.";
+  }
+  const code = (err as { code?: unknown }).code;
+  return (typeof code === "string" && PREVIEW_REFUSED[code]) || "The dates could not be loaded. Try again.";
+}
+
 /**
  * The message for a save that sent a `productionTime` and was refused for it.
  * The API answers `400 invalid_production_time`; an older build answered

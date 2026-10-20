@@ -529,7 +529,11 @@ describe("listing editor: How long does this take? (gridgo-api#292)", () => {
       "aria-valuetext",
       "12 hours",
     );
-    expect(screen.getByText(/carries on into the\s+next working day/)).toBeVisible();
+    expect(
+      screen.getByText(
+        "This is one working day of open hours or more. GRIDGO keeps it exactly, so the work is ready on a later working day; the dates below show when.",
+      ),
+    ).toBeVisible();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     await waitFor(() =>
       expect(mocks.previewProductionTime).toHaveBeenCalledWith("sci_1", {
@@ -580,6 +584,32 @@ describe("listing editor: How long does this take? (gridgo-api#292)", () => {
     await waitFor(() =>
       expect(mocks.updateCatalogItem).toHaveBeenCalledWith("sci_1", 3, { productionTime: exact }),
     );
+  });
+
+  it.each([
+    [
+      new ApiError(409, { error: "shop_never_open" }),
+      "GRIDGO could not fit this work into your open hours in the coming weeks. Check your open days and hours.",
+    ],
+    [
+      new TypeError("Failed to fetch"),
+      "Cannot reach GRIDGO to show the dates clients will see. Check your connection, then try again.",
+    ],
+  ])("says why the dates could not be shown, and tries again (%s)", async (failure, message) => {
+    stubLoad(catalogItem({ productionTime: { mode: "days", minDays: 1, maxDays: 3 } }));
+    mocks.previewProductionTime.mockRejectedValueOnce(failure);
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    expect(await screen.findByText(message)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("list", { name: "The next two weeks" })).toBeVisible();
+    expect(mocks.previewProductionTime).toHaveBeenCalledTimes(2);
+    expect(mocks.previewProductionTime).toHaveBeenLastCalledWith("sci_1", {
+      mode: "days",
+      minDays: 1,
+      maxDays: 3,
+    });
+    expect(screen.queryByText(message)).not.toBeInTheDocument();
   });
 
   it("shows an older mixed hours-and-days range as it is, never as not set", async () => {
