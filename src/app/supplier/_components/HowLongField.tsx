@@ -150,8 +150,13 @@ function dayParts(days: number) {
 type Props = {
   /** The listing the preview reads against. */
   itemId: string;
-  /** Null while the listing has no production time: the shop picks a side first. */
+  /** Null while the listing has no answer yet: the shop picks a side first. */
   choice: ProductionTimeChoice | null;
+  /**
+   * With no answer, the older setting the listing still schedules by, in
+   * words ("Ready in 2 hours to 2 working days"). Null when it has none.
+   */
+  heldLine?: string | null;
   onChange: (choice: ProductionTimeChoice) => void;
   /** The shop's working day from GRIDGO; its ten-hour default when not sent. */
   dayMinutes?: number;
@@ -178,6 +183,7 @@ type Props = {
 export function HowLongField({
   itemId,
   choice,
+  heldLine,
   onChange,
   dayMinutes = DEFAULT_DAY_MINUTES,
   speedTiers,
@@ -202,9 +208,22 @@ export function HowLongField({
         >
           How long does this take?
         </h3>
-        <p className="text-caption text-text-secondary m-0 max-w-prose">
-          No production time yet, so clients cannot be offered a date. Pick one.
-        </p>
+        {heldLine ? (
+          <div className="flex max-w-prose flex-col gap-1">
+            <p className="text-body text-text-primary m-0" role="status">
+              Now: {heldLine}
+            </p>
+            <p className="text-caption text-text-secondary m-0">
+              This older setting mixes hours and working days, so it fits neither answer. It
+              still sets the dates clients are offered. Choosing an answer changes them from
+              now on; orders already placed keep their dates.
+            </p>
+          </div>
+        ) : (
+          <p className="text-caption text-text-secondary m-0 max-w-prose">
+            No production time yet, so clients cannot be offered a date. Pick one.
+          </p>
+        )}
         <div className="flex flex-wrap gap-2" role="group" aria-labelledby="how-long-heading">
           {MODES.map((mode) => (
             <Button key={mode.value} type="button" onClick={() => onChange(startChoice(mode.value))}>

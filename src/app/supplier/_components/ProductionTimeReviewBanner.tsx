@@ -22,8 +22,8 @@ type Props = {
 
 /**
  * "Check your production time" on a listing GRIDGO asks the shop to confirm:
- * one rounded up to a working day on 7 Oct, or an Express listing that never
- * said how many hours it takes. Saving any production time clears it.
+ * an older one-working-day setting, or an Express listing that never said how
+ * many hours it takes. Saving any production time clears it.
  */
 export function ProductionTimeReviewBanner({
   reasons,

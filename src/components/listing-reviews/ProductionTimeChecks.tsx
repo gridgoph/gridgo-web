@@ -10,6 +10,7 @@ import { DataTable, DataTableRowAction, type DataTableColumn } from "@/component
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { listStaffCatalogItems } from "@/lib/api/client";
+import { formatDateTime } from "@/lib/format";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import {
@@ -32,8 +33,8 @@ export function staffListingHref(tree: "ops" | "admin", itemId: string): string 
 
 /**
  * Listings whose shop is asked to "Check your production time"
- * (gridgo-api#292 release 2): rounded up to one working day on 7 Oct, or an
- * Express listing with no hours. Read from
+ * (gridgo-api#292 release 2): an older one-working-day setting the shop has
+ * not confirmed, or an Express listing with no hours. Read from
  * `GET /ops/catalog-items?productionTimeReview=required`. Operations follows
  * up with the shop; only the shop can clear it, by saving a production time.
  */
@@ -49,6 +50,8 @@ export function ProductionTimeChecks({
   const [total, setTotal] = useState(0);
   const [cursor, setCursor] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /** When the rows were read, so a failed refresh can say how old they are. */
+  const [loadedAt, setLoadedAt] = useState<string | null>(null);
   const [moreError, setMoreError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
@@ -62,6 +65,7 @@ export function ProductionTimeChecks({
         setRows(page.rows);
         setTotal(page.total);
         setCursor(page.nextCursor);
+        setLoadedAt(new Date().toISOString());
       } catch (err) {
         setError(opsErrorMessage(err, "Could not load the listings to check."));
       }
@@ -92,7 +96,8 @@ export function ProductionTimeChecks({
     }
   }
 
-  if (error && !rows) {
+  // A failed refresh never leaves "Nothing to check" standing as current.
+  if (error && !rows?.length) {
     return (
       <ErrorState body={error} action={<Button onClick={() => void load()}>Try again</Button>} />
     );
@@ -149,10 +154,25 @@ export function ProductionTimeChecks({
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
       <p className="text-body text-text-secondary m-0 max-w-prose">
-        Shops see Check your production time on these listings until they save one. GRIDGO
-        rounded some up to 1 working day on 7 Oct, and Express listings with no hours could
-        not become Same day on their own. Follow up with the shop if a listing waits here.
+        Shops see Check your production time on these listings until they save one. Some
+        have an older 1-working-day setting that needs the shop to confirm it, and Express
+        listings with no hours could not become Same day on their own. Follow up with the
+        shop if a listing waits here.
       </p>
+      {error ? (
+        <div
+          role="alert"
+          className="border-warning flex flex-wrap items-center gap-3 rounded-[var(--radius-field)] border px-3 py-2"
+        >
+          <p className="text-body text-text-primary m-0">
+            {error} The list below is from {loadedAt ? formatDateTime(loadedAt) : "earlier"} and
+            may be out of date.
+          </p>
+          <Button size="sm" onClick={() => void load()}>
+            Try again
+          </Button>
+        </div>
+      ) : null}
       <DataTable
         caption="Listings to check"
         columns={columns}

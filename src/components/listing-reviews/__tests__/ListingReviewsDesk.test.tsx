@@ -61,6 +61,7 @@ vi.mock("@/lib/api/client", async () => {
 });
 
 import { ListingReviewsDesk } from "@/components/listing-reviews/ListingReviewsDesk";
+import { ProductionTimeChecks } from "@/components/listing-reviews/ProductionTimeChecks";
 import { ApiError } from "@/lib/api/client";
 
 const taxonomy: Taxonomy = {
@@ -399,7 +400,7 @@ describe("Listing reviews desk: Production time (gridgo-api#292)", () => {
     });
     const booklets = within(table).getByRole("row", { name: /Booklets/ });
     expect(booklets).toHaveTextContent("Shop A");
-    expect(booklets).toHaveTextContent("Rounded up to 1 working day on 7 Oct");
+    expect(booklets).toHaveTextContent("Older 1-working-day setting, needs confirmation");
     expect(booklets).toHaveTextContent("1 working day");
     expect(within(booklets).getByRole("link", { name: "Booklets" })).toHaveAttribute(
       "href",
@@ -419,5 +420,44 @@ describe("Listing reviews desk: Production time (gridgo-api#292)", () => {
       "/admin/supplier-products/sci_one_day",
     );
     search.params = new URLSearchParams();
+  });
+});
+
+describe("Production time checks: a failed refresh (gridgo-api#292)", () => {
+  const flaggedRow = {
+    shop: { supplierId: "usr_shop_a", shopName: "Shop A" },
+    item: item({
+      id: "sci_one_day",
+      name: "Booklets",
+      productionTimeReview: { required: true, reasons: ["legacy_one_working_day"] },
+    }),
+  };
+
+  it("never leaves Nothing to check standing after a refresh fails", async () => {
+    api.listStaffCatalogItems.mockResolvedValueOnce({ items: [], shops: [], total: 0 });
+    const { rerender } = render(<ProductionTimeChecks tree="ops" refreshSignal={0} />);
+    expect(await screen.findByText("Nothing to check")).toBeVisible();
+
+    api.listStaffCatalogItems.mockRejectedValueOnce(new ApiError(500, { error: "server_error" }));
+    rerender(<ProductionTimeChecks tree="ops" refreshSignal={1} />);
+    expect(await screen.findByRole("button", { name: "Try again" })).toBeVisible();
+    expect(screen.queryByText("Nothing to check")).not.toBeInTheDocument();
+  });
+
+  it("marks the earlier list as possibly out of date and retries", async () => {
+    api.listStaffCatalogItems.mockResolvedValueOnce({ items: [flaggedRow], shops: [], total: 1 });
+    const { rerender } = render(<ProductionTimeChecks tree="ops" refreshSignal={0} />);
+    await screen.findByRole("table", { name: "Listings to check" });
+
+    api.listStaffCatalogItems.mockRejectedValueOnce(new ApiError(500, { error: "server_error" }));
+    rerender(<ProductionTimeChecks tree="ops" refreshSignal={1} />);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/may be out of date/);
+    expect(screen.getByRole("table", { name: "Listings to check" })).toBeVisible();
+
+    api.listStaffCatalogItems.mockResolvedValueOnce({ items: [], shops: [], total: 0 });
+    await userEvent.setup().click(within(alert).getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Nothing to check")).toBeVisible();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

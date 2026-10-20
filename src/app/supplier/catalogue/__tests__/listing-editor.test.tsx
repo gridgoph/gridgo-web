@@ -546,6 +546,28 @@ describe("listing editor: How long does this take? (gridgo-api#292)", () => {
     );
   });
 
+  it("shows an older mixed hours-and-days range as it is, never as not set", async () => {
+    stubLoad(
+      catalogItem({
+        turnaroundHours: undefined,
+        turnaroundMode: "override",
+        minimumTurnaroundMinutes: 120,
+        turnaroundDays: 2,
+        productionTime: null,
+      }),
+    );
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    expect(screen.getByText("Now: Ready in 2 hours to 2 working days")).toBeVisible();
+    expect(screen.getByText(/Choosing an answer changes them from now on/)).toBeVisible();
+    expect(screen.queryByText(/No production time yet/)).not.toBeInTheDocument();
+
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers A5" } });
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled(), AUTOSAVE_WAIT);
+    expect(mocks.updateCatalogItem.mock.calls[0][2]).not.toHaveProperty("productionTime");
+  });
+
   it("shows faster price options under More options, read-only", async () => {
     stubLoad(
       catalogItem({
@@ -585,7 +607,11 @@ describe("listing editor: Check your production time (gridgo-api#292)", () => {
     }));
     render(<ListingEditorPage />);
     const banner = await screen.findByRole("region", { name: "Check your production time" });
-    expect(within(banner).getByText(/rounded this listing up to 1 working day on 7 Oct/)).toBeVisible();
+    expect(
+      within(banner).getByText(
+        "This listing has an older 1-working-day setting. Confirm it, or set the time it really takes.",
+      ),
+    ).toBeVisible();
 
     fireEvent.click(within(banner).getByRole("button", { name: "Keep 1 working day" }));
     await waitFor(() =>
@@ -677,6 +703,77 @@ describe("listing editor: Use for all my listings (gridgo-api#292)", () => {
           "sci_1",
           5,
           expect.objectContaining({ name: "Flyers, glossy" }),
+        ),
+      AUTOSAVE_WAIT,
+    );
+  });
+
+  it("takes the server's newer price after bulk apply and sends no follow-up PATCH", async () => {
+    // Another session moved the price to ₱500 (version 4) before this editor heard of it.
+    stubLoad(catalogItem({ productionTime: { mode: "days", minDays: 1, maxDays: 3 } }));
+    const newer = {
+      ...catalogItem().item,
+      basePriceMinor: 50000,
+      productionTime: { mode: "days", minDays: 1, maxDays: 3 },
+    };
+    mocks.listCatalogItems.mockResolvedValue({ items: [{ ...newer, version: 4 }], total: 1 });
+    mocks.applyProductionTimeToAll.mockResolvedValue({ items: [{ ...newer, version: 5 }], total: 1 });
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Use for all my listings" }));
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Use for all" }),
+    );
+    await waitFor(() =>
+      expect(mocks.applyProductionTimeToAll).toHaveBeenCalledWith(
+        { mode: "days", minDays: 1, maxDays: 3 },
+        { sci_1: 4 },
+      ),
+    );
+    await screen.findByText("Done. Your listing takes 1 to 3 working days now.");
+    await act(() => new Promise((resolve) => setTimeout(resolve, AUTOSAVE_DELAY_MS + 500)));
+    expect(mocks.updateCatalogItem).not.toHaveBeenCalled();
+    await openEditorStep("Price");
+    expect(screen.getByLabelText("Your price")).toHaveValue("500.00");
+  });
+
+  it("keeps an answer changed while bulk apply was running, and saves it next", async () => {
+    stubLoad(catalogItem({ productionTime: { mode: "days", minDays: 1, maxDays: 3 } }));
+    let finish: (body: unknown) => void = () => undefined;
+    mocks.applyProductionTimeToAll.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Use for all my listings" }));
+    fireEvent.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Use for all" }),
+    );
+    await waitFor(() => expect(mocks.applyProductionTimeToAll).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole("button", { name: "More: shortest working days" }));
+    const from = screen.getByRole("spinbutton", { name: "Shortest working days" });
+    expect(from).toHaveAttribute("aria-valuenow", "2");
+    await act(async () => {
+      finish({
+        items: [
+          { ...catalogItem().item, productionTime: { mode: "days", minDays: 1, maxDays: 3 }, version: 5 },
+        ],
+        total: 1,
+      });
+    });
+    await screen.findByText(/^Done\. Your listing takes/);
+    expect(from).toHaveAttribute("aria-valuenow", "2");
+    await waitFor(
+      () =>
+        expect(mocks.updateCatalogItem).toHaveBeenCalledWith(
+          "sci_1",
+          5,
+          expect.objectContaining({ productionTime: { mode: "days", minDays: 2, maxDays: 3 } }),
         ),
       AUTOSAVE_WAIT,
     );

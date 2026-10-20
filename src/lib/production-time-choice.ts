@@ -300,14 +300,14 @@ export function sameDayTooLong(
 export function reviewReasonLine(reason: ProductionTimeReviewReason): string {
   return reason === "express_missing_hours"
     ? "This was an Express listing with no production time. Express is now Same day: say how many hours it takes."
-    : "GRIDGO rounded this listing up to 1 working day on 7 Oct. Confirm it, or set the time it really takes.";
+    : "This listing has an older 1-working-day setting. Confirm it, or set the time it really takes.";
 }
 
 /** The same reasons as Operations reads them. */
 export function reviewReasonStaffLine(reason: ProductionTimeReviewReason): string {
   return reason === "express_missing_hours"
     ? "Express with no hours"
-    : "Rounded up to 1 working day on 7 Oct";
+    : "Older 1-working-day setting, needs confirmation";
 }
 
 // ---------------------------------------------------------------------------

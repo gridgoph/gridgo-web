@@ -91,6 +91,8 @@ import {
   boardContextFor,
   boardStanding,
   coversFor,
+  effectiveMinimumTurnaround,
+  effectiveTurnaround,
   needsPrinterMaxWidth,
   nextFreeSlot,
   normalizeBoardPage,
@@ -114,7 +116,7 @@ import {
   type SpecGroup,
 } from "@/lib/listings";
 import { changeNotice, replacedNotice } from "@/lib/listing-photos";
-import { DEFAULT_DAY_MINUTES } from "@/lib/production-time";
+import { DEFAULT_DAY_MINUTES, readyInLine } from "@/lib/production-time";
 import {
   choiceFromTimes,
   choiceLine,
@@ -290,6 +292,23 @@ function listingChoice(listing: Listing): ProductionTimeChoice | null {
  */
 function timeChanged(draft: Draft, listing: Listing): boolean {
   return !sameChoice(draft.time, listingChoice(listing));
+}
+
+/**
+ * The draft after another write moved the listing on (Use for all my
+ * listings): what the server now holds, except the fields the shop changed
+ * since `submitted` was captured. A field nobody touched takes the server's
+ * value, so a stale draft never autosaves an older price over a newer one,
+ * and an edit made while the request ran is kept and saved next.
+ */
+function rebaseDraft(current: Draft, submitted: Draft, saved: Listing): Draft {
+  const next = draftFrom(saved);
+  const kept = { ...next } as Record<keyof Draft, unknown>;
+  for (const key of Object.keys(next) as Array<keyof Draft>) {
+    if (key === "version") continue;
+    if (JSON.stringify(current[key]) !== JSON.stringify(submitted[key])) kept[key] = current[key];
+  }
+  return kept as Draft;
 }
 
 /**
@@ -554,6 +573,15 @@ export default function ListingEditorPage() {
           dirty ? null : readiness,
         )
       : null;
+  // An older range that mixes hours and days has no one answer (`productionTime`
+  // is null) but still schedules: say what it is rather than "not set".
+  const heldMax =
+    listing && listing.productionTime === null
+      ? effectiveTurnaround(listing, context?.inheritedTurnaround ?? null)
+      : null;
+  const heldMin = listing ? effectiveMinimumTurnaround(listing) : null;
+  const heldLine =
+    heldMax && heldMin && heldMin.unit !== heldMax.unit ? readyInLine(heldMax, heldMin) : null;
   const covers = listing
     ? coversFor(
         taxonomy,
@@ -636,6 +664,7 @@ export default function ListingEditorPage() {
   async function applyToAll() {
     if (!listing || !working?.time || busyRef.current) return;
     const choice = working.time;
+    const submitted = working;
     setBusy(true);
     busyRef.current = true;
     setApplying(true);
@@ -649,11 +678,7 @@ export default function ListingEditorPage() {
       const saved = updated.listings.find((entry) => entry.id === listing.id);
       if (saved) {
         setListing(saved);
-        setDraft((current) =>
-          current == null
-            ? current
-            : { ...current, version: saved.version, time: draftFrom(saved).time },
-        );
+        setDraft((current) => (current == null ? current : rebaseDraft(current, submitted, saved)));
       }
       setListingCount(updated.total);
       setApplyNotice(
@@ -1383,6 +1408,7 @@ export default function ListingEditorPage() {
                   <HowLongField
                     itemId={listing.id}
                     choice={working.time}
+                    heldLine={heldLine}
                     onChange={(time) => setDraft({ ...working, time })}
                     dayMinutes={listing.productionDayMinutes ?? DEFAULT_DAY_MINUTES}
                     speedTiers={listing.speedTiers}
