@@ -1353,7 +1353,7 @@ describe("listing editor sample photos", () => {
     );
   }
 
-  /** The wide sample in "What clients see". */
+  /** The Board photo in "What clients see". */
   async function previewSample(fileId: string) {
     const preview = screen.getByTestId("listing-preview-sample");
     await waitFor(() =>
@@ -1375,10 +1375,10 @@ describe("listing editor sample photos", () => {
     render(<ListingEditorPage />);
     await openEditorStep("About");
 
-    for (const name of ["Edit wide sample", "Edit photo 2", "Edit photo 3"]) {
+    for (const name of ["Edit Board photo", "Edit photo 2", "Edit photo 3"]) {
       expect(screen.getByRole("button", { name })).toBeVisible();
     }
-    await user.click(screen.getByRole("button", { name: "Edit wide sample" }));
+    await user.click(screen.getByRole("button", { name: "Edit Board photo" }));
     const wideItems = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
     expect(wideItems).toEqual(["Move later", "Replace photo…", "Remove photo…"]);
     await user.keyboard("{Escape}");
@@ -1386,7 +1386,7 @@ describe("listing editor sample photos", () => {
     await user.click(screen.getByRole("button", { name: "Edit photo 3" }));
     const lastItems = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
     expect(lastItems).toEqual([
-      "Make wide sample",
+      "Make Board photo",
       "Move earlier",
       "Replace photo…",
       "Remove photo…",
@@ -1417,20 +1417,20 @@ describe("listing editor sample photos", () => {
     expect(screen.queryByRole("button", { name: "Edit photo 3" })).not.toBeInTheDocument();
   });
 
-  it("removes the wide sample, says the next photo took its place, and updates the preview", async () => {
+  it("removes the Board photo, says the next photo took its place, and updates the preview", async () => {
     const user = userEvent.setup();
     stubPhotos();
     render(<ListingEditorPage />);
     await openEditorStep("About");
     await previewSample("file_1");
 
-    await choose(user, "wide sample", "Remove photo…");
+    await choose(user, "Board photo", "Remove photo…");
     const dialog = await screen.findByRole("alertdialog");
     expect(
-      within(dialog).getByRole("heading", { name: "Remove the wide sample?" }),
+      within(dialog).getByRole("heading", { name: "Remove the Board photo?" }),
     ).toBeVisible();
     expect(
-      within(dialog).getByText(/Photo 2 becomes the wide sample clients see first\./),
+      within(dialog).getByText(/Photo 2 becomes the Board photo clients see first\./),
     ).toBeVisible();
     await user.click(within(dialog).getByRole("button", { name: "Remove photo" }));
 
@@ -1438,7 +1438,7 @@ describe("listing editor sample photos", () => {
       expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith("sci_1", ["file_2", "file_3"], 3),
     );
     expect(
-      await screen.findByText("Wide sample removed. The next photo is now the wide sample."),
+      await screen.findByText("Board photo removed. The next photo is now the Board photo."),
     ).toBeVisible();
     await previewSample("file_2");
   });
@@ -1449,7 +1449,7 @@ describe("listing editor sample photos", () => {
     render(<ListingEditorPage />);
     await openEditorStep("About");
 
-    await choose(user, "wide sample", "Remove photo…");
+    await choose(user, "Board photo", "Remove photo…");
     const dialog = await screen.findByRole("alertdialog");
     await user.click(within(dialog).getByRole("button", { name: "Keep it" }));
 
@@ -1464,7 +1464,7 @@ describe("listing editor sample photos", () => {
     render(<ListingEditorPage />);
     await openEditorStep("About");
 
-    await choose(user, "wide sample", "Remove photo…");
+    await choose(user, "Board photo", "Remove photo…");
     const dialog = await screen.findByRole("alertdialog");
     expect(within(dialog).getByRole("heading", { name: "Remove the only photo?" })).toBeVisible();
     expect(within(dialog).getByText(/clients stop seeing it until you add another/)).toBeVisible();
@@ -1473,16 +1473,16 @@ describe("listing editor sample photos", () => {
     await waitFor(() =>
       expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith("sci_1", [], 3),
     );
-    expect(await screen.findByRole("button", { name: /Add the wide sample/ })).toBeVisible();
+    expect(await screen.findByRole("button", { name: /Add the Board photo/ })).toBeVisible();
   });
 
-  it("makes a later photo the wide sample in one step and the preview follows", async () => {
+  it("makes a later photo the Board photo in one step and the preview follows", async () => {
     const user = userEvent.setup();
     stubPhotos();
     render(<ListingEditorPage />);
     await openEditorStep("About");
 
-    await choose(user, "photo 3", "Make wide sample");
+    await choose(user, "photo 3", "Make Board photo");
 
     await waitFor(() =>
       expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith(
@@ -1491,10 +1491,10 @@ describe("listing editor sample photos", () => {
         3,
       ),
     );
-    expect(await screen.findByText("Photo 3 is now the wide sample.")).toBeVisible();
+    expect(await screen.findByText("Photo 3 is now the Board photo.")).toBeVisible();
     await previewSample("file_3");
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Edit wide sample" })).toHaveFocus(),
+      expect(screen.getByRole("button", { name: "Edit Board photo" })).toHaveFocus(),
     );
   });
 
@@ -1537,7 +1537,7 @@ describe("listing editor sample photos", () => {
     await openEditorStep("About");
     await previewSample("file_1");
 
-    await choose(user, "wide sample", "Replace photo…");
+    await choose(user, "Board photo", "Replace photo…");
     const picked = new File(["x"], "sharper.jpg", { type: "image/jpeg" });
     await user.upload(screen.getByLabelText("Choose a replacement photo"), picked);
 
@@ -1546,7 +1546,7 @@ describe("listing editor sample photos", () => {
     );
     expect(mocks.uploadCatalogItemPhoto).toHaveBeenCalledWith(picked);
     expect(mocks.reorderCatalogPhotos).not.toHaveBeenCalled();
-    expect(await screen.findByText("Wide sample replaced. It kept its place.")).toBeVisible();
+    expect(await screen.findByText("Board photo replaced. It kept its place.")).toBeVisible();
     await previewSample("file_new");
   });
 

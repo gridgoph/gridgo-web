@@ -3173,21 +3173,35 @@ export async function createCatalogItemPrepStep(
 export async function updateCatalogItemPrepStep(
   itemId: string,
   stepId: string,
+  version: number | null,
   body: Record<string, unknown>,
 ): Promise<unknown> {
   return request<unknown>(
     `/me/catalog-items/${encodeURIComponent(itemId)}/prep-steps/${encodeURIComponent(stepId)}`,
-    { method: "PATCH", body: JSON.stringify(body) },
+    { method: "PATCH", ...versioned(version, body) },
   );
 }
 
 export async function deleteCatalogItemPrepStep(
   itemId: string,
   stepId: string,
+  version: number | null,
 ): Promise<unknown> {
   return request<unknown>(
     `/me/catalog-items/${encodeURIComponent(itemId)}/prep-steps/${encodeURIComponent(stepId)}`,
-    { method: "DELETE" },
+    { method: "DELETE", ...versioned(version) },
+  );
+}
+
+/** The complete id list, in the order a client should read the steps. */
+export async function reorderCatalogItemPrepSteps(
+  itemId: string,
+  version: number | null,
+  stepIds: string[],
+): Promise<unknown> {
+  return request<unknown>(
+    `/me/catalog-items/${encodeURIComponent(itemId)}/prep-steps/reorder`,
+    { method: "POST", ...versioned(version, { stepIds }) },
   );
 }
 

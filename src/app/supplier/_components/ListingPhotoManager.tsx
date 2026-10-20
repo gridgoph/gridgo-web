@@ -61,7 +61,7 @@ type Props = {
   /** The photo being swapped for a new upload, shown as "Replacing…". */
   replacingFileId: string | null;
   adding: boolean;
-  /** What the last change did, in a sentence ("Photo 2 is now the wide sample."). */
+  /** What the last change did, in a sentence ("Photo 2 is now the Board photo."). */
   notice: string | null;
   /** Id of the Add control; the readiness checklist focuses it. */
   addId: string;
@@ -73,7 +73,7 @@ type Props = {
 const ACCEPT = "image/jpeg,image/png,image/webp";
 
 /**
- * The listing's sample photos: the wide sample first and wide, then the rest.
+ * The listing's sample photos: the Board photo first and wide, then the rest.
  *
  * Each photo carries a labelled "Edit" menu — Make wide sample, Move earlier,
  * Move later, Replace photo, Remove photo — so nothing hides behind a bare
@@ -242,11 +242,14 @@ export function ListingPhotoManager({
                   {adding
                     ? "Adding…"
                     : photos.length === 0
-                      ? "Add the wide sample"
+                      ? "Add the Board photo"
                       : "Add photo"}
                 </span>
                 <span className="text-caption text-text-muted">
                   {photos.length} of {LISTING_CAPS.photos}
+                </span>
+                <span className="text-caption text-text-muted max-w-48">
+                  No watermark, logo, shop name, phone, or QR. GRIDGO still reviews the photo.
                 </span>
               </button>
             </li>
@@ -257,7 +260,7 @@ export function ListingPhotoManager({
             disabled={busy}
             size="sm"
             className="mt-3"
-            label={photos.length === 0 ? "Take the wide sample" : "Take photo"}
+            label={photos.length === 0 ? "Take the Board photo" : "Take photo"}
             inputLabel="Take a sample photo"
             onFile={(file) => {
               focusNext.current = { index: photos.length };
@@ -355,7 +358,7 @@ export function ListingPhotoManager({
 }
 
 const ITEM_COPY = {
-  "make-first": { label: "Make wide sample", icon: LayoutPanelTop },
+  "make-first": { label: "Make Board photo", icon: LayoutPanelTop },
   earlier: { label: "Move earlier", icon: ArrowLeft },
   later: { label: "Move later", icon: ArrowRight },
   replace: { label: "Replace photo…", icon: ImageUp },

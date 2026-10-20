@@ -14,8 +14,8 @@ import {
 const ids = ["a", "b", "c"];
 
 describe("listing photo order", () => {
-  it("names the first photo the wide sample and counts the rest from 2", () => {
-    expect([0, 1, 2].map(photoName)).toEqual(["wide sample", "photo 2", "photo 3"]);
+  it("names the first photo the Board photo and counts the rest from 2", () => {
+    expect([0, 1, 2].map(photoName)).toEqual(["Board photo", "photo 2", "photo 3"]);
   });
 
   it("drops one id and keeps the rest in order", () => {
@@ -52,23 +52,23 @@ describe("listing photo order", () => {
 });
 
 describe("listing photo copy", () => {
-  it("says what replaces a removed wide sample, and warns on the only photo", () => {
-    expect(removalCopy(0, 3).body).toContain("Photo 2 becomes the wide sample");
+  it("says what replaces a removed Board photo, and warns on the only photo", () => {
+    expect(removalCopy(0, 3).body).toContain("Photo 2 becomes the Board photo");
     expect(removalCopy(2, 3).title).toBe("Remove photo 3?");
     expect(removalCopy(0, 1).body).toContain("clients stop seeing it");
   });
 
   it("tells the shop what moved", () => {
     expect(changeNotice("remove", "a", ids, ["b", "c"])).toBe(
-      "Wide sample removed. The next photo is now the wide sample.",
+      "Board photo removed. The next photo is now the Board photo.",
     );
     expect(changeNotice("remove", "b", ids, ["a", "c"])).toBe("Photo 2 removed.");
     expect(changeNotice("remove", "a", ["a"], [])).toMatch(/Add a photo/);
     expect(changeNotice("make-first", "c", ids, ["c", "a", "b"])).toBe(
-      "Photo 3 is now the wide sample.",
+      "Photo 3 is now the Board photo.",
     );
     expect(changeNotice("later", "a", ids, ["b", "a", "c"])).toBe(
-      "Wide sample is now photo 2.",
+      "Board photo is now photo 2.",
     );
     expect(replacedNotice(1)).toBe("Photo 2 replaced. It kept its place.");
   });
