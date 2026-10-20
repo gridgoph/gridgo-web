@@ -78,7 +78,7 @@ export default function SupplierShopPage() {
       if (err instanceof ApiError && (err.status === 404 || err.status === 405)) {
         setUnavailable(true);
       } else {
-        setError(err instanceof ApiError ? err.code : "Could not load shop details.");
+        setError("Could not load shop details. Check your connection and try again.");
       }
     } finally {
       setLoading(false);
