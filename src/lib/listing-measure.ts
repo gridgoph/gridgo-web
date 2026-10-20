@@ -15,11 +15,16 @@ function sizeNumber(value: SizeInput): number | null {
   return text === "" ? null : Number(text);
 }
 
-/** Thousandths of the shop's measure unit, which is how the platform stores a size. */
+/**
+ * Thousandths of the shop's measure unit, which is how the platform stores a
+ * size. GRIDGO takes only a safe whole number from 1 up, so a size that rounds
+ * to 0 (0.0004) or past that range (1e300) is no size at all.
+ */
 export function toMilli(value: SizeInput): number | null {
   const size = sizeNumber(value);
   if (size == null || !Number.isFinite(size) || size <= 0) return null;
-  return Math.round(size * 1000);
+  const milli = Math.round(size * 1000);
+  return Number.isSafeInteger(milli) && milli >= 1 ? milli : null;
 }
 
 export function fromMilli(value: number | null): number | null {
@@ -32,9 +37,15 @@ export function sizeText(milli: number | null): string {
   return size == null ? "" : String(size);
 }
 
-/** Typed but not a size above zero, so a save would drop it. */
+/** Typed but not a size GRIDGO stores, so a save would drop it. */
 function unreadable(value: SizeInput): boolean {
   return sizeNumber(value) != null && toMilli(value) == null;
+}
+
+/** A readable number too large to store, as opposed to one below 0.001. */
+function tooLarge(value: SizeInput): boolean {
+  const size = sizeNumber(value);
+  return size != null && size >= 0.0005 && toMilli(value) == null;
 }
 
 export function needsMeasure(unit: PricingUnit): boolean {
@@ -83,7 +94,8 @@ export function billableProblem(draft: BillableDraft): string | null {
   if (!draft.measureUnit) return "choose what you measure in.";
   const typed =
     kind === "area" ? [draft.minimumWidth, draft.minimumHeight] : [draft.minimumLength];
-  if (typed.some(unreadable)) return "enter each size as a number above zero, like 2.5.";
+  if (typed.some(tooLarge)) return "that size is too large. Enter it in your measure unit, like 2.5.";
+  if (typed.some(unreadable)) return "enter each size as a number above zero, from 0.001 up, like 2.5.";
   if (kind === "area") {
     const width = toMilli(draft.minimumWidth);
     const height = toMilli(draft.minimumHeight);
