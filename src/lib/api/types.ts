@@ -1588,6 +1588,13 @@ export type OperatingHours = {
   };
   /** Open-time minutes a review takes, 1–540. */
   artworkReviewMinutes: number;
+  /**
+   * Open-time minutes GRIDGO adds after a same-day job's production before
+   * the client's promised time, 0–600 (default 120; contract "Same-day promise
+   * margin control" in `gridgo-api/docs/SCHEDULING_API.md`). Absent from an
+   * older API; leaving it out of a save keeps the stored value.
+   */
+  sameDayPromiseAllowanceMinutes?: number;
   /** Minutes after Manila midnight, 0–1439. Stored only: Priority Delivery is not offered. */
   priorityDispatchCutoffMinute: number;
 };
