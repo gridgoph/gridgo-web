@@ -350,7 +350,6 @@ export function TesterRewardsList({
           filterPlaceholder="Filter by name…"
           itemLabel="rewards"
           pageSize={TESTER_LIST_PAGE_SIZE}
-          rowActionsDensity="labeled"
           rowActions={(row) => {
             const allowed = rewardActions(row);
             return (
