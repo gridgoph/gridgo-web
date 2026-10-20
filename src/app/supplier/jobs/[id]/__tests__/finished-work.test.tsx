@@ -118,6 +118,11 @@ function checklist(): HTMLElement {
   return screen.getByRole("region", { name: "Before a rider is called" });
 }
 
+/** The status chip. The Latest row repeats the current standing, so the bare text is not unique. */
+function statusChip(label: string) {
+  return screen.getAllByRole("status").find((el) => el.textContent?.trim() === label);
+}
+
 describe("the shop's finished work on a rider-packs job", () => {
   it("names the shop's own next step instead of 'Waiting on Operations' or a packing photo", async () => {
     mocks.getOrder.mockResolvedValue(job());
@@ -170,7 +175,7 @@ describe("the shop's finished work on a rider-packs job", () => {
       mocks.submitFinished.mock.invocationCallOrder[0],
     );
     expect(await screen.findByText("Sent for review.")).toBeVisible();
-    expect(screen.getByText("GRIDGO reviewing")).toBeVisible();
+    expect(statusChip("GRIDGO reviewing")).toBeVisible();
     expect(within(checklist()).getByText("With GRIDGO")).toBeVisible();
     expect(
       screen.queryByRole("button", { name: /Send finished work/ }),
@@ -240,7 +245,7 @@ describe("the shop's finished work on a rider-packs job", () => {
     expect(
       list.getByText("Page 12 is smudged. Reprint it and photograph the full run."),
     ).toBeVisible();
-    expect(screen.getByText("Needs a fix")).toBeVisible();
+    expect(statusChip("Needs a fix")).toBeVisible();
     await user.click(screen.getByRole("button", { name: "Send new photos for review" }));
     const dialog = await screen.findByRole("dialog");
     expect(
