@@ -6,8 +6,9 @@
  *
  * GRIDGO's working week: artwork is reviewed and riders are dispatched only
  * inside it, and new orders' acceptance, reminder and lateness clocks count
- * only its open time. Super Admin edits the week, closures, the review time
- * and the stored Priority dispatch cutoff; everyone else reads them.
+ * only its open time. Super Admin edits the week, closures, the review time,
+ * the same-day promise margin (`gridgo-api/docs/SCHEDULING_API.md`) and the
+ * stored Priority dispatch cutoff; everyone else reads them.
  *
  * It saves on its own, always the complete object, through the settings
  * `expectedVersion` handshake, with an audited reason naming what moved. The
@@ -33,6 +34,7 @@ import {
   CLOSURE_RANGES_MAX,
   REVIEW_MINUTES_MAX,
   REVIEW_MINUTES_MIN,
+  SAME_DAY_MARGIN_MINUTES_DEFAULT,
   closureDayCount,
   closureLabel,
   closureLength,
@@ -42,6 +44,7 @@ import {
   manilaInstant,
   manilaTime,
   manilaWhen,
+  marginMinutes,
   operatingDraft,
   operatingHoursChanges,
   operatingHoursReason,
@@ -164,7 +167,7 @@ export function OperatingHoursSettings({
         await onConflict();
       } else if (err instanceof ApiError && err.code === "invalid_operating_hours") {
         setError(
-          "The API refused these hours. Each open day needs one stretch of hours that closes after it opens, closures need real dates and can cover at most 90 days, and review time is 1 to 540 minutes.",
+          "The API refused these hours. Each open day needs one stretch of hours that closes after it opens, closures need real dates and can cover at most 90 days, review time is 1 to 540 minutes, and the same-day promise margin is at most 10 hours.",
         );
       } else if (err instanceof ApiError && err.status === 403) {
         setError("Only Super Admin can change operating hours.");
@@ -213,6 +216,8 @@ export function OperatingHoursSettings({
       )
     : "Closed";
   const reviewMinutes = Number(draft.review);
+  const margin = draft.margin;
+  const typedMargin = margin ? marginMinutes(margin) : null;
 
   return (
     <HoursSection
@@ -314,6 +319,84 @@ export function OperatingHoursSettings({
               />
             )}
           </div>
+
+          {/* Same-day promise margin: absent until the API offers it. */}
+          {margin && typeof stored.sameDayPromiseAllowanceMinutes === "number" ? (
+            <div className="flex flex-col gap-1">
+              {canEdit ? (
+                <Field data-invalid={problemField === "margin" || undefined}>
+                  <FieldLabel htmlFor="operating-margin-hours">
+                    Same-day promise margin
+                  </FieldLabel>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Input
+                      id="operating-margin-hours"
+                      inputMode="numeric"
+                      className="w-20 tabular-nums"
+                      value={margin.hours}
+                      disabled={locked}
+                      aria-label="Same-day promise margin, hours"
+                      aria-invalid={problemField === "margin" || undefined}
+                      aria-describedby="operating-margin-help"
+                      onChange={(event) =>
+                        update((current) => ({
+                          ...current,
+                          margin: { hours: event.target.value, minutes: margin.minutes },
+                        }))
+                      }
+                    />
+                    <span className="text-body text-text-secondary">hours</span>
+                    <Input
+                      inputMode="numeric"
+                      className="w-20 tabular-nums"
+                      value={margin.minutes}
+                      disabled={locked}
+                      aria-label="Same-day promise margin, minutes"
+                      aria-invalid={problemField === "margin" || undefined}
+                      aria-describedby="operating-margin-help"
+                      onChange={(event) =>
+                        update((current) => ({
+                          ...current,
+                          margin: { hours: margin.hours, minutes: event.target.value },
+                        }))
+                      }
+                    />
+                    <span className="text-body text-text-secondary">minutes</span>
+                    {typedMargin !== SAME_DAY_MARGIN_MINUTES_DEFAULT ? (
+                      <Button
+                        variant="ghost"
+                        disabled={locked}
+                        onClick={() =>
+                          update((current) => ({
+                            ...current,
+                            margin: {
+                              hours: String(SAME_DAY_MARGIN_MINUTES_DEFAULT / 60),
+                              minutes: "0",
+                            },
+                          }))
+                        }
+                      >
+                        Use the default ({durationWords(SAME_DAY_MARGIN_MINUTES_DEFAULT)})
+                      </Button>
+                    ) : null}
+                  </div>
+                  <FieldDescription id="operating-margin-help">
+                    Time GRIDGO adds after a same-day job is finished before the
+                    client&rsquo;s promised time. Open time only, up to 10 hours; default{" "}
+                    {durationWords(SAME_DAY_MARGIN_MINUTES_DEFAULT)}. A shorter margin lets
+                    clients pick today for more same-day listings. Jobs that take a day or
+                    more keep their usual margin.
+                  </FieldDescription>
+                </Field>
+              ) : (
+                <ReadOnlyLine
+                  label="Same-day promise margin"
+                  value={durationWords(stored.sameDayPromiseAllowanceMinutes)}
+                  note="of open time after a same-day job is finished, before the client's promised time."
+                />
+              )}
+            </div>
+          ) : null}
 
           {/* Closures */}
           <div>
@@ -974,8 +1057,12 @@ function ClientPreview({
           )}
           <p className="text-caption text-text-muted m-0">
             Their ready-by estimate starts when this review is done, then adds the
-            shop&rsquo;s production time and delivery. Deadline dates that cannot be met
-            are greyed out with the reason.
+            shop&rsquo;s production time
+            {typeof hours.sameDayPromiseAllowanceMinutes === "number"
+              ? `, the promise margin (${durationWords(hours.sameDayPromiseAllowanceMinutes)} for same-day work)`
+              : ""}{" "}
+            and delivery. Deadline dates that cannot be met are greyed out with the
+            reason.
           </p>
         </div>
       )}

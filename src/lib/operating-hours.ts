@@ -3,8 +3,10 @@
  * `gridgo-api/docs/OPERATING_HOURS_API.md`).
  *
  * One window per open weekday in Manila time, inclusive closure dates, the
- * open-time minutes an artwork review takes, and the Priority Delivery
- * dispatch cutoff (stored only: Priority Delivery is not offered yet). The
+ * open-time minutes an artwork review takes, the same-day promise margin
+ * (contract "Same-day promise margin control" in
+ * `gridgo-api/docs/SCHEDULING_API.md`), and the Priority Delivery dispatch
+ * cutoff (stored only: Priority Delivery is not offered yet). The
  * week decides when Operations reviews artwork, when riders are dispatched,
  * and how new orders' acceptance, reminder and lateness clocks count.
  *
@@ -30,6 +32,9 @@ export const MANILA_TIME_ZONE = "Asia/Manila";
 export const REVIEW_MINUTES_MIN = 1;
 export const REVIEW_MINUTES_MAX = 540;
 export const CLOSURE_RANGES_MAX = 100;
+/** Open-time minutes added after a same-day job's production: 0 to 10 hours. */
+export const SAME_DAY_MARGIN_MINUTES_MAX = 600;
+export const SAME_DAY_MARGIN_MINUTES_DEFAULT = 120;
 /** Distinct closed dates across every range, and the longest single range. */
 export const CLOSURE_DAYS_MAX = 90;
 
@@ -52,6 +57,7 @@ export const LAUNCH_OPERATING_HOURS: OperatingHours = {
     closures: [],
   },
   artworkReviewMinutes: 60,
+  sameDayPromiseAllowanceMinutes: SAME_DAY_MARGIN_MINUTES_DEFAULT,
   priorityDispatchCutoffMinute: 960,
 };
 
@@ -70,6 +76,8 @@ export type OperatingDraft = {
   review: string;
   /** "HH:MM", as typed. */
   cutoff: string;
+  /** Hours and minutes, as typed. Null when the API does not offer the margin yet. */
+  margin: { hours: string; minutes: string } | null;
 };
 
 const DEFAULT_DAY: DayDraft = { open: false, opens: "08:00", closes: "17:00" };
@@ -89,7 +97,25 @@ export function operatingDraft(hours: OperatingHours): OperatingDraft {
     closures: (hours.schedule.closures ?? []).map((closure) => ({ ...closure })),
     review: String(hours.artworkReviewMinutes),
     cutoff: minutesToTime(hours.priorityDispatchCutoffMinute),
+    margin:
+      typeof hours.sameDayPromiseAllowanceMinutes === "number"
+        ? {
+            hours: String(Math.floor(hours.sameDayPromiseAllowanceMinutes / 60)),
+            minutes: String(hours.sameDayPromiseAllowanceMinutes % 60),
+          }
+        : null,
   };
+}
+
+/** Whole minutes from the typed hours and minutes; null unless both read as whole numbers. */
+export function marginMinutes(margin: { hours: string; minutes: string }): number | null {
+  const hours = margin.hours.trim();
+  const minutes = margin.minutes.trim();
+  if (hours === "" && minutes === "") return null;
+  const h = hours === "" ? 0 : Number(hours);
+  const m = minutes === "" ? 0 : Number(minutes);
+  if (!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || m < 0 || m > 59) return null;
+  return h * 60 + m;
 }
 
 /** Distinct calendar dates the closures cover. Unreadable rows count nothing. */
@@ -172,6 +198,18 @@ export function parseOperatingDraft(draft: OperatingDraft): OperatingParse {
     return { problem: "Enter the dispatch cutoff as a time of day.", field: "cutoff" };
   }
 
+  let margin: number | undefined;
+  if (draft.margin) {
+    const minutes = marginMinutes(draft.margin);
+    if (minutes === null || minutes > SAME_DAY_MARGIN_MINUTES_MAX) {
+      return {
+        problem: "Same-day promise margin is whole hours and minutes, up to 10 hours.",
+        field: "margin",
+      };
+    }
+    margin = minutes;
+  }
+
   if (draft.closures.length > CLOSURE_RANGES_MAX) {
     return { problem: `Use at most ${CLOSURE_RANGES_MAX} closures.`, field: "closures" };
   }
@@ -205,6 +243,8 @@ export function parseOperatingDraft(draft: OperatingDraft): OperatingParse {
       closures: draft.closures.map((closure) => ({ ...closure })),
     },
     artworkReviewMinutes: review,
+    // Left out against an older API, which then keeps whatever it stores.
+    ...(margin === undefined ? {} : { sameDayPromiseAllowanceMinutes: margin }),
     priorityDispatchCutoffMinute: cutoff,
   };
 
@@ -547,6 +587,16 @@ export function operatingHoursChanges(
   if (before.artworkReviewMinutes !== next.artworkReviewMinutes) {
     changes.push(
       `review time ${durationWords(before.artworkReviewMinutes)} to ${durationWords(next.artworkReviewMinutes)}`,
+    );
+  }
+  // An older settings row has no margin; the API reads it as the default.
+  const wasMargin = before.sameDayPromiseAllowanceMinutes ?? SAME_DAY_MARGIN_MINUTES_DEFAULT;
+  if (
+    typeof next.sameDayPromiseAllowanceMinutes === "number" &&
+    next.sameDayPromiseAllowanceMinutes !== wasMargin
+  ) {
+    changes.push(
+      `same-day promise margin ${durationWords(wasMargin)} to ${durationWords(next.sameDayPromiseAllowanceMinutes)}`,
     );
   }
   const key = (closure: ClosureDraft) => `${closure.startDay}/${closure.endDay}`;

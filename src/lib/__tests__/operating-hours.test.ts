@@ -21,6 +21,13 @@ import {
 
 const at = (iso: string) => Date.parse(iso);
 
+/** Operating hours as an API without the same-day promise margin returns them. */
+function withoutMargin(): OperatingHours {
+  const older: OperatingHours = { ...LAUNCH_OPERATING_HOURS };
+  delete older.sameDayPromiseAllowanceMinutes;
+  return older;
+}
+
 function withClosures(...closures: { startDay: string; endDay: string }[]): OperatingHours {
   return {
     ...LAUNCH_OPERATING_HOURS,
@@ -84,6 +91,46 @@ describe("operating hours draft", () => {
     const parsed = parseOperatingDraft(draft);
     expect("value" in parsed && parsed.value.schedule.week.find((w) => w.weekday === 0))
       .toEqual({ weekday: 0, opensMinute: 1080, closesMinute: 1440 });
+  });
+
+  it("reads the same-day promise margin as hours and minutes and sends whole minutes", () => {
+    const draft = operatingDraft({
+      ...LAUNCH_OPERATING_HOURS,
+      sameDayPromiseAllowanceMinutes: 90,
+    });
+    expect(draft.margin).toEqual({ hours: "1", minutes: "30" });
+
+    draft.margin = { hours: "0", minutes: "45" };
+    expect(parseOperatingDraft(draft)).toMatchObject({
+      value: { sameDayPromiseAllowanceMinutes: 45 },
+    });
+    draft.margin = { hours: "10", minutes: "" };
+    expect(parseOperatingDraft(draft)).toMatchObject({
+      value: { sameDayPromiseAllowanceMinutes: 600 },
+    });
+    draft.margin = { hours: "0", minutes: "0" };
+    expect(parseOperatingDraft(draft)).toMatchObject({
+      value: { sameDayPromiseAllowanceMinutes: 0 },
+    });
+
+    for (const margin of [
+      { hours: "10", minutes: "1" },
+      { hours: "", minutes: "" },
+      { hours: "1.5", minutes: "0" },
+      { hours: "1", minutes: "60" },
+      { hours: "-1", minutes: "0" },
+    ]) {
+      draft.margin = margin;
+      expect(parseOperatingDraft(draft)).toMatchObject({ field: "margin" });
+    }
+  });
+
+  it("leaves the margin out against an API that does not offer it", () => {
+    const older = withoutMargin();
+    const draft = operatingDraft(older);
+    expect(draft.margin).toBeNull();
+    const parsed = parseOperatingDraft(draft);
+    expect("value" in parsed && "sameDayPromiseAllowanceMinutes" in parsed.value).toBe(false);
   });
 
   it("counts overlapping closure dates once", () => {
@@ -191,6 +238,19 @@ describe("words", () => {
     expect(operatingHoursReason(LAUNCH_OPERATING_HOURS, LAUNCH_OPERATING_HOURS, "")).toBe(
       "Operating hours: saved unchanged",
     );
+  });
+
+  it("names a margin change, reading a row without one as the two-hour default", () => {
+    const next = { ...LAUNCH_OPERATING_HOURS, sameDayPromiseAllowanceMinutes: 45 };
+    expect(operatingHoursChanges(LAUNCH_OPERATING_HOURS, next)).toEqual([
+      "same-day promise margin 2 hours to 45 minutes",
+    ]);
+    const older = withoutMargin();
+    expect(operatingHoursChanges(older, next)).toEqual([
+      "same-day promise margin 2 hours to 45 minutes",
+    ]);
+    expect(operatingHoursChanges(older, LAUNCH_OPERATING_HOURS)).toEqual([]);
+    expect(operatingHoursChanges(next, older)).toEqual([]);
   });
 
   it("formats in Philippine time whatever the reader's zone", () => {
