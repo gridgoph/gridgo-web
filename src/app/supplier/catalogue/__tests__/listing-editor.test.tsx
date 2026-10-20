@@ -32,6 +32,8 @@ const mocks = vi.hoisted(() => ({
   listCatalogItems: vi.fn(),
   previewProductionTime: vi.fn(),
   applyProductionTimeToAll: vi.fn(),
+  updateCatalogItemPrepStep: vi.fn(),
+  reorderCatalogItemPrepSteps: vi.fn(),
 }));
 
 vi.stubGlobal("React", React);
@@ -74,6 +76,8 @@ vi.mock("@/lib/api/client", async () => {
     listCatalogItems: mocks.listCatalogItems,
     previewProductionTime: mocks.previewProductionTime,
     applyProductionTimeToAll: mocks.applyProductionTimeToAll,
+    updateCatalogItemPrepStep: mocks.updateCatalogItemPrepStep,
+    reorderCatalogItemPrepSteps: mocks.reorderCatalogItemPrepSteps,
   };
 });
 
@@ -1689,6 +1693,87 @@ describe("listing editor print layouts (gridgo-client#245)", () => {
     render(<ListingEditorPage />);
     await openEditorStep("Artwork");
     expect(screen.queryByRole("group", { name: "Print layouts you can print" })).not.toBeInTheDocument();
+  });
+});
+
+describe("listing editor prep steps", () => {
+  const STEPS = [
+    { id: "prep_a", title: "Flatten the art", body: "", sortOrder: 0 },
+    { id: "prep_b", title: "Outline the fonts", body: "", sortOrder: 1 },
+  ];
+
+  it("moves a step only after the edit typed before it is saved, on the version that edit left", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    let finishSave: (() => void) | null = null;
+    mocks.updateCatalogItemPrepStep.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishSave = () => {
+            // The PATCH bumps the listing to version 4.
+            mocks.getCatalogItem.mockResolvedValue(catalogItem({ version: 4 }));
+            mocks.listCatalogItemPrepSteps.mockResolvedValue({
+              prepSteps: [{ ...STEPS[0], title: "Flatten every layer" }, STEPS[1]],
+            });
+            resolve({ itemVersion: 4 });
+          };
+        }),
+    );
+    mocks.reorderCatalogItemPrepSteps.mockResolvedValue({ itemVersion: 5 });
+    const user = userEvent.setup();
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+
+    const title = await screen.findByLabelText("Step 1 title");
+    await user.clear(title);
+    await user.type(title, "Flatten every layer");
+    // Clicking Later blurs the title first, so its save and the move leave together.
+    await user.click(screen.getAllByRole("button", { name: "Later" })[0]);
+
+    await waitFor(() =>
+      expect(mocks.updateCatalogItemPrepStep).toHaveBeenCalledWith("sci_1", "prep_a", 3, {
+        title: "Flatten every layer",
+      }),
+    );
+    expect(mocks.reorderCatalogItemPrepSteps).not.toHaveBeenCalled();
+
+    await act(async () => finishSave!());
+    await waitFor(() =>
+      expect(mocks.reorderCatalogItemPrepSteps).toHaveBeenCalledWith("sci_1", 4, [
+        "prep_b",
+        "prep_a",
+      ]),
+    );
+  });
+
+  it("keeps the shop's text in the box when the save meets a newer version", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    mocks.updateCatalogItemPrepStep
+      .mockRejectedValueOnce(new ApiError(409, { error: "catalog_item_stale" }))
+      .mockResolvedValueOnce({ itemVersion: 5 });
+    const user = userEvent.setup();
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+
+    const title = await screen.findByLabelText("Step 1 title");
+    await user.clear(title);
+    await user.type(title, "Flatten every layer");
+    // The refused save rereads the listing, which another screen moved to version 4.
+    mocks.getCatalogItem.mockResolvedValue(catalogItem({ version: 4 }));
+    await user.tab();
+
+    expect(await screen.findByText(/Your text is still in the box/)).toBeVisible();
+    expect(screen.getByLabelText("Step 1 title")).toHaveValue("Flatten every layer");
+
+    await waitFor(() => expect(mocks.getCatalogItem).toHaveBeenCalledTimes(2));
+    await user.click(screen.getByLabelText("Step 1 title"));
+    await user.tab();
+    await waitFor(() =>
+      expect(mocks.updateCatalogItemPrepStep).toHaveBeenLastCalledWith("sci_1", "prep_a", 4, {
+        title: "Flatten every layer",
+      }),
+    );
   });
 });
 

@@ -467,6 +467,12 @@ export default function ListingEditorPage() {
   const applyingRef = useRef(false);
   const loadGeneration = useRef(0);
   const reloadHeld = useRef(false);
+  // Every prep-step write bumps the listing's version, so a blur save and a
+  // Later click sent together would race on one version. They run in order
+  // instead, each on the version the previous one left.
+  const prepQueue = useRef<Promise<void>>(Promise.resolve());
+  const listingVersion = useRef<number | null>(null);
+  const prepStepsRef = useRef<PrepStep[]>([]);
 
   const working = draft ?? (listing ? draftFrom(listing) : null);
 
@@ -500,11 +506,13 @@ export default function ListingEditorPage() {
         const next = normalizeListing(itemBody);
         if (!next) throw new Error("unreadable");
         setListing(next);
+        listingVersion.current = next.version;
         setReadiness(ready?.get(next.id) ?? null);
         setServices(normalizeServiceLines(servicesBody));
         setTaxonomy(tax);
         if (stepsBody.ok) {
-          setPrepSteps(normalizePrepSteps(stepsBody.body));
+          prepStepsRef.current = normalizePrepSteps(stepsBody.body);
+          setPrepSteps(prepStepsRef.current);
           setPrepLoadError(null);
         } else {
           setPrepLoadError("Could not load the preparation steps. They are not an empty list.");
@@ -1034,20 +1042,44 @@ export default function ListingEditorPage() {
     }
   }
 
-  async function moveStep(index: number, direction: -1 | 1) {
-    if (!listing) return;
-    const next = index + direction;
-    if (next < 0 || next >= prepSteps.length) return;
-    const order = prepSteps.map((step) => step.id);
-    const [moved] = order.splice(index, 1);
-    order.splice(next, 0, moved);
+  /** Runs one prep-step write after any still in flight, then rereads the listing. */
+  function queuePrep(
+    write: (version: number | null) => Promise<unknown>,
+    message: (err: unknown) => string,
+  ) {
+    const run = prepQueue.current.then(async () => {
+      try {
+        const body = await write(listingVersion.current);
+        const itemVersion = (body as { itemVersion?: unknown } | null)?.itemVersion;
+        if (typeof itemVersion === "number") listingVersion.current = itemVersion;
+        setActionError(null);
+      } catch (err) {
+        setActionError(message(err));
+      }
+      // A refused write still rereads, so the next try carries the current
+      // version. The boxes are not reset, so the shop's typing stays put.
+      await load().catch(() => undefined);
+    });
+    prepQueue.current = run;
+    return run;
+  }
+
+  async function moveStep(stepId: string, direction: -1 | 1) {
     setBusy(true);
     try {
-      await reorderCatalogItemPrepSteps(listing.id, listing.version, order);
-      await load();
-    } catch (err) {
-      setActionError(
-        listingErrorMessage(err, "GRIDGO refused that order. Refresh the steps and try again."),
+      await queuePrep(
+        async (version) => {
+          // Read the order when the move runs: an edit ahead of it may have reread the steps.
+          const order = prepStepsRef.current.map((step) => step.id);
+          const index = order.indexOf(stepId);
+          const next = index + direction;
+          if (index < 0 || next < 0 || next >= order.length) return null;
+          order.splice(index, 1);
+          order.splice(next, 0, stepId);
+          return reorderCatalogItemPrepSteps(id, version, order);
+        },
+        (err) =>
+          listingErrorMessage(err, "GRIDGO refused that order. Refresh the steps and try again."),
       );
     } finally {
       setBusy(false);
@@ -1055,41 +1087,40 @@ export default function ListingEditorPage() {
   }
 
   async function addStep() {
-    if (!listing) return;
     setBusy(true);
     try {
-      await createCatalogItemPrepStep(listing.id, listing.version, {
-        title: "Before they send work",
-        body: "",
-        sortOrder: nextFreeSlot(
-          prepSteps.map((step) => step.sortOrder),
-          LISTING_CAPS.prepSteps,
-        ),
-      });
-      await load();
-    } catch (err) {
-      setActionError(listingErrorMessage(err, "Could not add that step."));
+      await queuePrep(
+        (version) =>
+          createCatalogItemPrepStep(id, version, {
+            title: "Before they send work",
+            body: "",
+            sortOrder: nextFreeSlot(
+              prepStepsRef.current.map((step) => step.sortOrder),
+              LISTING_CAPS.prepSteps,
+            ),
+          }),
+        (err) => listingErrorMessage(err, "Could not add that step."),
+      );
     } finally {
       setBusy(false);
     }
   }
 
-  async function saveStep(step: PrepStep, patch: { title?: string; body?: string }) {
-    try {
-      await updateCatalogItemPrepStep(id, step.id, listing?.version ?? null, patch);
-      await load();
-    } catch (err) {
-      setActionError(listingErrorMessage(err, "Could not save that step."));
-    }
+  function saveStep(step: PrepStep, patch: { title?: string; body?: string }) {
+    return queuePrep(
+      (version) => updateCatalogItemPrepStep(id, step.id, version, patch),
+      (err) =>
+        isApiError(err) && ["catalog_item_stale", "expected_version_required"].includes(err.code)
+          ? "This listing changed on another screen. Your text is still in the box; click out of it to save it again."
+          : listingErrorMessage(err, "Could not save that step. Your text is still in the box."),
+    );
   }
 
-  async function dropStep(step: PrepStep) {
-    try {
-      await deleteCatalogItemPrepStep(id, step.id, listing?.version ?? null);
-      await load();
-    } catch (err) {
-      setActionError(listingErrorMessage(err, "Could not remove that step."));
-    }
+  function dropStep(step: PrepStep) {
+    return queuePrep(
+      (version) => deleteCatalogItemPrepStep(id, step.id, version),
+      (err) => listingErrorMessage(err, "Could not remove that step."),
+    );
   }
 
   async function saveFormats(mode: "inherit" | "override", codes: string[]) {
@@ -1677,7 +1708,7 @@ export default function ListingEditorPage() {
                                 variant="ghost"
                                 size="sm"
                                 disabled={index === 0 || busy}
-                                onClick={() => void moveStep(index, -1)}
+                                onClick={() => void moveStep(prep.id, -1)}
                               >
                                 Earlier
                               </Button>
@@ -1686,7 +1717,7 @@ export default function ListingEditorPage() {
                                 variant="ghost"
                                 size="sm"
                                 disabled={index === prepSteps.length - 1 || busy}
-                                onClick={() => void moveStep(index, 1)}
+                                onClick={() => void moveStep(prep.id, 1)}
                               >
                                 Later
                               </Button>
