@@ -125,7 +125,6 @@ import {
   expectedVersionsOf,
   productionTimeSaveError,
   sameChoice,
-  sameDayTooLong,
   type ProductionTimeChoice,
 } from "@/lib/production-time-choice";
 import { PRINT_LAYOUTS_HELP, sameLayouts, type KnownLayout } from "@/lib/print-layout";
@@ -299,7 +298,8 @@ function timeChanged(draft: Draft, listing: Listing): boolean {
  * listings): what the server now holds, except the fields the shop changed
  * since `submitted` was captured. A field nobody touched takes the server's
  * value, so a stale draft never autosaves an older price over a newer one,
- * and an edit made while the request ran is kept and saved next.
+ * and an edit made while the request ran is kept and saved next. Live
+ * reloads are held while the request runs, so only the shop moves the draft.
  */
 function rebaseDraft(current: Draft, submitted: Draft, saved: Listing): Draft {
   const next = draftFrom(saved);
@@ -318,8 +318,7 @@ function rebaseDraft(current: Draft, submitted: Draft, saved: Listing): Draft {
 function keepLabelFor(listing: Listing, draft: Draft, dirty: boolean): string | null {
   const held = listingChoice(listing);
   if (!held || dirty || timeChanged(draft, listing)) return null;
-  const dayMinutes = listing.productionDayMinutes ?? DEFAULT_DAY_MINUTES;
-  if (choiceProblem(held, dayMinutes) || sameDayTooLong(held, dayMinutes)) return null;
+  if (choiceProblem(held)) return null;
   return `Keep ${choiceLine(held)}`;
 }
 
@@ -391,7 +390,7 @@ function holdReason(draft: Draft, listing: Listing): string | null {
     return "enter a price in pesos, like 400.00.";
   }
   if (draft.time && timeChanged(draft, listing)) {
-    const problem = choiceProblem(draft.time, listing.productionDayMinutes ?? DEFAULT_DAY_MINUTES);
+    const problem = choiceProblem(draft.time);
     if (problem) return problem.charAt(0).toLowerCase() + problem.slice(1);
   }
   if (
@@ -438,11 +437,25 @@ export default function ListingEditorPage() {
   const [a3LimitBps, setA3LimitBps] = useState(DEFAULT_A3_LIMIT_BPS);
   const dirtyRef = useRef(false);
   const busyRef = useRef(false);
+  // While "Use for all my listings" runs, a live reload is held and run once
+  // afterwards: a server copy landing in the draft mid-request would look like
+  // the shop's own edit when the draft is rebased on the result.
+  const applyingRef = useRef(false);
+  const loadGeneration = useRef(0);
+  const reloadHeld = useRef(false);
 
   const working = draft ?? (listing ? draftFrom(listing) : null);
 
   const load = useSerializedLoad(
     useCallback(async () => {
+      const generation = loadGeneration.current;
+      // Started or finished while Use for all ran: drop it and read again after.
+      const held = () => {
+        if (!applyingRef.current && generation === loadGeneration.current) return false;
+        reloadHeld.current = true;
+        return true;
+      };
+      if (held()) return;
       try {
         const [itemBody, servicesBody, tax, stepsBody, formatList, ready, board] =
           await Promise.all([
@@ -454,6 +467,7 @@ export default function ListingEditorPage() {
             getSupplierReadiness().then(normalizeListingReadiness, () => null),
             listCatalogItems({ limit: 1 }).then(normalizeBoardPage, () => null),
           ]);
+        if (held()) return;
         const next = normalizeListing(itemBody);
         if (!next) throw new Error("unreadable");
         setListing(next);
@@ -466,6 +480,7 @@ export default function ListingEditorPage() {
         setError(null);
         if (!dirtyRef.current) setDraft(draftFrom(next));
       } catch (err) {
+        if (held()) return;
         if (
           isApiError(err) &&
           ["unauthorized", "forbidden", "not_found"].includes(err.kind)
@@ -667,6 +682,8 @@ export default function ListingEditorPage() {
     const submitted = working;
     setBusy(true);
     busyRef.current = true;
+    applyingRef.current = true;
+    loadGeneration.current += 1;
     setApplying(true);
     setApplyError(null);
     setApplyNotice(null);
@@ -693,8 +710,13 @@ export default function ListingEditorPage() {
             listingErrorMessage(err, "Could not apply this to all your listings. Nothing was changed.")),
       );
     } finally {
+      applyingRef.current = false;
       setApplying(false);
       setBusy(false);
+      if (reloadHeld.current) {
+        reloadHeld.current = false;
+        void load().catch(() => undefined);
+      }
     }
   }
 

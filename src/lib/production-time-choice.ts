@@ -191,22 +191,21 @@ export function withDays(
   return { mode: "days", minDays: Math.min(next, choice.minDays), maxDays: next };
 }
 
+/** The longest duration the API stores, in minutes. */
+const MAX_PRODUCTION_MINUTES = 2_147_483_647;
+
 /**
  * Why a choice cannot be saved, in the shop's words. Null when it can. The
  * messages are the shop app's (`gridgo-supplier/lib/productionDays.ts`), so the
- * same bad input reads the same on both.
+ * same bad input reads the same on both. Exact hours of a working day or more
+ * are valid (an older or converted Express listing can hold them): the API
+ * takes them on save, preview and Use for all, so they are never refused here.
  */
-export function choiceProblem(
-  choice: ProductionTimeChoice,
-  dayMinutes: number = DEFAULT_DAY_MINUTES,
-): string | null {
+export function choiceProblem(choice: ProductionTimeChoice): string | null {
   if (choice.mode === "same_day") {
     const minutes = choice.hours * 60;
-    if (!(minutes > 0) || !Number.isInteger(minutes)) {
+    if (!(minutes > 0) || !Number.isInteger(minutes) || minutes > MAX_PRODUCTION_MINUTES) {
       return "Choose how many hours this takes.";
-    }
-    if (minutes >= dayMinutes) {
-      return `Hours are for work done inside one working day (under ${timeLabel(sameDay(dayMinutes))}). Use working days for anything longer.`;
     }
     return null;
   }
@@ -243,7 +242,7 @@ export function previewParams(
 
 /** What a refused production time reads as, whichever of the API's two codes refused it. */
 export const PRODUCTION_TIME_REFUSED =
-  "GRIDGO could not save this production time. Same day is for work done inside one working day; choose Days for anything longer.";
+  "GRIDGO could not save this production time. Choose Same day with a number of hours, or Days with whole working days.";
 
 /**
  * The message for a save that sent a `productionTime` and was refused for it.
@@ -288,7 +287,10 @@ export function hoursParts(hours: number): { value: string; unit: string } {
   return { value: label.slice(0, space), unit: label.slice(space + 1) };
 }
 
-/** A same-day time held from before, longer than a working day. */
+/**
+ * A same-day time of a working day or more, held from before. Valid; the
+ * shop is told it carries into the next working day.
+ */
 export function sameDayTooLong(
   choice: ProductionTimeChoice | null | undefined,
   dayMinutes: number = DEFAULT_DAY_MINUTES,

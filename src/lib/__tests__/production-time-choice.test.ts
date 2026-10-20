@@ -79,10 +79,10 @@ describe("production time choice (gridgo-api#292 release 2)", () => {
   });
 
   it("refuses what the API would refuse, in the shop app's words", () => {
-    expect(choiceProblem({ mode: "same_day", hours: 10 }, 600)).toBe(
-      "Hours are for work done inside one working day (under 10 hours). Use working days for anything longer.",
-    );
-    expect(choiceProblem({ mode: "same_day", hours: 1 / 7 }, 600)).toBe(
+    // Exact hours of a working day or more are valid (gridgo-api#299).
+    expect(choiceProblem({ mode: "same_day", hours: 12 })).toBeNull();
+    expect(choiceProblem({ mode: "same_day", hours: 0 })).toBe("Choose how many hours this takes.");
+    expect(choiceProblem({ mode: "same_day", hours: 1 / 7 })).toBe(
       "Choose how many hours this takes.",
     );
     expect(choiceProblem({ mode: "days", minDays: 3, maxDays: 2 })).toBe(

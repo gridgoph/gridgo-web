@@ -510,7 +510,7 @@ describe("listing editor: How long does this take? (gridgo-api#292)", () => {
       fireEvent.click(screen.getByRole("button", { name: "More: longest working days" }));
       expect(
         await screen.findByText(
-          /GRIDGO could not save this production time\. Same day is for work done inside one working day/,
+          /GRIDGO could not save this production time\. Choose Same day with a number of hours, or Days with whole working days/,
           undefined,
           AUTOSAVE_WAIT,
         ),
@@ -518,7 +518,7 @@ describe("listing editor: How long does this take? (gridgo-api#292)", () => {
     },
   );
 
-  it("shows a held same-day time of a working day or more without breaking", async () => {
+  it("previews and keeps a held exact-hours time of a working day or more", async () => {
     stubLoad(
       catalogItem({ productionTime: { mode: "same_day", hours: 12 }, productionDayMinutes: 600 }),
     );
@@ -529,9 +529,17 @@ describe("listing editor: How long does this take? (gridgo-api#292)", () => {
       "aria-valuetext",
       "12 hours",
     );
-    expect(screen.getByText(/still holds a time longer than one working day/)).toBeVisible();
-    expect(screen.getByText("Fix the time above to see the dates.")).toBeVisible();
-    expect(mocks.previewProductionTime).not.toHaveBeenCalled();
+    expect(screen.getByText(/carries on into the\s+next working day/)).toBeVisible();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(mocks.previewProductionTime).toHaveBeenCalledWith("sci_1", {
+        mode: "same_day",
+        hours: 12,
+      }),
+    );
+    expect(screen.queryByText("Fix the time above to see the dates.")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    expect(await screen.findByRole("button", { name: "Use for all my listings" })).toBeEnabled();
 
     // Days from here saves a usable answer.
     fireEvent.click(screen.getByRole("radio", { name: "Days" }));
@@ -737,6 +745,112 @@ describe("listing editor: Use for all my listings (gridgo-api#292)", () => {
     await openEditorStep("Price");
     expect(screen.getByLabelText("Your price")).toHaveValue("500.00");
   });
+
+  it.each(["already running when it starts", "arriving while it runs"])(
+    "never takes a live refresh %s for the shop's own edit during bulk apply",
+    async (when) => {
+      // Another session moves the price to ₱450 (version 4) while Use for all
+      // reads the board, then to ₱500 (version 5) before the board read ends.
+      const choice = { mode: "days", minDays: 1, maxDays: 3 } as const;
+      const row = (price: number, version: number, id = "sci_1") => ({
+        ...catalogItem().item,
+        id,
+        basePriceMinor: price,
+        version,
+        productionTime: choice,
+      });
+      stubLoad(catalogItem({ productionTime: choice }));
+      let listener!: (ping: InvalidatePing) => void;
+      const live: LiveContextValue = {
+        notifications: [],
+        unreadCount: 0,
+        snapshot: null,
+        live: true,
+        subscribe: (next) => {
+          listener = next;
+          return () => undefined;
+        },
+        markRead: async () => {},
+        markAllRead: async () => {},
+        remove: async () => {},
+        refreshInbox: async () => {},
+      };
+      let firstPage: ((body: unknown) => void) | null = null;
+      let finishBulk!: (body: unknown) => void;
+      mocks.listCatalogItems.mockImplementation(
+        (query: { limit?: number; cursor?: string | null }) =>
+          query.limit !== 50
+            ? Promise.resolve({ items: [row(40000, 3)], total: 2 })
+            : query.cursor === "this-listing"
+              ? Promise.resolve({ items: [row(50000, 5)], total: 2 })
+              : new Promise((resolve) => {
+                  firstPage = resolve;
+                }),
+      );
+      mocks.applyProductionTimeToAll.mockReturnValue(
+        new Promise((resolve) => {
+          finishBulk = resolve;
+        }),
+      );
+      render(
+        <LiveContext.Provider value={live}>
+          <ListingEditorPage />
+        </LiveContext.Provider>,
+      );
+      await openEditorStep("Speed");
+      const refresh = async () => {
+        act(() => listener({ resource: "catalog" } as InvalidatePing));
+        await act(() => new Promise((resolve) => setTimeout(resolve, LIVE_RELOAD_COALESCE_MS + 100)));
+      };
+      let landRefresh: (() => void) | null = null;
+      if (when === "already running when it starts") {
+        mocks.getCatalogItem.mockReturnValue(
+          new Promise((resolve) => {
+            landRefresh = () => resolve({ item: row(45000, 4) });
+          }),
+        );
+        await refresh();
+        await waitFor(() => expect(mocks.getCatalogItem).toHaveBeenCalledTimes(2));
+      }
+      fireEvent.click(screen.getByRole("button", { name: "More options" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Use for all my listings" }));
+      fireEvent.click(
+        within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Use for all" }),
+      );
+      await waitFor(() => expect(firstPage).not.toBeNull());
+
+      const readsBefore = mocks.getCatalogItem.mock.calls.length;
+      if (landRefresh) {
+        await act(async () => landRefresh?.());
+      } else {
+        mocks.getCatalogItem.mockResolvedValue({ item: row(45000, 4) });
+        await refresh();
+      }
+      // Held: nothing from the server lands in the draft while the request runs.
+      expect(mocks.getCatalogItem).toHaveBeenCalledTimes(readsBefore);
+
+      await act(async () => {
+        firstPage?.({ items: [row(40000, 9, "sci_other")], nextCursor: "this-listing", total: 2 });
+      });
+      await waitFor(() =>
+        expect(mocks.applyProductionTimeToAll).toHaveBeenCalledWith(choice, {
+          sci_other: 9,
+          sci_1: 5,
+        }),
+      );
+      mocks.getCatalogItem.mockResolvedValue({ item: row(50000, 6) });
+      await act(async () => {
+        finishBulk({ items: [row(50000, 6), row(40000, 10, "sci_other")], total: 2 });
+      });
+      await screen.findByText(/^Done\. All 2 listings take/);
+      await act(() => new Promise((resolve) => setTimeout(resolve, AUTOSAVE_DELAY_MS + 500)));
+      expect(mocks.updateCatalogItem).not.toHaveBeenCalled();
+      // The refresh held during the request runs once it ends.
+      expect(mocks.getCatalogItem).toHaveBeenCalledTimes(readsBefore + 1);
+      await openEditorStep("Price");
+      expect(screen.getByLabelText("Your price")).toHaveValue("500.00");
+    },
+  );
 
   it("keeps an answer changed while bulk apply was running, and saves it next", async () => {
     stubLoad(catalogItem({ productionTime: { mode: "days", minDays: 1, maxDays: 3 } }));

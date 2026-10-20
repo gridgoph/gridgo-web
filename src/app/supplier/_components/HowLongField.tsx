@@ -235,7 +235,7 @@ export function HowLongField({
     );
   }
 
-  const problem = choiceProblem(choice, dayMinutes);
+  const problem = choiceProblem(choice);
   const tooLong = sameDayTooLong(choice, dayMinutes);
   const current = choice;
 
@@ -308,8 +308,8 @@ export function HowLongField({
 
       {tooLong ? (
         <p className="text-caption text-text-secondary m-0 max-w-prose" role="note">
-          This listing still holds a time longer than one working day. Choose Days to set
-          it in working days.
+          This is more than one of your working days, so the work carries on into the
+          next working day. The dates below count that in.
         </p>
       ) : problem ? (
         <p className="text-caption text-destructive m-0 max-w-prose" role="alert">
