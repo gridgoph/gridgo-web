@@ -571,21 +571,30 @@ export default function ListingEditorPage() {
         if (held()) return;
         const next = normalizeListing(itemBody);
         if (!next) throw new Error("unreadable");
-        setListing(next);
-        adoptVersion(next.version);
+        // A read that started before this page's own save can land after it.
+        // Its listing and steps are older than what is on screen, so they stay
+        // out; the save's own answer is the newer copy.
+        const older =
+          next.version != null &&
+          listingVersion.current != null &&
+          next.version < listingVersion.current;
+        if (!older) {
+          setListing(next);
+          adoptVersion(next.version);
+        }
         setReadiness(ready?.get(next.id) ?? null);
         setServices(normalizeServiceLines(servicesBody));
         setTaxonomy(tax);
-        if (stepsBody.ok) {
+        if (!stepsBody.ok) {
+          setPrepLoadError("Could not load the preparation steps. They are not an empty list.");
+        } else if (!older) {
           showSteps(normalizePrepSteps(stepsBody.body));
           setPrepLoadError(null);
-        } else {
-          setPrepLoadError("Could not load the preparation steps. They are not an empty list.");
         }
         setFormats(formatList);
         if (board) setListingCount(board.total);
         setError(null);
-        if (!dirtyRef.current) setDraft(draftFrom(next));
+        if (!dirtyRef.current && !older) setDraft(draftFrom(next));
       } catch (err) {
         if (held()) return;
         if (

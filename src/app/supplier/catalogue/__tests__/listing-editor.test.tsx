@@ -2079,6 +2079,77 @@ describe("listing editor prep steps", () => {
       AUTOSAVE_WAIT,
     );
   }, 15_000);
+
+  it("keeps a saved step and its version when an older live read lands after the save", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: [STEPS[0]] });
+    let ping!: (event: InvalidatePing) => void;
+    const live: LiveContextValue = {
+      notifications: [],
+      unreadCount: 0,
+      snapshot: null,
+      live: true,
+      subscribe: (listener) => {
+        ping = listener;
+        return () => undefined;
+      },
+      markRead: async () => {},
+      markAllRead: async () => {},
+      remove: async () => {},
+      refreshInbox: async () => {},
+    };
+    mocks.updateCatalogItem.mockImplementation(async (_id, version, body) => {
+      if (version !== 4) throw new ApiError(409, { error: "catalog_item_stale" });
+      return catalogItem({ ...body, version: 5 });
+    });
+    const user = userEvent.setup();
+    render(
+      <LiveContext.Provider value={live}>
+        <ListingEditorPage />
+      </LiveContext.Provider>,
+    );
+    await openEditorStep("Artwork");
+    const title = await screen.findByLabelText("Step 1 title");
+
+    // A live refresh has read version 3 and the old step, but waits on taxonomy.
+    let finishOldRead!: (value: Taxonomy) => void;
+    mocks.getTaxonomy.mockImplementationOnce(
+      () => new Promise((resolve) => (finishOldRead = resolve)),
+    );
+    await act(async () => ping({ resource: "catalog" } as InvalidatePing));
+    await waitFor(() => expect(mocks.getCatalogItem).toHaveBeenCalledTimes(2));
+
+    // The save is stored at version 4; the reread queued behind the old read fails.
+    mocks.updateCatalogItemPrepStep.mockImplementation(async () => {
+      mocks.getCatalogItem.mockRejectedValueOnce(new ApiError(503, { error: "unavailable" }));
+      mocks.listCatalogItemPrepSteps.mockRejectedValueOnce(
+        new ApiError(503, { error: "unavailable" }),
+      );
+      return { prepStep: { ...STEPS[0], title: "Flatten every layer" }, itemVersion: 4 };
+    });
+    await user.clear(title);
+    await user.type(title, "Flatten every layer");
+    await user.tab();
+    await waitFor(() => expect(mocks.updateCatalogItemPrepStep).toHaveBeenCalledTimes(1));
+    await act(async () => {});
+
+    await act(async () => finishOldRead(taxonomy));
+    await waitFor(() => expect(mocks.getCatalogItem).toHaveBeenCalledTimes(3));
+    await act(async () => {});
+    expect(screen.getByLabelText("Step 1 title")).toHaveValue("Flatten every layer");
+
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers A5" } });
+    await waitFor(
+      () =>
+        expect(mocks.updateCatalogItem).toHaveBeenCalledWith(
+          "sci_1",
+          4,
+          expect.objectContaining({ name: "Flyers A5" }),
+        ),
+      AUTOSAVE_WAIT,
+    );
+  }, 15_000);
 });
 
 describe("listing editor section numbers", () => {
