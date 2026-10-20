@@ -122,9 +122,9 @@ import {
 import {
   billablePayload,
   billableProblem,
-  fromMilli,
   isMeasureUnit,
   measureUnitFor,
+  sizeText,
 } from "@/lib/listing-measure";
 import { changeNotice, replacedNotice } from "@/lib/listing-photos";
 import { DEFAULT_DAY_MINUTES, readyInLine } from "@/lib/production-time";
@@ -169,10 +169,10 @@ type Draft = {
   /** The tier table as typed; blank prices are tiers not offered. */
   colour: ColourDraft;
   measureUnit: MeasureUnit | null;
-  /** Typed in `measureUnit`, stored as thousandths. */
-  minimumWidth: number | null;
-  minimumHeight: number | null;
-  minimumLength: number | null;
+  /** Typed in `measureUnit` as text, stored as thousandths. */
+  minimumWidth: string;
+  minimumHeight: string;
+  minimumLength: string;
 };
 
 /** Section and field ids; the readiness checklist scrolls to these. */
@@ -267,9 +267,9 @@ function draftFrom(listing: Listing): Draft {
     oneColour: listing.oneColour,
     colour: colourDraftFrom(listing.colourPricing),
     measureUnit: listing.measureUnit,
-    minimumWidth: fromMilli(listing.minimumWidthMilli),
-    minimumHeight: fromMilli(listing.minimumHeightMilli),
-    minimumLength: fromMilli(listing.minimumLengthMilli),
+    minimumWidth: sizeText(listing.minimumWidthMilli),
+    minimumHeight: sizeText(listing.minimumHeightMilli),
+    minimumLength: sizeText(listing.minimumLengthMilli),
   };
 }
 
@@ -1321,9 +1321,9 @@ export default function ListingEditorPage() {
                         ...working,
                         pricingUnit,
                         measureUnit: measureUnitFor(pricingUnit, working.measureUnit),
-                        minimumWidth: measurementKind(pricingUnit) === "area" ? working.minimumWidth : null,
-                        minimumHeight: measurementKind(pricingUnit) === "area" ? working.minimumHeight : null,
-                        minimumLength: measurementKind(pricingUnit) === "length" ? working.minimumLength : null,
+                        minimumWidth: measurementKind(pricingUnit) === "area" ? working.minimumWidth : "",
+                        minimumHeight: measurementKind(pricingUnit) === "area" ? working.minimumHeight : "",
+                        minimumLength: measurementKind(pricingUnit) === "length" ? working.minimumLength : "",
                       })
                     }
                   />
@@ -1455,11 +1455,11 @@ export default function ListingEditorPage() {
                                 id="billable-width"
                                 inputMode="decimal"
                                 aria-label="Smallest billable width"
-                                value={working.minimumWidth ?? ""}
+                                value={working.minimumWidth}
                                 onChange={(event) =>
                                   setDraft({
                                     ...working,
-                                    minimumWidth: event.target.value === "" ? null : Number(event.target.value),
+                                    minimumWidth: event.target.value,
                                   })
                                 }
                               />
@@ -1470,11 +1470,11 @@ export default function ListingEditorPage() {
                                 id="billable-height"
                                 inputMode="decimal"
                                 aria-label="Smallest billable height"
-                                value={working.minimumHeight ?? ""}
+                                value={working.minimumHeight}
                                 onChange={(event) =>
                                   setDraft({
                                     ...working,
-                                    minimumHeight: event.target.value === "" ? null : Number(event.target.value),
+                                    minimumHeight: event.target.value,
                                   })
                                 }
                               />
@@ -1488,11 +1488,11 @@ export default function ListingEditorPage() {
                             id="billable-length"
                             inputMode="decimal"
                             aria-label="Shortest billable length"
-                            value={working.minimumLength ?? ""}
+                            value={working.minimumLength}
                             onChange={(event) =>
                               setDraft({
                                 ...working,
-                                minimumLength: event.target.value === "" ? null : Number(event.target.value),
+                                minimumLength: event.target.value,
                               })
                             }
                           />
