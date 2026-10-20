@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ApiError, cancelShopJob, requestShopDeadline } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
+import { shopWorkStopped } from "@/lib/supplier-actions";
 
 const CANCELLABLE = new Set([
   "awaiting_checkout",
@@ -35,7 +36,13 @@ export function ShopLeaveJob({ order, onChanged }: { order: Order; onChanged: ()
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const canCancel = CANCELLABLE.has(order.state);
+  // GRIDGO refuses a cancel while a refund, a held deadline, or a recovery
+  // has stopped the job (`409 refund_fulfillment_stopped`,
+  // `reschedule_fulfillment_stopped`, `shop_recovery_pending`).
+  const canCancel =
+    CANCELLABLE.has(order.state) &&
+    !shopWorkStopped(order) &&
+    !(order.shopRecovery && order.shopRecovery.status !== "accepted");
   const canDeadline = canAskDeadline(order);
 
   if (!canCancel && !canDeadline && !order.rescheduleRequest) return null;

@@ -88,6 +88,12 @@ const acceptance = {
 };
 
 describe("stopped work on the job", () => {
+  it("a job in production can still be cancelled by the shop", async () => {
+    getOrderMock.mockResolvedValue(job({}));
+    render(<SupplierJobDetailPage />);
+    expect(await screen.findByRole("button", { name: "Cancel this job" })).toBeInTheDocument();
+  });
+
   it.each([
     ["with a readiness list", { transitionReadiness: { ready_for_dispatch: { allowed: true, missing: [] } } }],
     ["without a readiness list", {}],
@@ -100,6 +106,7 @@ describe("stopped work on the job", () => {
     expect(screen.queryByRole("button", { name: "Add proof photos" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add another photo" })).not.toBeInTheDocument();
     expect(screen.queryByText(/Your shop commits to this job/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel this job" })).not.toBeInTheDocument();
   });
 
   it("a recovery names who has the job and keeps the step off this shop", async () => {
@@ -112,6 +119,7 @@ describe("stopped work on the job", () => {
     render(<SupplierJobDetailPage />);
     expect(await findStatusChip("Cancelled by you")).toBeInTheDocument();
     expect(screen.getByText(/Operations is working out the next step/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel this job" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Package for pickup" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add proof photos" })).not.toBeInTheDocument();
   });
@@ -148,6 +156,7 @@ describe("stopped work on the job", () => {
     render(<SupplierJobDetailPage />);
     expect(await findStatusChip("Paused")).toBeInTheDocument();
     expect(screen.getByText(/GRIDGO is offering the client another shop/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel this job" })).not.toBeInTheDocument();
     expect(screen.queryByText("Pickup blocked")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Package for pickup" })).not.toBeInTheDocument();
   });
