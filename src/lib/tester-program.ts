@@ -380,11 +380,17 @@ const TESTER_ERROR_WORDS: Record<string, string> = {
     "Type the budget in pesos, zero or more, or leave it empty for no limit.",
   invalid_tester_signup_form_url:
     "The form link must start with https:// and have {code} once, after the question mark.",
-  forbidden: "Only Super Admin can do this.",
 };
 
 /** Plain words for a tester-programme error, or null to use the caller's fallback. */
 export function testerErrorText(err: unknown): string | null {
   if (!(err instanceof ApiError)) return null;
   return TESTER_ERROR_WORDS[err.code] ?? null;
+}
+
+/** A refused void or resume: these two are Super Admin's alone. */
+export function rewardActionErrorText(err: unknown): string | null {
+  if (err instanceof ApiError && err.status === 403 && err.code === "forbidden")
+    return "Only Super Admin can void or resume a reward.";
+  return testerErrorText(err);
 }

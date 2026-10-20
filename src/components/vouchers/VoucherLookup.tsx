@@ -29,11 +29,13 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  isApiError,
+  listTesterRewards,
   lookupClientVouchers,
   reissueVoucher,
   voidVoucher,
 } from "@/lib/api/client";
-import type { User, Voucher } from "@/lib/api/types";
+import type { TesterReward, User, Voucher } from "@/lib/api/types";
 import { formatPhp } from "@/lib/format";
 import {
   VOUCHER_LIMITS,
@@ -56,6 +58,32 @@ const TABS: { value: WalletTab; label: string }[] = [
 ];
 
 const MAX_MATCHES = 8;
+
+/** The API's largest rewards page. */
+const REWARD_PAGE = 500;
+
+/**
+ * The Founding Tester rewards behind this client's vouchers, keyed by voucher
+ * id. Only the API's own `voucherId`/`inviterVoucherId` decide it; a voucher's
+ * name never does. Null when the rewards cannot be read, so the wallet cannot
+ * tell a programme voucher from a campaign one.
+ */
+async function readProgrammeVouchers(clientId: string): Promise<Map<string, TesterReward> | null> {
+  const owned = new Map<string, TesterReward>();
+  try {
+    for (let read = 0; ; ) {
+      const page = await listTesterRewards({ clientId }, { offset: read, limit: REWARD_PAGE });
+      for (const reward of page.rewards) {
+        if (reward.voucherId) owned.set(reward.voucherId, reward);
+        if (reward.inviterVoucherId) owned.set(reward.inviterVoucherId, reward);
+      }
+      read += page.rewards.length;
+      if (!page.rewards.length || read >= page.total) return owned;
+    }
+  } catch {
+    return null;
+  }
+}
 
 /**
  * One client's vouchers, as the client's own wallet sorts them. Operations
@@ -201,16 +229,22 @@ function Wallet({
   const [offset, setOffset] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<WalletTab>("all");
+  const [programme, setProgramme] = useState<Map<string, TesterReward> | null>(null);
   const [acting, setActing] = useState<{ voucher: Voucher; action: "void" | "reissue" } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const rewardsHref = `/${tree}/founding-testers/${encodeURIComponent(clientId)}`;
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const result = await lookupClientVouchers(clientId, "all");
+      const [result, owned] = await Promise.all([
+        lookupClientVouchers(clientId, "all"),
+        readProgrammeVouchers(clientId),
+      ]);
       setOffset(Date.parse(result.serverTime) - Date.now() || 0);
       setVouchers(result.vouchers);
+      setProgramme(owned);
     } catch (err) {
       setError(voucherErrorMessage(err, "Could not load this client's vouchers. Try again."));
     }
@@ -311,6 +345,8 @@ function Wallet({
                     voucher={voucher}
                     now={serverNow}
                     canManage={tree === "admin"}
+                    programmeReward={programme?.get(voucher.id) ?? null}
+                    rewardsHref={rewardsHref}
                     onAct={(action) => {
                       setNotice(null);
                       setActing({ voucher, action });
@@ -333,6 +369,8 @@ function Wallet({
       {tree === "admin" ? (
         <VoucherActionDialog
           acting={acting}
+          programmeKnown={programme !== null}
+          rewardsHref={rewardsHref}
           onClose={() => setActing(null)}
           onDone={(message) => {
             setActing(null);
@@ -350,11 +388,16 @@ function WalletItem({
   voucher,
   now,
   canManage,
+  programmeReward,
+  rewardsHref,
   onAct,
 }: {
   voucher: Voucher;
   now: number;
   canManage: boolean;
+  /** Set when the API ties this voucher to a Founding Tester reward. */
+  programmeReward: TesterReward | null;
+  rewardsHref: string;
   onAct: (action: "void" | "reissue") => void;
 }) {
   const status = presentVoucherStatus(voucher);
@@ -386,7 +429,17 @@ function WalletItem({
           ) : null}
         </dd>
       </dl>
-      {canManage && (canVoid(voucher) || canReissue(voucher, now)) ? (
+      {programmeReward ? (
+        // A programme voucher is voided or resumed as a whole reward, never reissued here.
+        <p className="text-caption text-text-muted m-0">
+          {programmeReward.kind === "referral"
+            ? "Founding Tester invite reward, shared with the other client in the pair."
+            : "Founding Tester mission reward."}{" "}
+          <Link href={rewardsHref} className="text-text-primary underline underline-offset-2">
+            {canManage ? "Manage it in Founding Tester rewards" : "See it in Founding Tester rewards"}
+          </Link>
+        </p>
+      ) : canManage && (canVoid(voucher) || canReissue(voucher, now)) ? (
         <div className="mt-auto flex flex-wrap gap-2">
           {canVoid(voucher) ? (
             <Button variant="outline" onClick={() => onAct("void")}>
@@ -408,6 +461,9 @@ const ACTION_COPY = {
   void: {
     title: "Void this voucher",
     body: "The client can no longer use it; it moves to their Expired tab as Voided. You can reissue it until it expires. It still counts toward the campaign's limit.",
+    /** When the Founding Tester rewards could not be read, reissue is not promised. */
+    uncertainBody:
+      "The client can no longer use it; it moves to their Expired tab as Voided. It still counts toward the campaign's limit. A campaign voucher can be reissued until it expires; a Founding Tester reward cannot, and voiding one voids the whole reward, both vouchers of an invite pair included.",
     reasonHint: "Why it is being voided. Kept in the activity log; the client does not see it.",
     button: "Void voucher",
     done: "Voucher voided.",
@@ -415,6 +471,8 @@ const ACTION_COPY = {
   reissue: {
     title: "Reissue this voucher",
     body: "The same voucher becomes usable again, with its original expiry. It does not add time or give a second voucher.",
+    uncertainBody:
+      "The same voucher becomes usable again, with its original expiry. It does not add time or give a second voucher.",
     reasonHint: "Why it is coming back. Kept in the activity log; the client does not see it.",
     button: "Reissue voucher",
     done: "Voucher reissued. The client can use it again.",
@@ -423,11 +481,16 @@ const ACTION_COPY = {
 
 function VoucherActionDialog({
   acting,
+  programmeKnown,
+  rewardsHref,
   onClose,
   onDone,
   onStale,
 }: {
   acting: { voucher: Voucher; action: "void" | "reissue" } | null;
+  /** False when the Founding Tester rewards could not be read. */
+  programmeKnown: boolean;
+  rewardsHref: string;
   onClose: () => void;
   onDone: (message: string) => void;
   onStale: () => void;
@@ -436,11 +499,13 @@ function VoucherActionDialog({
   const [attempted, setAttempted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [managed, setManaged] = useState(false);
 
   useEffect(() => {
     setReason("");
     setAttempted(false);
     setError(null);
+    setManaged(false);
   }, [acting]);
 
   const copy = acting ? ACTION_COPY[acting.action] : null;
@@ -452,11 +517,17 @@ function VoucherActionDialog({
     if (missing) return;
     setBusy(true);
     setError(null);
+    setManaged(false);
     try {
       if (acting.action === "void") await voidVoucher(acting.voucher.id, reason.trim());
       else await reissueVoucher(acting.voucher.id, reason.trim());
       onDone(ACTION_COPY[acting.action].done);
     } catch (err) {
+      if (isApiError(err) && err.code === "tester_reward_managed") {
+        setManaged(true);
+        onStale();
+        return;
+      }
       setError(voucherErrorMessage(err, "That did not go through. Try again."));
       if (voucherErrorIsStale(err)) onStale();
     } finally {
@@ -477,7 +548,8 @@ function VoucherActionDialog({
             <DialogTitle>{copy.title}</DialogTitle>
             <DialogDescription>
               {formatPhp(acting.voucher.valueMinor)}, {acting.voucher.name ?? "voucher"}, expires{" "}
-              {formatManila(acting.voucher.expiresAt)}. {copy.body}
+              {formatManila(acting.voucher.expiresAt)}.{" "}
+              {programmeKnown ? copy.body : copy.uncertainBody}
             </DialogDescription>
           </DialogHeader>
           <FieldGroup>
@@ -496,7 +568,15 @@ function VoucherActionDialog({
               {attempted && missing ? <FieldError>Write a reason.</FieldError> : null}
             </Field>
           </FieldGroup>
-          {error ? (
+          {managed ? (
+            <p className="text-body text-error m-0" role="alert">
+              This voucher is a Founding Tester reward, so it cannot be reissued here. Nothing was
+              changed.{" "}
+              <Link href={rewardsHref} className="text-text-primary underline underline-offset-2">
+                Open Founding Tester rewards
+              </Link>
+            </p>
+          ) : error ? (
             <p className="text-body text-error m-0" role="alert">
               {error}
             </p>

@@ -98,17 +98,22 @@ export function progressText(
 }
 
 /**
- * All five done with no label yet and nothing holding it: the API awards it
- * the next time the client opens the app, so a staff read can briefly show
- * 5 of 5 unlabelled.
+ * All five done, no label yet, and the reward still pending: the API awards
+ * it the next time the client opens the app, so a staff read can briefly show
+ * 5 of 5 unlabelled. A budget hold or a void is never "on its way".
  */
 export function awaitingAward(progress: FoundingTesterProgress): boolean {
   return (
     progress.eligible &&
     !progress.label &&
-    progress.rewardStatus !== "paused" &&
+    progress.rewardStatus === "pending" &&
     progress.completedCount >= MISSION_COUNT
   );
+}
+
+/** Super Admin voided the reward before it was issued: no label, for good. */
+export function voidedBeforeAward(progress: FoundingTesterProgress): boolean {
+  return !progress.label && progress.rewardStatus === "voided";
 }
 
 /** Five of five, with the label and voucher held by the monthly budget. */
@@ -122,6 +127,8 @@ export function presentTesterLabel(progress: FoundingTesterProgress): Presentati
   if (!progress.eligible) return { label: "Not eligible", tone: "neutral", icon: "ban" };
   if (heldByBudget(progress))
     return { label: "Waiting on budget", tone: "warning", icon: "clock" };
+  if (voidedBeforeAward(progress))
+    return { label: "Reward voided", tone: "neutral", icon: "circle-x" };
   if (awaitingAward(progress))
     return { label: "Label on its way", tone: "info", icon: "clock" };
   return { label: "Not yet", tone: "neutral", icon: "circle-dashed" };
@@ -141,6 +148,9 @@ export function testerLabelNote(
     return reviewData
       ? "A test account cannot earn the label."
       : "This account was created on or after the Founding Tester launch date, so it cannot earn the label.";
+  }
+  if (voidedBeforeAward(progress)) {
+    return "Super Admin voided this reward before it was issued, so this account does not get the label or the voucher. It cannot be earned again.";
   }
   if (heldByBudget(progress)) {
     return "All five steps are done. The label and voucher wait for room in the monthly tester budget and for Super Admin to resume the reward.";
@@ -189,7 +199,9 @@ export function presentTesterReward(
       label: "Voided",
       tone: "neutral",
       icon: "circle-x",
-      detail: "Super Admin voided this reward. An earned label stays.",
+      detail: progress.label
+        ? "Super Admin voided this reward. The earned label stays."
+        : "Super Admin voided this reward before any voucher was issued. It cannot be earned again.",
     };
   }
   const reused = progress.rewardStatus === "existing_survey_reward";

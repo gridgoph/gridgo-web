@@ -28,9 +28,30 @@ type Props = {
   settings: PlatformSettings;
   canEdit: boolean;
   onSaved: (next: PlatformSettings) => void;
-  onConflict: () => Promise<void> | void;
+  /** Resolves false when the settings could not be re-read after a conflict. */
+  onConflict: () => Promise<boolean | void> | boolean | void;
   disabled?: boolean;
+  /** The last re-read failed: what is shown may not be in force any more. */
+  stale?: boolean;
 };
+
+/**
+ * An edit and the stored value it started from. A field is edited only while
+ * its text means something other than that starting value, so a field typed
+ * and then put back never rides along on a later save, even after the stored
+ * value moves under it.
+ */
+type Draft = { text: string; base: string };
+
+function sameBudget(a: string, b: string): boolean {
+  const x = parseBudgetPesos(a);
+  const y = parseBudgetPesos(b);
+  return "minor" in x && "minor" in y ? x.minor === y.minor : a.trim() === b.trim();
+}
+
+function sameForm(a: string, b: string): boolean {
+  return a.trim() === b.trim();
+}
 
 /**
  * The Founding Tester monthly voucher budget and the tester sign-up form link
@@ -39,7 +60,8 @@ type Props = {
  * sent as whole centavos or null (no limit). The form link carries `{code}`
  * where each client's invite code goes. Both save together on their own,
  * through the same `expectedVersion` handshake with an audited reason, and are
- * never carried in the page's "Save settings".
+ * never carried in the page's "Save settings". Only fields that really differ
+ * from the value they were edited from are sent.
  */
 export function TesterInviteSettings({
   settings,
@@ -47,29 +69,48 @@ export function TesterInviteSettings({
   onSaved,
   onConflict,
   disabled,
+  stale = false,
 }: Props) {
   const storedBudget = settings.testerMonthlyBudgetMinor;
   const storedForm = settings.testerSignupFormUrlTemplate;
-  // Untouched fields follow refreshed settings; an explicit edit stays a draft.
-  const [budgetDraft, setBudgetDraft] = useState<string | null>(null);
-  const [formDraft, setFormDraft] = useState<string | null>(null);
+  // Untouched fields follow refreshed settings; a real edit stays a draft.
+  const [budgetDraft, setBudgetDraft] = useState<Draft | null>(null);
+  const [formDraft, setFormDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [budgetError, setBudgetError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
 
-  const budgetText = budgetDraft ?? budgetInputFrom(storedBudget);
-  const formText = formDraft ?? storedForm ?? "";
+  const storedBudgetText = budgetInputFrom(storedBudget);
+  const storedFormText = storedForm ?? "";
+  const budgetEdited =
+    budgetDraft !== null && !sameBudget(budgetDraft.text, budgetDraft.base);
+  const formEdited = formDraft !== null && !sameForm(formDraft.text, formDraft.base);
+  const budgetText = budgetEdited ? budgetDraft.text : storedBudgetText;
+  const formText = formEdited ? formDraft.text : storedFormText;
   const budget = parseBudgetPesos(budgetText);
   const budgetProblem = "problem" in budget ? budget.problem : null;
   const formProblem = formUrlProblem(formText);
   const nextBudget = "minor" in budget ? budget.minor : null;
   const nextForm = formText.trim() === "" ? null : formText.trim();
-  const budgetChanged = !budgetProblem && nextBudget !== (storedBudget ?? null);
-  const formChanged = nextForm !== (storedForm ?? null);
-  const dirty = (budgetChanged || formChanged) && !budgetProblem && !formProblem;
+  const budgetChanged =
+    budgetEdited && !budgetProblem && nextBudget !== (storedBudget ?? null);
+  const formChanged = formEdited && nextForm !== (storedForm ?? null);
+  const dirty =
+    (budgetChanged || formChanged) && !budgetProblem && !formProblem && !stale;
   const locked = busy || Boolean(disabled);
+  const inForce = stale ? "Last read (may be out of date):" : "In force right now:";
+
+  function editBudget(text: string) {
+    setBudgetDraft({ text, base: budgetEdited ? budgetDraft.base : storedBudgetText });
+    clearMessages();
+  }
+
+  function editForm(text: string) {
+    setFormDraft({ text, base: formEdited ? formDraft.base : storedFormText });
+    clearMessages();
+  }
   const unavailable = storedBudget === undefined || storedForm === undefined;
 
   function clearMessages() {
@@ -111,7 +152,12 @@ export function TesterInviteSettings({
         setError(
           "Someone else saved settings a moment ago. Check the current values and yours before saving again.",
         );
-        await onConflict();
+        const fresh = await onConflict();
+        if (fresh === false) {
+          setError(
+            "Someone else saved settings a moment ago, and the latest settings could not be read. Retry reading them before saving again.",
+          );
+        }
       } else if (
         err instanceof ApiError &&
         err.code === "invalid_tester_monthly_budget"
@@ -172,28 +218,22 @@ export function TesterInviteSettings({
                     aria-invalid={shownBudgetError ? true : undefined}
                     aria-describedby="tester-monthly-budget-help"
                     className="max-w-48"
-                    onChange={(event) => {
-                      setBudgetDraft(event.target.value);
-                      clearMessages();
-                    }}
+                    onChange={(event) => editBudget(event.target.value)}
                   />
                   <Button
                     variant="ghost"
                     disabled={locked || budgetText === ""}
-                    onClick={() => {
-                      setBudgetDraft("");
-                      clearMessages();
-                    }}
+                    onClick={() => editBudget("")}
                   >
                     No limit
                   </Button>
                 </div>
               ) : null}
               <FieldDescription id="tester-monthly-budget-help">
-                In force right now: {budgetSettingText(storedBudget)} Counts every mission
-                and invite voucher issued in the Manila calendar month, used or not. Leave
-                it empty for no limit; 0 pauses every new reward. A paused reward waits
-                for Super Admin to resume it, one at a time, even after the month changes.
+                {inForce} {budgetSettingText(storedBudget)} Counts every mission and
+                invite voucher issued in the Manila calendar month, used or not. Leave it
+                empty for no limit; 0 pauses every new reward. A paused reward waits for
+                Super Admin to resume it, one at a time, even after the month changes.
               </FieldDescription>
               {shownBudgetError ? <FieldError>{shownBudgetError}</FieldError> : null}
             </Field>
@@ -215,16 +255,13 @@ export function TesterInviteSettings({
                   placeholder="https://docs.google.com/forms/d/e/…/viewform?entry.123={code}"
                   aria-invalid={shownFormError ? true : undefined}
                   aria-describedby="tester-signup-form-help"
-                  onChange={(event) => {
-                    setFormDraft(event.target.value);
-                    clearMessages();
-                  }}
+                  onChange={(event) => editForm(event.target.value)}
                 />
               ) : null}
               <FieldDescription id="tester-signup-form-help">
                 {storedForm
-                  ? "In force right now: set."
-                  : "In force right now: not set. Clients can see their invite code but cannot copy or share a link."}{" "}
+                  ? `${inForce} set.`
+                  : `${inForce} not set. Clients can see their invite code but cannot copy or share a link.`}{" "}
                 Use the form&rsquo;s prefilled link and put {"{code}"} where the invite
                 code goes. The form must ask for the friend&rsquo;s email: Operations
                 records each response on the Founding Testers page.
@@ -238,6 +275,12 @@ export function TesterInviteSettings({
             </Field>
           </FieldGroup>
 
+          {canEdit && stale && (budgetEdited || formEdited) ? (
+            <p className="text-body text-text-primary m-0 mt-3 max-w-prose" role="note">
+              The latest settings could not be read. Retry reading them before saving, so
+              your change does not land on values you have not seen.
+            </p>
+          ) : null}
           {canEdit ? (
             <div className="mt-3 flex flex-wrap gap-2">
               <Button
@@ -249,7 +292,7 @@ export function TesterInviteSettings({
               </Button>
               <Button
                 variant="ghost"
-                disabled={locked || (budgetDraft === null && formDraft === null)}
+                disabled={locked || (!budgetEdited && !formEdited)}
                 onClick={() => {
                   setBudgetDraft(null);
                   setFormDraft(null);

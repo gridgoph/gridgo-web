@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 
+import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { personLabel, usePeople } from "@/components/vouchers/data";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
@@ -75,8 +76,8 @@ export function TesterInvitesList() {
           isApiError(err)
             ? err.status === 404
               ? "Tester invites are not available yet. They appear here once the service is updated."
-              : `Could not load tester invites (${err.code}).`
-            : "Could not reach the API. Check it is running, then retry.",
+              : opsErrorMessage(err, "Could not load tester invites. Retry.")
+            : "Could not reach the API. Check the connection, then retry.",
         );
       } finally {
         setLoading(false);
@@ -107,10 +108,7 @@ export function TesterInvitesList() {
       void load();
     } catch (err) {
       setFormError(
-        testerErrorText(err) ??
-          (isApiError(err)
-            ? `Could not record it (${err.code}).`
-            : "Could not reach the API. Try again."),
+        testerErrorText(err) ?? opsErrorMessage(err, "Could not record it. Try again."),
       );
     } finally {
       setBusy(false);
@@ -128,11 +126,7 @@ export function TesterInvitesList() {
       );
       void load();
     } catch (err) {
-      setFormError(
-        isApiError(err)
-          ? `Could not match again (${err.code}).`
-          : "Could not reach the API. Try again.",
-      );
+      setFormError(opsErrorMessage(err, "Could not match again. Try again."));
     } finally {
       setBusy(false);
     }

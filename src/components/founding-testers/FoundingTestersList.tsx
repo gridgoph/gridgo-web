@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+
+import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { Award, ChevronLeft, ChevronRight, Eye, Users } from "lucide-react";
 
 import { MissionMeter } from "@/components/founding-testers/MissionProgress";
@@ -73,8 +75,8 @@ export function FoundingTestersList({ tree }: { tree: "ops" | "admin" }) {
           isApiError(err)
             ? err.status === 403
               ? "Only Operations and Super Admin can read Founding Tester progress."
-              : `Could not load Founding Tester progress (${err.code}).`
-            : "Could not reach the API. Check it is running, then retry.",
+              : opsErrorMessage(err, "Could not load Founding Tester progress. Retry.")
+            : "Could not reach the API. Check the connection, then retry.",
         );
       } finally {
         setLoading(false);

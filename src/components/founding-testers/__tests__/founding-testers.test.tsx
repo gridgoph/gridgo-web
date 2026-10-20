@@ -3,6 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -13,13 +14,16 @@ import {
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiError } from "@/lib/api/client";
 import type {
   ClientAccount as ClientAccountRecord,
   FoundingTesterProgress,
   FoundingTesterRow,
+  TesterInvite,
 } from "@/lib/api/types";
 
-const { api, nav } = vi.hoisted(() => ({
+const { api, nav, live } = vi.hoisted(() => ({
+  live: { reloads: new Set<() => Promise<void> | void>() },
   api: {
     listFoundingTesters: vi.fn(),
     listUsers: vi.fn(),
@@ -32,7 +36,16 @@ const { api, nav } = vi.hoisted(() => ({
 
 vi.stubGlobal("React", React);
 vi.stubGlobal("PointerEvent", MouseEvent);
-vi.mock("@/lib/live/useLiveReload", () => ({ useLiveReload: () => {} }));
+vi.mock("@/lib/live/useLiveReload", () => ({
+  useLiveReload: (_keys: unknown, reload: () => Promise<void> | void) => {
+    live.reloads.add(reload);
+  },
+}));
+/** A live update: every list on screen re-reads. */
+const liveUpdate = () =>
+  act(async () => {
+    await Promise.all([...live.reloads].map((reload) => reload()));
+  });
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: nav.push, replace: vi.fn() }),
   useSearchParams: () => nav.params,
@@ -50,6 +63,7 @@ import { FoundingTestersList } from "@/components/founding-testers/FoundingTeste
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  live.reloads.clear();
   nav.params = new URLSearchParams();
 });
 
@@ -257,5 +271,115 @@ describe("Client account", () => {
     expect(
       section.getByText(/created on or after the Founding Tester launch date/),
     ).toBeVisible();
+  });
+
+  const invite = (n: number, joined: boolean): TesterInvite => ({
+    id: `tinv_${n}`,
+    inviterId: "c1",
+    code: "ABC",
+    email: `friend${n}@example.test`,
+    clientId: joined ? `f${n}` : null,
+    createdAt: "2026-10-20T08:00:00.000Z",
+    matchedAt: joined ? "2026-10-20T08:00:00.000Z" : null,
+    completedAt: null,
+    unmatchedReason: joined ? null : "no_client_account",
+  });
+
+  it("counts every invite across pages, not just the first 500", async () => {
+    api.getClientAccount.mockResolvedValue(account());
+    api.listTesterInvites
+      .mockResolvedValueOnce({
+        serverTime: "",
+        total: 501,
+        invites: Array.from({ length: 500 }, (_, i) => invite(i, true)),
+      })
+      .mockResolvedValueOnce({
+        serverTime: "",
+        total: 501,
+        invites: [invite(500, false)],
+      });
+    render(<ClientAccount userId="c1" tree="ops" />);
+
+    const section = within(
+      await screen.findByRole("region", { name: "Founding Tester" }),
+    );
+    expect(await section.findByText(/501 invited · 500\s+joined/)).toBeVisible();
+    expect(api.listTesterInvites).toHaveBeenNthCalledWith(
+      1,
+      { inviterId: "c1" },
+      { offset: 0, limit: 500 },
+    );
+    expect(api.listTesterInvites).toHaveBeenNthCalledWith(
+      2,
+      { inviterId: "c1" },
+      { offset: 500, limit: 500 },
+    );
+    expect(section.getByText(/1 form response is/)).toBeVisible();
+  });
+
+  it("warns when a refresh fails, keeps the last read, and retries", async () => {
+    api.getClientAccount.mockResolvedValueOnce(account());
+    render(<ClientAccount userId="c1" tree="ops" />);
+    await screen.findByRole("region", { name: "Founding Tester" });
+
+    api.getClientAccount.mockRejectedValueOnce(
+      new ApiError(503, { error: "unavailable" }),
+    );
+    await liveUpdate();
+    const banner = (await screen.findAllByRole("alert")).find((node) =>
+      /Out of date:/.test(node.textContent ?? ""),
+    );
+    expect(banner).toBeDefined();
+    expect(banner).toHaveTextContent("The API failed processing this request.");
+    // The last read stays on screen.
+    expect(screen.getByRole("heading", { name: "Ana Client" })).toBeVisible();
+
+    api.getClientAccount.mockResolvedValueOnce(account({ name: "Ana Renamed" }));
+    fireEvent.click(within(banner!).getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("heading", { name: "Ana Renamed" })).toBeVisible();
+    expect(screen.queryByText(/Out of date:/)).toBeNull();
+  });
+
+  it("keeps invite counts marked out of date when only the invites fail to refresh", async () => {
+    api.getClientAccount.mockResolvedValue(account());
+    api.listTesterInvites.mockResolvedValueOnce({
+      serverTime: "",
+      total: 1,
+      invites: [invite(1, true)],
+    });
+    render(<ClientAccount userId="c1" tree="ops" />);
+    const section = within(
+      await screen.findByRole("region", { name: "Founding Tester" }),
+    );
+    await section.findByText(/1 invited/);
+
+    api.listTesterInvites.mockRejectedValueOnce(
+      new ApiError(503, { error: "unavailable" }),
+    );
+    await liveUpdate();
+    expect(await section.findByText(/These counts may be out of date:/)).toBeVisible();
+    expect(section.getByText(/1 invited/)).toBeVisible();
+  });
+
+  it("hides invites only on an API without them, and says so on any other failure", async () => {
+    api.getClientAccount.mockResolvedValue(account());
+    api.listTesterInvites.mockRejectedValueOnce(
+      new ApiError(404, { error: "not_found" }),
+    );
+    render(<ClientAccount userId="c1" tree="ops" />);
+    let section = within(await screen.findByRole("region", { name: "Founding Tester" }));
+    await waitFor(() => expect(api.listTesterInvites).toHaveBeenCalled());
+    expect(section.queryByRole("heading", { name: "Invites" })).toBeNull();
+    expect(section.queryByRole("alert")).toBeNull();
+    cleanup();
+
+    api.listTesterInvites.mockRejectedValueOnce(
+      new ApiError(403, { error: "forbidden" }),
+    );
+    render(<ClientAccount userId="c1" tree="ops" />);
+    section = within(await screen.findByRole("region", { name: "Founding Tester" }));
+    expect(await section.findByRole("alert")).toHaveTextContent(
+      "This action is restricted to Operations and Super Admin.",
+    );
   });
 });

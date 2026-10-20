@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { ChevronLeft, ChevronRight, Eye, Play, Wallet, XCircle } from "lucide-react";
 
 import {
@@ -46,8 +48,8 @@ import {
   presentRewardState,
   rewardActions,
   rewardAmountText,
+  rewardActionErrorText,
   rewardKindText,
-  testerErrorText,
 } from "@/lib/tester-program";
 import { formatManila } from "@/lib/vouchers";
 
@@ -96,14 +98,16 @@ export function TesterRewardsList({
   const [budget, setBudget] = useState<TesterBudget | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [reviewing, setReviewing] = useState<TesterReward | null>(null);
-  const [acting, setActing] = useState<{
-    reward: TesterReward;
-    action: RewardAction;
-  } | null>(null);
+  // Dialogs hold the reward's ID and read it from the latest list, so a
+  // refresh never leaves an old state or old checks on screen.
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [actingOn, setActingOn] = useState<{ id: string; action: RewardAction } | null>(
+    null,
+  );
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionOk, setActionOk] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -125,8 +129,8 @@ export function TesterRewardsList({
               ? "Only Operations and Super Admin can read tester rewards."
               : err.status === 404
                 ? "Tester rewards are not available yet. They appear here once the service is updated."
-                : `Could not load tester rewards (${err.code}).`
-            : "Could not reach the API. Check it is running, then retry.",
+                : opsErrorMessage(err, "Could not load tester rewards. Retry.")
+            : "Could not reach the API. Check the connection, then retry.",
         );
       } finally {
         setLoading(false);
@@ -139,6 +143,42 @@ export function TesterRewardsList({
   useEffect(() => {
     void load();
   }, [load]);
+
+  const reviewing = reviewingId
+    ? (rewards?.find((row) => row.id === reviewingId) ?? null)
+    : null;
+  const actingReward = actingOn
+    ? (rewards?.find((row) => row.id === actingOn.id) ?? null)
+    : null;
+  const acting =
+    actingOn && actingReward ? { reward: actingReward, action: actingOn.action } : null;
+
+  // After a successful read, a dialog whose reward left this list, or can no
+  // longer take the action being confirmed, closes and says why.
+  useEffect(() => {
+    if (!rewards) return;
+    if (reviewingId && !rewards.some((row) => row.id === reviewingId)) {
+      setReviewingId(null);
+      setActionOk(null);
+      setNotice("The reward you were reviewing changed and is no longer in this list.");
+    }
+    if (actingOn && !actionBusy) {
+      const current = rewards.find((row) => row.id === actingOn.id);
+      const allowed = current ? rewardActions(current) : null;
+      const still =
+        allowed && (actingOn.action === "void" ? allowed.canVoid : allowed.canResume);
+      if (!still) {
+        setActingOn(null);
+        setActionError(null);
+        setActionOk(null);
+        setNotice(
+          current
+            ? `That reward changed while you were confirming: it is now ${presentRewardState(current).label.toLowerCase()}. Nothing was done.`
+            : "That reward changed while you were confirming and is no longer in this list. Nothing was done.",
+        );
+      }
+    }
+  }, [rewards, reviewingId, actingOn, actionBusy]);
 
   async function act(reason: string) {
     if (!acting) return;
@@ -162,14 +202,12 @@ export function TesterRewardsList({
               ? "Resumed, but an invite check now matches: the reward is blocked."
               : "Still paused: the monthly budget has no room for it yet.",
       );
-      setActing(null);
+      setActingOn(null);
       void load();
     } catch (err) {
       setActionError(
-        testerErrorText(err) ??
-          (isApiError(err)
-            ? `Could not ${acting.action} this reward (${err.code}).`
-            : "Could not reach the API. Try again."),
+        rewardActionErrorText(err) ??
+          opsErrorMessage(err, `Could not ${acting.action} this reward. Try again.`),
       );
       if (
         isApiError(err) &&
@@ -323,6 +361,11 @@ export function TesterRewardsList({
           {actionOk}
         </p>
       ) : null}
+      {notice ? (
+        <p className="text-body text-text-primary m-0" role="status">
+          {notice}
+        </p>
+      ) : null}
 
       {!pending && rewards && !rewards.length ? (
         <EmptyState
@@ -357,7 +400,10 @@ export function TesterRewardsList({
                 <DataTableRowAction
                   label="Review checks"
                   icon={Eye}
-                  onClick={() => setReviewing(row)}
+                  onClick={() => {
+                    setNotice(null);
+                    setReviewingId(row.id);
+                  }}
                 />
                 {canAct && allowed.canResume ? (
                   <DataTableRowAction
@@ -366,7 +412,8 @@ export function TesterRewardsList({
                     onClick={() => {
                       setActionError(null);
                       setActionOk(null);
-                      setActing({ reward: row, action: "resume" });
+                      setNotice(null);
+                      setActingOn({ id: row.id, action: "resume" });
                     }}
                   />
                 ) : null}
@@ -377,7 +424,8 @@ export function TesterRewardsList({
                     onClick={() => {
                       setActionError(null);
                       setActionOk(null);
-                      setActing({ reward: row, action: "void" });
+                      setNotice(null);
+                      setActingOn({ id: row.id, action: "void" });
                     }}
                   />
                 ) : null}
@@ -424,7 +472,7 @@ export function TesterRewardsList({
 
       <Dialog
         open={reviewing !== null}
-        onOpenChange={(open) => !open && setReviewing(null)}
+        onOpenChange={(open) => !open && setReviewingId(null)}
       >
         <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
           {reviewing ? (
@@ -467,7 +515,7 @@ export function TesterRewardsList({
         busy={actionBusy}
         error={actionError}
         onCancel={() => {
-          setActing(null);
+          setActingOn(null);
           setActionError(null);
         }}
         onConfirm={(reason) => void act(reason)}

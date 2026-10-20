@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { MissionList } from "@/components/founding-testers/MissionProgress";
 import { TesterRewardsList } from "@/components/founding-testers/TesterRewardsList";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,38 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import { formatManila } from "@/lib/vouchers";
 
+/** The API's largest page; an inviter's responses are read in pages of this. */
+const INVITE_PAGE = 500;
+
+/**
+ * Every form response this client's code brought in, read page by page until
+ * the API's `total`, so the counts are totals and never one page's worth. Null
+ * on an API without invites (`404 not_found` on the route).
+ */
+async function readAllInvites(inviterId: string): Promise<TesterInvite[] | null> {
+  const rows: TesterInvite[] = [];
+  for (;;) {
+    let page;
+    try {
+      page = await listTesterInvites(
+        { inviterId },
+        { offset: rows.length, limit: INVITE_PAGE },
+      );
+    } catch (err) {
+      if (
+        rows.length === 0 &&
+        isApiError(err) &&
+        err.status === 404 &&
+        err.code === "not_found"
+      )
+        return null;
+      throw err;
+    }
+    rows.push(...page.invites);
+    if (!page.invites.length || rows.length >= page.total) return rows;
+  }
+}
+
 /**
  * One client account for Operations and Super Admin (`GET /users/:id`): who
  * it is, its Founding Tester label, five steps and reward, the friends it
@@ -36,6 +69,7 @@ export function ClientAccount({
 }) {
   const [account, setAccount] = useState<ClientAccountRecord | null>(null);
   const [invites, setInvites] = useState<TesterInvite[] | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [missing, setMissing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -47,11 +81,19 @@ export function ClientAccount({
       try {
         const [read, invited] = await Promise.all([
           getClientAccount(userId),
-          // Older APIs have no invites; the account still reads without them.
-          listTesterInvites({ inviterId: userId }, { limit: 500 }).catch(() => null),
+          // The account still reads when invites cannot; the section says why.
+          readAllInvites(userId).then(
+            (rows) => ({ rows, error: null }),
+            (err: unknown) => ({
+              rows: undefined,
+              error: opsErrorMessage(err, "Could not read this client's invites. Retry."),
+            }),
+          ),
         ]);
         setAccount(read);
-        setInvites(invited ? invited.invites : null);
+        // A failed read keeps the last invites, marked out of date.
+        if (invited.rows !== undefined) setInvites(invited.rows);
+        setInviteError(invited.error);
         setMissing(false);
       } catch (err) {
         if (isApiError(err) && err.status === 404) {
@@ -59,9 +101,10 @@ export function ClientAccount({
           setAccount(null);
         } else {
           setError(
-            isApiError(err)
-              ? `Could not load this account (${err.code}).`
-              : "Could not reach the API. Check it is running, then retry.",
+            opsErrorMessage(
+              err,
+              "Could not reach the API. Check the connection, then retry.",
+            ),
           );
         }
       } finally {
@@ -105,6 +148,20 @@ export function ClientAccount({
 
   return (
     <div className="grid gap-3 lg:grid-cols-2 lg:items-start">
+      {error ? (
+        <div
+          className="gg-card border-warning flex flex-wrap items-center justify-between gap-3 p-3 lg:col-span-2"
+          role="alert"
+        >
+          <p className="text-body text-text-primary m-0 max-w-prose">
+            Out of date: {error} What is below is the last successful read, and may have
+            changed since.
+          </p>
+          <Button variant="secondary" disabled={loading} onClick={() => void load()}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
       <section className="gg-card p-3" aria-labelledby="client-account-heading">
         <h2
           id="client-account-heading"
@@ -195,7 +252,7 @@ export function ClientAccount({
                 {reward.detail}
               </p>
             </div>
-            {invites ? (
+            {invites || inviteError ? (
               <>
                 <h3
                   className="text-body text-text-primary m-0 mt-4"
@@ -203,11 +260,20 @@ export function ClientAccount({
                 >
                   Invites
                 </h3>
-                <p className="text-body text-text-secondary m-0 mt-1 tabular-nums">
-                  {invites.length} invited · {invites.filter((i) => i.clientId).length}{" "}
-                  joined · {invites.filter((i) => i.completedAt).length} completed
-                </p>
-                {invites.some((i) => !i.clientId) ? (
+                {inviteError ? (
+                  <p className="text-body text-error m-0 mt-1" role="alert">
+                    {invites
+                      ? `These counts may be out of date: ${inviteError}`
+                      : inviteError}
+                  </p>
+                ) : null}
+                {invites ? (
+                  <p className="text-body text-text-secondary m-0 mt-1 tabular-nums">
+                    {invites.length} invited · {invites.filter((i) => i.clientId).length}{" "}
+                    joined · {invites.filter((i) => i.completedAt).length} completed
+                  </p>
+                ) : null}
+                {invites?.some((i) => !i.clientId) ? (
                   <p className="text-caption text-text-muted m-0 mt-1">
                     {invites.filter((i) => !i.clientId).length} form{" "}
                     {invites.filter((i) => !i.clientId).length === 1

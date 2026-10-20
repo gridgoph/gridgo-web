@@ -191,3 +191,85 @@ it("says so on an API from before invites", () => {
   expect(card().getByText(/These settings are not available yet/)).toBeInTheDocument();
   expect(card().queryByRole("button", { name: "Save invites and budget" })).toBeNull();
 });
+
+it("after a conflict, does not resend a field that was edited back to what it was", async () => {
+  const stored = { ...settings, testerMonthlyBudgetMinor: 150000 };
+  getSettings
+    .mockResolvedValueOnce(stored)
+    .mockResolvedValue({ ...stored, version: 6, testerMonthlyBudgetMinor: 300000 });
+  updateSettings.mockRejectedValueOnce(
+    new ApiError(409, { error: "settings_version_conflict", version: 6 }),
+  );
+  render(<OperationalSettings />);
+  await screen.findByRole("region", { name: "Founding Tester invites and budget" });
+  // The budget is changed and changed back; only the form link is a real edit.
+  fireEvent.change(budget(), { target: { value: "2000" } });
+  fireEvent.change(budget(), { target: { value: "1,500" } });
+  fireEvent.change(form(), { target: { value: FORM } });
+  fireEvent.click(save());
+  await waitFor(() =>
+    expect(updateSettings).toHaveBeenCalledWith({
+      expectedVersion: 4,
+      testerSignupFormUrlTemplate: FORM,
+      reason: "Founding Tester invites: sign-up form link set",
+    }),
+  );
+  await card().findByText(/Someone else saved settings/);
+  // The other person's budget shows; the form link draft stays.
+  await waitFor(() => expect(budget()).toHaveValue("3000"));
+  expect(form()).toHaveValue(FORM);
+  updateSettings.mockResolvedValueOnce({
+    ...stored,
+    version: 7,
+    testerMonthlyBudgetMinor: 300000,
+    testerSignupFormUrlTemplate: FORM,
+  });
+  fireEvent.click(save());
+  await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(2));
+  expect(updateSettings).toHaveBeenLastCalledWith({
+    expectedVersion: 6,
+    testerSignupFormUrlTemplate: FORM,
+    reason: "Founding Tester invites: sign-up form link set",
+  });
+});
+
+it("will not save over settings it could not re-read after a conflict, and retries the read", async () => {
+  getSettings
+    .mockResolvedValueOnce(settings)
+    .mockRejectedValueOnce(new ApiError(503, { error: "service_unavailable" }))
+    .mockResolvedValue({ ...settings, version: 6 });
+  updateSettings.mockRejectedValueOnce(
+    new ApiError(409, { error: "settings_version_conflict", version: 6 }),
+  );
+  render(<OperationalSettings />);
+  await screen.findByRole("region", { name: "Founding Tester invites and budget" });
+  fireEvent.change(budget(), { target: { value: "500" } });
+  fireEvent.click(save());
+  expect(
+    await card().findByText(/the latest settings could not be read\. Retry reading them/),
+  ).toBeInTheDocument();
+  const banner = screen
+    .getAllByRole("alert")
+    .find((node) => /These may be out of date/.test(node.textContent ?? ""));
+  expect(banner).toBeDefined();
+  expect(card().getAllByText(/Last read \(may be out of date\):/).length).toBeGreaterThan(
+    0,
+  );
+  expect(save()).toBeDisabled();
+  expect(budget()).toHaveValue("500");
+
+  fireEvent.click(within(banner!).getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(save()).toBeEnabled());
+  expect(screen.queryByText(/These may be out of date/)).toBeNull();
+  updateSettings.mockResolvedValueOnce({
+    ...settings,
+    version: 7,
+    testerMonthlyBudgetMinor: 50000,
+  });
+  fireEvent.click(save());
+  await waitFor(() =>
+    expect(updateSettings).toHaveBeenLastCalledWith(
+      expect.objectContaining({ expectedVersion: 6, testerMonthlyBudgetMinor: 50000 }),
+    ),
+  );
+});

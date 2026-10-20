@@ -122,6 +122,35 @@ describe("label", () => {
     expect(testerLabelNote(held)).toContain("monthly tester budget");
   });
 
+  it("never says a reward voided before it was issued is on its way", () => {
+    const voidedEarly = progress({
+      completedCount: 5,
+      missions: { added: true, placed: true, tracked: true, received: true, rated: true },
+      rewardStatus: "voided",
+    });
+    expect(awaitingAward(voidedEarly)).toBe(false);
+    expect(presentTesterLabel(voidedEarly)).toMatchObject({
+      label: "Reward voided",
+      tone: "neutral",
+    });
+    expect(testerLabelNote(voidedEarly)).toContain(
+      "voided this reward before it was issued",
+    );
+    expect(presentTesterReward(voidedEarly)).toMatchObject({
+      label: "Voided",
+      detail:
+        "Super Admin voided this reward before any voucher was issued. It cannot be earned again.",
+    });
+
+    // Voided after the label was earned: the label stays and is shown as earned.
+    const voidedLater = earned({ rewardStatus: "voided", reward: null });
+    expect(presentTesterLabel(voidedLater).label).not.toBe("Reward voided");
+    expect(testerLabelNote(voidedLater)).toContain("Earned");
+    expect(presentTesterReward(voidedLater).detail).toBe(
+      "Super Admin voided this reward. The earned label stays.",
+    );
+  });
+
   it("says when it was earned, in Manila time, and why it cannot be", () => {
     expect(testerLabelNote(earned())).toContain("Earned Oct 20, 2026, 4:00 PM");
     const ineligible = progress({ eligible: false, rewardStatus: "ineligible" });

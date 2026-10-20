@@ -3,6 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -16,6 +17,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import type { TesterBudget, TesterReward } from "@/lib/api/types";
 
+const { live } = vi.hoisted(() => ({
+  live: { reload: null as null | (() => Promise<void> | void) },
+}));
 const { api } = vi.hoisted(() => ({
   api: {
     listTesterRewards: vi.fn(),
@@ -30,7 +34,11 @@ const { api } = vi.hoisted(() => ({
 
 vi.stubGlobal("React", React);
 vi.stubGlobal("PointerEvent", MouseEvent);
-vi.mock("@/lib/live/useLiveReload", () => ({ useLiveReload: () => {} }));
+vi.mock("@/lib/live/useLiveReload", () => ({
+  useLiveReload: (_keys: unknown, reload: () => Promise<void> | void) => {
+    live.reload = reload;
+  },
+}));
 vi.mock("@/lib/api/client", async () => {
   const actual =
     await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
@@ -129,6 +137,19 @@ afterEach(() => {
   cleanup();
   vi.clearAllMocks();
 });
+
+/** A live update re-reads the list with whatever the API now answers. */
+const refreshWith = async (rewards: TesterReward[]) => {
+  api.listTesterRewards.mockResolvedValue({
+    serverTime: "2026-10-21T08:00:00.000Z",
+    total: rewards.length,
+    rewards,
+    budget,
+  });
+  await act(async () => {
+    await live.reload?.();
+  });
+};
 
 const row = async (name: string) =>
   within(
@@ -261,6 +282,80 @@ describe("Tester rewards", () => {
     ).toBeVisible();
   });
 
+  it("keeps the review dialog on the latest copy of the reward, and closes it when the reward leaves the list", async () => {
+    render(<TesterRewardsList tree="ops" />);
+    fireEvent.click(
+      (await row("Faye Friend")).getByRole("button", { name: "Review checks" }),
+    );
+    let dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.getByText("Issued")).toBeVisible();
+
+    await refreshWith([
+      { ...base, status: "voided", voidedAt: "2026-10-21T08:00:00.000Z", reason: "Dup" },
+      paused,
+      blocked,
+    ]);
+    dialog = within(screen.getByRole("dialog"));
+    expect(dialog.getByText("Voided")).toBeVisible();
+    expect(dialog.queryByText("Issued")).toBeNull();
+
+    await refreshWith([paused, blocked]);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(
+      screen.getByText(
+        "The reward you were reviewing changed and is no longer in this list.",
+      ),
+    ).toBeVisible();
+  });
+
+  it("closes a confirmation the reward can no longer take, and does nothing", async () => {
+    render(<TesterRewardsList tree="admin" />);
+    fireEvent.click((await row("Ben Tester")).getByRole("button", { name: "Resume" }));
+    const confirm = within(await screen.findByRole("alertdialog"));
+    fireEvent.change(confirm.getByLabelText("Why it can go now"), {
+      target: { value: "Budget raised" },
+    });
+
+    await refreshWith([
+      base,
+      { ...paused, status: "issued", issuedAt: "2026-10-21T08:00:00.000Z", reason: null },
+      blocked,
+    ]);
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(
+      screen.getByText(
+        "That reward changed while you were confirming: it is now issued. Nothing was done.",
+      ),
+    ).toBeVisible();
+    expect(api.resumeTesterReward).not.toHaveBeenCalled();
+  });
+
+  it("says a refused void is Super Admin's, and never shows a raw error code", async () => {
+    api.voidTesterReward.mockRejectedValueOnce(new ApiError(403, { error: "forbidden" }));
+    render(<TesterRewardsList tree="admin" />);
+    fireEvent.click((await row("Faye Friend")).getByRole("button", { name: "Void" }));
+    let confirm = within(await screen.findByRole("alertdialog"));
+    fireEvent.change(confirm.getByLabelText("Why it is being voided"), {
+      target: { value: "Duplicate" },
+    });
+    fireEvent.click(confirm.getByRole("button", { name: "Void reward" }));
+    expect(
+      await confirm.findByText("Only Super Admin can void or resume a reward."),
+    ).toBeVisible();
+
+    api.voidTesterReward.mockRejectedValueOnce(
+      new ApiError(500, { error: "tester_reward_internal_mystery" }),
+    );
+    confirm = within(screen.getByRole("alertdialog"));
+    fireEvent.click(confirm.getByRole("button", { name: "Void reward" }));
+    expect(
+      await confirm.findByText(
+        "The API failed processing this request. Retry in a moment.",
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText(/tester_reward_internal_mystery/)).toBeNull();
+  });
+
   it("filters by state through the API", async () => {
     render(<TesterRewardsList tree="ops" />);
     await row("Faye Friend");
@@ -337,5 +432,33 @@ describe("Tester invites", () => {
       }),
     );
     expect(await screen.findByText("Recorded and matched to Faye Friend.")).toBeVisible();
+  });
+
+  it("explains a refused invite without calling it Super Admin's or showing the code", async () => {
+    api.recordTesterInvite.mockRejectedValueOnce(
+      new ApiError(403, { error: "forbidden" }),
+    );
+    render(<TesterInvitesList />);
+    await row("nobody@example.test");
+    fireEvent.change(screen.getByLabelText("Invite code"), { target: { value: "ABC" } });
+    fireEvent.change(screen.getByLabelText("Friend’s email"), {
+      target: { value: "faye@example.test" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Record response" }));
+    expect(
+      await screen.findByText("This action is restricted to Operations and Super Admin."),
+    ).toBeVisible();
+    expect(screen.queryByText(/Only Super Admin/)).toBeNull();
+
+    api.recordTesterInvite.mockRejectedValueOnce(
+      new ApiError(409, { error: "tester_invite_mystery" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Record response" }));
+    expect(
+      await screen.findByText(
+        /The platform refused this change because the record moved on/,
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText(/tester_invite_mystery/)).toBeNull();
   });
 });
