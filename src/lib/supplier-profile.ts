@@ -31,11 +31,19 @@ export function draftFromProfile(profile: SupplierProfile): ShopDetailDraft {
   };
 }
 
+/** A typed coordinate. Blank is not 0 (`Number("")` is), so it reads as missing. */
+function coordinate(text: string): number | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : null;
+}
+
 export function pinFromDraft(draft: ShopDetailDraft): SupplierShopPin | null {
-  const lat = Number(draft.lat);
-  const lng = Number(draft.lng);
+  const lat = coordinate(draft.lat);
+  const lng = coordinate(draft.lng);
   const label = draft.pinLabel.trim();
-  if (!label || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (!label || lat == null || lng == null) return null;
   return { lat, lng, label };
 }
 
@@ -74,10 +82,10 @@ export function shopDetailProblems(draft: ShopDetailDraft): Partial<Record<keyof
   if (!PHONE.test(phone)) {
     problems.phone = "Enter a Philippine mobile number, for example 0917 123 4567.";
   }
-  const lat = Number(draft.lat);
-  const lng = Number(draft.lng);
+  const lat = coordinate(draft.lat);
+  const lng = coordinate(draft.lng);
   if (!draft.pinLabel.trim()) problems.pinLabel = "Name the printing location riders will come to.";
-  if (!Number.isFinite(lat) || lat < -90 || lat > 90) problems.lat = "Enter a latitude between -90 and 90.";
-  if (!Number.isFinite(lng) || lng < -180 || lng > 180) problems.lng = "Enter a longitude between -180 and 180.";
+  if (lat == null || lat < -90 || lat > 90) problems.lat = "Enter a latitude between -90 and 90.";
+  if (lng == null || lng < -180 || lng > 180) problems.lng = "Enter a longitude between -180 and 180.";
   return problems;
 }

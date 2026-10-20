@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { SupplierProfile } from "@/lib/api/client";
-import { shopDetailPatch, shopDetailProblems } from "@/lib/supplier-profile";
+import { draftFromProfile, shopDetailPatch, shopDetailProblems } from "@/lib/supplier-profile";
 
 const profile: SupplierProfile = {
   userId: "shop",
@@ -38,5 +38,22 @@ describe("shop detail draft", () => {
     });
     expect(problems.shopName).toBeTruthy();
     expect(problems.phone).toMatch(/0917/);
+  });
+
+  it.each([
+    ["both", { lat: "", lng: "" }],
+    ["latitude", { lat: "  " }],
+    ["longitude", { lng: "" }],
+  ])("refuses a blank %s instead of moving the pin to 0", (_axis, blank) => {
+    const draft = { ...draftFromProfile(profile), ...blank };
+    const problems = shopDetailProblems(draft);
+    expect(problems.lat ?? problems.lng).toMatch(/between/);
+    expect(shopDetailPatch(profile, draft)).not.toHaveProperty("shop");
+  });
+
+  it("keeps a typed 0 as a real coordinate", () => {
+    const draft = { ...draftFromProfile(profile), lat: "0", lng: "0" };
+    expect(shopDetailProblems(draft)).toEqual({});
+    expect(shopDetailPatch(profile, draft).shop).toEqual({ lat: 0, lng: 0, label: "Counter" });
   });
 });
