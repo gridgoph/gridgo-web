@@ -44,7 +44,16 @@ function takeDownErrorMessage(err: unknown): string {
   return adminErrorMessage(err, "Could not take this listing down.");
 }
 
-export function SupplierProductDetail({ itemId }: { itemId: string }) {
+export function SupplierProductDetail({
+  itemId,
+  canTakeDown = true,
+  back = { href: "/admin/supplier-products", label: "All supplier products" },
+}: {
+  itemId: string;
+  /** Take-down and restore are Super Admin's; Operations reads the listing only. */
+  canTakeDown?: boolean;
+  back?: { href: string; label: string };
+}) {
   const [taxonomy, setTaxonomy] = useState<Taxonomy | null>(null);
   const [row, setRow] = useState<StaffCatalogRow | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -151,10 +160,10 @@ export function SupplierProductDetail({ itemId }: { itemId: string }) {
   return (
     <div className="flex flex-col gap-4">
       <Link
-        href="/admin/supplier-products"
+        href={back.href}
         className="text-body text-text-secondary self-start underline-offset-4 hover:underline"
       >
-        All supplier products
+        {back.label}
       </Link>
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <article className="gg-card flex flex-col gap-3">
@@ -166,7 +175,18 @@ export function SupplierProductDetail({ itemId }: { itemId: string }) {
           ) : null}
         </article>
 
-        {listing.suspendReason ? (
+        {!canTakeDown ? (
+          listing.suspendReason ? (
+            <section className="gg-card border-warning flex flex-col gap-2" aria-labelledby="take-down-heading">
+              <h2 id="take-down-heading" className="text-h3 text-text-primary m-0">
+                {takenDownLine(listing)}
+              </h2>
+              <p className="text-body text-text-primary m-0 max-w-prose whitespace-pre-line">
+                {listing.suspendReason}
+              </p>
+            </section>
+          ) : null
+        ) : listing.suspendReason ? (
           <section
             className="gg-card border-warning flex flex-col gap-3"
             aria-labelledby="take-down-heading"

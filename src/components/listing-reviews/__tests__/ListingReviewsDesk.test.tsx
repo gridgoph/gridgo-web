@@ -345,3 +345,79 @@ describe("Listing reviews desk", () => {
     expect(screen.queryByRole("link", { name: "Open on Supplier products" })).toBeNull();
   });
 });
+
+describe("Listing reviews desk: Production time (gridgo-api#292)", () => {
+  function flagged(tree: "ops" | "admin") {
+    api.listStaffCatalogItems.mockImplementation(async (query: Record<string, unknown> = {}) =>
+      query.productionTimeReview === "required"
+        ? {
+            items: [
+              {
+                shop: { supplierId: "usr_shop_a", shopName: "Shop A" },
+                item: item({
+                  id: "sci_one_day",
+                  name: "Booklets",
+                  productionTime: { mode: "days", minDays: 1, maxDays: 1 },
+                  productionTimeReview: {
+                    required: true,
+                    reasons: ["legacy_one_working_day"],
+                    message: "Check your production time",
+                  },
+                }),
+              },
+              {
+                shop: { supplierId: "usr_shop_b", shopName: "Shop B" },
+                item: item({
+                  id: "sci_express",
+                  name: "Rush flyers",
+                  express: true,
+                  productionTime: null,
+                  productionTimeReview: {
+                    required: true,
+                    reasons: ["express_missing_hours"],
+                    message: "Check your production time",
+                  },
+                }),
+              },
+            ],
+            shops: [],
+            total: 2,
+          }
+        : { items: [], shops: [{ supplierId: "usr_shop_a", shopName: "Shop A" }], total: 0 },
+    );
+    render(<ListingReviewsDesk tree={tree} />);
+  }
+
+  it("lists flagged listings with shop, reason and current time, linking into the ops tree", async () => {
+    flagged("ops");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Production time · 2" }));
+    const table = await screen.findByRole("table", { name: "Listings to check" });
+    expect(api.listStaffCatalogItems).toHaveBeenCalledWith({
+      productionTimeReview: "required",
+      limit: 50,
+    });
+    const booklets = within(table).getByRole("row", { name: /Booklets/ });
+    expect(booklets).toHaveTextContent("Shop A");
+    expect(booklets).toHaveTextContent("Rounded up to 1 working day on 7 Oct");
+    expect(booklets).toHaveTextContent("1 working day");
+    expect(within(booklets).getByRole("link", { name: "Booklets" })).toHaveAttribute(
+      "href",
+      "/ops/supplier-products/sci_one_day",
+    );
+    const express = within(table).getByRole("row", { name: /Rush flyers/ });
+    expect(express).toHaveTextContent("Express with no hours");
+    expect(express).toHaveTextContent("Not set yet");
+  });
+
+  it("opens Super Admin's own listing page from /admin", async () => {
+    search.params = new URLSearchParams("tab=production-time");
+    flagged("admin");
+    const table = await screen.findByRole("table", { name: "Listings to check" });
+    expect(within(table).getByRole("link", { name: "Booklets" })).toHaveAttribute(
+      "href",
+      "/admin/supplier-products/sci_one_day",
+    );
+    search.params = new URLSearchParams();
+  });
+});

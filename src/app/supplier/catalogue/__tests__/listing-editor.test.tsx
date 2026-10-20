@@ -29,6 +29,9 @@ const mocks = vi.hoisted(() => ({
   getSupplierReadiness: vi.fn(),
   submitCatalogItemForReview: vi.fn(),
   getSettings: vi.fn(),
+  listCatalogItems: vi.fn(),
+  previewProductionTime: vi.fn(),
+  applyProductionTimeToAll: vi.fn(),
 }));
 
 vi.stubGlobal("React", React);
@@ -68,6 +71,9 @@ vi.mock("@/lib/api/client", async () => {
     getSupplierReadiness: mocks.getSupplierReadiness,
     submitCatalogItemForReview: mocks.submitCatalogItemForReview,
     getSettings: mocks.getSettings,
+    listCatalogItems: mocks.listCatalogItems,
+    previewProductionTime: mocks.previewProductionTime,
+    applyProductionTimeToAll: mocks.applyProductionTimeToAll,
   };
 });
 
@@ -180,7 +186,28 @@ function stubLoad(item: ReturnType<typeof catalogItem>) {
   mocks.updateCatalogItem.mockImplementation(async (_id, _version, body) => ({
     item: { ...item.item, ...body, version: 4 },
   }));
+  mocks.listCatalogItems.mockResolvedValue({ items: [item.item], total: 1 });
+  mocks.previewProductionTime.mockResolvedValue(PREVIEW);
 }
+
+/** A preview as `GET …/production-time-preview` answers it, cut to four days. */
+const PREVIEW = {
+  productionTime: { mode: "days", minDays: 1, maxDays: 3 },
+  scheduling: {
+    status: "tight",
+    earliestReadyBy: "2026-10-24T03:45:00.000Z",
+    securedReadyBy: "2026-10-27T03:45:00.000Z",
+  },
+  calendar: {
+    days: [
+      { day: "2026-10-23", status: "not_possible", reason: "before_shortest_time", readyBy: null, rushTier: null },
+      { day: "2026-10-24", status: "tight", reason: null, readyBy: "2026-10-24T03:45:00.000Z", rushTier: null },
+      { day: "2026-10-25", status: "not_possible", reason: "gridgo_closed_sunday", readyBy: null, rushTier: null },
+      { day: "2026-10-27", status: "secured", reason: null, readyBy: "2026-10-27T03:45:00.000Z", rushTier: null },
+    ],
+    earliest: "2026-10-24T03:45:00.000Z",
+  },
+};
 
 describe("listing editor printer cap", () => {
   it("hides max printer width on families that are not tarpaulin", async () => {
@@ -394,89 +421,234 @@ describe("listing editor autosave", () => {
 });
 
 /** The Speed step's own section, apart from the client preview beside it. */
-function speedSection(): HTMLElement {
-  const section = document.getElementById("section-ready-in");
-  if (!section) throw new Error("Speed step is not open");
-  return section;
-}
-
-describe("listing editor production time (report 39853344)", () => {
-  it("saves a same-day window in minutes, sending only that unit's fields", async () => {
+describe("listing editor: How long does this take? (gridgo-api#292)", () => {
+  it("saves Same day hours as one productionTime answer, never the old fields or Express", async () => {
     stubLoad(
       catalogItem({
         turnaroundHours: undefined,
         turnaroundDays: 2,
-        turnaroundMinutes: 1200,
+        productionTime: { mode: "days", minDays: 2, maxDays: 2 },
         productionDayMinutes: 600,
+        express: false,
       }),
     );
     render(<ListingEditorPage />);
     await openEditorStep("Speed");
-    expect(speedSection()).toHaveTextContent("Ready in 2 working days");
+    expect(screen.getByRole("heading", { name: "How long does this take?" })).toBeVisible();
+    expect(screen.queryByRole("switch", { name: "Express" })).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("radio", { name: "Hours" }));
-    expect(screen.getByRole("spinbutton", { name: "Latest" })).toHaveAttribute(
-      "aria-valuetext",
-      "1 hour",
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Longer latest production time" }));
-    fireEvent.click(screen.getByRole("button", { name: "Longer latest production time" }));
-    expect(within(speedSection()).getByText("Ready in 1–2 hours")).toBeVisible();
-    expect(within(speedSection()).getByText(/A job that starts now is ready/)).toBeVisible();
+    fireEvent.click(screen.getByRole("radio", { name: "Same day" }));
+    const hours = screen.getByRole("spinbutton", { name: "Hours until ready" });
+    expect(hours).toHaveAttribute("aria-valuetext", "2 hours");
+    fireEvent.click(screen.getByRole("button", { name: "More: hours until ready" }));
+    expect(hours).toHaveAttribute("aria-valuetext", "2½ hours");
 
     await waitFor(
       () =>
         expect(mocks.updateCatalogItem).toHaveBeenCalledWith(
           "sci_1",
           3,
-          expect.objectContaining({
-            turnaroundMode: "override",
-            minimumTurnaroundMinutes: 60,
-            turnaroundMinutes: 120,
-          }),
+          expect.objectContaining({ productionTime: { mode: "same_day", hours: 2.5 } }),
         ),
       AUTOSAVE_WAIT,
     );
     const body = mocks.updateCatalogItem.mock.calls[0][2];
-    expect(body).not.toHaveProperty("turnaroundDays");
-    expect(body).not.toHaveProperty("turnaroundHours");
+    for (const key of ["turnaroundMode", "turnaroundDays", "turnaroundMinutes", "turnaroundHours", "minimumTurnaroundDays", "minimumTurnaroundMinutes", "express"]) {
+      expect(body).not.toHaveProperty(key);
+    }
   });
 
-  it("switching back to working days restores the window the shop had", async () => {
-    stubLoad(catalogItem({ turnaroundHours: undefined, turnaroundDays: 3, minimumTurnaroundDays: 2 }));
+  it("keeps From at or under To and previews the unsaved answer's dates", async () => {
+    stubLoad(catalogItem({ productionTime: { mode: "days", minDays: 1, maxDays: 3 } }));
     render(<ListingEditorPage />);
     await openEditorStep("Speed");
-    expect(within(speedSection()).getByText("Ready in 2–3 working days")).toBeVisible();
-    fireEvent.click(screen.getByRole("radio", { name: "Hours" }));
-    expect(within(speedSection()).getByText("Ready in 1 hour")).toBeVisible();
-    fireEvent.click(screen.getByRole("radio", { name: "Working days" }));
-    expect(within(speedSection()).getByText("Ready in 2–3 working days")).toBeVisible();
+
+    const from = screen.getByRole("spinbutton", { name: "Shortest working days" });
+    const to = screen.getByRole("spinbutton", { name: "Longest working days" });
+    for (let step = 0; step < 3; step += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "More: shortest working days" }));
+    }
+    expect(from).toHaveAttribute("aria-valuetext", "4 working days");
+    expect(to).toHaveAttribute("aria-valuetext", "4 working days");
+
+    await waitFor(() =>
+      expect(mocks.previewProductionTime).toHaveBeenLastCalledWith("sci_1", {
+        mode: "days",
+        minDays: 4,
+        maxDays: 4,
+      }),
+    );
+    const dates = await screen.findByRole("list", { name: "The next two weeks" });
+    expect(within(dates).getByText("Sat 24 Oct")).toBeVisible();
+    expect(within(dates).getByText("Tight")).toBeVisible();
+    expect(within(dates).getByText("Secured")).toBeVisible();
+    expect(within(dates).getByText("GRIDGO is closed on Sundays")).toBeVisible();
+    expect(within(dates).getByText("Ready by Tue 27 Oct, 11:45 AM")).toBeVisible();
+    expect(screen.getByText(/the soonest it can be ready is Sat 24 Oct, 11:45 AM/)).toBeVisible();
   });
 
-  it("steps down from one working day into hours", async () => {
-    stubLoad(catalogItem({ turnaroundHours: undefined, turnaroundDays: 1 }));
-    render(<ListingEditorPage />);
-    await openEditorStep("Speed");
-    const latest = screen.getByRole("spinbutton", { name: "Latest" });
-    latest.focus();
-    fireEvent.keyDown(latest, { key: "ArrowDown" });
-    expect(latest).toHaveAttribute("aria-valuetext", "9½ hours");
-    expect(screen.getByRole("radio", { name: "Hours" })).toHaveAttribute("aria-checked", "true");
-  });
-
-  it("leaves an older untouched time out of a save, so other edits are not held", async () => {
-    // An older API stored 48 hours exactly: longer than a working day, which
-    // the Hours picker cannot send back. Changing the name must still save.
-    stubLoad(catalogItem());
+  it("leaves an untouched time out of a save, so other edits are not held", async () => {
+    // An older API stored 48 hours exactly, which reads as a long Same day.
+    stubLoad(catalogItem({ productionTime: { mode: "same_day", hours: 48 } }));
     render(<ListingEditorPage />);
     await openEditorStep("About");
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers A5" } });
     await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled(), AUTOSAVE_WAIT);
     const body = mocks.updateCatalogItem.mock.calls[0][2];
-    expect(body).toMatchObject({ name: "Flyers A5", turnaroundMode: "override" });
+    expect(body).toMatchObject({ name: "Flyers A5" });
+    expect(body).not.toHaveProperty("productionTime");
     expect(body).not.toHaveProperty("turnaroundMinutes");
-    expect(body).not.toHaveProperty("turnaroundDays");
-    expect(body).not.toHaveProperty("turnaroundHours");
+  });
+
+  it("shows faster price options under More options, read-only", async () => {
+    stubLoad(
+      catalogItem({
+        productionTime: { mode: "days", minDays: 3, maxDays: 5 },
+        speedTiers: [
+          { id: "st_1", label: "Next day", turnaroundDays: 1, priceMinor: 50000, surchargeMinor: null },
+        ],
+      }),
+    );
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    expect(await screen.findByText(/Next day · 1 working day · ₱500\.00/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Use for all my listings" })).toBeVisible();
+  });
+});
+
+describe("listing editor: Check your production time (gridgo-api#292)", () => {
+  it("lets a shop keep a time GRIDGO rounded up, which clears the reminder", async () => {
+    stubLoad(
+      catalogItem({
+        productionTime: { mode: "days", minDays: 1, maxDays: 1 },
+        productionTimeReview: {
+          required: true,
+          reasons: ["legacy_one_working_day"],
+          message: "Check your production time",
+        },
+      }),
+    );
+    mocks.updateCatalogItem.mockImplementationOnce(async (_id, _version, body) => ({
+      item: {
+        ...catalogItem().item,
+        ...body,
+        productionTimeReview: { required: false, reasons: [], message: null },
+        version: 4,
+      },
+    }));
+    render(<ListingEditorPage />);
+    const banner = await screen.findByRole("region", { name: "Check your production time" });
+    expect(within(banner).getByText(/rounded this listing up to 1 working day on 7 Oct/)).toBeVisible();
+
+    fireEvent.click(within(banner).getByRole("button", { name: "Keep 1 working day" }));
+    await waitFor(() =>
+      expect(mocks.updateCatalogItem).toHaveBeenCalledWith("sci_1", 3, {
+        productionTime: { mode: "days", minDays: 1, maxDays: 1 },
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Check your production time" })).not.toBeInTheDocument(),
+    );
+  });
+
+  it("asks an Express listing with no hours to pick Same day, and saves it", async () => {
+    stubLoad(
+      catalogItem({
+        turnaroundMode: "inherit",
+        turnaroundHours: undefined,
+        express: true,
+        productionTime: null,
+        productionTimeReview: {
+          required: true,
+          reasons: ["express_missing_hours"],
+          message: "Check your production time",
+        },
+      }),
+    );
+    render(<ListingEditorPage />);
+    const banner = await screen.findByRole("region", { name: "Check your production time" });
+    expect(within(banner).getByText(/Express is now Same day/)).toBeVisible();
+    expect(within(banner).queryByRole("button", { name: /^Keep/ })).not.toBeInTheDocument();
+
+    fireEvent.click(within(banner).getByRole("button", { name: "Check production time" }));
+    expect(screen.getByText(/No production time yet/)).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Same day" }));
+    await waitFor(
+      () =>
+        expect(mocks.updateCatalogItem).toHaveBeenCalledWith(
+          "sci_1",
+          3,
+          expect.objectContaining({ productionTime: { mode: "same_day", hours: 2 } }),
+        ),
+      AUTOSAVE_WAIT,
+    );
+    expect(mocks.updateCatalogItem.mock.calls[0][2]).not.toHaveProperty("express");
+  });
+});
+
+describe("listing editor: Use for all my listings (gridgo-api#292)", () => {
+  it("confirms, sends every listing's version, and moves this draft to the new version", async () => {
+    stubLoad(catalogItem({ productionTime: { mode: "days", minDays: 1, maxDays: 3 } }));
+    mocks.listCatalogItems.mockResolvedValue({
+      items: [
+        { ...catalogItem().item, productionTime: { mode: "days", minDays: 1, maxDays: 3 } },
+        { ...catalogItem().item, id: "sci_2", name: "Hidden posters", active: false, version: 7 },
+      ],
+      total: 2,
+    });
+    mocks.applyProductionTimeToAll.mockResolvedValue({
+      items: [
+        { ...catalogItem().item, productionTime: { mode: "days", minDays: 1, maxDays: 3 }, version: 5 },
+        { ...catalogItem().item, id: "sci_2", version: 8 },
+      ],
+      total: 2,
+    });
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Use for all my listings" }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("All 2 of your listings, hidden ones and drafts included");
+    expect(dialog).toHaveTextContent("Orders already placed keep their dates");
+    expect(mocks.applyProductionTimeToAll).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Use for all" }));
+
+    await waitFor(() =>
+      expect(mocks.applyProductionTimeToAll).toHaveBeenCalledWith(
+        { mode: "days", minDays: 1, maxDays: 3 },
+        { sci_1: 3, sci_2: 7 },
+      ),
+    );
+    expect(await screen.findByText("Done. All 2 listings take 1 to 3 working days now.")).toBeVisible();
+
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers, glossy" } });
+    await waitFor(
+      () =>
+        expect(mocks.updateCatalogItem).toHaveBeenLastCalledWith(
+          "sci_1",
+          5,
+          expect.objectContaining({ name: "Flyers, glossy" }),
+        ),
+      AUTOSAVE_WAIT,
+    );
+  });
+
+  it("says nothing changed when a listing moved in the meantime", async () => {
+    stubLoad(catalogItem({ productionTime: { mode: "days", minDays: 1, maxDays: 3 } }));
+    mocks.applyProductionTimeToAll.mockRejectedValue(
+      new ApiError(409, { error: "catalog_items_stale" }),
+    );
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Use for all my listings" }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Use for all" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "One of your listings changed while this was being applied, so nothing was changed. Try again.",
+    );
   });
 });
 
@@ -1157,75 +1329,6 @@ describe("listing editor section numbers", () => {
       "06.2",
       "06.3",
     ]);
-  });
-});
-
-describe("listing editor Express (gridgo-api#224)", () => {
-  it("explains Express and saves only the switch, with the listing's version, at once", async () => {
-    stubLoad(catalogItem({ express: false }));
-    render(<ListingEditorPage />);
-    await openEditorStep("Speed");
-
-    const toggle = screen.getByRole("switch", { name: "Express" });
-    expect(toggle).not.toBeChecked();
-    expect(
-      screen.getByText(/Clients can pick any deadline from today, the same day included/),
-    ).toBeVisible();
-    expect(screen.getByText(/There is no extra charge/)).toBeVisible();
-    expect(screen.getByText(/Express is off/)).toBeVisible();
-
-    fireEvent.click(toggle);
-    await waitFor(() =>
-      expect(mocks.updateCatalogItem).toHaveBeenCalledWith("sci_1", 3, { express: true }),
-    );
-    expect(mocks.submitCatalogItemForReview).not.toHaveBeenCalled();
-    expect(await screen.findByText(/Express is on/)).toBeVisible();
-    expect(screen.getByRole("switch", { name: "Express" })).toBeChecked();
-  });
-
-  it("moves the draft to the saved version so the next edit is not stale", async () => {
-    stubLoad(catalogItem({ express: true }));
-    render(<ListingEditorPage />);
-    await openEditorStep("Speed");
-    fireEvent.click(screen.getByRole("switch", { name: "Express" }));
-    await waitFor(() =>
-      expect(mocks.updateCatalogItem).toHaveBeenCalledWith("sci_1", 3, { express: false }),
-    );
-    await screen.findByText(/Express is off/);
-
-    await openEditorStep("About");
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers, glossy" } });
-    await waitFor(
-      () =>
-        expect(mocks.updateCatalogItem).toHaveBeenLastCalledWith(
-          "sci_1",
-          4,
-          expect.objectContaining({ name: "Flyers, glossy" }),
-        ),
-      AUTOSAVE_WAIT,
-    );
-    expect(mocks.updateCatalogItem.mock.calls[1][2]).not.toHaveProperty("express");
-  });
-
-  it("says why a refused change did not land and keeps the switch where it was", async () => {
-    stubLoad(catalogItem({ express: false }));
-    mocks.updateCatalogItem.mockRejectedValueOnce(
-      new ApiError(409, { error: "catalog_item_stale" }),
-    );
-    render(<ListingEditorPage />);
-    await openEditorStep("Speed");
-    fireEvent.click(screen.getByRole("switch", { name: "Express" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "This listing changed on another screen",
-    );
-    expect(screen.getByRole("switch", { name: "Express" })).not.toBeChecked();
-  });
-
-  it("shows no switch against an API that predates Express", async () => {
-    stubLoad(catalogItem());
-    render(<ListingEditorPage />);
-    await openEditorStep("Speed");
-    expect(screen.queryByRole("switch", { name: "Express" })).not.toBeInTheDocument();
   });
 });
 
