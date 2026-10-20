@@ -1212,6 +1212,117 @@ export async function getMyShopHours(): Promise<ShopHours> {
   return shopHoursOf("/me/shop-hours", await request<unknown>("/me/shop-hours"));
 }
 
+export type SupplierShopPin = { lat: number; lng: number; label: string };
+
+/** The shop's own record from `GET /me/supplier-profile`. Email is read-only. */
+export type SupplierProfile = {
+  userId: string;
+  shopName: string;
+  contactName: string;
+  phone: string | null;
+  email: string | null;
+  shop: SupplierShopPin | null;
+  version: number;
+  pickupAvailable?: boolean;
+};
+
+export type SupplierProfilePatch = {
+  shopName?: string;
+  contactName?: string;
+  phone?: string;
+  shop?: SupplierShopPin;
+};
+
+/** Supplier. Own shop name, contact, phone, and printing pin. */
+export async function getSupplierProfile(): Promise<SupplierProfile> {
+  const result = await request<{ profile: SupplierProfile }>("/me/supplier-profile");
+  return result.profile;
+}
+
+/** Supplier. Writes the version the profile was read at. `409 supplier_profile_stale`. */
+export async function updateSupplierProfile(
+  version: number,
+  patch: SupplierProfilePatch,
+): Promise<SupplierProfile> {
+  const result = await request<{ profile: SupplierProfile }>("/me/supplier-profile", {
+    method: "PATCH",
+    ...versioned(version, patch),
+  });
+  return result.profile;
+}
+
+export type PublishedProductType = {
+  code: string;
+  name: string;
+  categoryCode: string;
+  examples?: string[];
+};
+
+export type ProductTypeRequest = {
+  id: string;
+  supplierId: string;
+  categoryCode: string;
+  name: string;
+  description: string;
+  status: "pending" | "approved" | "needs_revision" | string;
+  reason: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** Supplier. Published types this shop may file a listing under. */
+export async function listMyProductTypes(q?: string): Promise<PublishedProductType[]> {
+  const search = buildQuery({ q });
+  const result = await request<{ productTypes: PublishedProductType[] }>(
+    `/me/product-types${search}`,
+  );
+  return result.productTypes ?? [];
+}
+
+/** Supplier. This shop's own requests for a type GRIDGO has not published. */
+export async function listMyProductTypeRequests(): Promise<ProductTypeRequest[]> {
+  const result = await request<{ requests: ProductTypeRequest[] }>("/me/product-type-requests");
+  return result.requests ?? [];
+}
+
+/** Supplier. Asking does not grant a service line. */
+export async function createProductTypeRequest(input: {
+  categoryCode: string;
+  name: string;
+  description: string;
+}): Promise<ProductTypeRequest> {
+  const result = await request<{ request: ProductTypeRequest }>("/me/product-type-requests", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.request;
+}
+
+/** Supplier. Give back an accepted job before the rider collects it. */
+export async function cancelShopJob(orderId: string, reason: string): Promise<void> {
+  await request(`/orders/${encodeURIComponent(orderId)}/shop-cancel`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/** Supplier. One later ready-by request. The promise does not move until the client accepts. */
+export async function requestShopDeadline(
+  orderId: string,
+  input: { reason: string; proposedReadyBy: string },
+): Promise<unknown> {
+  return request(`/orders/${encodeURIComponent(orderId)}/reschedule-request`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+/** Supplier. This shop's own deadline requests. */
+export async function listMyRescheduleRequests(): Promise<unknown> {
+  return request("/me/reschedule-requests");
+}
+
 /**
  * Supplier. Change the week and closures (`schedule`, which clears today's
  * extension), Temporarily closed, or today's extension (`null` ends it).
@@ -3491,6 +3602,22 @@ export async function uploadRefundReceipt(file: File): Promise<StoredFile> {
 
 export async function uploadSupportChatImage(file: File): Promise<StoredFile> {
   return uploadPurpose("support_chat_image", file);
+}
+
+/** A shop paper. Count it as sent only after `attachVerificationDocument` succeeds. */
+export async function uploadVerificationDocument(file: File): Promise<StoredFile> {
+  return uploadPurpose("verification_document", file);
+}
+
+export async function attachVerificationDocument(
+  fileId: string,
+  documentKind: string,
+): Promise<StoredFile> {
+  const result = await request<{ file: StoredFile }>(`/files/${encodeURIComponent(fileId)}/attach`, {
+    method: "POST",
+    body: JSON.stringify({ documentKind }),
+  });
+  return result.file;
 }
 
 async function uploadPurpose(purpose: string, file: File): Promise<StoredFile> {
