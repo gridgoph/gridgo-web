@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiError } from "@/lib/api/client";
 import type { SupplierPayoutAccount } from "@/lib/api/types";
 
 vi.stubGlobal("React", React);
@@ -17,7 +18,14 @@ class FakePointerEvent extends MouseEvent {
   }
 }
 vi.stubGlobal("PointerEvent", FakePointerEvent);
-vi.mock("@/lib/live/useLiveReload", () => ({ useLiveReload: () => {} }));
+const liveLoad = vi.hoisted(() => ({
+  current: null as null | ((adopt?: boolean) => Promise<void>),
+}));
+vi.mock("@/lib/live/useLiveReload", () => ({
+  useLiveReload: (_resource: unknown, load: (adopt?: boolean) => Promise<void>) => {
+    liveLoad.current = load;
+  },
+}));
 
 const getMyPayoutAccount = vi.hoisted(() => vi.fn());
 const updateMyPayoutAccount = vi.hoisted(() => vi.fn());
@@ -145,6 +153,44 @@ describe("where the shop gets paid, from the portal", () => {
     await user.click(screen.getByRole("radio", { name: /^Bank transfer/ }));
     expect(screen.getByLabelText("Bank")).toBeInTheDocument();
     expect(screen.getByLabelText("Account number")).toBeInTheDocument();
+  });
+
+  it("keeps a dirty draft when a newer version arrives, until the shop loads it", async () => {
+    getMyPayoutAccount.mockResolvedValue(ACCOUNT);
+    updateMyPayoutAccount.mockRejectedValue(
+      new ApiError(409, { error: "payout_account_stale" }),
+    );
+
+    render(<SupplierPayoutSettings />);
+    const name = await screen.findByLabelText("Account name");
+    fireEvent.change(name, { target: { value: "Ben edited" } });
+
+    getMyPayoutAccount.mockResolvedValue({
+      ...ACCOUNT,
+      version: 4,
+      accountName: "From the phone",
+    });
+    await act(async () => {
+      await liveLoad.current?.();
+    });
+
+    expect(screen.getByLabelText("Account name")).toHaveValue("Ben edited");
+    expect(screen.getByRole("alert")).toHaveTextContent(/changed somewhere else/);
+    expect(getMyPayoutAccount).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(updateMyPayoutAccount).toHaveBeenCalledWith(2, { accountName: "Ben edited" }),
+    );
+    expect(screen.getByLabelText("Account name")).toHaveValue("Ben edited");
+    expect(getMyPayoutAccount).toHaveBeenCalledTimes(2);
+
+    fireEvent.click(screen.getByRole("button", { name: "Load the latest" }));
+    await waitFor(() =>
+      expect(screen.getByLabelText("Account name")).toHaveValue("From the phone"),
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(getMyPayoutAccount).toHaveBeenCalledTimes(3);
   });
 
   it("says plainly when GRIDGO has not opened this yet", async () => {

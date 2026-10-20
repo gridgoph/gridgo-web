@@ -20,7 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ChevronLeft, Info } from "lucide-react";
 import { ChatAvatar } from "@/components/chat/ChatAvatar";
-import { InboxPager, sliceInboxPage } from "@/components/chat/InboxPager";
+import { INBOX_PAGE_SIZE, InboxPager, inboxPageCount, sliceInboxPage } from "@/components/chat/InboxPager";
 import {
   deleteSupportChatThread,
   getSupportChatThread,
@@ -143,7 +143,9 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
   const [draft, setDraft] = useState("");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [inboxPage, setInboxPage] = useState(0);
+  const [inboxPageSize, setInboxPageSize] = useState(INBOX_PAGE_SIZE);
   const [peoplePage, setPeoplePage] = useState(0);
+  const [peoplePageSize, setPeoplePageSize] = useState(INBOX_PAGE_SIZE);
   const [messageQuery, setMessageQuery] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SupportChatMessage[]>([]);
@@ -157,6 +159,16 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
   const endRef = useRef<HTMLDivElement | null>(null);
 
   const conversations = useMemo(() => groupSupportChatThreads(threads ?? []), [threads]);
+
+  function changeInboxPageSize(next: number) {
+    setInboxPageSize(next);
+    setInboxPage((page) => (page >= inboxPageCount(conversations.length, next) ? 0 : page));
+  }
+
+  function changePeoplePageSize(next: number) {
+    setPeoplePageSize(next);
+    setPeoplePage((page) => (page >= inboxPageCount(people?.length ?? 0, next) ? 0 : page));
+  }
   const selected = useMemo(
     () => conversations.find((conversation) => conversation.key === selectedKey) ?? null,
     [conversations, selectedKey],
@@ -454,18 +466,18 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
   return (
     <>
     <div
-      className={`grid min-h-[36rem] gap-4 ${
+      className={`grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] gap-4 overflow-hidden ${
         detailsOpen
           ? "grid-cols-1 xl:grid-cols-[18rem_minmax(0,1fr)_20rem]"
           : "lg:grid-cols-[18rem_minmax(0,1fr)]"
       }`}
     >
       <aside
-        className={`gg-card min-w-0 flex-col gap-3 ${
+        className={`gg-card h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden ${
           detailsOpen ? "hidden xl:flex" : threadOpen ? "hidden lg:flex" : "flex"
         }`}
       >
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex shrink-0 items-center justify-between gap-2">
           <h2 className="text-h3 text-text-primary m-0">Inbox</h2>
           <Button
             variant="secondary"
@@ -494,11 +506,12 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Search name, email or preview"
           aria-label="Search conversations"
+          className="shrink-0"
         />
         {/* The five filters overflow the 18rem inbox, so the strip keeps a visible scrollbar. */}
         <div
           data-testid="role-filter-scroller"
-          className="min-w-0 overflow-x-auto pb-2 [scrollbar-color:var(--border)_transparent] [scrollbar-width:thin]"
+          className="min-w-0 shrink-0 overflow-x-auto pb-2 [scrollbar-color:var(--border)_transparent] [scrollbar-width:thin]"
         >
         <ToggleGroup
           value={[role]}
@@ -527,7 +540,7 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
                   body="Start one from New conversation, or wait until a client, shop or rider writes in."
                 />
               ) : (
-                sliceInboxPage(conversations, inboxPage).map((conversation) => {
+                sliceInboxPage(conversations, inboxPage, inboxPageSize).map((conversation) => {
                   const thread = conversation.lead;
                   const person = supportChatCounterpart(thread);
                   const active = conversation.key === selectedKey;
@@ -576,18 +589,25 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
               )}
             </div>
         {conversations.length ? (
-          <InboxPager page={inboxPage} total={conversations.length} onPageChange={setInboxPage} />
+          <InboxPager
+            page={inboxPage}
+            total={conversations.length}
+            pageSize={inboxPageSize}
+            onPageChange={setInboxPage}
+            onPageSizeChange={changeInboxPageSize}
+            pageSizeLabel="Conversations per page"
+          />
         ) : null}
       </aside>
 
       <section
-        className={`gg-card min-h-[28rem] min-w-0 flex-col gap-3 ${
+        className={`gg-card h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden ${
           detailsOpen ? "hidden xl:flex" : threadOpen ? "flex" : "hidden lg:flex"
         }`}
       >
         {finding ? (
           <div className="flex min-h-0 flex-1 flex-col gap-3">
-            <div className="flex items-center gap-2 border-b border-border pb-3">
+            <div className="flex shrink-0 items-center gap-2 border-b border-border pb-3">
               {threadOpen ? (
                 <Button
                   type="button"
@@ -614,7 +634,7 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
                 className="h-11 border-0 bg-transparent px-0"
               />
             </div>
-            <h3 className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+            <h3 className="text-body text-text-primary m-0 shrink-0" style={{ fontFamily: "var(--font-medium)" }}>
               Your contacts
             </h3>
             <div className="min-h-0 flex-1 overflow-y-auto" role="list" aria-label="People">
@@ -626,7 +646,7 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
                   body="Try a name or email. Operations and admin can write to each other from here too."
                 />
               ) : (
-                sliceInboxPage(people, peoplePage).map((person) => (
+                sliceInboxPage(people, peoplePage, peoplePageSize).map((person) => (
                   <button
                     key={`${person.role}:${person.userId}`}
                     type="button"
@@ -652,7 +672,10 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
               <InboxPager
                 page={peoplePage}
                 total={people.length}
+                pageSize={peoplePageSize}
                 onPageChange={setPeoplePage}
+                onPageSizeChange={changePeoplePageSize}
+                pageSizeLabel="People per page"
                 label="People pages"
               />
             ) : null}
@@ -664,7 +687,7 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
           />
         ) : (
           <>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex shrink-0 items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2">
                 {threadOpen ? (
                   <Button
@@ -716,7 +739,7 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
               )}
               <div ref={endRef} />
             </div>
-            <div className="flex flex-col gap-2">
+            <div className="flex shrink-0 flex-col gap-2">
               {pendingFiles.length ? (
                 <p className="text-caption text-text-muted m-0">
                   {pendingFiles.length === 1
@@ -750,7 +773,7 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
 
       {selected && selectedPerson ? (
         <aside
-          className={`gg-card min-h-[28rem] min-w-0 w-full flex-col gap-3 ${
+          className={`gg-card h-full min-h-0 min-w-0 w-full flex-col gap-3 overflow-hidden ${
             detailsOpen ? "flex" : "hidden"
           }`}
         >

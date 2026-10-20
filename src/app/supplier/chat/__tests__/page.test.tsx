@@ -346,7 +346,10 @@ describe("supplier chat", () => {
     render(<SupplierChatPage />);
     fireEvent.click(await screen.findByRole("button", { name: "Operations, Where is the payout?" }));
     const run = await screen.findByTestId("chat-run");
-    expect(await within(run).findByRole("img", { name: "proof.jpg" })).toBeTruthy();
+    fireEvent.click(await within(run).findByRole("img", { name: "proof.jpg" }));
+    expect(await screen.findByRole("img", { name: "proof.jpg preview" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(screen.getByText("150%")).toBeTruthy();
   });
 
   it("shows a date chip when a new day starts", async () => {
@@ -368,6 +371,46 @@ describe("supplier chat", () => {
       formatDate(yesterday.toISOString()),
       "Today",
     ]);
+  });
+
+  it("keeps Operations and Send outside the scrolling messages", async () => {
+    render(<SupplierChatPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Operations, Where is the payout?" }));
+    const transcript = (await screen.findByTestId("chat-run")).closest("div.overflow-y-auto")!;
+    expect(transcript.contains(screen.getByRole("button", { name: "Send" }))).toBe(false);
+    expect(transcript.contains(screen.getByLabelText("Message Operations"))).toBe(false);
+    expect(
+      screen.getAllByRole("heading", { name: "Operations" }).every((name) => !transcript.contains(name)),
+    ).toBe(true);
+    expect(transcript.closest(".grid")).toHaveClass("min-h-0", "flex-1");
+    expect(transcript.closest(".grid")).not.toHaveClass("lg:min-h-[36rem]");
+    expect(transcript.closest("section")).not.toHaveClass("min-h-[28rem]");
+  });
+
+  it("lets the shop choose how many conversations show on one page", async () => {
+    const many = Array.from({ length: 9 }, (_, index) => ({
+      ...thread,
+      id: `thread-${index}`,
+      lastMessagePreview: `Preview ${index}`,
+    }));
+    getSupportChatMe.mockResolvedValue({
+      thread: many[0],
+      threads: many,
+      messages: [],
+      unreadCount: 0,
+    });
+    render(<SupplierChatPage />);
+    expect(await screen.findByRole("button", { name: "Operations, Preview 0" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Operations, Preview 8" })).toBeNull();
+    expect(screen.getByText("Page 1 of 2")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(screen.getByRole("button", { name: "Operations, Preview 8" })).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: "Conversations per page" }), {
+      target: { value: "16" },
+    });
+    expect(screen.getByText("Page 1 of 1")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Operations, Preview 0" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Operations, Preview 8" })).toBeTruthy();
   });
 });
 

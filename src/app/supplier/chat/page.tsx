@@ -20,7 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ChatAttachButton } from "@/components/chat/ChatAttachButton";
 import { ChatAvatar } from "@/components/chat/ChatAvatar";
 import { ConversationDetails } from "@/components/chat/ConversationDetails";
-import { InboxPager, sliceInboxPage } from "@/components/chat/InboxPager";
+import { INBOX_PAGE_SIZE, InboxPager, inboxPageCount, sliceInboxPage } from "@/components/chat/InboxPager";
 import { ApiError, uploadSupportChatImage } from "@/lib/api/client";
 import { openSupportChatStream } from "@/lib/api/support-chat";
 import {
@@ -86,6 +86,7 @@ export default function SupplierChatPage() {
   const [threadNonce, setThreadNonce] = useState(0);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [inboxPage, setInboxPage] = useState(0);
+  const [inboxPageSize, setInboxPageSize] = useState(INBOX_PAGE_SIZE);
   const [messageQuery, setMessageQuery] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SupportChatMessage[]>([]);
@@ -233,6 +234,11 @@ export default function SupplierChatPage() {
     endRef.current?.scrollIntoView?.({ block: "end" });
   }, [messages.length, selectedId]);
 
+  function changeInboxPageSize(next: number) {
+    setInboxPageSize(next);
+    setInboxPage((page) => (page >= inboxPageCount(threads?.length ?? 0, next) ? 0 : page));
+  }
+
   async function openNew() {
     if (opening) return;
     setOpening(true);
@@ -341,15 +347,15 @@ export default function SupplierChatPage() {
   const selected = threads?.find((thread) => thread.id === selectedId) ?? null;
 
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-body text-text-secondary m-0 max-w-prose">
+    <div className="flex h-[calc(100dvh-3.5rem-1.5rem)] min-h-0 flex-col gap-3">
+      <p className="text-body text-text-secondary m-0 max-w-prose shrink-0">
         Your conversations with Operations. Ask about a job, a payout, or anything the
         desk needs to settle.
       </p>
       {error && threads ? (
         <div
           role="alert"
-          className="flex flex-col items-start gap-3 rounded-card border border-error bg-surface p-4"
+          className="flex shrink-0 flex-col items-start gap-3 rounded-card border border-error bg-surface p-4"
         >
           <p className="text-body text-text-secondary m-0">{error}</p>
           <Button variant="secondary" onClick={retry}>
@@ -358,7 +364,7 @@ export default function SupplierChatPage() {
         </div>
       ) : null}
       <div
-        className={`grid gap-4 lg:min-h-[36rem] ${
+        className={`grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] gap-4 overflow-hidden ${
           detailsOpen
             ? "grid-cols-1 xl:grid-cols-[18rem_minmax(0,1fr)_20rem]"
             : "lg:grid-cols-[18rem_minmax(0,1fr)]"
@@ -368,11 +374,11 @@ export default function SupplierChatPage() {
             shows one or the other, never an empty "Pick a conversation" box
             under the list. */}
         <aside
-          className={`gg-card flex-col gap-3 ${
+          className={`gg-card h-full min-h-0 flex-col gap-3 overflow-hidden ${
             detailsOpen ? "hidden xl:flex" : selectedId ? "hidden lg:flex" : "flex"
           }`}
         >
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex shrink-0 items-start justify-between gap-3">
             <div className="min-w-0">
               <h2 className="text-h3 text-text-primary m-0">Operations</h2>
               <p className="text-caption text-text-muted m-0 mt-1">Your conversations</p>
@@ -411,7 +417,7 @@ export default function SupplierChatPage() {
                 }
               />
             ) : (
-              sliceInboxPage(threads, inboxPage).map((thread) => {
+              sliceInboxPage(threads, inboxPage, inboxPageSize).map((thread) => {
                 const preview = thread.lastMessagePreview?.trim() || "No messages yet";
                 const active = thread.id === selectedId;
                 return (
@@ -461,12 +467,19 @@ export default function SupplierChatPage() {
             )}
           </div>
           {threads?.length ? (
-            <InboxPager page={inboxPage} total={threads.length} onPageChange={setInboxPage} />
+            <InboxPager
+              page={inboxPage}
+              total={threads.length}
+              pageSize={inboxPageSize}
+              onPageChange={setInboxPage}
+              onPageSizeChange={changeInboxPageSize}
+              pageSizeLabel="Conversations per page"
+            />
           ) : null}
         </aside>
 
         <section
-          className={`gg-card min-h-[28rem] min-w-0 flex-col gap-3 ${
+          className={`gg-card h-full min-h-0 min-w-0 flex-col gap-3 overflow-hidden ${
             detailsOpen ? "hidden xl:flex" : selectedId ? "flex" : "hidden lg:flex"
           }`}
         >
@@ -480,13 +493,13 @@ export default function SupplierChatPage() {
               <Button
                 variant="ghost"
                 size="sm"
-                className="self-start lg:hidden"
+                className="shrink-0 self-start lg:hidden"
                 onClick={() => setSelectedId(null)}
               >
                 <ChevronLeft data-icon="inline-start" aria-hidden />
                 All conversations
               </Button>
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex shrink-0 items-start justify-between gap-3">
                 <button
                   type="button"
                   className="flex min-w-0 items-center gap-2 rounded-[var(--radius-field)] text-left hover:bg-overlay-hover"
@@ -531,7 +544,7 @@ export default function SupplierChatPage() {
                 )}
                 <div ref={endRef} />
               </div>
-              <div className="flex flex-col gap-2">
+              <div className="flex shrink-0 flex-col gap-2">
                 {pendingFiles.length ? (
                   <p className="text-caption text-text-muted m-0">
                     {pendingFiles.length === 1
@@ -567,7 +580,7 @@ export default function SupplierChatPage() {
 
         {selectedId ? (
           <aside
-            className={`gg-card min-h-[28rem] min-w-0 w-full flex-col gap-3 ${
+            className={`gg-card h-full min-h-0 min-w-0 w-full flex-col gap-3 overflow-hidden ${
               detailsOpen ? "flex" : "hidden"
             }`}
           >
