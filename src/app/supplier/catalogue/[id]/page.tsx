@@ -426,6 +426,44 @@ function holdReason(draft: Draft, listing: Listing): string | null {
   return null;
 }
 
+type PrepField = "title" | "body";
+type PrepDraft = {
+  title?: string;
+  body?: string;
+  /** Why GRIDGO refused that box's last save. */
+  errors?: Partial<Record<PrepField, string>>;
+};
+
+/**
+ * One box's text was stored. Its draft goes unless the shop typed on since,
+ * and the step's warning goes once nothing on it is left unsaved.
+ */
+function settleDraft(
+  drafts: Record<string, PrepDraft>,
+  stepId: string,
+  field: PrepField,
+  sent: string,
+): Record<string, PrepDraft> {
+  const draft = drafts[stepId];
+  if (!draft || draft[field] !== sent) return drafts;
+  const rest: PrepDraft = { ...draft };
+  delete rest[field];
+  if (rest.errors) {
+    rest.errors = { ...rest.errors };
+    delete rest.errors[field];
+  }
+  const next = { ...drafts };
+  if (rest.title === undefined && rest.body === undefined) delete next[stepId];
+  else next[stepId] = rest;
+  return next;
+}
+
+function prepEditMessage(err: unknown): string {
+  return isApiError(err) && ["catalog_item_stale", "expected_version_required"].includes(err.code)
+    ? "This listing changed on another screen. Your text is still in the box; click out of it to save it again."
+    : listingErrorMessage(err, "Could not save that step. Your text is still in the box.");
+}
+
 export default function ListingEditorPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -473,6 +511,25 @@ export default function ListingEditorPage() {
   const prepQueue = useRef<Promise<void>>(Promise.resolve());
   const listingVersion = useRef<number | null>(null);
   const prepStepsRef = useRef<PrepStep[]>([]);
+  // Text the shop typed into a step that GRIDGO has not stored yet, by step
+  // id. It lives here, not in the boxes, so a refused save survives a tab
+  // change, and its warning stays until that edit saves or is put back.
+  const [prepDrafts, setPrepDrafts] = useState<Record<string, PrepDraft>>({});
+  const [prepError, setPrepError] = useState<string | null>(null);
+
+  /** A listing's version only moves on, whichever save or read reports it. */
+  function adoptVersion(version: number | null | undefined) {
+    if (version == null) return;
+    if (listingVersion.current == null || version > listingVersion.current) {
+      listingVersion.current = version;
+    }
+  }
+
+  // Autosave, photo moves and Send for review adopt the saved listing without
+  // a reread; the next prep-step write must carry the version they left.
+  useEffect(() => {
+    adoptVersion(listing?.version);
+  }, [listing?.version]);
 
   const working = draft ?? (listing ? draftFrom(listing) : null);
 
@@ -506,7 +563,7 @@ export default function ListingEditorPage() {
         const next = normalizeListing(itemBody);
         if (!next) throw new Error("unreadable");
         setListing(next);
-        listingVersion.current = next.version;
+        adoptVersion(next.version);
         setReadiness(ready?.get(next.id) ?? null);
         setServices(normalizeServiceLines(servicesBody));
         setTaxonomy(tax);
@@ -1042,26 +1099,36 @@ export default function ListingEditorPage() {
     }
   }
 
-  /** Runs one prep-step write after any still in flight, then rereads the listing. */
+  /**
+   * Runs one prep-step write after any still in flight, then rereads the
+   * listing. `settled` runs after the reread, with the refusal if there was one.
+   */
   function queuePrep(
     write: (version: number | null) => Promise<unknown>,
-    message: (err: unknown) => string,
+    settled: (err: unknown | null) => void,
   ) {
     const run = prepQueue.current.then(async () => {
+      let failure: unknown | null = null;
       try {
         const body = await write(listingVersion.current);
-        const itemVersion = (body as { itemVersion?: unknown } | null)?.itemVersion;
-        if (typeof itemVersion === "number") listingVersion.current = itemVersion;
-        setActionError(null);
+        adoptVersion(
+          (body as { itemVersion?: unknown } | null)?.itemVersion as number | null | undefined,
+        );
       } catch (err) {
-        setActionError(message(err));
+        failure = err;
       }
-      // A refused write still rereads, so the next try carries the current
-      // version. The boxes are not reset, so the shop's typing stays put.
+      // A refused write still rereads, so the next try carries the current version.
       await load().catch(() => undefined);
+      settled(failure);
     });
     prepQueue.current = run;
     return run;
+  }
+
+  /** For moves, adds and removals; an edit's warning stays on its own step. */
+  function prepActionSettled(fallback: string) {
+    return (err: unknown | null) =>
+      setPrepError(err == null ? null : listingErrorMessage(err, fallback));
   }
 
   async function moveStep(stepId: string, direction: -1 | 1) {
@@ -1078,8 +1145,7 @@ export default function ListingEditorPage() {
           order.splice(next, 0, stepId);
           return reorderCatalogItemPrepSteps(id, version, order);
         },
-        (err) =>
-          listingErrorMessage(err, "GRIDGO refused that order. Refresh the steps and try again."),
+        prepActionSettled("GRIDGO refused that order. Refresh the steps and try again."),
       );
     } finally {
       setBusy(false);
@@ -1099,28 +1165,59 @@ export default function ListingEditorPage() {
               LISTING_CAPS.prepSteps,
             ),
           }),
-        (err) => listingErrorMessage(err, "Could not add that step."),
+        prepActionSettled("Could not add that step."),
       );
     } finally {
       setBusy(false);
     }
   }
 
-  function saveStep(step: PrepStep, patch: { title?: string; body?: string }) {
-    return queuePrep(
-      (version) => updateCatalogItemPrepStep(id, step.id, version, patch),
+  function typeStep(stepId: string, field: PrepField, value: string) {
+    setPrepDrafts((current) => ({ ...current, [stepId]: { ...current[stepId], [field]: value } }));
+  }
+
+  /** Saves what was typed into one box, unless it already matches GRIDGO's copy. */
+  function saveStep(step: PrepStep, field: PrepField) {
+    const typed = prepDrafts[step.id]?.[field];
+    if (typed === undefined) return;
+    const value = field === "title" ? typed.trim() : typed;
+    if (value === step[field]) {
+      setPrepDrafts((current) => settleDraft(current, step.id, field, typed));
+      return;
+    }
+    void queuePrep(
+      (version) => updateCatalogItemPrepStep(id, step.id, version, { [field]: value }),
       (err) =>
-        isApiError(err) && ["catalog_item_stale", "expected_version_required"].includes(err.code)
-          ? "This listing changed on another screen. Your text is still in the box; click out of it to save it again."
-          : listingErrorMessage(err, "Could not save that step. Your text is still in the box."),
+        setPrepDrafts((current) =>
+          err == null
+            ? settleDraft(current, step.id, field, typed)
+            : current[step.id]?.[field] === typed
+              ? {
+                  ...current,
+                  [step.id]: {
+                    ...current[step.id],
+                    errors: { ...current[step.id].errors, [field]: prepEditMessage(err) },
+                  },
+                }
+              : current,
+        ),
     );
   }
 
+  /** Drops the shop's unsaved text for a step and shows GRIDGO's copy again. */
+  function putBackStep(stepId: string) {
+    setPrepDrafts((current) => {
+      const rest = { ...current };
+      delete rest[stepId];
+      return rest;
+    });
+  }
+
   function dropStep(step: PrepStep) {
-    return queuePrep(
-      (version) => deleteCatalogItemPrepStep(id, step.id, version),
-      (err) => listingErrorMessage(err, "Could not remove that step."),
-    );
+    return queuePrep((version) => deleteCatalogItemPrepStep(id, step.id, version), (err) => {
+      prepActionSettled("Could not remove that step.")(err);
+      if (err == null) putBackStep(step.id);
+    });
   }
 
   async function saveFormats(mode: "inherit" | "override", codes: string[]) {
@@ -1688,6 +1785,9 @@ export default function ListingEditorPage() {
                   {prepLoadError ? (
                     <p className="text-body text-error m-0" role="alert">{prepLoadError}</p>
                   ) : null}
+                  {prepError ? (
+                    <p className="text-body text-error m-0" role="alert">{prepError}</p>
+                  ) : null}
                   {prepSteps.length === 0 && !prepLoadError ? (
                     <p className="text-body text-text-secondary m-0 max-w-prose">
                       Nothing yet. On specialised work this is where a job is won or lost —
@@ -1724,23 +1824,32 @@ export default function ListingEditorPage() {
                             </div>
                           </div>
                           <Input
-                            defaultValue={prep.title}
+                            value={prepDrafts[prep.id]?.title ?? prep.title}
                             aria-label={`Step ${index + 1} title`}
-                            onBlur={(event) => {
-                              if (event.target.value.trim() !== prep.title) {
-                                void saveStep(prep, { title: event.target.value.trim() });
-                              }
-                            }}
+                            onChange={(event) => typeStep(prep.id, "title", event.target.value)}
+                            onBlur={() => saveStep(prep, "title")}
                           />
                           <Textarea
-                            defaultValue={prep.body}
+                            value={prepDrafts[prep.id]?.body ?? prep.body}
                             aria-label={`Step ${index + 1} details`}
-                            onBlur={(event) => {
-                              if (event.target.value !== prep.body) {
-                                void saveStep(prep, { body: event.target.value });
-                              }
-                            }}
+                            onChange={(event) => typeStep(prep.id, "body", event.target.value)}
+                            onBlur={() => saveStep(prep, "body")}
                           />
+                          {prepDrafts[prep.id]?.errors?.title || prepDrafts[prep.id]?.errors?.body ? (
+                            <div className="flex flex-col items-start gap-1">
+                              <p className="text-body text-error m-0" role="alert">
+                                {prepDrafts[prep.id]?.errors?.title ?? prepDrafts[prep.id]?.errors?.body}
+                              </p>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => putBackStep(prep.id)}
+                              >
+                                Put back the saved text
+                              </Button>
+                            </div>
+                          ) : null}
                           <Button variant="ghost" onClick={() => void dropStep(prep)}>
                             Remove this step
                           </Button>
