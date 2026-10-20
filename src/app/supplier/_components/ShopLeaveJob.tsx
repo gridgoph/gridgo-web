@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ApiError, cancelShopJob, requestShopDeadline } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
+import { hasOpenChange } from "@/lib/order-changes";
 import { shopWorkStopped } from "@/lib/supplier-actions";
 
 const CANCELLABLE = new Set([
@@ -19,6 +20,10 @@ const CANCELLABLE = new Set([
 ]);
 
 const DEADLINE_STATES = new Set(["production", "supplier_self_qc"]);
+
+// The shop app's words for `change_request_pending`.
+const CHANGE_WAITING =
+  "This job has a change request waiting. Ask for a new deadline once the client has answered it.";
 
 function canAskDeadline(order: Order): boolean {
   if (!DEADLINE_STATES.has(order.state) || order.readyAt) return false;
@@ -43,9 +48,12 @@ export function ShopLeaveJob({ order, onChanged }: { order: Order; onChanged: ()
     CANCELLABLE.has(order.state) &&
     !shopWorkStopped(order) &&
     !(order.shopRecovery && order.shopRecovery.status !== "accepted");
-  const canDeadline = canAskDeadline(order);
+  // One request at a time: GRIDGO refuses a deadline request while the
+  // shop's change request waits (`409 change_request_pending`).
+  const changeWaiting = canAskDeadline(order) && hasOpenChange(order);
+  const canDeadline = canAskDeadline(order) && !changeWaiting;
 
-  if (!canCancel && !canDeadline && !order.rescheduleRequest) return null;
+  if (!canCancel && !canDeadline && !changeWaiting && !order.rescheduleRequest) return null;
 
   async function cancel() {
     if (!reason.trim() || !confirmed) {
@@ -88,6 +96,11 @@ export function ShopLeaveJob({ order, onChanged }: { order: Order; onChanged: ()
       setNote("Asked. The promise does not change until the client accepts.");
       onChanged();
     } catch (err) {
+      if (err instanceof ApiError && err.code === "change_request_pending") {
+        setError(CHANGE_WAITING);
+        onChanged();
+        return;
+      }
       setError(err instanceof ApiError && (err.status === 404 || err.status === 405)
         ? "A new deadline is not open yet."
         : "GRIDGO did not take that deadline request.");
@@ -135,6 +148,9 @@ export function ShopLeaveJob({ order, onChanged }: { order: Order; onChanged: ()
             Cancel this job
           </Button>
         </form>
+      ) : null}
+      {changeWaiting ? (
+        <p className="text-body text-text-secondary m-0">{CHANGE_WAITING}</p>
       ) : null}
       {canDeadline ? (
         <form
