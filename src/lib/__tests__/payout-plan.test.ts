@@ -317,14 +317,19 @@ describe("the shop's proof on an escrow order", () => {
   it("asks for one start-of-production photo, then lets the job be packed", () => {
     const open = order(escrowStages());
     expect(nextShopProof(open)?.code).toBe("production_started");
-    expect(actionsForJob(open)).toEqual([
+    expect(actionsForJob(open).map((action) => action.kind)).toEqual([
+      "add_proof",
+      "ready_for_pickup",
+    ]);
+    expect(actionsForJob(open)[0]).toEqual(
       expect.objectContaining({
         kind: "add_proof",
         label: "Add start-of-production proof",
         milestoneCode: "production_started",
         proofLabel: "Start of production",
+        primary: true,
       }),
-    ]);
+    );
 
     const filed = order(escrowStages({ production_started: proofOnFile("file_start") }));
     expect(actionsForJob(filed).map((a) => a.label)).toEqual(["Package for pickup"]);

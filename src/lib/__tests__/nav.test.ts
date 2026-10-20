@@ -31,7 +31,11 @@ describe("ROLE_NAV", () => {
       "/supplier/dashboard",
       "/supplier/jobs",
       "/supplier/chat",
+      "/supplier/shop",
+      "/supplier/documents",
+      "/supplier/services",
       "/supplier/catalogue",
+      "/supplier/product-types",
       "/supplier/schedule",
       "/supplier/shop-hours",
       "/supplier/capacity",
@@ -211,10 +215,14 @@ describe("ROLE_NAV", () => {
       "/supplier/catalogue",
       "/supplier/chat",
       "/supplier/dashboard",
+      "/supplier/documents",
       "/supplier/jobs",
       "/supplier/payout-account",
       "/supplier/payouts",
+      "/supplier/product-types",
       "/supplier/schedule",
+      "/supplier/services",
+      "/supplier/shop",
       "/supplier/shop-hours",
     ]);
   });
@@ -395,7 +403,11 @@ describe("ROLE_NAV", () => {
         .find((g) => g.id === "supplier-shop")
         ?.items.map((n) => n.href),
     ).toEqual([
+      "/supplier/shop",
+      "/supplier/documents",
+      "/supplier/services",
       "/supplier/catalogue",
+      "/supplier/product-types",
       "/supplier/schedule",
       "/supplier/shop-hours",
       "/supplier/capacity",

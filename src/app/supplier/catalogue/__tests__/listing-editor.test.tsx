@@ -32,6 +32,8 @@ const mocks = vi.hoisted(() => ({
   listCatalogItems: vi.fn(),
   previewProductionTime: vi.fn(),
   applyProductionTimeToAll: vi.fn(),
+  updateCatalogItemPrepStep: vi.fn(),
+  reorderCatalogItemPrepSteps: vi.fn(),
 }));
 
 vi.stubGlobal("React", React);
@@ -74,6 +76,8 @@ vi.mock("@/lib/api/client", async () => {
     listCatalogItems: mocks.listCatalogItems,
     previewProductionTime: mocks.previewProductionTime,
     applyProductionTimeToAll: mocks.applyProductionTimeToAll,
+    updateCatalogItemPrepStep: mocks.updateCatalogItemPrepStep,
+    reorderCatalogItemPrepSteps: mocks.reorderCatalogItemPrepSteps,
   };
 });
 
@@ -1353,7 +1357,7 @@ describe("listing editor sample photos", () => {
     );
   }
 
-  /** The wide sample in "What clients see". */
+  /** The Board photo in "What clients see". */
   async function previewSample(fileId: string) {
     const preview = screen.getByTestId("listing-preview-sample");
     await waitFor(() =>
@@ -1375,10 +1379,10 @@ describe("listing editor sample photos", () => {
     render(<ListingEditorPage />);
     await openEditorStep("About");
 
-    for (const name of ["Edit wide sample", "Edit photo 2", "Edit photo 3"]) {
+    for (const name of ["Edit Board photo", "Edit photo 2", "Edit photo 3"]) {
       expect(screen.getByRole("button", { name })).toBeVisible();
     }
-    await user.click(screen.getByRole("button", { name: "Edit wide sample" }));
+    await user.click(screen.getByRole("button", { name: "Edit Board photo" }));
     const wideItems = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
     expect(wideItems).toEqual(["Move later", "Replace photo…", "Remove photo…"]);
     await user.keyboard("{Escape}");
@@ -1386,7 +1390,7 @@ describe("listing editor sample photos", () => {
     await user.click(screen.getByRole("button", { name: "Edit photo 3" }));
     const lastItems = (await screen.findAllByRole("menuitem")).map((item) => item.textContent);
     expect(lastItems).toEqual([
-      "Make wide sample",
+      "Make Board photo",
       "Move earlier",
       "Replace photo…",
       "Remove photo…",
@@ -1417,20 +1421,20 @@ describe("listing editor sample photos", () => {
     expect(screen.queryByRole("button", { name: "Edit photo 3" })).not.toBeInTheDocument();
   });
 
-  it("removes the wide sample, says the next photo took its place, and updates the preview", async () => {
+  it("removes the Board photo, says the next photo took its place, and updates the preview", async () => {
     const user = userEvent.setup();
     stubPhotos();
     render(<ListingEditorPage />);
     await openEditorStep("About");
     await previewSample("file_1");
 
-    await choose(user, "wide sample", "Remove photo…");
+    await choose(user, "Board photo", "Remove photo…");
     const dialog = await screen.findByRole("alertdialog");
     expect(
-      within(dialog).getByRole("heading", { name: "Remove the wide sample?" }),
+      within(dialog).getByRole("heading", { name: "Remove the Board photo?" }),
     ).toBeVisible();
     expect(
-      within(dialog).getByText(/Photo 2 becomes the wide sample clients see first\./),
+      within(dialog).getByText(/Photo 2 becomes the Board photo clients see first\./),
     ).toBeVisible();
     await user.click(within(dialog).getByRole("button", { name: "Remove photo" }));
 
@@ -1438,7 +1442,7 @@ describe("listing editor sample photos", () => {
       expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith("sci_1", ["file_2", "file_3"], 3),
     );
     expect(
-      await screen.findByText("Wide sample removed. The next photo is now the wide sample."),
+      await screen.findByText("Board photo removed. The next photo is now the Board photo."),
     ).toBeVisible();
     await previewSample("file_2");
   });
@@ -1449,7 +1453,7 @@ describe("listing editor sample photos", () => {
     render(<ListingEditorPage />);
     await openEditorStep("About");
 
-    await choose(user, "wide sample", "Remove photo…");
+    await choose(user, "Board photo", "Remove photo…");
     const dialog = await screen.findByRole("alertdialog");
     await user.click(within(dialog).getByRole("button", { name: "Keep it" }));
 
@@ -1464,7 +1468,7 @@ describe("listing editor sample photos", () => {
     render(<ListingEditorPage />);
     await openEditorStep("About");
 
-    await choose(user, "wide sample", "Remove photo…");
+    await choose(user, "Board photo", "Remove photo…");
     const dialog = await screen.findByRole("alertdialog");
     expect(within(dialog).getByRole("heading", { name: "Remove the only photo?" })).toBeVisible();
     expect(within(dialog).getByText(/clients stop seeing it until you add another/)).toBeVisible();
@@ -1473,16 +1477,16 @@ describe("listing editor sample photos", () => {
     await waitFor(() =>
       expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith("sci_1", [], 3),
     );
-    expect(await screen.findByRole("button", { name: /Add the wide sample/ })).toBeVisible();
+    expect(await screen.findByRole("button", { name: /Add the Board photo/ })).toBeVisible();
   });
 
-  it("makes a later photo the wide sample in one step and the preview follows", async () => {
+  it("makes a later photo the Board photo in one step and the preview follows", async () => {
     const user = userEvent.setup();
     stubPhotos();
     render(<ListingEditorPage />);
     await openEditorStep("About");
 
-    await choose(user, "photo 3", "Make wide sample");
+    await choose(user, "photo 3", "Make Board photo");
 
     await waitFor(() =>
       expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith(
@@ -1491,10 +1495,10 @@ describe("listing editor sample photos", () => {
         3,
       ),
     );
-    expect(await screen.findByText("Photo 3 is now the wide sample.")).toBeVisible();
+    expect(await screen.findByText("Photo 3 is now the Board photo.")).toBeVisible();
     await previewSample("file_3");
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Edit wide sample" })).toHaveFocus(),
+      expect(screen.getByRole("button", { name: "Edit Board photo" })).toHaveFocus(),
     );
   });
 
@@ -1537,7 +1541,7 @@ describe("listing editor sample photos", () => {
     await openEditorStep("About");
     await previewSample("file_1");
 
-    await choose(user, "wide sample", "Replace photo…");
+    await choose(user, "Board photo", "Replace photo…");
     const picked = new File(["x"], "sharper.jpg", { type: "image/jpeg" });
     await user.upload(screen.getByLabelText("Choose a replacement photo"), picked);
 
@@ -1546,7 +1550,7 @@ describe("listing editor sample photos", () => {
     );
     expect(mocks.uploadCatalogItemPhoto).toHaveBeenCalledWith(picked);
     expect(mocks.reorderCatalogPhotos).not.toHaveBeenCalled();
-    expect(await screen.findByText("Wide sample replaced. It kept its place.")).toBeVisible();
+    expect(await screen.findByText("Board photo replaced. It kept its place.")).toBeVisible();
     await previewSample("file_new");
   });
 
@@ -1690,6 +1694,462 @@ describe("listing editor print layouts (gridgo-client#245)", () => {
     await openEditorStep("Artwork");
     expect(screen.queryByRole("group", { name: "Print layouts you can print" })).not.toBeInTheDocument();
   });
+});
+
+describe("listing editor prep steps", () => {
+  const STEPS = [
+    { id: "prep_a", title: "Flatten the art", body: "", sortOrder: 0 },
+    { id: "prep_b", title: "Outline the fonts", body: "", sortOrder: 1 },
+  ];
+
+  it("moves a step only after the edit typed before it is saved, on the version that edit left", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    let finishSave: (() => void) | null = null;
+    mocks.updateCatalogItemPrepStep.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishSave = () => {
+            // The PATCH bumps the listing to version 4.
+            mocks.getCatalogItem.mockResolvedValue(catalogItem({ version: 4 }));
+            mocks.listCatalogItemPrepSteps.mockResolvedValue({
+              prepSteps: [{ ...STEPS[0], title: "Flatten every layer" }, STEPS[1]],
+            });
+            resolve({ itemVersion: 4 });
+          };
+        }),
+    );
+    mocks.reorderCatalogItemPrepSteps.mockResolvedValue({ itemVersion: 5 });
+    const user = userEvent.setup();
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+
+    const title = await screen.findByLabelText("Step 1 title");
+    await user.clear(title);
+    await user.type(title, "Flatten every layer");
+    // Clicking Later blurs the title first, so its save and the move leave together.
+    await user.click(screen.getAllByRole("button", { name: "Later" })[0]);
+
+    await waitFor(() =>
+      expect(mocks.updateCatalogItemPrepStep).toHaveBeenCalledWith("sci_1", "prep_a", 3, {
+        title: "Flatten every layer",
+      }),
+    );
+    expect(mocks.reorderCatalogItemPrepSteps).not.toHaveBeenCalled();
+
+    await act(async () => finishSave!());
+    await waitFor(() =>
+      expect(mocks.reorderCatalogItemPrepSteps).toHaveBeenCalledWith("sci_1", 4, [
+        "prep_b",
+        "prep_a",
+      ]),
+    );
+  });
+
+  it("keeps the shop's text in the box when the save meets a newer version", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    mocks.updateCatalogItemPrepStep
+      .mockRejectedValueOnce(new ApiError(409, { error: "catalog_item_stale" }))
+      .mockResolvedValueOnce({ itemVersion: 5 });
+    const user = userEvent.setup();
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+
+    const title = await screen.findByLabelText("Step 1 title");
+    await user.clear(title);
+    await user.type(title, "Flatten every layer");
+    // The refused save rereads the listing, which another screen moved to version 4.
+    mocks.getCatalogItem.mockResolvedValue(catalogItem({ version: 4 }));
+    await user.tab();
+
+    expect(await screen.findByText(/Your text is still in the box/)).toBeVisible();
+    expect(screen.getByLabelText("Step 1 title")).toHaveValue("Flatten every layer");
+
+    await waitFor(() => expect(mocks.getCatalogItem).toHaveBeenCalledTimes(2));
+    await user.click(screen.getByLabelText("Step 1 title"));
+    await user.tab();
+    await waitFor(() =>
+      expect(mocks.updateCatalogItemPrepStep).toHaveBeenLastCalledWith("sci_1", "prep_a", 4, {
+        title: "Flatten every layer",
+      }),
+    );
+  });
+
+  it("edits a step on the version an ordinary autosave left, without a reread", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    mocks.updateCatalogItemPrepStep.mockResolvedValue({ itemVersion: 5 });
+    const user = userEvent.setup();
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+
+    // The autosave answers version 4; nothing rereads the listing after it.
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers A5" } });
+    expect(await screen.findByText("Saved just now", {}, AUTOSAVE_WAIT)).toBeVisible();
+
+    await openEditorStep("Artwork");
+    const title = await screen.findByLabelText("Step 1 title");
+    await user.clear(title);
+    await user.type(title, "Flatten every layer");
+    await user.tab();
+
+    await waitFor(() =>
+      expect(mocks.updateCatalogItemPrepStep).toHaveBeenCalledWith("sci_1", "prep_a", 4, {
+        title: "Flatten every layer",
+      }),
+    );
+  }, 15_000);
+
+  it("moves a step on the version a photo move left", async () => {
+    stubLoad(
+      catalogItem({
+        photos: [
+          { fileId: "file_1", sortOrder: 0 },
+          { fileId: "file_2", sortOrder: 1 },
+        ],
+      }),
+    );
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    mocks.reorderCatalogPhotos.mockImplementation(
+      async (_itemId: string, fileIds: string[], expectedVersion: number) =>
+        catalogItem({
+          photos: fileIds.map((fileId, sortOrder) => ({ fileId, sortOrder })),
+          version: expectedVersion + 1,
+        }),
+    );
+    mocks.reorderCatalogItemPrepSteps.mockResolvedValue({ itemVersion: 5 });
+    const user = userEvent.setup();
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+
+    await user.click(screen.getByRole("button", { name: "Edit Board photo" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Move later" }));
+    await waitFor(() =>
+      expect(mocks.reorderCatalogPhotos).toHaveBeenCalledWith("sci_1", ["file_2", "file_1"], 3),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Edit Board photo" })).toBeEnabled(),
+    );
+
+    await openEditorStep("Artwork");
+    await user.click((await screen.findAllByRole("button", { name: "Later" }))[0]);
+    await waitFor(() =>
+      expect(mocks.reorderCatalogItemPrepSteps).toHaveBeenCalledWith("sci_1", 4, [
+        "prep_b",
+        "prep_a",
+      ]),
+    );
+  });
+
+  it("keeps a refused edit and its warning through a move that succeeds and a tab change", async () => {
+    stubLoad(catalogItem());
+    let moved = false;
+    mocks.listCatalogItemPrepSteps.mockImplementation(async () => ({
+      prepSteps: moved
+        ? [
+            { ...STEPS[1], sortOrder: 0 },
+            { ...STEPS[0], sortOrder: 1 },
+          ]
+        : STEPS,
+    }));
+    mocks.updateCatalogItemPrepStep
+      .mockRejectedValueOnce(new ApiError(409, { error: "catalog_item_stale" }))
+      .mockResolvedValueOnce({ itemVersion: 6 });
+    mocks.reorderCatalogItemPrepSteps.mockImplementation(async () => {
+      moved = true;
+      return { itemVersion: 5 };
+    });
+    const user = userEvent.setup();
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+
+    const title = await screen.findByLabelText("Step 1 title");
+    await user.clear(title);
+    await user.type(title, "Flatten every layer");
+    // The title save is refused; the move queued behind it goes through.
+    await user.click(screen.getAllByRole("button", { name: "Later" })[0]);
+    await waitFor(() => expect(mocks.reorderCatalogItemPrepSteps).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByLabelText("Step 1 title")).toHaveValue("Outline the fonts"));
+
+    const warning = /Your text is still in the box/;
+    expect(screen.getByText(warning)).toBeVisible();
+    expect(screen.getByLabelText("Step 2 title")).toHaveValue("Flatten every layer");
+
+    await openEditorStep("About");
+    await openEditorStep("Artwork");
+    expect(await screen.findByLabelText("Step 2 title")).toHaveValue("Flatten every layer");
+    expect(screen.getByText(warning)).toBeVisible();
+
+    // Saving that edit is what clears its warning.
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({
+      prepSteps: [
+        { ...STEPS[1], sortOrder: 0 },
+        { ...STEPS[0], title: "Flatten every layer", sortOrder: 1 },
+      ],
+    });
+    await user.click(screen.getByLabelText("Step 2 title"));
+    await user.tab();
+    await waitFor(() =>
+      expect(mocks.updateCatalogItemPrepStep).toHaveBeenLastCalledWith("sci_1", "prep_a", 5, {
+        title: "Flatten every layer",
+      }),
+    );
+    await waitFor(() => expect(screen.queryByText(warning)).not.toBeInTheDocument());
+    expect(screen.getByLabelText("Step 2 title")).toHaveValue("Flatten every layer");
+  });
+
+  it("puts back GRIDGO's text when the shop drops a refused edit", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    mocks.updateCatalogItemPrepStep.mockRejectedValueOnce(
+      new ApiError(409, { error: "catalog_item_stale" }),
+    );
+    const user = userEvent.setup();
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+
+    const title = await screen.findByLabelText("Step 1 title");
+    await user.clear(title);
+    await user.type(title, "Flatten every layer");
+    await user.tab();
+    await user.click(await screen.findByRole("button", { name: "Put back the saved text" }));
+
+    expect(screen.getByLabelText("Step 1 title")).toHaveValue("Flatten the art");
+    expect(screen.queryByText(/Your text is still in the box/)).not.toBeInTheDocument();
+    expect(mocks.updateCatalogItemPrepStep).toHaveBeenCalledTimes(1);
+  });
+
+  /** Step 1's title save is refused once, so its warning and Put back show. */
+  async function refusedTitle(user: ReturnType<typeof userEvent.setup>) {
+    mocks.updateCatalogItemPrepStep.mockRejectedValueOnce(
+      new ApiError(409, { error: "catalog_item_stale" }),
+    );
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+    const title = await screen.findByLabelText("Step 1 title");
+    await user.clear(title);
+    await user.type(title, "Flatten every layer");
+    await user.tab();
+    await screen.findByRole("button", { name: "Put back the saved text" });
+    mocks.updateCatalogItemPrepStep.mockClear();
+    mocks.updateCatalogItemPrepStep.mockResolvedValue({ itemVersion: 4 });
+  }
+
+  it("puts back without saving when the shop clicks it straight from the box", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    const user = userEvent.setup();
+    await refusedTitle(user);
+
+    // Back in the box, then straight to Put back: leaving the box is not a save.
+    await user.click(screen.getByLabelText("Step 1 title"));
+    await user.click(screen.getByRole("button", { name: "Put back the saved text" }));
+
+    expect(screen.getByLabelText("Step 1 title")).toHaveValue("Flatten the art");
+    expect(screen.queryByText(/Your text is still in the box/)).not.toBeInTheDocument();
+    await act(async () => {});
+    expect(mocks.updateCatalogItemPrepStep).not.toHaveBeenCalled();
+  });
+
+  it("puts back without saving when the shop reaches it with Tab", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    mocks.updateCatalogItemPrepStep.mockRejectedValueOnce(
+      new ApiError(409, { error: "catalog_item_stale" }),
+    );
+    const user = userEvent.setup();
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+
+    const details = await screen.findByLabelText("Step 1 details");
+    await user.type(details, "Use CMYK");
+    await user.tab();
+    await screen.findByRole("button", { name: "Put back the saved text" });
+    mocks.updateCatalogItemPrepStep.mockClear();
+
+    // Details, then Tab onto Put back, then Enter.
+    await user.click(screen.getByLabelText("Step 1 details"));
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Put back the saved text" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+
+    expect(screen.getByLabelText("Step 1 details")).toHaveValue("");
+    await act(async () => {});
+    expect(mocks.updateCatalogItemPrepStep).not.toHaveBeenCalled();
+  });
+
+  it("drops an edit still waiting in the queue when the shop puts its text back", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    const user = userEvent.setup();
+    await refusedTitle(user);
+
+    let finishMove!: () => void;
+    mocks.reorderCatalogItemPrepSteps.mockImplementation(
+      () => new Promise((resolve) => (finishMove = () => resolve({ itemVersion: 4 }))),
+    );
+    await user.click(screen.getAllByRole("button", { name: "Later" })[0]);
+    await waitFor(() => expect(mocks.reorderCatalogItemPrepSteps).toHaveBeenCalled());
+
+    // Leaving the box queues a save behind the move; Put back drops it before it runs.
+    await user.click(screen.getByLabelText("Step 1 title"));
+    await user.tab();
+    await user.click(screen.getByRole("button", { name: "Put back the saved text" }));
+    await act(async () => finishMove());
+
+    // Opening, the refused save and the move each read the steps; the dropped save sends nothing.
+    await waitFor(() => expect(mocks.listCatalogItemPrepSteps).toHaveBeenCalledTimes(3));
+    await act(async () => {});
+    expect(mocks.updateCatalogItemPrepStep).not.toHaveBeenCalled();
+    expect(screen.queryByDisplayValue("Flatten every layer")).not.toBeInTheDocument();
+  });
+
+  it("holds Put back while that step's save is with GRIDGO", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    const user = userEvent.setup();
+    await refusedTitle(user);
+
+    let finishSave!: () => void;
+    mocks.updateCatalogItemPrepStep.mockImplementation(
+      () => new Promise((resolve) => (finishSave = () => resolve({ itemVersion: 4 }))),
+    );
+    await user.click(screen.getByLabelText("Step 1 title"));
+    await user.click(screen.getByLabelText("Step 1 details"));
+    const held = await screen.findByRole("button", { name: "Saving your text…" });
+    expect(held).toHaveAttribute("aria-disabled", "true");
+
+    await act(async () => finishSave());
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Saving your text|Put back/ })).not.toBeInTheDocument());
+    expect(mocks.updateCatalogItemPrepStep).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a saved title on screen when the reread of the steps fails", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    mocks.updateCatalogItemPrepStep.mockImplementation(async () => {
+      mocks.listCatalogItemPrepSteps.mockRejectedValue(new ApiError(503, { error: "unavailable" }));
+      return { prepStep: { ...STEPS[0], title: "Flatten every layer" }, itemVersion: 4 };
+    });
+    const user = userEvent.setup();
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+
+    const title = await screen.findByLabelText("Step 1 title");
+    await user.clear(title);
+    await user.type(title, "Flatten every layer");
+    await user.tab();
+
+    expect(
+      await screen.findByText("Could not load the preparation steps. They are not an empty list."),
+    ).toBeVisible();
+    expect(screen.getByLabelText("Step 1 title")).toHaveValue("Flatten every layer");
+    await openEditorStep("About");
+    await openEditorStep("Artwork");
+    expect(await screen.findByLabelText("Step 1 title")).toHaveValue("Flatten every layer");
+  });
+
+  it("autosaves on the version a step edit left when the listing reread fails", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    mocks.updateCatalogItemPrepStep.mockImplementation(async () => {
+      mocks.getCatalogItem.mockRejectedValue(new ApiError(503, { error: "unavailable" }));
+      return { prepStep: { ...STEPS[0], title: "Flatten every layer" }, itemVersion: 4 };
+    });
+    const user = userEvent.setup();
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+
+    const title = await screen.findByLabelText("Step 1 title");
+    await user.clear(title);
+    await user.type(title, "Flatten every layer");
+    await user.tab();
+    await waitFor(() => expect(mocks.getCatalogItem).toHaveBeenCalledTimes(2));
+
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers A5" } });
+    await waitFor(
+      () =>
+        expect(mocks.updateCatalogItem).toHaveBeenCalledWith(
+          "sci_1",
+          4,
+          expect.objectContaining({ name: "Flyers A5" }),
+        ),
+      AUTOSAVE_WAIT,
+    );
+  }, 15_000);
+
+  it("keeps a saved step and its version when an older live read lands after the save", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: [STEPS[0]] });
+    let ping!: (event: InvalidatePing) => void;
+    const live: LiveContextValue = {
+      notifications: [],
+      unreadCount: 0,
+      snapshot: null,
+      live: true,
+      subscribe: (listener) => {
+        ping = listener;
+        return () => undefined;
+      },
+      markRead: async () => {},
+      markAllRead: async () => {},
+      remove: async () => {},
+      refreshInbox: async () => {},
+    };
+    mocks.updateCatalogItem.mockImplementation(async (_id, version, body) => {
+      if (version !== 4) throw new ApiError(409, { error: "catalog_item_stale" });
+      return catalogItem({ ...body, version: 5 });
+    });
+    const user = userEvent.setup();
+    render(
+      <LiveContext.Provider value={live}>
+        <ListingEditorPage />
+      </LiveContext.Provider>,
+    );
+    await openEditorStep("Artwork");
+    const title = await screen.findByLabelText("Step 1 title");
+
+    // A live refresh has read version 3 and the old step, but waits on taxonomy.
+    let finishOldRead!: (value: Taxonomy) => void;
+    mocks.getTaxonomy.mockImplementationOnce(
+      () => new Promise((resolve) => (finishOldRead = resolve)),
+    );
+    await act(async () => ping({ resource: "catalog" } as InvalidatePing));
+    await waitFor(() => expect(mocks.getCatalogItem).toHaveBeenCalledTimes(2));
+
+    // The save is stored at version 4; the reread queued behind the old read fails.
+    mocks.updateCatalogItemPrepStep.mockImplementation(async () => {
+      mocks.getCatalogItem.mockRejectedValueOnce(new ApiError(503, { error: "unavailable" }));
+      mocks.listCatalogItemPrepSteps.mockRejectedValueOnce(
+        new ApiError(503, { error: "unavailable" }),
+      );
+      return { prepStep: { ...STEPS[0], title: "Flatten every layer" }, itemVersion: 4 };
+    });
+    await user.clear(title);
+    await user.type(title, "Flatten every layer");
+    await user.tab();
+    await waitFor(() => expect(mocks.updateCatalogItemPrepStep).toHaveBeenCalledTimes(1));
+    await act(async () => {});
+
+    await act(async () => finishOldRead(taxonomy));
+    await waitFor(() => expect(mocks.getCatalogItem).toHaveBeenCalledTimes(3));
+    await act(async () => {});
+    expect(screen.getByLabelText("Step 1 title")).toHaveValue("Flatten every layer");
+
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers A5" } });
+    await waitFor(
+      () =>
+        expect(mocks.updateCatalogItem).toHaveBeenCalledWith(
+          "sci_1",
+          4,
+          expect.objectContaining({ name: "Flyers A5" }),
+        ),
+      AUTOSAVE_WAIT,
+    );
+  }, 15_000);
 });
 
 describe("listing editor section numbers", () => {

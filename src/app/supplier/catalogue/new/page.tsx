@@ -163,8 +163,13 @@ export default function NewListingPage() {
   if (!targets.length) {
     return (
       <EmptyState
-        title="No accredited category to file this under"
-        body="A listing sits under a category Operations has accredited. Finish that on Capacity first, then come back."
+        title="No service line to file this under"
+        body="A listing sits under a service line that is still on your account, including one waiting on Operations. Declare that line under Services. Capacity does not finish it."
+        action={
+          <a href="/supplier/services" className="text-body text-text-primary underline">
+            Open Services
+          </a>
+        }
       />
     );
   }

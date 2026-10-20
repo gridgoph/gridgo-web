@@ -6,14 +6,14 @@
  * listing, so the price and the date are already on the order. The shop says
  * it can run the work; it does not name a price or a promise date.
  *
- * Once production has started, the shop files evidence before the job can
- * leave the floor: every stage of the order's own payout plan that waits on the
- * shop's proof, in the plan's order. On the escrow plan that is one photo, the
- * start of production; a legacy four-stage order still asks for printing, then
- * packaging. Filing attaches a photo to one payout milestone; it does not
- * change the order state, and it does not release money. Operations reviews
- * the evidence later. Package for pickup is offered only after every shop
- * proof is filed.
+ * Once production has started, the shop files evidence for the payout plan:
+ * every stage that waits on the shop's proof, in the plan's order. On the
+ * escrow plan that is one photo, the start of production; a legacy four-stage
+ * order still asks for printing, then packaging. Filing attaches a photo to one
+ * payout milestone; it does not change the order state, and it does not
+ * release money. Operations reviews the evidence later. A missing payout proof
+ * is the first action, and it is not a physical gate: when the API's physical
+ * gates are already met, the permitted forward step stays beside it.
  *
  * Packing also needs one progress photo (`productionProgress`, see
  * `src/lib/production-progress.ts`). A start-of-production photo counts, so on
@@ -322,11 +322,26 @@ function riderPacksSteps(order: ShopOrder): SupplierAction[] {
  * held deadline, which speaks over a failed counter check. The handover chip
  * and the plain state follow only when none of those has stopped the job.
  */
-export function presentSupplierJobStatus(order: ShopOrder): StatePresentation {
+export function presentSupplierJobStatus(
+  order: ShopOrder,
+  now: Date = new Date(),
+): StatePresentation {
   const refund = refundStatus(order);
   if (refund) return refund;
   const released = shopRelease(order);
   if (released) return released.chip;
+  // A decline, a cancel, or an hour that has run out keeps the old state until
+  // GRIDGO records the recovery. The chip must not keep reading as an offer.
+  if (shopLetJobGo(order) || acceptWindow(order, now).kind === "expired") {
+    const status = order.shopAcceptance?.status;
+    const label =
+      status === "declined"
+        ? "Passed on"
+        : status === "cancelled"
+          ? "Cancelled by you"
+          : "Not answered in time";
+    return { label, tone: "neutral", icon: "circle-x" };
+  }
   if (order.rescheduleRequest?.workHeld) {
     return { label: "Paused", tone: "warning", icon: "clock" };
   }
@@ -373,13 +388,26 @@ export function shopWorkStopped(order: ShopOrder, now: Date = new Date()): boole
   return acceptWindow(order, now).kind === "expired";
 }
 
+/**
+ * A missing payout proof leads, and the forward step stays. Proof never
+ * replaces a progress photo, a packing photo, a finished-work review, or a
+ * packaging hold. A claim hold already makes `nextShopProof` return nothing,
+ * so Package for pickup stays the only step and stays disabled.
+ */
+function withProof(order: ShopOrder, forward: SupplierAction[]): SupplierAction[] {
+  const owed = nextShopProof(order);
+  if (!owed) return forward;
+  const proof = proofAction(owed);
+  if (forward.length === 0) return [proof];
+  return [proof, ...forward.map((action) => ({ ...action, primary: false }))];
+}
+
 export function actionsForJob(order: ShopOrder, now: Date = new Date()): SupplierAction[] {
   // A refund, a job this shop let go, a declined deadline, or an hour that
   // has run out: GRIDGO refuses the next step, so none is offered. A claim
   // hold is not one of these — Package for pickup stays, disabled, below.
   if (shopWorkStopped(order, now)) return [];
   if (shopLetJobGo(order)) return [];
-  const owed = nextShopProof(order);
 
   switch (order.state) {
     case "supplier_assigned":
@@ -409,18 +437,17 @@ export function actionsForJob(order: ShopOrder, now: Date = new Date()): Supplie
       ];
     case "production":
     case "supplier_self_qc":
-      // While a shop proof is still empty, that is the only step. Packaging
-      // the job for a rider before the photo exists is the bug this blocks.
-      if (owed) return [proofAction(owed)];
-      if (ridersPack(order)) return riderPacksSteps(order);
-      // Proof filed as a PDF, or no proof stage at all: still no picture of
-      // the job, and the API refuses to pack it without one.
-      if (productionPhotoOwed(order)) return [ADD_PROGRESS_PHOTO];
+      if (ridersPack(order)) return withProof(order, riderPacksSteps(order));
+      // A PDF proof, or no proof stage at all: still no picture of the job,
+      // and the API refuses to pack it without one.
+      if (productionPhotoOwed(order)) return withProof(order, [ADD_PROGRESS_PHOTO]);
       // Then the finished prints, packed: a separate photo of its own.
-      if (packingPhotoOwed(order)) return [ADD_PACKING_PHOTO];
-      return [packageStep(order)];
-    default:
+      if (packingPhotoOwed(order)) return withProof(order, [ADD_PACKING_PHOTO]);
+      return withProof(order, [packageStep(order)]);
+    default: {
+      const owed = nextShopProof(order);
       return owed ? [proofAction(owed)] : [];
+    }
   }
 }
 

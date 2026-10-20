@@ -60,6 +60,7 @@ import {
   createCatalogOptionGroup,
   deleteCatalogItem,
   deleteCatalogItemPrepStep,
+  reorderCatalogItemPrepSteps,
   deleteCatalogOption,
   deleteCatalogOptionGroup,
   getCatalogItem,
@@ -93,6 +94,8 @@ import {
   coversFor,
   effectiveMinimumTurnaround,
   effectiveTurnaround,
+  MEASURE_UNITS,
+  measurementKind,
   needsPrinterMaxWidth,
   nextFreeSlot,
   normalizeBoardPage,
@@ -111,10 +114,18 @@ import {
   type Listing,
   type ListingReadiness,
   type PrepStep,
+  type MeasureUnit,
   type PricingUnit,
   type ServiceLine,
   type SpecGroup,
 } from "@/lib/listings";
+import {
+  billablePayload,
+  billableProblem,
+  isMeasureUnit,
+  measureUnitFor,
+  sizeText,
+} from "@/lib/listing-measure";
 import { changeNotice, replacedNotice } from "@/lib/listing-photos";
 import { DEFAULT_DAY_MINUTES, readyInLine } from "@/lib/production-time";
 import {
@@ -157,6 +168,11 @@ type Draft = {
   oneColour: boolean;
   /** The tier table as typed; blank prices are tiers not offered. */
   colour: ColourDraft;
+  measureUnit: MeasureUnit | null;
+  /** Typed in `measureUnit` as text, stored as thousandths. */
+  minimumWidth: string;
+  minimumHeight: string;
+  minimumLength: string;
 };
 
 /** Section and field ids; the readiness checklist scrolls to these. */
@@ -166,8 +182,8 @@ const FIELD_IDS: Record<BoardField, string> = {
   description: "listing-body",
   price: "price",
   packageQty: "pack",
-  measureUnit: "section-price",
-  billableSize: "section-price",
+  measureUnit: "measure-unit",
+  billableSize: "billable-size",
   printerMaxWidth: "printer-max-width",
   turnaround: "section-ready-in",
   groups: "section-picks",
@@ -250,6 +266,10 @@ function draftFrom(listing: Listing): Draft {
     pricedByColour: listing.colourSupported ? listing.pricedByColour : null,
     oneColour: listing.oneColour,
     colour: colourDraftFrom(listing.colourPricing),
+    measureUnit: listing.measureUnit,
+    minimumWidth: sizeText(listing.minimumWidthMilli),
+    minimumHeight: sizeText(listing.minimumHeightMilli),
+    minimumLength: sizeText(listing.minimumLengthMilli),
   };
 }
 
@@ -358,6 +378,7 @@ function payloadOf(draft: Draft) {
     ),
     ...(draft.printLayouts ? { printLayouts: draft.printLayouts } : {}),
     ...colourPayload(draft),
+    ...billablePayload(draft),
   };
 }
 
@@ -389,6 +410,8 @@ function holdReason(draft: Draft, listing: Listing): string | null {
   } else if (pesosToMinor(draft.price) == null) {
     return "enter a price in pesos, like 400.00.";
   }
+  const measured = billableProblem(draft);
+  if (measured) return measured;
   if (draft.time && timeChanged(draft, listing)) {
     const problem = choiceProblem(draft.time);
     if (problem) return problem.charAt(0).toLowerCase() + problem.slice(1);
@@ -403,6 +426,47 @@ function holdReason(draft: Draft, listing: Listing): string | null {
   return null;
 }
 
+/** A queued prep write that has nothing left to send. */
+const SKIP = Symbol("skip");
+
+type PrepField = "title" | "body";
+type PrepDraft = {
+  title?: string;
+  body?: string;
+  /** Why GRIDGO refused that box's last save. */
+  errors?: Partial<Record<PrepField, string>>;
+};
+
+/**
+ * One box's text was stored. Its draft goes unless the shop typed on since,
+ * and the step's warning goes once nothing on it is left unsaved.
+ */
+function settleDraft(
+  drafts: Record<string, PrepDraft>,
+  stepId: string,
+  field: PrepField,
+  sent: string,
+): Record<string, PrepDraft> {
+  const draft = drafts[stepId];
+  if (!draft || draft[field] !== sent) return drafts;
+  const rest: PrepDraft = { ...draft };
+  delete rest[field];
+  if (rest.errors) {
+    rest.errors = { ...rest.errors };
+    delete rest.errors[field];
+  }
+  const next = { ...drafts };
+  if (rest.title === undefined && rest.body === undefined) delete next[stepId];
+  else next[stepId] = rest;
+  return next;
+}
+
+function prepEditMessage(err: unknown): string {
+  return isApiError(err) && ["catalog_item_stale", "expected_version_required"].includes(err.code)
+    ? "This listing changed on another screen. Your text is still in the box; click out of it to save it again."
+    : listingErrorMessage(err, "Could not save that step. Your text is still in the box.");
+}
+
 export default function ListingEditorPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
@@ -414,6 +478,7 @@ export default function ListingEditorPage() {
   const [services, setServices] = useState<ServiceLine[]>([]);
   const [taxonomy, setTaxonomy] = useState<Taxonomy | null>(null);
   const [prepSteps, setPrepSteps] = useState<PrepStep[]>([]);
+  const [prepLoadError, setPrepLoadError] = useState<string | null>(null);
   const [formats, setFormats] = useState<
     Array<{ code: string; displayName: string; inputKind: "file" | "url" }>
   >([]);
@@ -443,6 +508,37 @@ export default function ListingEditorPage() {
   const applyingRef = useRef(false);
   const loadGeneration = useRef(0);
   const reloadHeld = useRef(false);
+  // Every prep-step write bumps the listing's version, so a blur save and a
+  // Later click sent together would race on one version. They run in order
+  // instead, each on the version the previous one left.
+  const prepQueue = useRef<Promise<void>>(Promise.resolve());
+  const listingVersion = useRef<number | null>(null);
+  const prepStepsRef = useRef<PrepStep[]>([]);
+  // Text the shop typed into a step that GRIDGO has not stored yet, by step
+  // id. It lives here, not in the boxes, so a refused save survives a tab
+  // change, and its warning stays until that edit saves or is put back.
+  const [prepDrafts, setPrepDrafts] = useState<Record<string, PrepDraft>>({});
+  const [prepError, setPrepError] = useState<string | null>(null);
+  // The step whose edit is with GRIDGO now; its Put back waits for the answer.
+  const [prepWriting, setPrepWriting] = useState<string | null>(null);
+  // Set as the pointer goes down on Put back, before the box's blur would save.
+  const discardIntent = useRef<string | null>(null);
+  // Bumped by Put back, so an edit still waiting in the queue is not sent.
+  const discardGeneration = useRef<Record<string, number>>({});
+
+  /** A listing's version only moves on, whichever save or read reports it. */
+  function adoptVersion(version: number | null | undefined) {
+    if (version == null) return;
+    if (listingVersion.current == null || version > listingVersion.current) {
+      listingVersion.current = version;
+    }
+  }
+
+  // Autosave, photo moves and Send for review adopt the saved listing without
+  // a reread; the next prep-step write must carry the version they left.
+  useEffect(() => {
+    adoptVersion(listing?.version);
+  }, [listing?.version]);
 
   const working = draft ?? (listing ? draftFrom(listing) : null);
 
@@ -464,7 +560,10 @@ export default function ListingEditorPage() {
             getCatalogItem(id),
             loadShopServiceLines().catch(() => ({ services: [] })),
             getTaxonomy(),
-            listCatalogItemPrepSteps(id).catch(() => ({ prepSteps: [] })),
+            listCatalogItemPrepSteps(id).then(
+              (body) => ({ ok: true as const, body }),
+              () => ({ ok: false as const, body: null }),
+            ),
             listAcceptedFileFormats().catch(() => []),
             getSupplierReadiness().then(normalizeListingReadiness, () => null),
             listCatalogItems({ limit: 1 }).then(normalizeBoardPage, () => null),
@@ -472,15 +571,30 @@ export default function ListingEditorPage() {
         if (held()) return;
         const next = normalizeListing(itemBody);
         if (!next) throw new Error("unreadable");
-        setListing(next);
+        // A read that started before this page's own save can land after it.
+        // Its listing and steps are older than what is on screen, so they stay
+        // out; the save's own answer is the newer copy.
+        const older =
+          next.version != null &&
+          listingVersion.current != null &&
+          next.version < listingVersion.current;
+        if (!older) {
+          setListing(next);
+          adoptVersion(next.version);
+        }
         setReadiness(ready?.get(next.id) ?? null);
         setServices(normalizeServiceLines(servicesBody));
         setTaxonomy(tax);
-        setPrepSteps(normalizePrepSteps(stepsBody));
+        if (!stepsBody.ok) {
+          setPrepLoadError("Could not load the preparation steps. They are not an empty list.");
+        } else if (!older) {
+          showSteps(normalizePrepSteps(stepsBody.body));
+          setPrepLoadError(null);
+        }
         setFormats(formatList);
         if (board) setListingCount(board.total);
         setError(null);
-        if (!dirtyRef.current) setDraft(draftFrom(next));
+        if (!dirtyRef.current && !older) setDraft(draftFrom(next));
       } catch (err) {
         if (held()) return;
         if (
@@ -869,7 +983,7 @@ export default function ListingEditorPage() {
       );
       await load();
       setPhotoNotice(
-        listing.photos.length === 0 ? "Wide sample added." : "Photo added at the end.",
+        listing.photos.length === 0 ? "Board photo added." : "Photo added at the end.",
       );
     } catch (err) {
       setActionError(listingErrorMessage(err, "Could not add that sample photo."));
@@ -1002,42 +1116,200 @@ export default function ListingEditorPage() {
     }
   }
 
-  async function addStep() {
-    if (!listing) return;
+  /** Puts the steps on screen and where the next queued write reads them. */
+  function showSteps(steps: PrepStep[]) {
+    prepStepsRef.current = steps;
+    setPrepSteps(steps);
+  }
+
+  /**
+   * This page's own prep write moved the listing from `sent` to `next`. The
+   * listing and an unsaved About draft move with it only if they were still
+   * on `sent`, so an edit made elsewhere still meets its conflict.
+   */
+  function ownPrepVersion(sent: number | null, next: number) {
+    adoptVersion(next);
+    setListing((current) =>
+      current && current.version === sent ? { ...current, version: next } : current,
+    );
+    setDraft((current) =>
+      current && current.version === sent ? { ...current, version: next } : current,
+    );
+  }
+
+  /**
+   * Runs one prep-step write after any still in flight. A stored write is put
+   * on screen from its own answer, so a failed reread after it loses nothing;
+   * the reread then brings in anything changed elsewhere. `settled` runs last,
+   * with the refusal if there was one. A write that returns SKIP sends nothing.
+   */
+  function queuePrep(
+    write: (version: number | null) => Promise<unknown>,
+    settled: (err: unknown | null) => void,
+    stored?: (body: unknown) => void,
+  ) {
+    const run = prepQueue.current.then(async () => {
+      let failure: unknown | null = null;
+      const sent = listingVersion.current;
+      try {
+        const body = await write(sent);
+        if (body === SKIP) return;
+        stored?.(body);
+        const itemVersion = (body as { itemVersion?: unknown } | null)?.itemVersion;
+        if (typeof itemVersion === "number") ownPrepVersion(sent, itemVersion);
+      } catch (err) {
+        failure = err;
+      }
+      // A refused write still rereads, so the next try carries the current version.
+      await load().catch(() => undefined);
+      settled(failure);
+    });
+    prepQueue.current = run;
+    return run;
+  }
+
+  /** For moves, adds and removals; an edit's warning stays on its own step. */
+  function prepActionSettled(fallback: string) {
+    return (err: unknown | null) =>
+      setPrepError(err == null ? null : listingErrorMessage(err, fallback));
+  }
+
+  async function moveStep(stepId: string, direction: -1 | 1) {
     setBusy(true);
+    let order: string[] = [];
     try {
-      await createCatalogItemPrepStep(listing.id, listing.version, {
-        title: "Before they send work",
-        body: "",
-        sortOrder: nextFreeSlot(
-          prepSteps.map((step) => step.sortOrder),
-          LISTING_CAPS.prepSteps,
-        ),
-      });
-      await load();
-    } catch (err) {
-      setActionError(listingErrorMessage(err, "Could not add that step."));
+      await queuePrep(
+        async (version) => {
+          // Read the order when the move runs: an edit ahead of it may have reread the steps.
+          order = prepStepsRef.current.map((step) => step.id);
+          const index = order.indexOf(stepId);
+          const next = index + direction;
+          if (index < 0 || next < 0 || next >= order.length) return SKIP;
+          order.splice(index, 1);
+          order.splice(next, 0, stepId);
+          return reorderCatalogItemPrepSteps(id, version, order);
+        },
+        prepActionSettled("GRIDGO refused that order. Refresh the steps and try again."),
+        () => {
+          const byId = new Map(prepStepsRef.current.map((step) => [step.id, step]));
+          showSteps(
+            order.flatMap((stepId, sortOrder) => {
+              const step = byId.get(stepId);
+              return step ? [{ ...step, sortOrder }] : [];
+            }),
+          );
+        },
+      );
     } finally {
       setBusy(false);
     }
   }
 
-  async function saveStep(step: PrepStep, patch: { title?: string; body?: string }) {
+  async function addStep() {
+    setBusy(true);
     try {
-      await updateCatalogItemPrepStep(id, step.id, patch);
-      await load();
-    } catch (err) {
-      setActionError(listingErrorMessage(err, "Could not save that step."));
+      await queuePrep(
+        (version) =>
+          createCatalogItemPrepStep(id, version, {
+            title: "Before they send work",
+            body: "",
+            sortOrder: nextFreeSlot(
+              prepStepsRef.current.map((step) => step.sortOrder),
+              LISTING_CAPS.prepSteps,
+            ),
+          }),
+        prepActionSettled("Could not add that step."),
+        (body) => {
+          const [added] = normalizePrepSteps({ prepSteps: [(body as { prepStep?: unknown })?.prepStep] });
+          if (added) {
+            showSteps(
+              [...prepStepsRef.current.filter((step) => step.id !== added.id), added].sort(
+                (a, b) => a.sortOrder - b.sortOrder,
+              ),
+            );
+          }
+        },
+      );
+    } finally {
+      setBusy(false);
     }
   }
 
-  async function dropStep(step: PrepStep) {
-    try {
-      await deleteCatalogItemPrepStep(id, step.id);
-      await load();
-    } catch (err) {
-      setActionError(listingErrorMessage(err, "Could not remove that step."));
+  function typeStep(stepId: string, field: PrepField, value: string) {
+    setPrepDrafts((current) => ({ ...current, [stepId]: { ...current[stepId], [field]: value } }));
+  }
+
+  /** Saves what was typed into one box, unless it already matches GRIDGO's copy. */
+  function saveStep(step: PrepStep, field: PrepField, nextFocus: EventTarget | null) {
+    // Leaving the box for Put back the saved text, by pointer or Tab, is not a save.
+    if (discardIntent.current === step.id) return;
+    if (nextFocus instanceof HTMLElement && nextFocus.dataset.putBack === step.id) return;
+    const typed = prepDrafts[step.id]?.[field];
+    if (typed === undefined) return;
+    const value = field === "title" ? typed.trim() : typed;
+    if (value === step[field]) {
+      setPrepDrafts((current) => settleDraft(current, step.id, field, typed));
+      return;
     }
+    const generation = discardGeneration.current[step.id] ?? 0;
+    void queuePrep(
+      async (version) => {
+        // Put back while this waited its turn: the text it carries was dropped.
+        if ((discardGeneration.current[step.id] ?? 0) !== generation) return SKIP;
+        setPrepWriting(step.id);
+        return updateCatalogItemPrepStep(id, step.id, version, { [field]: value });
+      },
+      (err) => {
+        setPrepWriting(null);
+        setPrepDrafts((current) =>
+          err == null
+            ? settleDraft(current, step.id, field, typed)
+            : current[step.id]?.[field] === typed
+              ? {
+                  ...current,
+                  [step.id]: {
+                    ...current[step.id],
+                    errors: { ...current[step.id].errors, [field]: prepEditMessage(err) },
+                  },
+                }
+              : current,
+        );
+      },
+      (body) => {
+        const [saved] = normalizePrepSteps({ prepSteps: [(body as { prepStep?: unknown })?.prepStep] });
+        showSteps(
+          prepStepsRef.current.map((current) =>
+            current.id !== step.id
+              ? current
+              : saved?.id === step.id
+                ? saved
+                : { ...current, [field]: value },
+          ),
+        );
+      },
+    );
+  }
+
+  /** Drops the shop's unsaved text for a step and shows GRIDGO's copy again. */
+  function putBackStep(stepId: string) {
+    discardIntent.current = null;
+    discardGeneration.current[stepId] = (discardGeneration.current[stepId] ?? 0) + 1;
+    setPrepDrafts((current) => {
+      const rest = { ...current };
+      delete rest[stepId];
+      return rest;
+    });
+  }
+
+  function dropStep(step: PrepStep) {
+    return queuePrep(
+      (version) => deleteCatalogItemPrepStep(id, step.id, version),
+      (err) => {
+        prepActionSettled("Could not remove that step.")(err);
+        if (err == null) putBackStep(step.id);
+      },
+      () => showSteps(prepStepsRef.current.filter((current) => current.id !== step.id)),
+    );
   }
 
   async function saveFormats(mode: "inherit" | "override", codes: string[]) {
@@ -1202,7 +1474,7 @@ export default function ListingEditorPage() {
                 <Section
                   id="section-photos"
                   title="Sample photos"
-                  help="Up to eight samples of this kind of work. The wide sample is the one clients see first. Use Edit on a photo to replace it, remove it, or make it the wide sample."
+                  help="Up to eight samples of this kind of work. The Board photo is the wide sample clients see first. Use Edit on a photo to replace it, remove it, or make it the Board photo. A preview is not a stored sample until it finishes uploading."
                 >
                   <ListingPhotoManager
                     photos={listing.photos}
@@ -1264,7 +1536,16 @@ export default function ListingEditorPage() {
                     aria-label="Pricing unit"
                     options={PRICING_CHOICES}
                     value={working.pricingUnit}
-                    onChange={(pricingUnit) => setDraft({ ...working, pricingUnit })}
+                    onChange={(pricingUnit) =>
+                      setDraft({
+                        ...working,
+                        pricingUnit,
+                        measureUnit: measureUnitFor(pricingUnit, working.measureUnit),
+                        minimumWidth: measurementKind(pricingUnit) === "area" ? working.minimumWidth : "",
+                        minimumHeight: measurementKind(pricingUnit) === "area" ? working.minimumHeight : "",
+                        minimumLength: measurementKind(pricingUnit) === "length" ? working.minimumLength : "",
+                      })
+                    }
                   />
                   {working.pricedByColour != null && working.pricingUnit === "per_page" ? (
                     <div className="flex flex-col gap-2">
@@ -1360,6 +1641,86 @@ export default function ListingEditorPage() {
                     </div>
                   </Field>
                   )}
+                  {measurementKind(working.pricingUnit) === "area" ||
+                  measurementKind(working.pricingUnit) === "length" ? (
+                    <div className="flex flex-col gap-3" id="measure-unit">
+                      <Field>
+                        <FieldLabel htmlFor="measure-unit-select">What you measure in</FieldLabel>
+                        <select
+                          id="measure-unit-select"
+                          className="border-input bg-card h-12 rounded-[var(--radius-field)] border px-3"
+                          value={working.measureUnit ?? "ft"}
+                          onChange={(event) => {
+                            const next = event.target.value;
+                            if (!isMeasureUnit(next)) return;
+                            setDraft({ ...working, measureUnit: next });
+                          }}
+                        >
+                          {MEASURE_UNITS.map((unit) => (
+                            <option key={unit} value={unit}>
+                              {unit}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      {measurementKind(working.pricingUnit) === "area" ? (
+                        <div id="billable-size" className="flex flex-col gap-2">
+                          <p className="text-caption text-text-muted m-0">
+                            Smallest size you charge for — optional. Both a width and a height, or neither.
+                          </p>
+                          <div className="flex flex-wrap gap-3">
+                            <Field className="max-w-40">
+                              <FieldLabel htmlFor="billable-width">Width</FieldLabel>
+                              <Input
+                                id="billable-width"
+                                inputMode="decimal"
+                                aria-label="Smallest billable width"
+                                value={working.minimumWidth}
+                                onChange={(event) =>
+                                  setDraft({
+                                    ...working,
+                                    minimumWidth: event.target.value,
+                                  })
+                                }
+                              />
+                            </Field>
+                            <Field className="max-w-40">
+                              <FieldLabel htmlFor="billable-height">Height</FieldLabel>
+                              <Input
+                                id="billable-height"
+                                inputMode="decimal"
+                                aria-label="Smallest billable height"
+                                value={working.minimumHeight}
+                                onChange={(event) =>
+                                  setDraft({
+                                    ...working,
+                                    minimumHeight: event.target.value,
+                                  })
+                                }
+                              />
+                            </Field>
+                          </div>
+                        </div>
+                      ) : (
+                        <Field id="billable-size" className="max-w-40">
+                          <FieldLabel htmlFor="billable-length">Shortest you charge for</FieldLabel>
+                          <Input
+                            id="billable-length"
+                            inputMode="decimal"
+                            aria-label="Shortest billable length"
+                            value={working.minimumLength}
+                            onChange={(event) =>
+                              setDraft({
+                                ...working,
+                                minimumLength: event.target.value,
+                              })
+                            }
+                          />
+                          <FieldDescription>Optional. Leave it blank if any length is fine.</FieldDescription>
+                        </Field>
+                      )}
+                    </div>
+                  ) : null}
                   {working.pricedByColour != null &&
                   working.pricingUnit === "per_page" &&
                   !working.pricedByColour ? (
@@ -1474,7 +1835,7 @@ export default function ListingEditorPage() {
                   ) : null}
                   {specs(listing).length < LISTING_CAPS.specGroups ? (
                     <div>
-                      <Button onClick={() => void addChoice("spec")}>Add a step</Button>
+                      <Button onClick={() => void addChoice("spec")}>Add a client choice</Button>
                     </div>
                   ) : null}
                 </Section>
@@ -1513,47 +1874,93 @@ export default function ListingEditorPage() {
                   title="How can the client help you?"
                   help="What a client should do before sending work. Numbered — they read it in order."
                 >
-                  {prepSteps.length === 0 ? (
+                  {prepLoadError ? (
+                    <p className="text-body text-error m-0" role="alert">{prepLoadError}</p>
+                  ) : null}
+                  {prepError ? (
+                    <p className="text-body text-error m-0" role="alert">{prepError}</p>
+                  ) : null}
+                  {prepSteps.length === 0 && !prepLoadError ? (
                     <p className="text-body text-text-secondary m-0 max-w-prose">
                       Nothing yet. On specialised work this is where a job is won or lost —
                       flatten the art, outline the fonts, export the 3MF at the right scale.
                     </p>
-                  ) : (
+                  ) : prepSteps.length > 0 ? (
                     <div className="grid gap-3 xl:grid-cols-2">
                       {prepSteps.map((prep, index) => (
                         <div
                           key={prep.id}
                           className="rounded-card border-outline flex flex-col gap-2 border p-3"
                         >
-                          <p className="text-caption text-text-muted m-0">{index + 1}.</p>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-caption text-text-muted m-0">{index + 1}.</p>
+                            <div className="flex gap-1">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={index === 0 || busy}
+                                onClick={() => void moveStep(prep.id, -1)}
+                              >
+                                Earlier
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={index === prepSteps.length - 1 || busy}
+                                onClick={() => void moveStep(prep.id, 1)}
+                              >
+                                Later
+                              </Button>
+                            </div>
+                          </div>
                           <Input
-                            defaultValue={prep.title}
+                            value={prepDrafts[prep.id]?.title ?? prep.title}
                             aria-label={`Step ${index + 1} title`}
-                            onBlur={(event) => {
-                              if (event.target.value.trim() !== prep.title) {
-                                void saveStep(prep, { title: event.target.value.trim() });
-                              }
-                            }}
+                            onChange={(event) => typeStep(prep.id, "title", event.target.value)}
+                            onFocus={() => (discardIntent.current = null)}
+                            onBlur={(event) => saveStep(prep, "title", event.relatedTarget)}
                           />
                           <Textarea
-                            defaultValue={prep.body}
+                            value={prepDrafts[prep.id]?.body ?? prep.body}
                             aria-label={`Step ${index + 1} details`}
-                            onBlur={(event) => {
-                              if (event.target.value !== prep.body) {
-                                void saveStep(prep, { body: event.target.value });
-                              }
-                            }}
+                            onChange={(event) => typeStep(prep.id, "body", event.target.value)}
+                            onFocus={() => (discardIntent.current = null)}
+                            onBlur={(event) => saveStep(prep, "body", event.relatedTarget)}
                           />
+                          {prepDrafts[prep.id]?.errors?.title || prepDrafts[prep.id]?.errors?.body ? (
+                            <div className="flex flex-col items-start gap-1">
+                              <p className="text-body text-error m-0" role="alert">
+                                {prepDrafts[prep.id]?.errors?.title ?? prepDrafts[prep.id]?.errors?.body}
+                              </p>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                disabled={prepWriting === prep.id}
+                                focusableWhenDisabled
+                                data-put-back={prep.id}
+                                onPointerDown={() => (discardIntent.current = prep.id)}
+                                onClick={() => putBackStep(prep.id)}
+                              >
+                                {prepWriting === prep.id ? "Saving your text…" : "Put back the saved text"}
+                              </Button>
+                            </div>
+                          ) : null}
                           <Button variant="ghost" onClick={() => void dropStep(prep)}>
                             Remove this step
                           </Button>
                         </div>
                       ))}
                     </div>
-                  )}
+                  ) : null}
                   {prepSteps.length < LISTING_CAPS.prepSteps ? (
                     <div>
                       <Button onClick={() => void addStep()}>Add a step</Button>
+                      <p className="text-caption text-text-muted m-0">
+                        A preparation instruction the client reads before sending work. Not a product choice.
+                      </p>
                     </div>
                   ) : null}
                 </Section>

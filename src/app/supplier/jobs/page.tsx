@@ -38,8 +38,8 @@ function nextStepLabel(job: Order, now: Date): string {
 }
 
 /** The job's status in the shop's words: a stop speaks over the plain state. */
-function jobStatus(job: Order) {
-  return presentSupplierJobStatus(job);
+function jobStatus(job: Order, now: Date) {
+  return presentSupplierJobStatus(job, now);
 }
 
 /** Whether a due date falls inside the next `hours`. */
@@ -83,16 +83,19 @@ export default function SupplierJobsPage() {
         // descending, and every other order is one click on a header away.
         setJobs(await listJobs());
       } catch (err) {
-        setJobs(null);
-        if (err instanceof ApiError) {
-          setError(
-            err.status === 403
-              ? "This inbox is only available to supplier accounts."
-              : `Could not load jobs (${err.code}). Check the API and try again.`,
-          );
+        if (err instanceof ApiError && err.status === 403) {
+          setJobs(null);
+          setError("This inbox is only available to supplier accounts.");
         } else {
+          let kept = false;
+          setJobs((current) => {
+            kept = current != null;
+            return current;
+          });
           setError(
-            "Network error loading jobs. Confirm the demo API is running, then retry.",
+            kept
+              ? "Could not refresh jobs. The list on screen is unchanged."
+              : "Could not load jobs. Try again.",
           );
         }
       } finally {
@@ -147,10 +150,10 @@ export default function SupplierJobsPage() {
       {
         id: "status",
         header: "Status",
-        sortValue: (job) => jobStatus(job).label,
-        filterValue: (job) => jobStatus(job).label,
+        sortValue: (job) => jobStatus(job, now).label,
+        filterValue: (job) => jobStatus(job, now).label,
         cell: (job) => {
-          const status = jobStatus(job);
+          const status = jobStatus(job, now);
           return (
             <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
           );
@@ -191,13 +194,15 @@ export default function SupplierJobsPage() {
         },
       },
       {
-        id: "deadline",
-        header: "Deadline",
-        sortValue: (job) => job.deadline || job.promisedDate || "",
+        id: "ready-by",
+        header: "Ready by",
+        sortValue: (job) => job.readyBy || job.deadline || "",
+        // The shop's own ready-by only. GRIDGO withholds the client's promise
+        // from shops, and `promisedDate` on a job is this same ready-by.
         cell: (job) => (
           <div className="flex flex-col items-start gap-1">
             <span className="text-body text-text-secondary whitespace-nowrap">
-              {formatDateTime(job.deadline)}
+              {formatDateTime(job.readyBy || job.deadline)}
             </span>
             {isExpressOrder(job) ? <ExpressChip /> : null}
             <TestOrderChip order={job} />
@@ -235,7 +240,7 @@ export default function SupplierJobsPage() {
       {
         columnId: "status",
         title: "Status",
-        options: facetOptions(rows, (job) => jobStatus(job).label),
+        options: facetOptions(rows, (job) => jobStatus(job, now).label),
       },
       {
         columnId: "next",
@@ -248,7 +253,7 @@ export default function SupplierJobsPage() {
 
   const pending = loading && !jobs;
 
-  if (error) {
+  if (error && !jobs) {
     return (
       <ErrorState
         body={error}
@@ -275,11 +280,19 @@ export default function SupplierJobsPage() {
   }
 
   const actionRequired = rows.filter((j) => needsSupplierAction(j, now)).length;
-  const dueSoon = rows.filter((j) => isDueWithin(j.readyBy ?? j.deadline, 24)).length;
+  const dueSoon = rows.filter((j) => isDueWithin(j.readyBy || j.deadline, 24)).length;
   const onTheBoard = rows.reduce((total, j) => total + (j.supplierSubtotalMinor ?? 0), 0);
 
   return (
     <div className="flex flex-col gap-4">
+      {error ? (
+        <p className="text-body text-error m-0" role="alert">
+          {error}{" "}
+          <Button variant="secondary" onClick={() => void load()}>
+            Retry
+          </Button>
+        </p>
+      ) : null}
       {/*
         Three figures across the top instead of one sentence above a short
         table. A shop opening this wants to know what needs its attention, what

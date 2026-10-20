@@ -555,10 +555,13 @@ function forcedPast(order: StepSource, toRank: number): ForcedStep | null {
 export function handoverSteps(
   order: StepSource,
   formatWhen: (iso: string) => string,
+  reader: "staff" | "shop" = "staff",
 ): HandoverStep[] {
   const flow = handoverFlowOf(order);
   if (!flow) return [];
-  return flow === "rider_packs" ? riderPacksSteps(order, formatWhen) : legacySteps(order);
+  return flow === "rider_packs"
+    ? riderPacksSteps(order, formatWhen, reader)
+    : legacySteps(order);
 }
 
 function passedStatus(order: StepSource, toRank: number): HandoverStepStatus {
@@ -568,6 +571,7 @@ function passedStatus(order: StepSource, toRank: number): HandoverStepStatus {
 function riderPacksSteps(
   order: StepSource,
   formatWhen: (iso: string) => string,
+  reader: "staff" | "shop" = "staff",
 ): HandoverStep[] {
   const at = rank(order.state);
   const submission = currentSubmission(order);
@@ -630,7 +634,9 @@ function riderPacksSteps(
       status === "approved"
         ? "Approved. The shop's production clock stopped when the photos were sent."
         : status === "pending"
-          ? "Waiting on you. The shop's production clock is paused meanwhile."
+          ? reader === "shop"
+            ? "GRIDGO is reviewing these photos. Your production time is paused."
+            : "Waiting on you. The shop's production clock is paused meanwhile."
           : backs.length
             ? `Sent back ${backs.length === 1 ? "once" : `${backs.length} times`}.`
             : null,

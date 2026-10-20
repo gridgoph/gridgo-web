@@ -15,6 +15,7 @@
 import type { Order, TimelineEntry } from "@/lib/api/types";
 import { presentTimelineActor, presentTimelineNote } from "@/lib/order-state";
 import { shopTimelineState } from "@/lib/shop-handover";
+import { presentSupplierJobStatus } from "@/lib/supplier-actions";
 
 export type JobActivity = {
   /** Epoch ms of the most recent movement, or null when the API sent none. */
@@ -66,13 +67,14 @@ export function jobActivity(job: Order): JobActivity {
     ? (entry?.at ?? null)
     : (job.updatedAt ?? null);
 
-  // The note is the shop's own sentence when there is one; the state label is
-  // the fallback, so this never renders a snake_case value.
+  // The note is the shop's own sentence when there is one. An older event
+  // keeps that event's state. The current standing uses the shop status, so a
+  // decline or a timed-out hour does not keep reading as an assigned job.
   const note = entry?.note?.trim();
-  const what =
-    (note ? presentTimelineNote(note) : "") ||
-    (entry?.state ? shopTimelineState(job, entry.state).label : "") ||
-    shopTimelineState(job, job.state).label;
+  const standing = presentSupplierJobStatus(job).label;
+  const recorded =
+    entry?.state && entry.state !== job.state ? shopTimelineState(job, entry.state).label : "";
+  const what = (note ? presentTimelineNote(note) : "") || recorded || standing;
 
   return {
     at,
