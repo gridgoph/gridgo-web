@@ -61,6 +61,7 @@ vi.mock("@/lib/api/client", async () => {
 });
 
 import { ListingReviewsDesk } from "@/components/listing-reviews/ListingReviewsDesk";
+import { ProductionTimeChecks } from "@/components/listing-reviews/ProductionTimeChecks";
 import { ApiError } from "@/lib/api/client";
 
 const taxonomy: Taxonomy = {
@@ -343,5 +344,120 @@ describe("Listing reviews desk", () => {
     render(<ListingReviewsDesk tree="ops" />);
     await screen.findByRole("heading", { level: 2, name: "Die-cut stickers" });
     expect(screen.queryByRole("link", { name: "Open on Supplier products" })).toBeNull();
+  });
+});
+
+describe("Listing reviews desk: Production time (gridgo-api#292)", () => {
+  function flagged(tree: "ops" | "admin") {
+    api.listStaffCatalogItems.mockImplementation(async (query: Record<string, unknown> = {}) =>
+      query.productionTimeReview === "required"
+        ? {
+            items: [
+              {
+                shop: { supplierId: "usr_shop_a", shopName: "Shop A" },
+                item: item({
+                  id: "sci_one_day",
+                  name: "Booklets",
+                  productionTime: { mode: "days", minDays: 1, maxDays: 1 },
+                  productionTimeReview: {
+                    required: true,
+                    reasons: ["legacy_one_working_day"],
+                    message: "Check your production time",
+                  },
+                }),
+              },
+              {
+                shop: { supplierId: "usr_shop_b", shopName: "Shop B" },
+                item: item({
+                  id: "sci_express",
+                  name: "Rush flyers",
+                  express: true,
+                  productionTime: null,
+                  productionTimeReview: {
+                    required: true,
+                    reasons: ["express_missing_hours"],
+                    message: "Check your production time",
+                  },
+                }),
+              },
+            ],
+            shops: [],
+            total: 2,
+          }
+        : { items: [], shops: [{ supplierId: "usr_shop_a", shopName: "Shop A" }], total: 0 },
+    );
+    render(<ListingReviewsDesk tree={tree} />);
+  }
+
+  it("lists flagged listings with shop, reason and current time, linking into the ops tree", async () => {
+    flagged("ops");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Production time · 2" }));
+    const table = await screen.findByRole("table", { name: "Listings to check" });
+    expect(api.listStaffCatalogItems).toHaveBeenCalledWith({
+      productionTimeReview: "required",
+      limit: 50,
+    });
+    const booklets = within(table).getByRole("row", { name: /Booklets/ });
+    expect(booklets).toHaveTextContent("Shop A");
+    expect(booklets).toHaveTextContent("Older 1-working-day setting, needs confirmation");
+    expect(booklets).toHaveTextContent("1 working day");
+    expect(within(booklets).getByRole("link", { name: "Booklets" })).toHaveAttribute(
+      "href",
+      "/ops/supplier-products/sci_one_day",
+    );
+    const express = within(table).getByRole("row", { name: /Rush flyers/ });
+    expect(express).toHaveTextContent("Express with no hours");
+    expect(express).toHaveTextContent("Not set yet");
+  });
+
+  it("opens Super Admin's own listing page from /admin", async () => {
+    search.params = new URLSearchParams("tab=production-time");
+    flagged("admin");
+    const table = await screen.findByRole("table", { name: "Listings to check" });
+    expect(within(table).getByRole("link", { name: "Booklets" })).toHaveAttribute(
+      "href",
+      "/admin/supplier-products/sci_one_day",
+    );
+    search.params = new URLSearchParams();
+  });
+});
+
+describe("Production time checks: a failed refresh (gridgo-api#292)", () => {
+  const flaggedRow = {
+    shop: { supplierId: "usr_shop_a", shopName: "Shop A" },
+    item: item({
+      id: "sci_one_day",
+      name: "Booklets",
+      productionTimeReview: { required: true, reasons: ["legacy_one_working_day"] },
+    }),
+  };
+
+  it("never leaves Nothing to check standing after a refresh fails", async () => {
+    api.listStaffCatalogItems.mockResolvedValueOnce({ items: [], shops: [], total: 0 });
+    const { rerender } = render(<ProductionTimeChecks tree="ops" refreshSignal={0} />);
+    expect(await screen.findByText("Nothing to check")).toBeVisible();
+
+    api.listStaffCatalogItems.mockRejectedValueOnce(new ApiError(500, { error: "server_error" }));
+    rerender(<ProductionTimeChecks tree="ops" refreshSignal={1} />);
+    expect(await screen.findByRole("button", { name: "Try again" })).toBeVisible();
+    expect(screen.queryByText("Nothing to check")).not.toBeInTheDocument();
+  });
+
+  it("marks the earlier list as possibly out of date and retries", async () => {
+    api.listStaffCatalogItems.mockResolvedValueOnce({ items: [flaggedRow], shops: [], total: 1 });
+    const { rerender } = render(<ProductionTimeChecks tree="ops" refreshSignal={0} />);
+    await screen.findByRole("table", { name: "Listings to check" });
+
+    api.listStaffCatalogItems.mockRejectedValueOnce(new ApiError(500, { error: "server_error" }));
+    rerender(<ProductionTimeChecks tree="ops" refreshSignal={1} />);
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(/may be out of date/);
+    expect(screen.getByRole("table", { name: "Listings to check" })).toBeVisible();
+
+    api.listStaffCatalogItems.mockResolvedValueOnce({ items: [], shops: [], total: 0 });
+    await userEvent.setup().click(within(alert).getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Nothing to check")).toBeVisible();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

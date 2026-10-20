@@ -5,6 +5,11 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { ExpressChip } from "@/components/ui/ExpressChip";
 import { expressFactLine } from "@/lib/express";
 import {
+  PRODUCTION_TIME_REVIEW_TITLE,
+  choiceLine,
+  reviewReasonStaffLine,
+} from "@/lib/production-time-choice";
+import {
   listingBoardState,
   listingReviewState,
   listingPriceLine,
@@ -45,6 +50,9 @@ export function SupplierProductFacts({
             <StatusChip tone={review.tone} icon={review.icon} label={review.label} />
           ) : null}
           {listing.express ? <ExpressChip /> : null}
+          {listing.productionTimeReview?.required ? (
+            <StatusChip tone="warning" icon="triangle-alert" label={PRODUCTION_TIME_REVIEW_TITLE} />
+          ) : null}
           <span className="text-caption text-text-muted">
             Last change {formatDateTime(listing.updatedAt)}
           </span>
@@ -59,6 +67,20 @@ export function SupplierProductFacts({
         <dd className="text-body text-text-primary m-0 tabular-nums">
           {listingPriceLine(listing)}
         </dd>
+        {listing.productionTime !== undefined ? (
+          <>
+            <dt className="text-caption text-text-muted">Production time</dt>
+            <dd className="text-body text-text-primary m-0">
+              {choiceLine(listing.productionTime)}
+              {listing.productionTimeReview?.reasons.length ? (
+                <span className="text-caption text-text-secondary block">
+                  Shop asked to check:{" "}
+                  {listing.productionTimeReview.reasons.map(reviewReasonStaffLine).join(", ")}
+                </span>
+              ) : null}
+            </dd>
+          </>
+        ) : null}
         <dt className="text-caption text-text-muted">Specs</dt>
         <dd className="text-body text-text-primary m-0">{specSummary(listing)}</dd>
         {listing.express != null ? (

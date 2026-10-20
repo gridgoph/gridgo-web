@@ -422,18 +422,35 @@ describe("supplier Catalogues standings (gridgo-web#111)", () => {
   });
 });
 
-describe("supplier Catalogues Express (gridgo-api#224)", () => {
-  it("marks a listing with Express on, and only that one", async () => {
+describe("supplier Catalogues: Check your production time (gridgo-api#292)", () => {
+  it("marks only the flagged listing, counts it at the top, and no longer shows Express", async () => {
     mocks.listCatalogItems.mockImplementation(async () => ({
       items: [
-        item("live", "Live flyers", { express: true }),
-        item("hidden", "Hidden flyers", { active: false, express: false }),
+        item("live", "Live flyers", {
+          express: true,
+          productionTime: null,
+          productionTimeReview: {
+            required: true,
+            reasons: ["express_missing_hours"],
+            message: "Check your production time",
+          },
+        }),
+        item("hidden", "Hidden flyers", {
+          active: false,
+          express: false,
+          productionTime: { mode: "days", minDays: 1, maxDays: 3 },
+          productionTimeReview: { required: false, reasons: [], message: null },
+        }),
       ],
       total: 2,
     }));
     render(<SupplierCataloguesPage />);
     expect(await screen.findByText("Live flyers")).toBeVisible();
-    expect(within(card("Live flyers")).getByText("Express")).toBeVisible();
-    expect(within(card("Hidden flyers")).queryByText("Express")).not.toBeInTheDocument();
+    expect(within(card("Live flyers")).getByText("Check your production time")).toBeVisible();
+    expect(within(card("Hidden flyers")).queryByText("Check your production time")).toBeNull();
+    expect(within(card("Live flyers")).queryByText("Express")).toBeNull();
+    expect(
+      screen.getByText(/One listing needs you to confirm how long it takes/),
+    ).toBeVisible();
   });
 });

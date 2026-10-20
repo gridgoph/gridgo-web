@@ -15,6 +15,7 @@ import { CircleCheck, SlidersHorizontal } from "lucide-react";
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { ListingReviewPanel } from "@/components/listing-reviews/ListingReviewPanel";
 import { ProductTypePanel } from "@/components/listing-reviews/ProductTypePanel";
+import { ProductionTimeChecks } from "@/components/listing-reviews/ProductionTimeChecks";
 import { SendBackDialog } from "@/components/listing-reviews/SendBackDialog";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -68,10 +69,14 @@ import {
 import { priceLine } from "@/lib/listings";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
-import { readStaffShop } from "@/lib/supplier-products";
+import { normalizeStaffCatalogPage, readStaffShop } from "@/lib/supplier-products";
 import { cn } from "@/lib/utils";
 
-type View = "listings" | "types";
+type View = "listings" | "types" | "times";
+
+function viewFromTab(tab: string | null): View {
+  return tab === "types" ? "types" : tab === "production-time" ? "times" : "listings";
+}
 
 /** Pages of 50 read per state before the desk offers to read on. */
 const MAX_REVIEW_PAGES = 10;
@@ -137,9 +142,9 @@ async function readShopNames(): Promise<Map<string, string>> {
  */
 export function ListingReviewsDesk({ tree }: { tree: "ops" | "admin" }) {
   const searchParams = useSearchParams();
-  const [view, setView] = useState<View>(
-    searchParams.get("tab") === "types" ? "types" : "listings",
-  );
+  const [view, setView] = useState<View>(viewFromTab(searchParams.get("tab")));
+  const [toCheck, setToCheck] = useState<number | null>(null);
+  const [refreshSignal, setRefreshSignal] = useState(0);
   const [status, setStatus] = useState<ReviewQueueStatus>("pending");
   const [pending, setPending] = useState<ReviewEntry[] | null>(null);
   const [other, setOther] = useState<ReviewEntry[] | null>(null);
@@ -173,6 +178,11 @@ export function ListingReviewsDesk({ tree }: { tree: "ops" | "admin" }) {
           readReviews("pending"),
           status === "pending" ? Promise.resolve(null) : readReviews(status),
           readRequests(),
+          // The Production time tab's count; the tab reads its own rows.
+          listStaffCatalogItems({ productionTimeReview: "required", limit: 1 }).then(
+            (body) => setToCheck(normalizeStaffCatalogPage(body).total),
+            () => setToCheck(null),
+          ),
         ]);
         setPending(waiting.entries);
         setOther(decided?.entries ?? null);
@@ -508,11 +518,22 @@ export function ListingReviewsDesk({ tree }: { tree: "ops" | "admin" }) {
           <ToggleGroupItem value="types">
             New product types{pendingRequests != null ? ` · ${pendingRequests}` : ""}
           </ToggleGroupItem>
+          <ToggleGroupItem value="times">
+            Production time{toCheck != null ? ` · ${toCheck}` : ""}
+          </ToggleGroupItem>
         </ToggleGroup>
-        <Button size="sm" onClick={() => void load()}>
+        <Button
+          size="sm"
+          onClick={() => {
+            void load();
+            setRefreshSignal((value) => value + 1);
+          }}
+        >
           Refresh
         </Button>
       </div>
+
+      {view === "times" ? <ProductionTimeChecks tree={tree} refreshSignal={refreshSignal} /> : null}
 
       <div aria-live="polite" className="shrink-0 empty:hidden">
         {arrivals ? (
@@ -534,7 +555,12 @@ export function ListingReviewsDesk({ tree }: { tree: "ops" | "admin" }) {
         ) : null}
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[24rem_minmax(0,1fr)] lg:gap-4">
+      <div
+        className={cn(
+          "grid min-h-0 flex-1 gap-3 lg:grid-cols-[24rem_minmax(0,1fr)] lg:gap-4",
+          view === "times" && "hidden",
+        )}
+      >
         <aside
           aria-label={view === "listings" ? "Listing queue" : "Product-type requests"}
           className={cn(

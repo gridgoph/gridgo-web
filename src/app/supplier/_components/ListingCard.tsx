@@ -16,7 +16,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ExpressChip } from "@/components/ui/ExpressChip";
 import { StatusChip, StatusMark } from "@/components/ui/StatusChip";
 import {
   listAcceptedFileFormats,
@@ -42,6 +41,7 @@ import {
 } from "@/lib/listings";
 import type { Taxonomy } from "@/lib/api/types";
 import { readyInLine } from "@/lib/production-time";
+import { PRODUCTION_TIME_REVIEW_TITLE } from "@/lib/production-time-choice";
 
 type Props = {
   listing: Listing;
@@ -132,9 +132,10 @@ export function ListingCard({
       <p className="text-body text-text-primary m-0">{priceLine(listing)}</p>
       {cap ? <p className="text-caption text-text-secondary m-0">{cap}</p> : null}
       <p className="text-caption text-text-secondary m-0">{readyIn}</p>
-      {listing.express ? (
+      {/* Express is now Same day; a listing still flagged asks the shop to check it. */}
+      {listing.productionTimeReview?.required ? (
         <span className="flex">
-          <ExpressChip />
+          <StatusChip tone="warning" icon="triangle-alert" label={PRODUCTION_TIME_REVIEW_TITLE} />
         </span>
       ) : null}
     </>

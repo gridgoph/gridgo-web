@@ -1,19 +1,16 @@
 "use client";
 
 import { useRef, type KeyboardEvent } from "react";
-import { CalendarDays, Clock, Minus, Plus } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
 
 import { SegmentedControl } from "@/app/supplier/_components/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import {
   DEFAULT_DAY_MINUTES,
-  readyExampleLine,
-  readyExampleNote,
   sameTime,
   stepTime,
   timeLabel,
   timeLadder,
-  timeMinutes,
   timeParts,
   unitStart,
   type ProductionTime,
@@ -169,116 +166,6 @@ export function ProductionTimePicker({
         label={label}
         disabled={disabled}
       />
-    </div>
-  );
-}
-
-type WindowProps = {
-  min: ProductionTime;
-  max: ProductionTime;
-  onChange: (window: { min: ProductionTime; max: ProductionTime }) => void;
-  /** The shop's working day from GRIDGO; its ten-hour default when not sent. */
-  dayMinutes?: number;
-  /** Fixed in tests; a shop always sees now. */
-  now?: Date;
-  idPrefix?: string;
-};
-
-/**
- * The soonest and latest a listing takes, in hours for same-day work or in
- * working days, with the moment a job started now would be ready. That line
- * is the point of the field: "2" reads as Thursday, and "1 hour" at half past
- * five reads as the next morning.
- *
- * The unit is the latest's. Switching it moves both ends, and switching back
- * restores the window the shop had there. The two steppers keep the pair in
- * order: raising the soonest past the latest carries the latest with it.
- */
-export function ProductionTimeField({
-  min,
-  max,
-  onChange,
-  dayMinutes = DEFAULT_DAY_MINUTES,
-  now,
-  idPrefix = "production-time",
-}: WindowProps) {
-  const ordered = timeMinutes(min, dayMinutes) > timeMinutes(max, dayMinutes) ? max : min;
-  const unit = max.unit;
-  const last = useRef<
-    Partial<Record<ProductionUnit, { min: ProductionTime; max: ProductionTime }>>
-  >({});
-
-  function switchTo(next: ProductionUnit) {
-    if (next === unit) return;
-    last.current[unit] = { min: ordered, max };
-    const start = unitStart(next);
-    onChange(last.current[next] ?? { min: start, max: start });
-  }
-
-  const Icon = unit === "hours" ? Clock : CalendarDays;
-  const soonestId = `${idPrefix}-soonest`;
-  const latestId = `${idPrefix}-latest`;
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1.5">
-        <span id={`${idPrefix}-unit`} className="text-caption text-text-secondary">
-          Count production time in
-        </span>
-        <SegmentedControl
-          id={`${idPrefix}-unit-switch`}
-          aria-labelledby={`${idPrefix}-unit`}
-          options={UNITS}
-          value={unit}
-          onChange={switchTo}
-        />
-      </div>
-      <div className="flex flex-wrap gap-x-4 gap-y-3">
-        <div className="flex flex-col gap-1.5">
-          <span id={soonestId} className="text-caption text-text-secondary">
-            Soonest
-          </span>
-          <ProductionTimeStepper
-            time={ordered}
-            dayMinutes={dayMinutes}
-            label="Soonest production time"
-            labelledBy={soonestId}
-            onChange={(value) =>
-              onChange(
-                timeMinutes(value, dayMinutes) > timeMinutes(max, dayMinutes)
-                  ? { min: value, max: value }
-                  : { min: value, max },
-              )
-            }
-          />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <span id={latestId} className="text-caption text-text-secondary">
-            Latest
-          </span>
-          <ProductionTimeStepper
-            time={max}
-            dayMinutes={dayMinutes}
-            label="Latest production time"
-            labelledBy={latestId}
-            onChange={(value) =>
-              onChange(
-                timeMinutes(ordered, dayMinutes) > timeMinutes(value, dayMinutes)
-                  ? { min: value, max: value }
-                  : { min: ordered, max: value },
-              )
-            }
-          />
-        </div>
-      </div>
-      <div className="gg-panel flex max-w-prose gap-3 p-3">
-        <Icon className="text-text-secondary mt-0.5 size-[18px] shrink-0" aria-hidden />
-        <div className="flex min-w-0 flex-col gap-1">
-          <p className="text-body text-text-primary m-0">
-            {readyExampleLine(ordered, max, now ?? new Date())}
-          </p>
-          <p className="text-caption text-text-muted m-0">{readyExampleNote(unit)}</p>
-        </div>
-      </div>
     </div>
   );
 }

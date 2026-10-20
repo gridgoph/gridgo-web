@@ -146,6 +146,7 @@ import type {
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
 import { acceptsReviewData, withReviewData } from "@/lib/review-data";
+import { previewParams, type ProductionTimeChoice } from "@/lib/production-time-choice";
 import {
   normalizeShopHours,
   normalizeShopHoursList,
@@ -2666,6 +2667,8 @@ export type StaffCatalogQuery = {
   supplierId?: string | null;
   minPriceMinor?: number | null;
   maxPriceMinor?: number | null;
+  /** Only listings whose shop is asked to check their production time. */
+  productionTimeReview?: "required" | null;
   limit?: number | null;
   cursor?: string | null;
 };
@@ -2682,6 +2685,7 @@ export async function listStaffCatalogItems(
     params.set("minPriceMinor", String(query.minPriceMinor));
   if (query.maxPriceMinor != null)
     params.set("maxPriceMinor", String(query.maxPriceMinor));
+  if (query.productionTimeReview) params.set("productionTimeReview", query.productionTimeReview);
   if (query.limit != null) params.set("limit", String(query.limit));
   if (query.cursor) params.set("cursor", query.cursor);
   const search = params.toString();
@@ -2836,6 +2840,36 @@ export async function updateCatalogItem(
   return request<unknown>(`/me/catalog-items/${encodeURIComponent(itemId)}`, {
     method: "PATCH",
     ...versioned(version, body),
+  });
+}
+
+/**
+ * The dates a client would be offered if this listing took `choice`, before
+ * it is saved. Advisory; read through `normalizePreview`. Contract: "Preview
+ * before saving" in gridgo-api docs/SCHEDULING_API.md.
+ */
+export async function previewProductionTime(
+  itemId: string,
+  choice: ProductionTimeChoice,
+  days?: number,
+): Promise<unknown> {
+  return request<unknown>(
+    `/me/catalog-items/${encodeURIComponent(itemId)}/production-time-preview?${previewParams(choice, days)}`,
+  );
+}
+
+/**
+ * One production time on every listing the shop has, hidden and drafts
+ * included. `expectedVersions` names each of them; a stale or missing one is
+ * `409 catalog_items_stale` and nothing changes.
+ */
+export async function applyProductionTimeToAll(
+  productionTime: ProductionTimeChoice,
+  expectedVersions: Record<string, number>,
+): Promise<unknown> {
+  return request<unknown>("/me/catalog-items/production-time", {
+    method: "POST",
+    body: JSON.stringify({ productionTime, expectedVersions }),
   });
 }
 
