@@ -2,7 +2,7 @@
 
 import { Suspense } from "react";
 
-import { FoundingTestersList } from "@/components/founding-testers/FoundingTestersList";
+import { FoundingTestersDesk } from "@/components/founding-testers/FoundingTestersDesk";
 import { SkeletonCards } from "@/components/ui/loading";
 
 export default function OpsFoundingTestersPage() {
@@ -17,7 +17,7 @@ export default function OpsFoundingTestersPage() {
         />
       }
     >
-      <FoundingTestersList tree="ops" />
+      <FoundingTestersDesk tree="ops" />
     </Suspense>
   );
 }

@@ -146,6 +146,15 @@ export function notificationHref(role: Role, notification: Notification): string
     return null;
   }
 
+  // Tester reward and invite updates (gridgo-client#323) name no client
+  // either: staff land on the matching tab of the same page.
+  if (type.startsWith("tester_reward_") || type.startsWith("tester_invite_")) {
+    const tab = type.startsWith("tester_reward_") ? "rewards" : "invites";
+    if (role === "super_admin") return `/admin/founding-testers?tab=${tab}`;
+    if (role === "ops_admin") return `/ops/founding-testers?tab=${tab}`;
+    return null;
+  }
+
   // Client refund notices name the order, not the request, so staff land on
   // the refund inbox with that order and it opens the request. The shop's copy
   // falls through to its job, where the settled payout shows. A shop

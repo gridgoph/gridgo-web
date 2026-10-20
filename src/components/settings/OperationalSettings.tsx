@@ -43,6 +43,7 @@ import { DeliveryZones, DeliveryZonesSkeleton } from "@/components/settings/Deli
 import { HandoverCodeSettings } from "@/components/settings/HandoverCodeSettings";
 import { CoverSpineSettings } from "@/components/settings/CoverSpineSettings";
 import { FoundingTesterLaunch } from "@/components/settings/FoundingTesterLaunch";
+import { TesterInviteSettings } from "@/components/settings/TesterInviteSettings";
 import { ColourDetectionSettings } from "@/components/settings/ColourDetectionSettings";
 import { RiderTrackingSettings } from "@/components/settings/RiderTrackingSettings";
 import { HubPickupSettings } from "@/components/settings/HubPickupSettings";
@@ -947,6 +948,17 @@ export function OperationalSettings() {
       />
 
       <FoundingTesterLaunch
+        settings={settings}
+        canEdit
+        disabled={busy}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={() => load(true)}
+      />
+
+      <TesterInviteSettings
         settings={settings}
         canEdit
         disabled={busy}

@@ -9,12 +9,12 @@ function summary(progress: FoundingTesterProgress): string {
     m.label.toLowerCase(),
   );
   return done.length
-    ? `${progressText(progress)} missions done: ${done.join(", ")}`
-    : `${progressText(progress)} missions done`;
+    ? `${progressText(progress)} steps done: ${done.join(", ")}`
+    : `${progressText(progress)} steps done`;
 }
 
 /**
- * The three missions as a row of marks with the count beside them, for a
+ * The five steps as a row of marks with the count beside them, for a
  * table cell. Each mark is a check or an empty circle, never colour alone.
  */
 export function MissionMeter({ progress }: { progress: FoundingTesterProgress }) {
@@ -50,7 +50,7 @@ export function MissionMeter({ progress }: { progress: FoundingTesterProgress })
   );
 }
 
-/** The missions in order, each with what proves it and whether it is done. */
+/** The five steps in order, each with what proves it and whether it is done. */
 export function MissionList({ progress }: { progress: FoundingTesterProgress }) {
   const done = Math.min(progress.completedCount, MISSION_COUNT);
   return (
@@ -58,10 +58,10 @@ export function MissionList({ progress }: { progress: FoundingTesterProgress }) 
       <Progress
         value={done}
         max={MISSION_COUNT}
-        getAriaValueText={() => `${progressText(progress)} missions done`}
+        getAriaValueText={() => `${progressText(progress)} steps done`}
       >
         <ProgressLabel>
-          <span className="text-body text-text-primary">Missions done</span>
+          <span className="text-body text-text-primary">Steps done</span>
         </ProgressLabel>
         <span className="text-body text-text-primary ml-auto tabular-nums">
           {progressText(progress)}
@@ -69,7 +69,7 @@ export function MissionList({ progress }: { progress: FoundingTesterProgress }) 
       </Progress>
       <ol className="m-0 flex list-none flex-col gap-2 p-0">
         {MISSIONS.map((mission, index) => {
-          const complete = progress.missions[mission.key];
+          const complete = progress.missions[mission.key] === true;
           return (
             <li
               key={mission.key}

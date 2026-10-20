@@ -1,12 +1,14 @@
 /**
- * Founding Tester missions (gridgo-api#293, contract "Founding Tester
- * missions" in `gridgo-api/docs/VOUCHERS_API.md`).
+ * Founding Tester missions (gridgo-api#293 and gridgo-client#323; contract
+ * `gridgo-api/docs/FOUNDING_TESTER_API.md` over "Founding Tester missions" in
+ * `VOUCHERS_API.md`).
  *
- * A client account earns the Founding Tester label by finishing three
- * missions: an order placed with its payment confirmed, received with its
- * delivery or pick-up confirmed, and rated with the survey sent. Finishing
- * all three adds a ₱15 GRIDGO voucher valid 30 days, once per account. The API
- * counts, awards and issues; this portal only reads and explains.
+ * A client account earns the Founding Tester label by finishing five steps,
+ * one path: add an item to the cart, place the order (payment confirmed),
+ * track it in the app, receive it, and complete the survey. Finishing all
+ * five adds a ₱15 GRIDGO voucher valid 30 days, once per account, unless the
+ * monthly tester budget holds it. The API counts, awards and issues; this
+ * portal reads, explains, and lets Super Admin void or resume a reward.
  *
  * Only client accounts created before the Super Admin's launch date can earn
  * it. The label belongs to the client's membership: it is never drawn on a
@@ -29,17 +31,30 @@ export const FOUNDING_TESTER_LABEL = "Founding Tester";
 /** The dashboard reads 100 clients a page (the API allows up to 500). */
 export const FOUNDING_TESTERS_PAGE_SIZE = 100;
 
-export const MISSION_COUNT = 3;
+export const MISSION_COUNT = 5;
 
-/** The three missions, in order, as staff read them. */
+/**
+ * The five steps, in order, under the API's own names (the client app shows
+ * the same words), each with what the API counts as proof.
+ */
 export const MISSIONS: readonly {
   key: FoundingTesterMission;
   label: string;
   proof: string;
 }[] = [
-  { key: "placed", label: "Placed a first order", proof: "Payment confirmed" },
-  { key: "received", label: "Received it", proof: "Delivery or pick-up confirmed" },
-  { key: "rated", label: "Rated it", proof: "Survey sent" },
+  {
+    key: "added",
+    label: "Add an item to your cart",
+    proof: "An item in their cart or on a checkout",
+  },
+  { key: "placed", label: "Place your order", proof: "Payment confirmed" },
+  { key: "tracked", label: "Track your order", proof: "Opened its tracking in the app" },
+  {
+    key: "received",
+    label: "Receive your order",
+    proof: "Delivery or hub hand-out confirmed",
+  },
+  { key: "rated", label: "Complete the survey", proof: "Survey sent" },
 ];
 
 type Presentation = { label: string; tone: StatusTone; icon: StatusIconName };
@@ -83,17 +98,30 @@ export function progressText(
 }
 
 /**
- * All three done with no label yet: the API awards it the next time the
- * client opens the app, so a staff read can briefly show 3 of 3 unlabelled.
+ * All five done with no label yet and nothing holding it: the API awards it
+ * the next time the client opens the app, so a staff read can briefly show
+ * 5 of 5 unlabelled.
  */
 export function awaitingAward(progress: FoundingTesterProgress): boolean {
-  return progress.eligible && !progress.label && progress.completedCount >= MISSION_COUNT;
+  return (
+    progress.eligible &&
+    !progress.label &&
+    progress.rewardStatus !== "paused" &&
+    progress.completedCount >= MISSION_COUNT
+  );
+}
+
+/** Five of five, with the label and voucher held by the monthly budget. */
+export function heldByBudget(progress: FoundingTesterProgress): boolean {
+  return !progress.label && progress.rewardStatus === "paused";
 }
 
 export function presentTesterLabel(progress: FoundingTesterProgress): Presentation {
   if (progress.label)
     return { label: FOUNDING_TESTER_LABEL, tone: "info", icon: "award" };
   if (!progress.eligible) return { label: "Not eligible", tone: "neutral", icon: "ban" };
+  if (heldByBudget(progress))
+    return { label: "Waiting on budget", tone: "warning", icon: "clock" };
   if (awaitingAward(progress))
     return { label: "Label on its way", tone: "info", icon: "clock" };
   return { label: "Not yet", tone: "neutral", icon: "circle-dashed" };
@@ -114,10 +142,13 @@ export function testerLabelNote(
       ? "A test account cannot earn the label."
       : "This account was created on or after the Founding Tester launch date, so it cannot earn the label.";
   }
-  if (awaitingAward(progress)) {
-    return "All three missions are done. The label and voucher are added the next time they open the app.";
+  if (heldByBudget(progress)) {
+    return "All five steps are done. The label and voucher wait for room in the monthly tester budget and for Super Admin to resume the reward.";
   }
-  return "They earn it by finishing all three missions.";
+  if (awaitingAward(progress)) {
+    return "All five steps are done. The label and voucher are added the next time they open the app.";
+  }
+  return "They earn it by finishing all five steps.";
 }
 
 export type RewardPresentation = Presentation & { detail: string };
@@ -138,10 +169,27 @@ export function presentTesterReward(
   }
   if (progress.rewardStatus === "pending") {
     return {
-      label: "After all three",
+      label: "After all five",
       tone: "neutral",
       icon: "circle-dashed",
-      detail: `${REWARD_TERMS}, added when all three missions are done.`,
+      detail: `${REWARD_TERMS}, added when all five steps are done.`,
+    };
+  }
+  if (progress.rewardStatus === "paused") {
+    return {
+      label: "Reward awaiting budget",
+      tone: "warning",
+      icon: "clock",
+      detail:
+        "All five steps are done, but the monthly tester budget had no room. No voucher yet: it waits for Super Admin to resume it.",
+    };
+  }
+  if (progress.rewardStatus === "voided" && !progress.reward) {
+    return {
+      label: "Voided",
+      tone: "neutral",
+      icon: "circle-x",
+      detail: "Super Admin voided this reward. An earned label stays.",
     };
   }
   const reused = progress.rewardStatus === "existing_survey_reward";
@@ -156,7 +204,10 @@ export function presentTesterReward(
         : `${REWARD_TERMS}.`,
     };
   }
-  const status = presentVoucherStatus(voucher);
+  const status =
+    progress.rewardStatus === "voided"
+      ? { label: "Voided", tone: "neutral" as const, icon: "circle-x" as const }
+      : presentVoucherStatus(voucher);
   const value = formatPhp(voucher.valueMinor);
   const when =
     voucher.status === "used"

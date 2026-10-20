@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { MissionList } from "@/components/founding-testers/MissionProgress";
+import { TesterRewardsList } from "@/components/founding-testers/TesterRewardsList";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { StatusChip } from "@/components/ui/StatusChip";
-import { getClientAccount, isApiError } from "@/lib/api/client";
-import type { ClientAccount as ClientAccountRecord } from "@/lib/api/types";
+import { getClientAccount, isApiError, listTesterInvites } from "@/lib/api/client";
+import type { ClientAccount as ClientAccountRecord, TesterInvite } from "@/lib/api/types";
 import {
   presentTesterLabel,
   presentTesterReward,
@@ -21,12 +22,20 @@ import { formatManila } from "@/lib/vouchers";
 
 /**
  * One client account for Operations and Super Admin (`GET /users/:id`): who
- * it is, and its Founding Tester label, mission progress and reward. The
- * voucher's private code is the client's and is never shown. Read-only; a
- * reward is voided, if ever, from the vouchers desk with a reason.
+ * it is, its Founding Tester label, five steps and reward, the friends it
+ * invited (`GET /ops/tester-invites?inviterId=`), and every tester reward it
+ * is part of. The voucher's private code is the client's and is never shown.
+ * Super Admin voids or resumes a reward from the rewards list here.
  */
-export function ClientAccount({ userId }: { userId: string }) {
+export function ClientAccount({
+  userId,
+  tree,
+}: {
+  userId: string;
+  tree: "ops" | "admin";
+}) {
   const [account, setAccount] = useState<ClientAccountRecord | null>(null);
+  const [invites, setInvites] = useState<TesterInvite[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [missing, setMissing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -36,7 +45,13 @@ export function ClientAccount({ userId }: { userId: string }) {
       setLoading(true);
       setError(null);
       try {
-        setAccount(await getClientAccount(userId));
+        const [read, invited] = await Promise.all([
+          getClientAccount(userId),
+          // Older APIs have no invites; the account still reads without them.
+          listTesterInvites({ inviterId: userId }, { limit: 500 }).catch(() => null),
+        ]);
+        setAccount(read);
+        setInvites(invited ? invited.invites : null);
         setMissing(false);
       } catch (err) {
         if (isApiError(err) && err.status === 404) {
@@ -180,9 +195,44 @@ export function ClientAccount({ userId }: { userId: string }) {
                 {reward.detail}
               </p>
             </div>
+            {invites ? (
+              <>
+                <h3
+                  className="text-body text-text-primary m-0 mt-4"
+                  style={{ fontFamily: "var(--font-medium)" }}
+                >
+                  Invites
+                </h3>
+                <p className="text-body text-text-secondary m-0 mt-1 tabular-nums">
+                  {invites.length} invited · {invites.filter((i) => i.clientId).length}{" "}
+                  joined · {invites.filter((i) => i.completedAt).length} completed
+                </p>
+                {invites.some((i) => !i.clientId) ? (
+                  <p className="text-caption text-text-muted m-0 mt-1">
+                    {invites.filter((i) => !i.clientId).length} form{" "}
+                    {invites.filter((i) => !i.clientId).length === 1
+                      ? "response is"
+                      : "responses are"}{" "}
+                    not matched to an account yet. See the Invites tab.
+                  </p>
+                ) : null}
+              </>
+            ) : null}
           </>
         )}
       </section>
+
+      {account.role === "client" ? (
+        <section
+          className="flex flex-col gap-2 lg:col-span-2"
+          aria-labelledby="tester-rewards-heading"
+        >
+          <h2 id="tester-rewards-heading" className="text-h3 text-text-primary m-0">
+            Tester rewards
+          </h2>
+          <TesterRewardsList tree={tree} clientId={userId} />
+        </section>
+      ) : null}
     </div>
   );
 }

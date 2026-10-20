@@ -347,3 +347,16 @@ it("opens Founding Tester notices on the progress view in each staff tree", () =
     expect(notificationHref("supplier", note({ type }))).toBeNull();
   }
 });
+
+it("opens tester reward and invite notices on their tab in each staff tree", () => {
+  for (const type of ["tester_reward_issued", "tester_reward_paused", "tester_reward_voided"]) {
+    expect(notificationHref("super_admin", note({ type }))).toBe(
+      "/admin/founding-testers?tab=rewards",
+    );
+    expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/founding-testers?tab=rewards");
+    expect(notificationHref("supplier", note({ type }))).toBeNull();
+  }
+  expect(notificationHref("ops_admin", note({ type: "tester_invite_joined" }))).toBe(
+    "/ops/founding-testers?tab=invites",
+  );
+});

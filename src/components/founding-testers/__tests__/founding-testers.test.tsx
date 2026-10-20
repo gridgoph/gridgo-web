@@ -11,7 +11,7 @@ import {
   within,
 } from "@testing-library/react";
 import React from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
   ClientAccount as ClientAccountRecord,
@@ -24,6 +24,8 @@ const { api, nav } = vi.hoisted(() => ({
     listFoundingTesters: vi.fn(),
     listUsers: vi.fn(),
     getClientAccount: vi.fn(),
+    listTesterInvites: vi.fn(),
+    listTesterRewards: vi.fn(),
   },
   nav: { push: vi.fn(), params: new URLSearchParams() },
 }));
@@ -51,13 +53,33 @@ afterEach(() => {
   nav.params = new URLSearchParams();
 });
 
+const budget = {
+  month: "2026-10",
+  timezone: "Asia/Manila" as const,
+  limitMinor: null,
+  usedMinor: 0,
+  remainingMinor: null,
+  resumePolicy: "super_admin_per_reward" as const,
+};
+
+beforeEach(() => {
+  api.listTesterInvites.mockResolvedValue({ serverTime: "", total: 0, invites: [] });
+  api.listTesterRewards.mockResolvedValue({
+    serverTime: "",
+    total: 0,
+    rewards: [],
+    budget,
+  });
+  api.listUsers.mockResolvedValue([]);
+});
+
 const progress = (
   overrides: Partial<FoundingTesterProgress> = {},
 ): FoundingTesterProgress => ({
   eligible: true,
   label: null,
   awardedAt: null,
-  missions: { placed: true, received: false, rated: false },
+  missions: { added: true, placed: false, tracked: false, received: false, rated: false },
   completedCount: 1,
   rewardStatus: "pending",
   reward: null,
@@ -67,8 +89,8 @@ const progress = (
 const earned = progress({
   label: "Founding Tester",
   awardedAt: "2026-10-20T08:00:00.000Z",
-  missions: { placed: true, received: true, rated: true },
-  completedCount: 3,
+  missions: { added: true, placed: true, tracked: true, received: true, rated: true },
+  completedCount: 5,
   rewardStatus: "issued",
   reward: {
     id: "vch_1",
@@ -148,7 +170,7 @@ describe("Founding Testers view", () => {
 
     const table = await screen.findByRole("table");
     const first = within((await within(table).findByText("Client 1")).closest("tr")!);
-    expect(first.getByRole("img", { name: /3 of 3 missions done/ })).toBeInTheDocument();
+    expect(first.getByRole("img", { name: /5 of 5 steps done/ })).toBeInTheDocument();
     expect(first.getByText("Founding Tester")).toBeVisible();
     expect(
       first.getByText("₱15.00 voucher, expires Nov 19, 2026, 4:00 PM."),
@@ -159,7 +181,7 @@ describe("Founding Testers view", () => {
     );
     const second = within(within(table).getByText("Client 2").closest("tr")!);
     expect(
-      second.getByRole("img", { name: "1 of 3 missions done: placed a first order" }),
+      second.getByRole("img", { name: "1 of 5 steps done: add an item to your cart" }),
     ).toBeInTheDocument();
     expect(second.getByText("Not yet")).toBeVisible();
     expect(screen.queryByText(/PRIVATECODE/)).toBeNull();
@@ -187,18 +209,20 @@ describe("Client account", () => {
     ...overrides,
   });
 
-  it("shows the label, all three missions, and the voucher with its expiry but not its code", async () => {
+  it("shows the label, all five steps, and the voucher with its expiry but not its code", async () => {
     api.getClientAccount.mockResolvedValue(account());
-    render(<ClientAccount userId="c1" />);
+    render(<ClientAccount userId="c1" tree="ops" />);
 
     const section = within(
       await screen.findByRole("region", { name: "Founding Tester" }),
     );
     expect(api.getClientAccount).toHaveBeenCalledWith("c1");
     expect(section.getByText(/Earned Oct 20, 2026, 4:00 PM/)).toBeVisible();
-    expect(section.getAllByText("Done")).toHaveLength(3);
+    expect(section.getAllByText("Done")).toHaveLength(5);
+    expect(section.getByText("1. Add an item to your cart")).toBeVisible();
+    expect(section.getByText("3. Track your order")).toBeVisible();
     expect(section.getByText("Payment confirmed")).toBeVisible();
-    expect(section.getByText("Delivery or pick-up confirmed")).toBeVisible();
+    expect(section.getByText("Delivery or hub hand-out confirmed")).toBeVisible();
     expect(section.getByText("Survey sent")).toBeVisible();
     expect(
       section.getByText("₱15.00 voucher, expires Nov 19, 2026, 4:00 PM."),
@@ -208,14 +232,14 @@ describe("Client account", () => {
 
   it("shows progress and what the reward will be before completion", async () => {
     api.getClientAccount.mockResolvedValue(account({ foundingTester: progress() }));
-    render(<ClientAccount userId="c1" />);
+    render(<ClientAccount userId="c1" tree="ops" />);
 
     const section = within(
       await screen.findByRole("region", { name: "Founding Tester" }),
     );
     expect(section.getByText("Not yet", { selector: ".gg-chip span" })).toBeVisible();
     expect(section.getAllByText("Done")).toHaveLength(1);
-    expect(section.getByText(/added when all three missions are done/)).toBeVisible();
+    expect(section.getByText(/added when all five steps are done/)).toBeVisible();
   });
 
   it("explains an account that cannot earn it", async () => {
@@ -224,7 +248,7 @@ describe("Client account", () => {
         foundingTester: progress({ eligible: false, rewardStatus: "ineligible" }),
       }),
     );
-    render(<ClientAccount userId="c1" />);
+    render(<ClientAccount userId="c1" tree="ops" />);
 
     const section = within(
       await screen.findByRole("region", { name: "Founding Tester" }),
