@@ -197,20 +197,12 @@ export default function SupplierJobsPage() {
         id: "ready-by",
         header: "Ready by",
         sortValue: (job) => job.readyBy || job.deadline || "",
-        cell: (job) => (
-          <span className="text-body text-text-secondary whitespace-nowrap">
-            {formatDateTime(job.readyBy || job.deadline)}
-          </span>
-        ),
-      },
-      {
-        id: "promise",
-        header: "Client promise",
-        sortValue: (job) => job.promisedDate || "",
+        // The shop's own ready-by only. GRIDGO withholds the client's promise
+        // from shops, and `promisedDate` on a job is this same ready-by.
         cell: (job) => (
           <div className="flex flex-col items-start gap-1">
             <span className="text-body text-text-secondary whitespace-nowrap">
-              {job.promisedDate ? formatDateTime(job.promisedDate) : "Not set"}
+              {formatDateTime(job.readyBy || job.deadline)}
             </span>
             {isExpressOrder(job) ? <ExpressChip /> : null}
             <TestOrderChip order={job} />

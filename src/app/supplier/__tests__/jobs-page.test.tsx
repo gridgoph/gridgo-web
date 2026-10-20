@@ -188,6 +188,29 @@ describe("SupplierJobsPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows the shop's ready-by and never a client promise", async () => {
+    // A shop's `promisedDate` is its own ready-by; GRIDGO withholds the client's promise.
+    listJobsMock.mockResolvedValue([
+      job({
+        id: "o1",
+        state: "production",
+        title: "Thesis reprint",
+        readyBy: "2026-08-03T01:00:00.000Z",
+        promisedDate: "2026-08-03T01:00:00.000Z",
+      }),
+    ]);
+
+    render(<SupplierJobsPage />);
+
+    const table = await screen.findByRole("table");
+    const headers = within(table)
+      .getAllByRole("columnheader")
+      .map((cell) => cell.textContent?.trim());
+    expect(headers.some((text) => /Ready by/.test(text ?? ""))).toBe(true);
+    expect(headers.some((text) => /promise/i.test(text ?? ""))).toBe(false);
+    expect(screen.queryByText(/Client promise/)).not.toBeInTheDocument();
+  });
+
   it("explains a refused inbox rather than rendering an empty table", async () => {
     const { ApiError } = await vi.importActual<typeof import("@/lib/api/client")>(
       "@/lib/api/client",
