@@ -91,6 +91,7 @@ import {
 } from "@/lib/shop-handover";
 import { AcceptWindowCard } from "@/app/supplier/_components/AcceptWindowCard";
 import { SupplierCounterRead } from "@/app/supplier/_components/SupplierCounterRead";
+import { ShopLeaveJob } from "@/app/supplier/_components/ShopLeaveJob";
 import { SupplierForcedNotice } from "@/app/supplier/_components/SupplierForcedNotice";
 import { HandoverTimeline } from "@/components/handover/HandoverTimeline";
 import { acceptWindow } from "@/lib/supplier-accept-window";
@@ -523,6 +524,7 @@ export default function SupplierJobDetailPage() {
         <SupplierCounterRead order={job} />
         <SupplierForcedNotice order={job} />
         <HandoverTimeline order={job} audience="shop" />
+        <ShopLeaveJob order={job} onChanged={() => void load()} />
 
         <div className="flex flex-col gap-2 border-t border-outline-subtle pt-3">
           <div

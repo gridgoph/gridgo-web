@@ -93,6 +93,8 @@ import {
   coversFor,
   effectiveMinimumTurnaround,
   effectiveTurnaround,
+  MEASURE_UNITS,
+  measurementKind,
   needsPrinterMaxWidth,
   nextFreeSlot,
   normalizeBoardPage,
@@ -111,10 +113,18 @@ import {
   type Listing,
   type ListingReadiness,
   type PrepStep,
+  type MeasureUnit,
   type PricingUnit,
   type ServiceLine,
   type SpecGroup,
 } from "@/lib/listings";
+import {
+  billablePayload,
+  billableProblem,
+  fromMilli,
+  isMeasureUnit,
+  measureUnitFor,
+} from "@/lib/listing-measure";
 import { changeNotice, replacedNotice } from "@/lib/listing-photos";
 import { DEFAULT_DAY_MINUTES, readyInLine } from "@/lib/production-time";
 import {
@@ -157,6 +167,11 @@ type Draft = {
   oneColour: boolean;
   /** The tier table as typed; blank prices are tiers not offered. */
   colour: ColourDraft;
+  measureUnit: MeasureUnit | null;
+  /** Typed in `measureUnit`, stored as thousandths. */
+  minimumWidth: number | null;
+  minimumHeight: number | null;
+  minimumLength: number | null;
 };
 
 /** Section and field ids; the readiness checklist scrolls to these. */
@@ -166,8 +181,8 @@ const FIELD_IDS: Record<BoardField, string> = {
   description: "listing-body",
   price: "price",
   packageQty: "pack",
-  measureUnit: "section-price",
-  billableSize: "section-price",
+  measureUnit: "measure-unit",
+  billableSize: "billable-size",
   printerMaxWidth: "printer-max-width",
   turnaround: "section-ready-in",
   groups: "section-picks",
@@ -250,6 +265,10 @@ function draftFrom(listing: Listing): Draft {
     pricedByColour: listing.colourSupported ? listing.pricedByColour : null,
     oneColour: listing.oneColour,
     colour: colourDraftFrom(listing.colourPricing),
+    measureUnit: listing.measureUnit,
+    minimumWidth: fromMilli(listing.minimumWidthMilli),
+    minimumHeight: fromMilli(listing.minimumHeightMilli),
+    minimumLength: fromMilli(listing.minimumLengthMilli),
   };
 }
 
@@ -358,6 +377,7 @@ function payloadOf(draft: Draft) {
     ),
     ...(draft.printLayouts ? { printLayouts: draft.printLayouts } : {}),
     ...colourPayload(draft),
+    ...billablePayload(draft),
   };
 }
 
@@ -389,6 +409,8 @@ function holdReason(draft: Draft, listing: Listing): string | null {
   } else if (pesosToMinor(draft.price) == null) {
     return "enter a price in pesos, like 400.00.";
   }
+  const measured = billableProblem(draft);
+  if (measured) return measured;
   if (draft.time && timeChanged(draft, listing)) {
     const problem = choiceProblem(draft.time);
     if (problem) return problem.charAt(0).toLowerCase() + problem.slice(1);
@@ -1264,7 +1286,16 @@ export default function ListingEditorPage() {
                     aria-label="Pricing unit"
                     options={PRICING_CHOICES}
                     value={working.pricingUnit}
-                    onChange={(pricingUnit) => setDraft({ ...working, pricingUnit })}
+                    onChange={(pricingUnit) =>
+                      setDraft({
+                        ...working,
+                        pricingUnit,
+                        measureUnit: measureUnitFor(pricingUnit, working.measureUnit),
+                        minimumWidth: measurementKind(pricingUnit) === "area" ? working.minimumWidth : null,
+                        minimumHeight: measurementKind(pricingUnit) === "area" ? working.minimumHeight : null,
+                        minimumLength: measurementKind(pricingUnit) === "length" ? working.minimumLength : null,
+                      })
+                    }
                   />
                   {working.pricedByColour != null && working.pricingUnit === "per_page" ? (
                     <div className="flex flex-col gap-2">
@@ -1360,6 +1391,86 @@ export default function ListingEditorPage() {
                     </div>
                   </Field>
                   )}
+                  {measurementKind(working.pricingUnit) === "area" ||
+                  measurementKind(working.pricingUnit) === "length" ? (
+                    <div className="flex flex-col gap-3" id="measure-unit">
+                      <Field>
+                        <FieldLabel htmlFor="measure-unit-select">What you measure in</FieldLabel>
+                        <select
+                          id="measure-unit-select"
+                          className="border-input bg-card h-12 rounded-[var(--radius-field)] border px-3"
+                          value={working.measureUnit ?? "ft"}
+                          onChange={(event) => {
+                            const next = event.target.value;
+                            if (!isMeasureUnit(next)) return;
+                            setDraft({ ...working, measureUnit: next });
+                          }}
+                        >
+                          {MEASURE_UNITS.map((unit) => (
+                            <option key={unit} value={unit}>
+                              {unit}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      {measurementKind(working.pricingUnit) === "area" ? (
+                        <div id="billable-size" className="flex flex-col gap-2">
+                          <p className="text-caption text-text-muted m-0">
+                            Smallest size you charge for — optional. Both a width and a height, or neither.
+                          </p>
+                          <div className="flex flex-wrap gap-3">
+                            <Field className="max-w-40">
+                              <FieldLabel htmlFor="billable-width">Width</FieldLabel>
+                              <Input
+                                id="billable-width"
+                                inputMode="decimal"
+                                aria-label="Smallest billable width"
+                                value={working.minimumWidth ?? ""}
+                                onChange={(event) =>
+                                  setDraft({
+                                    ...working,
+                                    minimumWidth: event.target.value === "" ? null : Number(event.target.value),
+                                  })
+                                }
+                              />
+                            </Field>
+                            <Field className="max-w-40">
+                              <FieldLabel htmlFor="billable-height">Height</FieldLabel>
+                              <Input
+                                id="billable-height"
+                                inputMode="decimal"
+                                aria-label="Smallest billable height"
+                                value={working.minimumHeight ?? ""}
+                                onChange={(event) =>
+                                  setDraft({
+                                    ...working,
+                                    minimumHeight: event.target.value === "" ? null : Number(event.target.value),
+                                  })
+                                }
+                              />
+                            </Field>
+                          </div>
+                        </div>
+                      ) : (
+                        <Field id="billable-size" className="max-w-40">
+                          <FieldLabel htmlFor="billable-length">Shortest you charge for</FieldLabel>
+                          <Input
+                            id="billable-length"
+                            inputMode="decimal"
+                            aria-label="Shortest billable length"
+                            value={working.minimumLength ?? ""}
+                            onChange={(event) =>
+                              setDraft({
+                                ...working,
+                                minimumLength: event.target.value === "" ? null : Number(event.target.value),
+                              })
+                            }
+                          />
+                          <FieldDescription>Optional. Leave it blank if any length is fine.</FieldDescription>
+                        </Field>
+                      )}
+                    </div>
+                  ) : null}
                   {working.pricedByColour != null &&
                   working.pricingUnit === "per_page" &&
                   !working.pricedByColour ? (
