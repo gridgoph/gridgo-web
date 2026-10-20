@@ -366,8 +366,17 @@ describe("handover steps", () => {
     );
     expect(steps[0].status).toBe("done");
     expect(steps[1].status).toBe("current");
-    expect(steps[1].detail).toMatch(/clock is paused/);
+    expect(steps[1].detail).toMatch(/Waiting on you/);
     expect(steps[2].status).toBe("upcoming");
+    const shop = handoverSteps(
+      order({ state: "supplier_self_qc", shopHandover: { finished: submitted() } }),
+      when,
+      "shop",
+    );
+    expect(shop[1].detail).toBe(
+      "GRIDGO is reviewing these photos. Your production time is paused.",
+    );
+    expect(shop[1].detail).not.toMatch(/Waiting on you/);
   });
 
   it("marks steps a forced step went past, and only those", () => {

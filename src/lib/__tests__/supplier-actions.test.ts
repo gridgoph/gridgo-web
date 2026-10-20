@@ -104,27 +104,29 @@ describe("actionsForJob", () => {
     expect(actions.some((action) => action.kind === "add_proof")).toBe(false);
   });
 
-  it("asks for printing proof before the job can be packaged", () => {
+  it("asks for printing proof first and still offers packaging", () => {
     const actions = actionsForJob(
       job("production", [
         milestone("printing", "pending_pof"),
         milestone("packaging_qc", "pending_pof"),
       ]),
     );
-    expect(actions).toEqual([
-      {
-        kind: "add_proof",
-        label: "Add printing proof",
-        targetState: null,
-        primary: true,
-        milestoneCode: "printing",
-        proofLabel: "Printing",
-        proofNoun: "printing",
-        proofHint:
-          "Show the finished print on your floor — enough of it to recognise the job, with the colour and the trim readable.",
-      },
-    ]);
-    expect(actions.some((action) => action.label === "Package for pickup")).toBe(false);
+    expect(actions[0]).toEqual({
+      kind: "add_proof",
+      label: "Add printing proof",
+      targetState: null,
+      primary: true,
+      milestoneCode: "printing",
+      proofLabel: "Printing",
+      proofNoun: "printing",
+      proofHint:
+        "Show the finished print on your floor — enough of it to recognise the job, with the colour and the trim readable.",
+    });
+    expect(actions[1]).toMatchObject({
+      kind: "ready_for_pickup",
+      label: "Package for pickup",
+      primary: false,
+    });
   });
 
   it("asks for packaging proof once printing evidence is filed", () => {
@@ -136,7 +138,8 @@ describe("actionsForJob", () => {
         milestone("retention", "pending_pof"),
       ]),
     );
-    expect(actions.map((action) => action.kind)).toEqual(["add_proof"]);
+    expect(actions.map((action) => action.kind)).toEqual(["add_proof", "ready_for_pickup"]);
+    expect(actions[1]?.primary).toBe(false);
     expect(actions[0]?.label).toBe("Add packaging proof");
     expect(actions[0]?.milestoneCode).toBe("packaging_qc");
     expect(actions[0]?.targetState).toBeNull();
@@ -406,6 +409,28 @@ describe("stopped work", () => {
     ]);
     expect(actionsForJob(offer, new Date("2026-10-05T07:00:01.000Z"))).toEqual([]);
     expect(needsSupplierAction(offer, new Date("2026-10-05T07:00:01.000Z"))).toBe(false);
+    expect(
+      presentSupplierJobStatus(offer, new Date("2026-10-05T07:00:01.000Z")).label,
+    ).toBe("Not answered in time");
+  });
+
+  it("does not keep a declined offer reading as an assigned job", () => {
+    const declined = {
+      ...job("supplier_assigned"),
+      shopAcceptance: { ...window, status: "declined" as const },
+    };
+    expect(actionsForJob(declined)).toEqual([]);
+    expect(needsSupplierAction(declined)).toBe(false);
+    expect(presentSupplierJobStatus(declined).label).toBe("Passed on");
+  });
+
+  it("keeps a missing progress photo in front of packaging, with the payout proof first", () => {
+    const actions = actionsForJob({
+      ...job("production", [milestone("printing", "pending_pof")]),
+      productionProgress: { status: "waiting_for_photo", photos: [] },
+    });
+    expect(actions.map((action) => action.kind)).toEqual(["add_proof", "add_progress_photo"]);
+    expect(actions.some((action) => action.kind === "ready_for_pickup")).toBe(false);
   });
 
   it("still shows Package for pickup disabled while only a claim hold is set", () => {
@@ -415,5 +440,13 @@ describe("stopped work", () => {
       blockedReason: CLAIM_HOLD_PACKING_REASON,
     });
     expect(needsSupplierAction(held)).toBe(false);
+
+    const owed = job(
+      "production",
+      [milestone("printing", "pending_pof"), milestone("packaging_qc", "pending_pof")],
+      true,
+    );
+    expect(actionsForJob(owed).map((action) => action.label)).toEqual(["Package for pickup"]);
+    expect(actionsForJob(owed)[0]?.blockedReason).toBe(CLAIM_HOLD_PACKING_REASON);
   });
 });

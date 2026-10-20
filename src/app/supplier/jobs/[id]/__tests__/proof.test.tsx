@@ -120,7 +120,7 @@ describe("supplier production proofs", () => {
     render(<SupplierJobDetailPage />);
 
     expect(await screen.findByRole("button", { name: "Add printing proof" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Package for pickup" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Package for pickup" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Add printing proof" }));
     expect(transitionOrderMock).not.toHaveBeenCalled();
@@ -144,7 +144,26 @@ describe("supplier production proofs", () => {
     expect(await screen.findByRole("button", { name: "Add packaging proof" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Printing proof" })).toBeNull();
     expect(screen.getByText(/1 photo filed as your printing proof/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Package for pickup" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Package for pickup" })).toBeInTheDocument();
+  });
+
+  it("packages while a payout proof is still open", async () => {
+    const user = userEvent.setup();
+    const open = productionJob([
+      milestone("printing", "pending_pof"),
+      milestone("packaging_qc", "pending_pof"),
+    ]);
+    getOrderMock.mockResolvedValue(open);
+    transitionOrderMock.mockResolvedValue({ ...open, state: "ready_for_dispatch" });
+
+    render(<SupplierJobDetailPage />);
+    await user.click(await screen.findByRole("button", { name: "Package for pickup" }));
+
+    await waitFor(() => {
+      expect(transitionOrderMock).toHaveBeenCalledWith("job-1", "ready_for_dispatch", {
+        note: "Packaging ready — packed and staged for joint pickup checks with the rider",
+      });
+    });
   });
 
   it("packages for pickup only after both shop proofs are filed", async () => {
