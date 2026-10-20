@@ -241,6 +241,30 @@ export function previewParams(
   return params;
 }
 
+/** What a refused production time reads as, whichever of the API's two codes refused it. */
+export const PRODUCTION_TIME_REFUSED =
+  "GRIDGO could not save this production time. Same day is for work done inside one working day; choose Days for anything longer.";
+
+/**
+ * The message for a save that sent a `productionTime` and was refused for it.
+ * The API answers `400 invalid_production_time`; an older build answered
+ * same-day hours of a working day or more on PATCH with `400
+ * invalid_catalog_item`. Both read the same. Null for any other error, or an
+ * `invalid_catalog_item` that names a field other than the production time.
+ */
+export function productionTimeSaveError(err: unknown, sentProductionTime: boolean): string | null {
+  if (!sentProductionTime || !err || typeof err !== "object") return null;
+  const code = (err as { code?: unknown }).code;
+  if (code === "invalid_production_time") return PRODUCTION_TIME_REFUSED;
+  if (code !== "invalid_catalog_item") return null;
+  const details = (err as { details?: unknown }).details;
+  const field =
+    details && typeof details === "object" ? (details as { field?: unknown }).field : undefined;
+  return field == null || (typeof field === "string" && /productionTime|turnaround/i.test(field))
+    ? PRODUCTION_TIME_REFUSED
+    : null;
+}
+
 // ---------------------------------------------------------------------------
 // Words
 // ---------------------------------------------------------------------------

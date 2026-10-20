@@ -121,6 +121,7 @@ import {
   choiceProblem,
   choiceTimes,
   expectedVersionsOf,
+  productionTimeSaveError,
   sameChoice,
   sameDayTooLong,
   type ProductionTimeChoice,
@@ -568,13 +569,14 @@ export default function ListingEditorPage() {
       return false;
     }
     const submitted = working;
+    const payload = savePayload(working, listing);
     setBusy(true);
     setActionError(null);
     setSaveState({ kind: "saving" });
     try {
       const saved = normalizeListing(
         await updateCatalogItem(listing.id, working.version, {
-          ...savePayload(working, listing),
+          ...payload,
           ...(onTheBoard != null ? { active: onTheBoard } : {}),
         }),
       );
@@ -616,7 +618,9 @@ export default function ListingEditorPage() {
     } catch (err) {
       setSaveState({
         kind: "error",
-        message: listingErrorMessage(err, "Could not save this listing."),
+        message:
+          productionTimeSaveError(err, "productionTime" in payload) ??
+          listingErrorMessage(err, "Could not save this listing."),
       });
       return false;
     } finally {
@@ -660,7 +664,8 @@ export default function ListingEditorPage() {
       setApplyError(
         isApiError(err) && err.code === "catalog_items_stale"
           ? "One of your listings changed while this was being applied, so nothing was changed. Try again."
-          : listingErrorMessage(err, "Could not apply this to all your listings. Nothing was changed."),
+          : (productionTimeSaveError(err, true) ??
+            listingErrorMessage(err, "Could not apply this to all your listings. Nothing was changed.")),
       );
     } finally {
       setApplying(false);
@@ -691,7 +696,10 @@ export default function ListingEditorPage() {
       );
       void refreshReadiness();
     } catch (err) {
-      setKeepError(listingErrorMessage(err, "Could not save this production time."));
+      setKeepError(
+        productionTimeSaveError(err, true) ??
+          listingErrorMessage(err, "Could not save this production time."),
+      );
     } finally {
       setBusy(false);
     }

@@ -6,13 +6,16 @@ import {
   choiceProblem,
   expectedVersionsOf,
   normalizePreview,
+  PRODUCTION_TIME_REFUSED,
   presentPreviewDay,
+  productionTimeSaveError,
   previewParams,
   readProductionTimeChoice,
   readProductionTimeReview,
   sameDayHourSteps,
   withDays,
 } from "@/lib/production-time-choice";
+import { ApiError } from "@/lib/api/client";
 import { sameDay, workingDays } from "@/lib/production-time";
 
 describe("production time choice (gridgo-api#292 release 2)", () => {
@@ -142,5 +145,16 @@ describe("production time choice (gridgo-api#292 release 2)", () => {
     expect(choiceLine({ mode: "days", minDays: 1, maxDays: 3 })).toBe("1 to 3 working days");
     expect(choiceLine({ mode: "days", minDays: 2, maxDays: 2 })).toBe("2 working days");
     expect(choiceLine(null)).toBe("Not set yet");
+  });
+
+  it("reads both API refusals of a production time the same way", () => {
+    const fresh = new ApiError(400, { error: "invalid_production_time" });
+    const older = new ApiError(400, { error: "invalid_catalog_item" });
+    const otherField = new ApiError(400, { error: "invalid_catalog_item", field: "name" });
+    expect(productionTimeSaveError(fresh, true)).toBe(PRODUCTION_TIME_REFUSED);
+    expect(productionTimeSaveError(older, true)).toBe(PRODUCTION_TIME_REFUSED);
+    expect(productionTimeSaveError(otherField, true)).toBeNull();
+    expect(productionTimeSaveError(older, false)).toBeNull();
+    expect(productionTimeSaveError(new ApiError(409, { error: "catalog_item_stale" }), true)).toBeNull();
   });
 });

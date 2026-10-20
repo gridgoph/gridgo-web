@@ -500,6 +500,52 @@ describe("listing editor: How long does this take? (gridgo-api#292)", () => {
     expect(body).not.toHaveProperty("turnaroundMinutes");
   });
 
+  it.each(["invalid_production_time", "invalid_catalog_item"])(
+    "says the same thing when the API refuses the time with %s",
+    async (code) => {
+      stubLoad(catalogItem({ productionTime: { mode: "days", minDays: 1, maxDays: 3 } }));
+      mocks.updateCatalogItem.mockRejectedValueOnce(new ApiError(400, { error: code }));
+      render(<ListingEditorPage />);
+      await openEditorStep("Speed");
+      fireEvent.click(screen.getByRole("button", { name: "More: longest working days" }));
+      expect(
+        await screen.findByText(
+          /GRIDGO could not save this production time\. Same day is for work done inside one working day/,
+          undefined,
+          AUTOSAVE_WAIT,
+        ),
+      ).toBeVisible();
+    },
+  );
+
+  it("shows a held same-day time of a working day or more without breaking", async () => {
+    stubLoad(
+      catalogItem({ productionTime: { mode: "same_day", hours: 12 }, productionDayMinutes: 600 }),
+    );
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    expect(screen.getByRole("radio", { name: "Same day" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("spinbutton", { name: "Hours until ready" })).toHaveAttribute(
+      "aria-valuetext",
+      "12 hours",
+    );
+    expect(screen.getByText(/still holds a time longer than one working day/)).toBeVisible();
+    expect(screen.getByText("Fix the time above to see the dates.")).toBeVisible();
+    expect(mocks.previewProductionTime).not.toHaveBeenCalled();
+
+    // Days from here saves a usable answer.
+    fireEvent.click(screen.getByRole("radio", { name: "Days" }));
+    await waitFor(
+      () =>
+        expect(mocks.updateCatalogItem).toHaveBeenCalledWith(
+          "sci_1",
+          3,
+          expect.objectContaining({ productionTime: { mode: "days", minDays: 1, maxDays: 3 } }),
+        ),
+      AUTOSAVE_WAIT,
+    );
+  });
+
   it("shows faster price options under More options, read-only", async () => {
     stubLoad(
       catalogItem({
