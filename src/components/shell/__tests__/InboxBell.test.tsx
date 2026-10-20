@@ -98,6 +98,31 @@ afterEach(() => {
 });
 
 describe("InboxBell", () => {
+  it("lets a shop delete a notice only after confirming, and keeps it on Keep", async () => {
+    const user = userEvent.setup();
+    const remove = vi.fn<(id: string) => Promise<void>>(async () => undefined);
+    resetLive({ notifications: [note({ id: "ntf_a" }), note({ id: "ntf_b" })], unreadCount: 2, remove });
+    render(<InboxBell role="supplier" />);
+    await user.click(screen.getByRole("button", { name: /Notifications/ }));
+    await user.click(screen.getAllByRole("button", { name: "Delete this notice" })[0]);
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Delete this notice?");
+    await user.click(screen.getByRole("button", { name: "Keep" }));
+    expect(remove).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Delete these" }));
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Delete these 2 notices?");
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    expect(remove.mock.calls.map(([id]) => id)).toEqual(["ntf_a", "ntf_b"]);
+  });
+
+  it("offers no delete to staff", async () => {
+    const user = userEvent.setup();
+    resetLive({ notifications: [note()], unreadCount: 1 });
+    render(<InboxBell role="ops_admin" />);
+    await user.click(screen.getByRole("button", { name: /Notifications/ }));
+    expect(screen.queryByRole("button", { name: "Delete this notice" })).not.toBeInTheDocument();
+  });
+
   it("renders a real button trigger", () => {
     render(<InboxBell role="ops_admin" />);
     const trigger = screen.getByRole("button", { name: "Notifications" });

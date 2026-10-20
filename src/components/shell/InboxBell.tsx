@@ -4,6 +4,16 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bell, Volume2, VolumeX } from "lucide-react";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -59,9 +69,11 @@ export { presentSlip, shortRef, slipFamily } from "@/components/shell/slip";
 function SlipRow({
   notification,
   onOpen,
+  onDelete,
 }: {
   notification: Notification;
   onOpen: (notification: Notification) => void;
+  onDelete?: (notification: Notification) => void;
 }) {
   const unread = !notification.read;
   const reminder = isProductionReminder(notification.type);
@@ -132,6 +144,18 @@ function SlipRow({
           ) : null}
         </span>
       </button>
+      {onDelete ? (
+        <div className="px-4 pb-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => onDelete(notification)}
+          >
+            Delete this notice
+          </Button>
+        </div>
+      ) : null}
     </li>
   );
 }
@@ -139,11 +163,15 @@ function SlipRow({
 function InboxList({
   notifications,
   onOpen,
+  onDelete,
   fill,
+  role,
 }: {
   notifications: Notification[];
   onOpen: (notification: Notification) => void;
+  onDelete?: (notification: Notification) => void;
   fill: boolean;
+  role: Role;
 }) {
   if (notifications.length === 0) {
     return (
@@ -155,7 +183,9 @@ function InboxList({
           The desk is clear
         </p>
         <p className="text-caption text-text-muted m-0">
-          Payments, sign-ups, pickup holds, and shop progress land here
+          {role === "supplier"
+            ? "Job offers, pickup messages, and shop progress land here."
+            : "Payments, sign-ups, pickup holds, and shop progress land here"}
         </p>
       </div>
     );
@@ -169,7 +199,12 @@ function InboxList({
       )}
     >
       {notifications.map((notification) => (
-        <SlipRow key={notification.id} notification={notification} onOpen={onOpen} />
+        <SlipRow
+          key={notification.id}
+          notification={notification}
+          onOpen={onOpen}
+          onDelete={onDelete}
+        />
       ))}
     </ul>
   );
@@ -214,6 +249,8 @@ function InboxPanel({
   markError,
   onMarkAllRead,
   onOpen,
+  onDelete,
+  onDeleteVisible,
   fill,
 }: {
   role: Role;
@@ -222,6 +259,8 @@ function InboxPanel({
   markError: string | null;
   onMarkAllRead: () => void;
   onOpen: (notification: Notification) => void;
+  onDelete?: (notification: Notification) => void;
+  onDeleteVisible?: () => void;
   fill: boolean;
 }) {
   return (
@@ -248,6 +287,11 @@ function InboxPanel({
               Mark all read
             </Button>
           ) : null}
+          {onDeleteVisible && notifications.length > 0 ? (
+            <Button variant="outline" size="sm" onClick={onDeleteVisible}>
+              Delete these
+            </Button>
+          ) : null}
           <SoundToggle />
         </span>
       </div>
@@ -257,7 +301,13 @@ function InboxPanel({
       <DesktopAlertsPrompt role={role} />
       {/* The tear line: what is above is the desk, what is below are the slips. */}
       <div className="border-outline mx-4 border-t border-dashed" aria-hidden />
-      <InboxList notifications={notifications} onOpen={onOpen} fill={fill} />
+      <InboxList
+        role={role}
+        notifications={notifications}
+        onOpen={onOpen}
+        onDelete={onDelete}
+        fill={fill}
+      />
       <DesktopAlertsRow role={role} />
     </div>
   );
@@ -302,9 +352,10 @@ function bellTrigger(unreadCount: number) {
 export function InboxBell({ role }: { role: Role }) {
   const router = useRouter();
   const isMobile = useIsMobile();
-  const { notifications, unreadCount, live, markRead, markAllRead } = useLive();
+  const { notifications, unreadCount, live, markRead, markAllRead, remove } = useLive();
   const [open, setOpen] = useState(false);
   const [markError, setMarkError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string[] | null>(null);
 
   async function openNotification(notification: Notification) {
     setOpen(false);
@@ -320,6 +371,36 @@ export function InboxBell({ role }: { role: Role }) {
     if (href) router.push(href);
   }
 
+  // Deleting is on every device and cannot be undone, so it is confirmed. The
+  // batch is the ids on screen when asked; a notice that arrives later stays.
+  function handleDelete(notification: Notification) {
+    setDeleting([notification.id]);
+  }
+
+  function handleDeleteVisible() {
+    setDeleting(notifications.map((row) => row.id));
+  }
+
+  async function confirmDelete(ids: string[]) {
+    setDeleting(null);
+    setMarkError(null);
+    const failed: string[] = [];
+    for (const id of ids) {
+      try {
+        await remove(id);
+      } catch {
+        failed.push(id);
+      }
+    }
+    if (failed.length) {
+      setMarkError(
+        ids.length === 1
+          ? "Could not delete that notice. It is still here."
+          : "Some notices could not be deleted. They are still here.",
+      );
+    }
+  }
+
   async function handleMarkAllRead() {
     setMarkError(null);
     try {
@@ -331,36 +412,93 @@ export function InboxBell({ role }: { role: Role }) {
 
   const trigger = bellTrigger(unreadCount);
 
+  const confirm = (
+    <DeleteNoticesDialog
+      ids={deleting}
+      onCancel={() => setDeleting(null)}
+      onConfirm={(ids) => void confirmDelete(ids)}
+    />
+  );
+
   if (isMobile) {
     return (
-      <Sheet
+      <>
+        <Sheet
+          open={open}
+          onOpenChange={(next) => {
+            // A press inside the delete confirmation is outside the Desk; keep it open.
+            if (!next && deleting) return;
+            setOpen(next);
+            if (!next) setMarkError(null);
+          }}
+        >
+          <SheetTrigger render={trigger} />
+          {/* The primitive's own data-[side] width beats a bare w-full, so the
+            override has to sit on the same variant. */}
+          <SheetContent
+            side="right"
+            className="gap-0 p-0 data-[side=right]:w-full sm:max-w-sm"
+          >
+            {/* Right padding clears the sheet's own close control. */}
+            <SheetHeader className="flex-row items-center justify-between gap-3 px-4 pt-3 pr-16 pb-0">
+              {/* Type and colour stay off these primitives' className: tailwind-merge
+                treats text-h3 / text-caption as colours and drops one of the pair. */}
+              <SheetTitle
+                className="text-h3 m-0"
+                style={{ fontFamily: "var(--font-bold)" }}
+              >
+                Desk
+              </SheetTitle>
+              <SheetDescription className="m-0">
+                <FloorStatus live={live} />
+              </SheetDescription>
+            </SheetHeader>
+            <InboxPanel
+              role={role}
+              notifications={notifications}
+              unreadCount={unreadCount}
+              markError={markError}
+              onMarkAllRead={() => void handleMarkAllRead()}
+              onOpen={(notification) => void openNotification(notification)}
+              onDelete={role === "supplier" ? handleDelete : undefined}
+              onDeleteVisible={role === "supplier" ? handleDeleteVisible : undefined}
+              fill
+            />
+          </SheetContent>
+        </Sheet>
+        {confirm}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <Popover
         open={open}
         onOpenChange={(next) => {
+          // A press inside the delete confirmation is outside the Desk; keep it open.
+          if (!next && deleting) return;
           setOpen(next);
           if (!next) setMarkError(null);
         }}
       >
-        <SheetTrigger render={trigger} />
-        {/* The primitive's own data-[side] width beats a bare w-full, so the
-            override has to sit on the same variant. */}
-        <SheetContent
-          side="right"
-          className="gap-0 p-0 data-[side=right]:w-full sm:max-w-sm"
+        <PopoverTrigger render={trigger} />
+        <PopoverContent
+          align="end"
+          sideOffset={8}
+          className="w-96 gap-0 overflow-hidden rounded-card p-0"
         >
-          {/* Right padding clears the sheet's own close control. */}
-          <SheetHeader className="flex-row items-center justify-between gap-3 px-4 pt-3 pr-16 pb-0">
-            {/* Type and colour stay off these primitives' className: tailwind-merge
-                treats text-h3 / text-caption as colours and drops one of the pair. */}
-            <SheetTitle
+          <PopoverHeader className="flex-row items-center justify-between gap-3 px-4 pt-3 pb-0">
+            <PopoverTitle
               className="text-h3 m-0"
               style={{ fontFamily: "var(--font-bold)" }}
             >
               Desk
-            </SheetTitle>
-            <SheetDescription className="m-0">
+            </PopoverTitle>
+            <PopoverDescription className="m-0">
               <FloorStatus live={live} />
-            </SheetDescription>
-          </SheetHeader>
+            </PopoverDescription>
+          </PopoverHeader>
           <InboxPanel
             role={role}
             notifications={notifications}
@@ -368,48 +506,52 @@ export function InboxBell({ role }: { role: Role }) {
             markError={markError}
             onMarkAllRead={() => void handleMarkAllRead()}
             onOpen={(notification) => void openNotification(notification)}
-            fill
+            onDelete={role === "supplier" ? handleDelete : undefined}
+            onDeleteVisible={role === "supplier" ? handleDeleteVisible : undefined}
+            fill={false}
           />
-        </SheetContent>
-      </Sheet>
-    );
-  }
+        </PopoverContent>
+      </Popover>
+      {confirm}
+    </>
+  );
+}
 
+function DeleteNoticesDialog({
+  ids,
+  onCancel,
+  onConfirm,
+}: {
+  ids: string[] | null;
+  onCancel: () => void;
+  onConfirm: (ids: string[]) => void;
+}) {
+  const one = ids?.length === 1;
   return (
-    <Popover
-      open={open}
+    <AlertDialog
+      open={ids !== null}
       onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) setMarkError(null);
+        if (!next) onCancel();
       }}
     >
-      <PopoverTrigger render={trigger} />
-      <PopoverContent
-        align="end"
-        sideOffset={8}
-        className="w-96 gap-0 overflow-hidden rounded-card p-0"
-      >
-        <PopoverHeader className="flex-row items-center justify-between gap-3 px-4 pt-3 pb-0">
-          <PopoverTitle
-            className="text-h3 m-0"
-            style={{ fontFamily: "var(--font-bold)" }}
-          >
-            Desk
-          </PopoverTitle>
-          <PopoverDescription className="m-0">
-            <FloorStatus live={live} />
-          </PopoverDescription>
-        </PopoverHeader>
-        <InboxPanel
-          role={role}
-          notifications={notifications}
-          unreadCount={unreadCount}
-          markError={markError}
-          onMarkAllRead={() => void handleMarkAllRead()}
-          onOpen={(notification) => void openNotification(notification)}
-          fill={false}
-        />
-      </PopoverContent>
-    </Popover>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {one ? "Delete this notice?" : `Delete these ${ids?.length ?? 0} notices?`}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {one
+              ? "It goes from every device you sign in on."
+              : "They go from every device you sign in on. A notice that arrives after this stays."}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel variant="secondary">Keep</AlertDialogCancel>
+          <AlertDialogAction variant="danger" onClick={() => ids && onConfirm(ids)}>
+            Delete
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

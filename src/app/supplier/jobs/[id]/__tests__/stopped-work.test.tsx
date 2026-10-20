@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,6 +23,16 @@ vi.mock("@/lib/api/client", async () => ({
 }));
 
 import SupplierJobDetailPage from "@/app/supplier/jobs/[id]/page";
+
+/** The status chip. The Latest row repeats the current standing, so the bare text is not unique. */
+function statusChip(label: string) {
+  return screen.getAllByRole("status").find((el) => el.textContent?.trim() === label);
+}
+
+async function findStatusChip(label: string) {
+  await waitFor(() => expect(statusChip(label)).toBeDefined());
+  return statusChip(label);
+}
 
 afterEach(() => {
   cleanup();
@@ -78,18 +88,25 @@ const acceptance = {
 };
 
 describe("stopped work on the job", () => {
+  it("a job in production can still be cancelled by the shop", async () => {
+    getOrderMock.mockResolvedValue(job({}));
+    render(<SupplierJobDetailPage />);
+    expect(await screen.findByRole("button", { name: "Cancel this job" })).toBeInTheDocument();
+  });
+
   it.each([
     ["with a readiness list", { transitionReadiness: { ready_for_dispatch: { allowed: true, missing: [] } } }],
     ["without a readiness list", {}],
   ])("a refund offers no action, proof, or commitment, %s", async (_label, extra) => {
     getOrderMock.mockResolvedValue(job({ refundHold: true, ...extra }));
     render(<SupplierJobDetailPage />);
-    expect(await screen.findByText("Paused for refund")).toBeInTheDocument();
+    expect(await findStatusChip("Paused for refund")).toBeInTheDocument();
     expect(screen.getByText(/until Operations settles it/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Package for pickup" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add proof photos" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add another photo" })).not.toBeInTheDocument();
     expect(screen.queryByText(/Your shop commits to this job/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel this job" })).not.toBeInTheDocument();
   });
 
   it("a recovery names who has the job and keeps the step off this shop", async () => {
@@ -100,8 +117,9 @@ describe("stopped work on the job", () => {
       }),
     );
     render(<SupplierJobDetailPage />);
-    expect(await screen.findByText("Cancelled by you")).toBeInTheDocument();
+    expect(await findStatusChip("Cancelled by you")).toBeInTheDocument();
     expect(screen.getByText(/Operations is working out the next step/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel this job" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Package for pickup" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add proof photos" })).not.toBeInTheDocument();
   });
@@ -136,8 +154,9 @@ describe("stopped work on the job", () => {
       }),
     );
     render(<SupplierJobDetailPage />);
-    expect(await screen.findByText("Paused")).toBeInTheDocument();
+    expect(await findStatusChip("Paused")).toBeInTheDocument();
     expect(screen.getByText(/GRIDGO is offering the client another shop/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel this job" })).not.toBeInTheDocument();
     expect(screen.queryByText("Pickup blocked")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Package for pickup" })).not.toBeInTheDocument();
   });
