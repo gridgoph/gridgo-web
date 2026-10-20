@@ -37,7 +37,13 @@ const progress = (
   eligible: true,
   label: null,
   awardedAt: null,
-  missions: { placed: false, received: false, rated: false },
+  missions: {
+    added: false,
+    placed: false,
+    tracked: false,
+    received: false,
+    rated: false,
+  },
   completedCount: 0,
   rewardStatus: "pending",
   reward: null,
@@ -48,8 +54,8 @@ const earned = (overrides: Partial<FoundingTesterProgress> = {}) =>
   progress({
     label: "Founding Tester",
     awardedAt: "2026-10-20T08:00:00.000Z",
-    missions: { placed: true, received: true, rated: true },
-    completedCount: 3,
+    missions: { added: true, placed: true, tracked: true, received: true, rated: true },
+    completedCount: 5,
     rewardStatus: "issued",
     reward: voucher(),
     ...overrides,
@@ -84,8 +90,8 @@ describe("badge", () => {
 });
 
 describe("label", () => {
-  it("counts missions out of three", () => {
-    expect(progressText(progress({ completedCount: 2 }))).toBe("2 of 3");
+  it("counts steps out of five", () => {
+    expect(progressText(progress({ completedCount: 2 }))).toBe("2 of 5");
   });
 
   it("names the four states in words", () => {
@@ -95,11 +101,54 @@ describe("label", () => {
     ).toBe("Not eligible");
     expect(presentTesterLabel(progress({ completedCount: 1 })).label).toBe("Not yet");
     const done = progress({
-      completedCount: 3,
-      missions: { placed: true, received: true, rated: true },
+      completedCount: 5,
+      missions: { added: true, placed: true, tracked: true, received: true, rated: true },
     });
     expect(awaitingAward(done)).toBe(true);
     expect(presentTesterLabel(done).label).toBe("Label on its way");
+  });
+
+  it("says a budget hold is waiting, not on its way", () => {
+    const held = progress({
+      completedCount: 5,
+      missions: { added: true, placed: true, tracked: true, received: true, rated: true },
+      rewardStatus: "paused",
+    });
+    expect(awaitingAward(held)).toBe(false);
+    expect(presentTesterLabel(held)).toMatchObject({
+      label: "Waiting on budget",
+      tone: "warning",
+    });
+    expect(testerLabelNote(held)).toContain("monthly tester budget");
+  });
+
+  it("never says a reward voided before it was issued is on its way", () => {
+    const voidedEarly = progress({
+      completedCount: 5,
+      missions: { added: true, placed: true, tracked: true, received: true, rated: true },
+      rewardStatus: "voided",
+    });
+    expect(awaitingAward(voidedEarly)).toBe(false);
+    expect(presentTesterLabel(voidedEarly)).toMatchObject({
+      label: "Reward voided",
+      tone: "neutral",
+    });
+    expect(testerLabelNote(voidedEarly)).toContain(
+      "voided this reward before it was issued",
+    );
+    expect(presentTesterReward(voidedEarly)).toMatchObject({
+      label: "Voided",
+      detail:
+        "Super Admin voided this reward before any voucher was issued. It cannot be earned again.",
+    });
+
+    // Voided after the label was earned: the label stays and is shown as earned.
+    const voidedLater = earned({ rewardStatus: "voided", reward: null });
+    expect(presentTesterLabel(voidedLater).label).not.toBe("Reward voided");
+    expect(testerLabelNote(voidedLater)).toContain("Earned");
+    expect(presentTesterReward(voidedLater).detail).toBe(
+      "Super Admin voided this reward. The earned label stays.",
+    );
   });
 
   it("says when it was earned, in Manila time, and why it cannot be", () => {
@@ -113,9 +162,9 @@ describe("label", () => {
 });
 
 describe("reward", () => {
-  it("promises the voucher only once all three are done", () => {
+  it("promises the voucher only once all five are done", () => {
     const pending = presentTesterReward(progress());
-    expect(pending.label).toBe("After all three");
+    expect(pending.label).toBe("After all five");
     expect(pending.detail).toContain("₱15.00 voucher, valid 30 days");
   });
 
@@ -140,6 +189,35 @@ describe("reward", () => {
       "earlier ₱15.00 survey voucher counts as this reward, used",
     );
     expect(reward.detail).toContain("No new voucher was issued.");
+  });
+
+  it("shows a budget hold as awaiting, never an available voucher", () => {
+    const held = presentTesterReward(
+      progress({
+        completedCount: 5,
+        missions: {
+          added: true,
+          placed: true,
+          tracked: true,
+          received: true,
+          rated: true,
+        },
+        rewardStatus: "paused",
+      }),
+    );
+    expect(held.label).toBe("Reward awaiting budget");
+    expect(held.detail).toContain("No voucher yet");
+  });
+
+  it("shows a voided reward as voided, keeping the label", () => {
+    expect(
+      presentTesterReward(earned({ rewardStatus: "voided", reward: null })).label,
+    ).toBe("Voided");
+    const voided = presentTesterReward(
+      earned({ rewardStatus: "voided", reward: voucher({ status: "void" }) }),
+    );
+    expect(voided.label).toBe("Voided");
+    expect(voided.detail).toBe("₱15.00 voucher, voided.");
   });
 
   it("has nothing for an ineligible account", () => {

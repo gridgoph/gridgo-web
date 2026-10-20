@@ -43,6 +43,7 @@ import { DeliveryZones, DeliveryZonesSkeleton } from "@/components/settings/Deli
 import { HandoverCodeSettings } from "@/components/settings/HandoverCodeSettings";
 import { CoverSpineSettings } from "@/components/settings/CoverSpineSettings";
 import { FoundingTesterLaunch } from "@/components/settings/FoundingTesterLaunch";
+import { TesterInviteSettings } from "@/components/settings/TesterInviteSettings";
 import { ColourDetectionSettings } from "@/components/settings/ColourDetectionSettings";
 import { RiderTrackingSettings } from "@/components/settings/RiderTrackingSettings";
 import { HubPickupSettings } from "@/components/settings/HubPickupSettings";
@@ -275,6 +276,12 @@ export function OperationalSettings() {
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState<string | null>(null);
+  /**
+   * A background re-read that failed: the values on screen are the last ones
+   * read, not necessarily the ones in force. Drafts stay; the page says so.
+   */
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const refreshFailed = useRef(false);
 
   const [rate, setRate] = useState("");
   const [riderShare, setRiderShare] = useState("");
@@ -355,8 +362,16 @@ export function OperationalSettings() {
         );
         settingsRef.current = next;
         setSettings(next);
+        refreshFailed.current = false;
+        setRefreshError(null);
       } catch (err) {
-        if (preserveDraft) return;
+        if (preserveDraft) {
+          refreshFailed.current = true;
+          setRefreshError(
+            opsErrorMessage(err, "Could not re-read the settings. Check the connection, then retry."),
+          );
+          return;
+        }
         setSettings(null);
         setError(
           opsErrorMessage(
@@ -608,6 +623,20 @@ export function OperationalSettings() {
 
   return (
     <div className="flex w-full flex-col gap-3">
+      {refreshError ? (
+        <div
+          className="gg-card border-warning flex flex-wrap items-center justify-between gap-3 p-3"
+          role="alert"
+        >
+          <p className="text-body text-text-primary m-0 max-w-prose">
+            These may be out of date: {refreshError} Someone may have changed a setting
+            since this page last read them.
+          </p>
+          <Button variant="secondary" disabled={loading} onClick={() => void load(true)}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
       <p className="text-body text-text-secondary m-0 max-w-prose">
         Platform-wide numbers and the GCash plate checkout scans, changed here rather than
         in a release.
@@ -955,6 +984,21 @@ export function OperationalSettings() {
           setSettings(next);
         }}
         onConflict={() => load(true)}
+      />
+
+      <TesterInviteSettings
+        settings={settings}
+        canEdit
+        disabled={busy}
+        stale={refreshError !== null}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={async () => {
+          await load(true);
+          return !refreshFailed.current;
+        }}
       />
 
       <ColourDetectionSettings

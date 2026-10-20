@@ -3,6 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -11,26 +12,40 @@ import {
   within,
 } from "@testing-library/react";
 import React from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiError } from "@/lib/api/client";
 import type {
   ClientAccount as ClientAccountRecord,
   FoundingTesterProgress,
   FoundingTesterRow,
+  TesterInvite,
 } from "@/lib/api/types";
 
-const { api, nav } = vi.hoisted(() => ({
+const { api, nav, live } = vi.hoisted(() => ({
+  live: { reloads: new Set<() => Promise<void> | void>() },
   api: {
     listFoundingTesters: vi.fn(),
     listUsers: vi.fn(),
     getClientAccount: vi.fn(),
+    listTesterInvites: vi.fn(),
+    listTesterRewards: vi.fn(),
   },
   nav: { push: vi.fn(), params: new URLSearchParams() },
 }));
 
 vi.stubGlobal("React", React);
 vi.stubGlobal("PointerEvent", MouseEvent);
-vi.mock("@/lib/live/useLiveReload", () => ({ useLiveReload: () => {} }));
+vi.mock("@/lib/live/useLiveReload", () => ({
+  useLiveReload: (_keys: unknown, reload: () => Promise<void> | void) => {
+    live.reloads.add(reload);
+  },
+}));
+/** A live update: every list on screen re-reads. */
+const liveUpdate = () =>
+  act(async () => {
+    await Promise.all([...live.reloads].map((reload) => reload()));
+  });
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: nav.push, replace: vi.fn() }),
   useSearchParams: () => nav.params,
@@ -48,7 +63,28 @@ import { FoundingTestersList } from "@/components/founding-testers/FoundingTeste
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  live.reloads.clear();
   nav.params = new URLSearchParams();
+});
+
+const budget = {
+  month: "2026-10",
+  timezone: "Asia/Manila" as const,
+  limitMinor: null,
+  usedMinor: 0,
+  remainingMinor: null,
+  resumePolicy: "super_admin_per_reward" as const,
+};
+
+beforeEach(() => {
+  api.listTesterInvites.mockResolvedValue({ serverTime: "", total: 0, invites: [] });
+  api.listTesterRewards.mockResolvedValue({
+    serverTime: "",
+    total: 0,
+    rewards: [],
+    budget,
+  });
+  api.listUsers.mockResolvedValue([]);
 });
 
 const progress = (
@@ -57,7 +93,7 @@ const progress = (
   eligible: true,
   label: null,
   awardedAt: null,
-  missions: { placed: true, received: false, rated: false },
+  missions: { added: true, placed: false, tracked: false, received: false, rated: false },
   completedCount: 1,
   rewardStatus: "pending",
   reward: null,
@@ -67,8 +103,8 @@ const progress = (
 const earned = progress({
   label: "Founding Tester",
   awardedAt: "2026-10-20T08:00:00.000Z",
-  missions: { placed: true, received: true, rated: true },
-  completedCount: 3,
+  missions: { added: true, placed: true, tracked: true, received: true, rated: true },
+  completedCount: 5,
   rewardStatus: "issued",
   reward: {
     id: "vch_1",
@@ -148,7 +184,7 @@ describe("Founding Testers view", () => {
 
     const table = await screen.findByRole("table");
     const first = within((await within(table).findByText("Client 1")).closest("tr")!);
-    expect(first.getByRole("img", { name: /3 of 3 missions done/ })).toBeInTheDocument();
+    expect(first.getByRole("img", { name: /5 of 5 steps done/ })).toBeInTheDocument();
     expect(first.getByText("Founding Tester")).toBeVisible();
     expect(
       first.getByText("₱15.00 voucher, expires Nov 19, 2026, 4:00 PM."),
@@ -159,7 +195,7 @@ describe("Founding Testers view", () => {
     );
     const second = within(within(table).getByText("Client 2").closest("tr")!);
     expect(
-      second.getByRole("img", { name: "1 of 3 missions done: placed a first order" }),
+      second.getByRole("img", { name: "1 of 5 steps done: add an item to your cart" }),
     ).toBeInTheDocument();
     expect(second.getByText("Not yet")).toBeVisible();
     expect(screen.queryByText(/PRIVATECODE/)).toBeNull();
@@ -187,18 +223,20 @@ describe("Client account", () => {
     ...overrides,
   });
 
-  it("shows the label, all three missions, and the voucher with its expiry but not its code", async () => {
+  it("shows the label, all five steps, and the voucher with its expiry but not its code", async () => {
     api.getClientAccount.mockResolvedValue(account());
-    render(<ClientAccount userId="c1" />);
+    render(<ClientAccount userId="c1" tree="ops" />);
 
     const section = within(
       await screen.findByRole("region", { name: "Founding Tester" }),
     );
     expect(api.getClientAccount).toHaveBeenCalledWith("c1");
     expect(section.getByText(/Earned Oct 20, 2026, 4:00 PM/)).toBeVisible();
-    expect(section.getAllByText("Done")).toHaveLength(3);
+    expect(section.getAllByText("Done")).toHaveLength(5);
+    expect(section.getByText("1. Add an item to your cart")).toBeVisible();
+    expect(section.getByText("3. Track your order")).toBeVisible();
     expect(section.getByText("Payment confirmed")).toBeVisible();
-    expect(section.getByText("Delivery or pick-up confirmed")).toBeVisible();
+    expect(section.getByText("Delivery or hub hand-out confirmed")).toBeVisible();
     expect(section.getByText("Survey sent")).toBeVisible();
     expect(
       section.getByText("₱15.00 voucher, expires Nov 19, 2026, 4:00 PM."),
@@ -208,14 +246,14 @@ describe("Client account", () => {
 
   it("shows progress and what the reward will be before completion", async () => {
     api.getClientAccount.mockResolvedValue(account({ foundingTester: progress() }));
-    render(<ClientAccount userId="c1" />);
+    render(<ClientAccount userId="c1" tree="ops" />);
 
     const section = within(
       await screen.findByRole("region", { name: "Founding Tester" }),
     );
     expect(section.getByText("Not yet", { selector: ".gg-chip span" })).toBeVisible();
     expect(section.getAllByText("Done")).toHaveLength(1);
-    expect(section.getByText(/added when all three missions are done/)).toBeVisible();
+    expect(section.getByText(/added when all five steps are done/)).toBeVisible();
   });
 
   it("explains an account that cannot earn it", async () => {
@@ -224,7 +262,7 @@ describe("Client account", () => {
         foundingTester: progress({ eligible: false, rewardStatus: "ineligible" }),
       }),
     );
-    render(<ClientAccount userId="c1" />);
+    render(<ClientAccount userId="c1" tree="ops" />);
 
     const section = within(
       await screen.findByRole("region", { name: "Founding Tester" }),
@@ -233,5 +271,115 @@ describe("Client account", () => {
     expect(
       section.getByText(/created on or after the Founding Tester launch date/),
     ).toBeVisible();
+  });
+
+  const invite = (n: number, joined: boolean): TesterInvite => ({
+    id: `tinv_${n}`,
+    inviterId: "c1",
+    code: "ABC",
+    email: `friend${n}@example.test`,
+    clientId: joined ? `f${n}` : null,
+    createdAt: "2026-10-20T08:00:00.000Z",
+    matchedAt: joined ? "2026-10-20T08:00:00.000Z" : null,
+    completedAt: null,
+    unmatchedReason: joined ? null : "no_client_account",
+  });
+
+  it("counts every invite across pages, not just the first 500", async () => {
+    api.getClientAccount.mockResolvedValue(account());
+    api.listTesterInvites
+      .mockResolvedValueOnce({
+        serverTime: "",
+        total: 501,
+        invites: Array.from({ length: 500 }, (_, i) => invite(i, true)),
+      })
+      .mockResolvedValueOnce({
+        serverTime: "",
+        total: 501,
+        invites: [invite(500, false)],
+      });
+    render(<ClientAccount userId="c1" tree="ops" />);
+
+    const section = within(
+      await screen.findByRole("region", { name: "Founding Tester" }),
+    );
+    expect(await section.findByText(/501 invited · 500\s+joined/)).toBeVisible();
+    expect(api.listTesterInvites).toHaveBeenNthCalledWith(
+      1,
+      { inviterId: "c1" },
+      { offset: 0, limit: 500 },
+    );
+    expect(api.listTesterInvites).toHaveBeenNthCalledWith(
+      2,
+      { inviterId: "c1" },
+      { offset: 500, limit: 500 },
+    );
+    expect(section.getByText(/1 form response is/)).toBeVisible();
+  });
+
+  it("warns when a refresh fails, keeps the last read, and retries", async () => {
+    api.getClientAccount.mockResolvedValueOnce(account());
+    render(<ClientAccount userId="c1" tree="ops" />);
+    await screen.findByRole("region", { name: "Founding Tester" });
+
+    api.getClientAccount.mockRejectedValueOnce(
+      new ApiError(503, { error: "unavailable" }),
+    );
+    await liveUpdate();
+    const banner = (await screen.findAllByRole("alert")).find((node) =>
+      /Out of date:/.test(node.textContent ?? ""),
+    );
+    expect(banner).toBeDefined();
+    expect(banner).toHaveTextContent("The API failed processing this request.");
+    // The last read stays on screen.
+    expect(screen.getByRole("heading", { name: "Ana Client" })).toBeVisible();
+
+    api.getClientAccount.mockResolvedValueOnce(account({ name: "Ana Renamed" }));
+    fireEvent.click(within(banner!).getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("heading", { name: "Ana Renamed" })).toBeVisible();
+    expect(screen.queryByText(/Out of date:/)).toBeNull();
+  });
+
+  it("keeps invite counts marked out of date when only the invites fail to refresh", async () => {
+    api.getClientAccount.mockResolvedValue(account());
+    api.listTesterInvites.mockResolvedValueOnce({
+      serverTime: "",
+      total: 1,
+      invites: [invite(1, true)],
+    });
+    render(<ClientAccount userId="c1" tree="ops" />);
+    const section = within(
+      await screen.findByRole("region", { name: "Founding Tester" }),
+    );
+    await section.findByText(/1 invited/);
+
+    api.listTesterInvites.mockRejectedValueOnce(
+      new ApiError(503, { error: "unavailable" }),
+    );
+    await liveUpdate();
+    expect(await section.findByText(/These counts may be out of date:/)).toBeVisible();
+    expect(section.getByText(/1 invited/)).toBeVisible();
+  });
+
+  it("hides invites only on an API without them, and says so on any other failure", async () => {
+    api.getClientAccount.mockResolvedValue(account());
+    api.listTesterInvites.mockRejectedValueOnce(
+      new ApiError(404, { error: "not_found" }),
+    );
+    render(<ClientAccount userId="c1" tree="ops" />);
+    let section = within(await screen.findByRole("region", { name: "Founding Tester" }));
+    await waitFor(() => expect(api.listTesterInvites).toHaveBeenCalled());
+    expect(section.queryByRole("heading", { name: "Invites" })).toBeNull();
+    expect(section.queryByRole("alert")).toBeNull();
+    cleanup();
+
+    api.listTesterInvites.mockRejectedValueOnce(
+      new ApiError(403, { error: "forbidden" }),
+    );
+    render(<ClientAccount userId="c1" tree="ops" />);
+    section = within(await screen.findByRole("region", { name: "Founding Tester" }));
+    expect(await section.findByRole("alert")).toHaveTextContent(
+      "This action is restricted to Operations and Super Admin.",
+    );
   });
 });

@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+
+import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { Award, ChevronLeft, ChevronRight, Eye, Users } from "lucide-react";
 
 import { MissionMeter } from "@/components/founding-testers/MissionProgress";
+import { TesterBudgetCard } from "@/components/founding-testers/TesterRewardsList";
 import { Button } from "@/components/ui/button";
 import {
   DataTable,
@@ -16,7 +19,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { StatCard } from "@/components/ui/StatCard";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { isApiError, listFoundingTesters, listUsers } from "@/lib/api/client";
-import type { FoundingTesterRow } from "@/lib/api/types";
+import type { FoundingTesterRow, TesterBudget } from "@/lib/api/types";
 import {
   FOUNDING_TESTERS_PAGE_SIZE,
   neighbourPages,
@@ -24,7 +27,6 @@ import {
   presentTesterLabel,
   presentTesterReward,
 } from "@/lib/founding-testers";
-import { formatPhp } from "@/lib/format";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
@@ -35,10 +37,10 @@ function offsetFromPage(page: string | null): number {
 }
 
 /**
- * Every client account's Founding Tester missions, label and reward, for
- * Operations and Super Admin (`GET /ops/founding-testers`, 100 a page).
- * Read-only: the API counts and awards; there are no invites, spending or
- * export here. Each row opens the client's account in the caller's tree.
+ * Every client account's five Founding Tester steps, label, reward and invite
+ * counts, for Operations and Super Admin (`GET /ops/founding-testers`, 100 a
+ * page), with this month's tester budget. Read-only: the API counts and
+ * awards. Each row opens the client's account in the caller's tree.
  */
 export function FoundingTestersList({ tree }: { tree: "ops" | "admin" }) {
   const router = useRouter();
@@ -48,6 +50,7 @@ export function FoundingTestersList({ tree }: { tree: "ops" | "admin" }) {
   const [total, setTotal] = useState<number | null>(null);
   const [shownOffset, setShownOffset] = useState<number | null>(null);
   const [earned, setEarned] = useState<number | null>(null);
+  const [budget, setBudget] = useState<TesterBudget | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -64,6 +67,7 @@ export function FoundingTestersList({ tree }: { tree: "ops" | "admin" }) {
         setRows(page.clients);
         setTotal(page.total);
         setShownOffset(offset);
+        setBudget(page.budget ?? null);
         setEarned(testers ? testers.length : null);
       } catch (err) {
         setRows(null);
@@ -71,8 +75,8 @@ export function FoundingTestersList({ tree }: { tree: "ops" | "admin" }) {
           isApiError(err)
             ? err.status === 403
               ? "Only Operations and Super Admin can read Founding Tester progress."
-              : `Could not load Founding Tester progress (${err.code}).`
-            : "Could not reach the API. Check it is running, then retry.",
+              : opsErrorMessage(err, "Could not load Founding Tester progress. Retry.")
+            : "Could not reach the API. Check the connection, then retry.",
         );
       } finally {
         setLoading(false);
@@ -113,7 +117,7 @@ export function FoundingTestersList({ tree }: { tree: "ops" | "admin" }) {
       },
       {
         id: "progress",
-        header: "Missions",
+        header: "Steps",
         sortValue: (row) => row.foundingTester.completedCount,
         cell: (row) => <MissionMeter progress={row.foundingTester} />,
       },
@@ -126,6 +130,23 @@ export function FoundingTestersList({ tree }: { tree: "ops" | "admin" }) {
           const label = presentTesterLabel(row.foundingTester);
           return <StatusChip tone={label.tone} label={label.label} icon={label.icon} />;
         },
+      },
+      {
+        id: "invites",
+        header: "Invites",
+        sortValue: (row) => row.invites?.invited ?? 0,
+        cell: (row) =>
+          row.invites ? (
+            <span
+              className="text-body text-text-primary tabular-nums whitespace-normal"
+              aria-label={`${row.invites.invited} invited, ${row.invites.joined} joined, ${row.invites.completed} completed`}
+            >
+              {row.invites.invited} invited · {row.invites.joined} joined ·{" "}
+              {row.invites.completed} completed
+            </span>
+          ) : (
+            <span className="text-caption text-text-muted">—</span>
+          ),
       },
       {
         id: "reward",
@@ -170,15 +191,7 @@ export function FoundingTestersList({ tree }: { tree: "ops" | "admin" }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-body text-text-secondary m-0 max-w-prose">
-        Client accounts working towards the Founding Tester label: place a first order
-        with its payment confirmed, receive it with delivery or pick-up confirmed, and
-        rate it with the survey. Finishing all three adds the label and a{" "}
-        {formatPhp(1500)} GRIDGO voucher valid 30 days, once per account. GRIDGO counts
-        this on its own; nothing here changes it.
-      </p>
-
-      <div className="grid grid-cols-2 gap-3 md:max-w-xl">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           label="Client accounts"
           value={total != null ? total.toLocaleString("en-PH") : "—"}
@@ -193,6 +206,7 @@ export function FoundingTestersList({ tree }: { tree: "ops" | "admin" }) {
           icon={Award}
           loading={pending}
         />
+        <TesterBudgetCard budget={budget} loading={pending} />
       </div>
 
       {!pending && rows && !rows.length && (total ?? 0) === 0 ? (
