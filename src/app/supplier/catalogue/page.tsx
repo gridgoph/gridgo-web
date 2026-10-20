@@ -6,7 +6,7 @@ import { useLiveReload } from "@/lib/live/useLiveReload";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { LayoutGrid, List, Plus } from "lucide-react";
+import { LayoutGrid, List, Plus, TriangleAlert } from "lucide-react";
 
 import { ListingCard } from "@/app/supplier/_components/ListingCard";
 import {
@@ -68,6 +68,7 @@ import {
   type CatalogListQuery,
 } from "@/lib/api/client";
 import type { Taxonomy } from "@/lib/api/types";
+import { PRODUCTION_TIME_REVIEW_TITLE } from "@/lib/production-time-choice";
 
 export default function SupplierCataloguesPage() {
   const { user } = useAuth();
@@ -153,6 +154,8 @@ export default function SupplierCataloguesPage() {
     [listings, services, shopApproved, readiness],
   );
   const counts = standingCounts(standings);
+  // Counted over the whole board, whatever the standing filter shows.
+  const toCheck = listings.filter((listing) => listing.productionTimeReview?.required).length;
   const shown = orderByAttention(
     listings
       .map((listing, index) => ({ listing, standing: standings[index]! }))
@@ -204,6 +207,31 @@ export default function SupplierCataloguesPage() {
             Build your board while you wait. Clients see it the moment your accreditation
             clears, and Operations wants at least one finished listing before then.
           </p>
+        </div>
+      ) : null}
+
+      {toCheck > 0 ? (
+        <div
+          role="note"
+          className="rounded-card border-warning bg-surface flex items-start gap-2 border p-4"
+        >
+          <TriangleAlert
+            aria-hidden
+            className="mt-0.5 size-[18px] shrink-0"
+            style={{ color: "var(--color-warning)" }}
+          />
+          <div className="flex min-w-0 flex-col gap-1">
+            <p className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+              {PRODUCTION_TIME_REVIEW_TITLE}
+            </p>
+            <p className="text-body text-text-secondary m-0">
+              {toCheck === 1
+                ? "One listing needs you to confirm how long it takes. It is marked below."
+                : `${toCheck} listings need you to confirm how long they take. They are marked below.`}{" "}
+              Open each one and answer &ldquo;How long does this take?&rdquo; so clients are
+              offered the right dates.
+            </p>
+          </div>
         </div>
       ) : null}
 

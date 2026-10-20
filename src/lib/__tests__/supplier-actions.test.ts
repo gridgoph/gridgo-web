@@ -6,6 +6,7 @@ import {
   CLAIM_HOLD_PACKING_REASON,
   actionsForJob,
   needsSupplierAction,
+  presentSupplierJobStatus,
   primaryAction,
   supplierWaitingOn,
 } from "@/lib/supplier-actions";
@@ -314,5 +315,105 @@ describe("a rider-packs job (shop handover version 2, ord_de22bfb54b9d)", () => 
     expect(
       supplierWaitingOn("ready_for_dispatch", { handoverFlow: "rider_packs" }),
     ).toMatch(/Do not pack yet/);
+  });
+});
+
+describe("stopped work", () => {
+  const filed = [
+    milestone("printing", "pof_attached"),
+    milestone("packaging_qc", "pof_attached"),
+  ];
+  const now = new Date("2026-10-05T06:30:00.000Z");
+  const window = {
+    supplierId: "shop1",
+    assignedAt: "2026-10-05T06:00:00.000Z",
+    deadlineAt: "2026-10-05T07:00:00.000Z",
+    workingMinutes: 60,
+    status: "pending" as const,
+  };
+
+  function producing(extra: Record<string, unknown> = {}) {
+    return { ...job("production", filed), ...extra };
+  }
+
+  it.each([
+    ["with a readiness list", { transitionReadiness: { ready_for_dispatch: { allowed: true, missing: [] } } }],
+    ["without a readiness list", {}],
+  ])("offers nothing on a refund, %s", (_label, extra) => {
+    const paused = producing({ refundHold: true, ...extra });
+    const settled = producing({ refundDisposition: "cancelled", ...extra });
+    expect(actionsForJob(paused)).toEqual([]);
+    expect(actionsForJob(settled)).toEqual([]);
+    expect(needsSupplierAction(paused)).toBe(false);
+    expect(presentSupplierJobStatus(paused).label).toBe("Paused for refund");
+    expect(presentSupplierJobStatus(settled).label).toBe("Cancelled and settled");
+  });
+
+  it("offers nothing on a recovery, and an accepted replacement is this shop's job", () => {
+    const released = producing({
+      shopAcceptance: { ...window, status: "cancelled" as const },
+      shopRecovery: { id: "e1", status: "ops_review" as const },
+    });
+    expect(actionsForJob(released)).toEqual([]);
+    expect(needsSupplierAction(released)).toBe(false);
+    expect(presentSupplierJobStatus(released).label).toBe("Cancelled by you");
+
+    const replacement = {
+      ...job("supplier_assigned"),
+      shopAcceptance: { ...window, deadlineAt: "2099-01-01T00:00:00.000Z" },
+      shopRecovery: { id: "e1", status: "accepted" as const },
+    };
+    expect(actionsForJob(replacement, now).map((action) => action.kind)).toEqual([
+      "accept",
+      "decline",
+    ]);
+  });
+
+  it("offers nothing while a declined deadline holds the job, and says so over a failed counter check", () => {
+    const held = producing({
+      state: "rider_assigned",
+      pickupChecklist: { status: "failed_escalated", checks: [], evidenceFileIds: [], failureNote: null, completedAt: null, completedBy: null, escalationId: null },
+      rescheduleRequest: {
+        id: "r1",
+        orderId: "o1",
+        reason: "Laminator",
+        status: "declined" as const,
+        requestedAt: "2026-10-05T06:00:00.000Z",
+        expiresAt: "2026-10-06T06:00:00.000Z",
+        answeredAt: "2026-10-05T08:00:00.000Z",
+        resolution: "rematch_offered" as const,
+        refundRequestId: null,
+        workHeld: true,
+        originalReadyBy: "2026-10-07T09:00:00.000Z",
+        proposedReadyBy: "2026-10-09T09:00:00.000Z",
+      },
+    });
+    expect(actionsForJob(held)).toEqual([]);
+    expect(presentSupplierJobStatus(held).label).toBe("Paused");
+    expect(presentSupplierJobStatus({ ...held, rescheduleRequest: undefined }).label).toBe(
+      "Pickup blocked",
+    );
+  });
+
+  it("offers nothing once the hour to answer has run out, and keeps the offer while it runs", () => {
+    const offer = {
+      ...job("supplier_assigned"),
+      shopAcceptance: window,
+    };
+    expect(actionsForJob(offer, new Date("2026-10-05T06:30:00.000Z")).map((a) => a.kind)).toEqual([
+      "accept",
+      "decline",
+    ]);
+    expect(actionsForJob(offer, new Date("2026-10-05T07:00:01.000Z"))).toEqual([]);
+    expect(needsSupplierAction(offer, new Date("2026-10-05T07:00:01.000Z"))).toBe(false);
+  });
+
+  it("still shows Package for pickup disabled while only a claim hold is set", () => {
+    const held = job("production", filed, true);
+    expect(actionsForJob(held)[0]).toMatchObject({
+      label: "Package for pickup",
+      blockedReason: CLAIM_HOLD_PACKING_REASON,
+    });
+    expect(needsSupplierAction(held)).toBe(false);
   });
 });

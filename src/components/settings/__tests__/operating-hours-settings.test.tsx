@@ -6,7 +6,7 @@ import React from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/lib/api/client";
-import type { PlatformSettings } from "@/lib/api/types";
+import type { OperatingHours, PlatformSettings } from "@/lib/api/types";
 import { LAUNCH_OPERATING_HOURS, closureDayLabel } from "@/lib/operating-hours";
 
 vi.stubGlobal("React", React);
@@ -24,6 +24,13 @@ vi.mock("@/lib/api/client", async (importOriginal) => ({
 const { OperatingHoursSettings } = await import(
   "@/components/settings/OperatingHoursSettings"
 );
+
+/** Operating hours as an API without the same-day promise margin returns them. */
+function withoutMargin(): OperatingHours {
+  const older: OperatingHours = { ...LAUNCH_OPERATING_HOURS };
+  delete older.sameDayPromiseAllowanceMinutes;
+  return older;
+}
 
 // Sunday 11 Oct 2026, 10:00 AM Manila: closed on the launch week.
 const SUNDAY_10AM = new Date("2026-10-11T02:00:00.000Z");
@@ -145,9 +152,60 @@ it("reloads the settings when someone else saved first", async () => {
   expect(onConflict).toHaveBeenCalled();
 });
 
+it("saves the same-day promise margin in whole minutes, with the default on offer", async () => {
+  renderEditor();
+  updateSettings.mockImplementation(async (input) => ({
+    ...settings,
+    version: 8,
+    operatingHours: input.operatingHours,
+  }));
+  expect(screen.getByLabelText("Same-day promise margin, hours")).toHaveValue("2");
+  expect(screen.getByLabelText("Same-day promise margin, minutes")).toHaveValue("0");
+  expect(screen.getByText(/after a same-day job is finished/)).toHaveTextContent(
+    /default 2 hours/,
+  );
+  expect(screen.queryByRole("button", { name: /Use the default/ })).toBeNull();
+
+  fireEvent.change(screen.getByLabelText("Same-day promise margin, hours"), {
+    target: { value: "0" },
+  });
+  fireEvent.change(screen.getByLabelText("Same-day promise margin, minutes"), {
+    target: { value: "45" },
+  });
+  expect(screen.getByRole("button", { name: "Use the default (2 hours)" })).toBeEnabled();
+  expect(screen.getByTestId("operating-changes")).toHaveTextContent(
+    "Same-day promise margin 2 hours to 45 minutes",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Save operating hours" }));
+
+  await waitFor(() => expect(updateSettings).toHaveBeenCalledTimes(1));
+  expect(updateSettings).toHaveBeenCalledWith({
+    expectedVersion: 7,
+    operatingHours: { ...LAUNCH_OPERATING_HOURS, sameDayPromiseAllowanceMinutes: 45 },
+    reason: "Operating hours: same-day promise margin 2 hours to 45 minutes",
+  });
+});
+
+it("explains a margin over ten hours and never sends it", () => {
+  renderEditor();
+  fireEvent.change(screen.getByLabelText("Same-day promise margin, hours"), {
+    target: { value: "11" },
+  });
+  expect(screen.getByTestId("operating-problem")).toHaveTextContent(/up to 10 hours/);
+  expect(screen.getByRole("button", { name: "Save operating hours" })).toBeDisabled();
+});
+
+it("has no margin control against an API that does not offer it", () => {
+  const older = withoutMargin();
+  renderEditor({ settings: { ...settings, operatingHours: older } });
+  expect(screen.queryByLabelText("Same-day promise margin, hours")).toBeNull();
+});
+
 it("shows the same week without controls to anyone who cannot edit", () => {
   renderEditor({ canEdit: false });
   expect(screen.queryByRole("button", { name: "Save operating hours" })).toBeNull();
   expect(screen.queryByLabelText("Open on Monday")).toBeNull();
   expect(screen.getByText("Only Super Admin changes these.")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Same-day promise margin, hours")).toBeNull();
+  expect(screen.getByText("Same-day promise margin")).toBeInTheDocument();
 });

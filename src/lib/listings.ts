@@ -29,6 +29,12 @@ import {
   timeMinutes,
   type ProductionTime,
 } from "@/lib/production-time";
+import {
+  readProductionTimeChoice,
+  readProductionTimeReview,
+  type ProductionTimeChoice,
+  type ProductionTimeReview,
+} from "@/lib/production-time-choice";
 
 export type PricingUnit =
   | "per_unit"
@@ -179,6 +185,13 @@ export type Listing = {
   minimumTurnaround: ProductionTime | null;
   /** The shop's working day in minutes; a same-day time stays under it. Null when not sent. */
   productionDayMinutes: number | null;
+  /**
+   * The one-question answer, Same day or Days (`src/lib/production-time-choice.ts`).
+   * `undefined` on an API that predates it; `null` while the listing has no time.
+   */
+  productionTime: ProductionTimeChoice | null | undefined;
+  /** "Check your production time". Null on an API without the reminder. */
+  productionTimeReview: ProductionTimeReview | null;
   fileFormatMode: FileFormatMode;
   formatCodes: string[];
   onTheBoard: boolean;
@@ -459,6 +472,8 @@ export function normalizeListing(body: unknown, index = 0): Listing | null {
     turnaround: time.max,
     minimumTurnaround: time.min,
     productionDayMinutes: readDayMinutes(raw),
+    productionTime: readProductionTimeChoice(raw),
+    productionTimeReview: readProductionTimeReview(raw),
     fileFormatMode:
       str(pick(raw, "fileFormatMode", "file_format_mode")) === "override" ? "override" : "inherit",
     formatCodes: readFormatCodes(

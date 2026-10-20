@@ -304,6 +304,19 @@ describe("SupportChatDesk", () => {
     fireEvent.click(within(screen.getByLabelText("People pages")).getByRole("button", { name: "Next page" }));
     expect(await screen.findByText("Person 8")).toBeTruthy();
     expect(screen.queryByText("Person 0")).toBeNull();
+    fireEvent.change(within(screen.getByLabelText("People pages")).getByRole("combobox", { name: "People per page" }), {
+      target: { value: "16" },
+    });
+    expect(screen.getByText("Person 0")).toBeTruthy();
+    expect(screen.getByText("Person 8")).toBeTruthy();
+    expect(within(screen.getByLabelText("People pages")).getByText("Page 1 of 1")).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Conversations per page" })).toHaveValue("8");
+    fireEvent.change(screen.getByRole("combobox", { name: "Conversations per page" }), {
+      target: { value: "24" },
+    });
+    expect(
+      within(screen.getByLabelText("People pages")).getByRole("combobox", { name: "People per page" }),
+    ).toHaveValue("16");
   });
 
   it("pages the inbox", async () => {
@@ -326,6 +339,89 @@ describe("SupportChatDesk", () => {
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
     expect(await screen.findByText("Preview 8")).toBeTruthy();
     expect(screen.queryByText("Preview 0")).toBeNull();
+  });
+
+  it("shows every loaded conversation when the page holds 16", async () => {
+    const many = Array.from({ length: 9 }, (_, index) => ({
+      ...thread,
+      id: `thread-${index}`,
+      partyUserId: `user_person_${index}`,
+      partyName: `Person ${index}`,
+      lastMessagePreview: `Preview ${index}`,
+    }));
+    listSupportChatThreads.mockResolvedValue(many);
+    getSupportChatThread.mockImplementation(async (id: string) => {
+      const row = many.find((item) => item.id === id) ?? many[0];
+      return { thread: { ...row, unreadCount: 0 }, messages: [] };
+    });
+    render(<SupportChatDesk />);
+    expect(await screen.findByText("Preview 0")).toBeTruthy();
+    expect(screen.queryByText("Preview 8")).toBeNull();
+    fireEvent.change(screen.getByRole("combobox", { name: "Conversations per page" }), {
+      target: { value: "16" },
+    });
+    expect(screen.getByText("Preview 8")).toBeTruthy();
+    expect(screen.getByText("Page 1 of 1")).toBeTruthy();
+    expect(listSupportChatThreads).toHaveBeenCalledWith({ role: undefined, q: "" });
+    expect(listSupportChatThreads).not.toHaveBeenCalledWith(
+      expect.objectContaining({ pageSize: expect.anything() }),
+    );
+  });
+
+  it("returns to the first page when a larger page size leaves the current page empty", async () => {
+    const many = Array.from({ length: 9 }, (_, index) => ({
+      ...thread,
+      id: `thread-${index}`,
+      partyUserId: `user_person_${index}`,
+      partyName: `Person ${index}`,
+      lastMessagePreview: `Preview ${index}`,
+    }));
+    listSupportChatThreads.mockResolvedValue(many);
+    getSupportChatThread.mockImplementation(async (id: string) => {
+      const row = many.find((item) => item.id === id) ?? many[0];
+      return { thread: { ...row, unreadCount: 0 }, messages: [] };
+    });
+    render(<SupportChatDesk />);
+    expect(await screen.findByText("Preview 0")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(await screen.findByText("Preview 8")).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: "Conversations per page" }), {
+      target: { value: "16" },
+    });
+    expect(screen.getByText("Page 1 of 1")).toBeTruthy();
+    expect(screen.getByText("Preview 0")).toBeTruthy();
+    expect(screen.getByText("Preview 8")).toBeTruthy();
+  });
+
+  it("stays on a page that still exists after choosing a smaller size", async () => {
+    const many = Array.from({ length: 25 }, (_, index) => ({
+      ...thread,
+      id: `thread-${index}`,
+      partyUserId: `user_person_${index}`,
+      partyName: `Person ${index}`,
+      lastMessagePreview: `Preview ${index}`,
+    }));
+    listSupportChatThreads.mockResolvedValue(many);
+    getSupportChatThread.mockImplementation(async (id: string) => {
+      const row = many.find((item) => item.id === id) ?? many[0];
+      return { thread: { ...row, unreadCount: 0 }, messages: [] };
+    });
+    render(<SupportChatDesk />);
+    expect(await screen.findByText("Preview 0")).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: "Conversations per page" }), {
+      target: { value: "24" },
+    });
+    expect(screen.getByText("Page 1 of 2")).toBeTruthy();
+    expect(screen.queryByText("Preview 24")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(screen.getByText("Preview 24")).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: "Conversations per page" }), {
+      target: { value: "8" },
+    });
+    expect(screen.getByText("Page 2 of 4")).toBeTruthy();
+    expect(screen.getByText("Preview 8")).toBeTruthy();
+    expect(screen.queryByText("Preview 0")).toBeNull();
+    expect(screen.queryByText("Preview 24")).toBeNull();
   });
 
   it("shows one conversation per person and merges their threads without duplicates", async () => {
@@ -426,6 +522,14 @@ describe("SupportChatDesk", () => {
     });
     const transcript = screen.getByText("First question").closest("div.overflow-y-auto")!;
     expect(within(transcript as HTMLElement).getAllByText("On it")).toHaveLength(1);
+    expect(transcript.contains(screen.getByRole("button", { name: "Send" }))).toBe(false);
+    expect(transcript.contains(screen.getByLabelText("Reply as Operations"))).toBe(false);
+    expect(
+      screen.getAllByRole("heading", { name: "Ana Client" }).every((name) => !transcript.contains(name)),
+    ).toBe(true);
+    expect(transcript.closest("section")).not.toHaveClass("min-h-[28rem]");
+    expect(transcript.closest(".grid")).toHaveClass("min-h-0", "flex-1");
+    expect(transcript.closest(".grid")).not.toHaveClass("min-h-[36rem]");
     await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(2));
   });
 
@@ -548,7 +652,15 @@ describe("SupportChatDesk", () => {
     });
     render(<SupportChatDesk />);
     const run = await screen.findByTestId("chat-run");
-    expect(await within(run).findByRole("img", { name: "proof.jpg" })).toBeTruthy();
+    const photo = await within(run).findByRole("img", { name: "proof.jpg" });
+    fireEvent.click(photo);
+    const preview = await screen.findByRole("img", { name: "proof.jpg preview" });
+    expect(preview).toBeTruthy();
+    expect(screen.getByText("100%")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(screen.getByText("150%")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("img", { name: "proof.jpg preview" })).toBeNull();
   });
 
   it("shows a date chip when a new day starts", async () => {

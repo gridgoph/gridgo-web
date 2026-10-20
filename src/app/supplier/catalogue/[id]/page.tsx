@@ -10,15 +10,12 @@ import { useParams, useRouter } from "next/navigation";
 import { Check, Trash2 } from "lucide-react";
 
 import { ListingPreviewBody } from "@/app/supplier/_components/ListingPreviewBody";
-import { ExpressField } from "@/app/supplier/_components/ExpressField";
+import { HowLongField } from "@/app/supplier/_components/HowLongField";
+import { ProductionTimeReviewBanner } from "@/app/supplier/_components/ProductionTimeReviewBanner";
 import { PrinterMaxWidthField } from "@/app/supplier/_components/PrinterMaxWidthField";
 import { PrintLayoutsField } from "@/app/supplier/_components/PrintLayoutsField";
 import { ColourPricingField } from "@/app/supplier/_components/ColourPricingField";
 import { sectionNumber } from "@/app/supplier/_components/editor-sections";
-import {
-  PRODUCTION_TIME_HINT,
-  ProductionTimeField,
-} from "@/app/supplier/_components/ProductionTimeField";
 import {
   focusField,
   ReadinessChecklist,
@@ -70,8 +67,10 @@ import {
   getSupplierReadiness,
   getTaxonomy,
   isApiError,
+  applyProductionTimeToAll,
   listAcceptedFileFormats,
   listCatalogItemPrepSteps,
+  listCatalogItems,
   putCatalogItemFileFormats,
   reorderCatalogPhotos,
   submitCatalogItemForReview,
@@ -96,6 +95,7 @@ import {
   effectiveTurnaround,
   needsPrinterMaxWidth,
   nextFreeSlot,
+  normalizeBoardPage,
   normalizeListing,
   normalizeListingReadiness,
   normalizePrepSteps,
@@ -116,16 +116,17 @@ import {
   type SpecGroup,
 } from "@/lib/listings";
 import { changeNotice, replacedNotice } from "@/lib/listing-photos";
+import { DEFAULT_DAY_MINUTES, readyInLine } from "@/lib/production-time";
 import {
-  DEFAULT_DAY_MINUTES,
-  listingTimeFields,
-  readyInLine,
-  sameTime,
-  timeLabel,
-  windowProblem,
-  workingDays,
-  type ProductionTime,
-} from "@/lib/production-time";
+  choiceFromTimes,
+  choiceLine,
+  choiceProblem,
+  choiceTimes,
+  expectedVersionsOf,
+  productionTimeSaveError,
+  sameChoice,
+  type ProductionTimeChoice,
+} from "@/lib/production-time-choice";
 import { PRINT_LAYOUTS_HELP, sameLayouts, type KnownLayout } from "@/lib/print-layout";
 import {
   DEFAULT_A3_LIMIT_BPS,
@@ -145,10 +146,8 @@ type Draft = {
   pricingUnit: PricingUnit;
   packageQty: number;
   minimumOrderQuantity: number;
-  turnaroundMode: "inherit" | "override";
-  /** The listing's own window: hours for same-day work, else working days. */
-  turnaround: ProductionTime;
-  minimumTurnaround: ProductionTime;
+  /** "How long does this take?" Null while the listing has no production time. */
+  time: ProductionTimeChoice | null;
   subcategoryCode: string;
   printerMaxWidthFeet: number | null;
   /** Null on an API without layouts: nothing is shown or sent. */
@@ -230,11 +229,6 @@ const COLOUR_MODE_CHOICES = [
   { value: "colour", label: "Priced by colour" },
 ] as const;
 
-const TURNAROUND_CHOICES = [
-  { value: "inherit", label: "Your usual time" },
-  { value: "override", label: "Just this listing" },
-] as const;
-
 const ARTWORK_CHOICES = [
   { value: "inherit", label: "Same as your category" },
   { value: "override", label: "Just this listing" },
@@ -249,9 +243,7 @@ function draftFrom(listing: Listing): Draft {
     pricingUnit: listing.pricingUnit,
     packageQty: listing.packageQty ?? 100,
     minimumOrderQuantity: listing.minimumOrderQuantity ?? 0,
-    turnaroundMode: listing.turnaroundMode,
-    turnaround: listing.turnaround ?? DEFAULT_LISTING_TIME,
-    minimumTurnaround: listing.minimumTurnaround ?? listing.turnaround ?? DEFAULT_LISTING_TIME,
+    time: listingChoice(listing),
     subcategoryCode: listing.subcategoryCode,
     printerMaxWidthFeet: listing.printerMaxWidthFeet,
     printLayouts: listing.printLayouts,
@@ -282,30 +274,68 @@ function colourPayload(draft: Draft): Record<string, unknown> {
   };
 }
 
-/** A listing switched to its own time starts here when it has none yet. */
-const DEFAULT_LISTING_TIME = workingDays(2);
-
 /**
- * The production-time fields a save sends: only the chosen unit's field for
- * each end, and no soonest when it equals the latest. Inheriting clears both.
+ * The listing's answer to "How long does this take?". An API that predates
+ * the field still sends the duration pair, which reads the same way.
  */
-function timePayload(draft: Draft) {
-  if (draft.turnaroundMode !== "override") return listingTimeFields(null, null);
-  return listingTimeFields(
-    sameTime(draft.minimumTurnaround, draft.turnaround) ? null : draft.minimumTurnaround,
-    draft.turnaround,
-  );
+function listingChoice(listing: Listing): ProductionTimeChoice | null {
+  if (listing.productionTime !== undefined) return listing.productionTime;
+  return choiceFromTimes(listing.minimumTurnaround, listing.turnaround);
 }
 
 /**
- * True when the draft's production time differs from what the listing holds.
- * An unchanged time is left out of the save, so a listing still carrying an
+ * True when the draft's answer differs from what the listing holds. An
+ * unchanged answer is left out of the save, so a listing still carrying an
  * older long time in hours can have its name or price changed without first
  * being asked to fix a time nobody touched.
  */
 function timeChanged(draft: Draft, listing: Listing): boolean {
-  return JSON.stringify(timePayload(draft)) !== JSON.stringify(timePayload(draftFrom(listing)));
+  return !sameChoice(draft.time, listingChoice(listing));
 }
+
+/**
+ * The draft after another write moved the listing on (Use for all my
+ * listings): what the server now holds, except the fields the shop changed
+ * since `submitted` was captured. A field nobody touched takes the server's
+ * value, so a stale draft never autosaves an older price over a newer one,
+ * and an edit made while the request ran is kept and saved next. Live
+ * reloads are held while the request runs, so only the shop moves the draft.
+ */
+function rebaseDraft(current: Draft, submitted: Draft, saved: Listing): Draft {
+  const next = draftFrom(saved);
+  const kept = { ...next } as Record<keyof Draft, unknown>;
+  for (const key of Object.keys(next) as Array<keyof Draft>) {
+    if (key === "version") continue;
+    if (JSON.stringify(current[key]) !== JSON.stringify(submitted[key])) kept[key] = current[key];
+  }
+  return kept as Draft;
+}
+
+/**
+ * "Keep 1 working day" on the reminder: offered when the listing holds a
+ * usable answer the shop has not changed.
+ */
+function keepLabelFor(listing: Listing, draft: Draft, dirty: boolean): string | null {
+  const held = listingChoice(listing);
+  if (!held || dirty || timeChanged(draft, listing)) return null;
+  if (choiceProblem(held)) return null;
+  return `Keep ${choiceLine(held)}`;
+}
+
+/** Every listing the shop has, hidden and drafts included, for "Use for all my listings". */
+async function readAllOwnListings(): Promise<Listing[]> {
+  const listings: Listing[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < MAX_OWN_LISTING_PAGES; page += 1) {
+    const body = normalizeBoardPage(await listCatalogItems({ limit: 50, cursor }));
+    listings.push(...body.listings);
+    cursor = body.nextCursor;
+    if (!cursor) return listings;
+  }
+  throw new Error("too_many_listings");
+}
+
+const MAX_OWN_LISTING_PAGES = 40;
 
 /** Exactly what `updateCatalogItem` receives for a draft, minus `active`. */
 function payloadOf(draft: Draft) {
@@ -318,8 +348,8 @@ function payloadOf(draft: Draft) {
     minimumOrderQuantity: asksQuantity(draft.pricingUnit)
       ? draft.minimumOrderQuantity || null
       : null,
-    turnaroundMode: draft.turnaroundMode,
-    ...timePayload(draft),
+    // One answer, never the older duration fields or `express` beside it.
+    productionTime: draft.time,
     subcategoryCode: draft.subcategoryCode,
     ...printerMaxWidthFeetWrite(
       draft.subcategoryCode,
@@ -334,9 +364,7 @@ function payloadOf(draft: Draft) {
 /** What a save sends: the draft, with an untouched production time left out. */
 function savePayload(draft: Draft, listing: Listing) {
   const payload: Record<string, unknown> = payloadOf(draft);
-  if (!timeChanged(draft, listing)) {
-    for (const key of Object.keys(timePayload(draft))) delete payload[key];
-  }
+  if (!timeChanged(draft, listing) || !draft.time) delete payload.productionTime;
   // The set is replaced whole and a change opens review, so it is sent only
   // when the shop changed it.
   if (sameLayouts(draft.printLayouts, listing.printLayouts)) delete payload.printLayouts;
@@ -361,12 +389,8 @@ function holdReason(draft: Draft, listing: Listing): string | null {
   } else if (pesosToMinor(draft.price) == null) {
     return "enter a price in pesos, like 400.00.";
   }
-  if (draft.turnaroundMode === "override" && timeChanged(draft, listing)) {
-    const problem = windowProblem(
-      draft.minimumTurnaround,
-      draft.turnaround,
-      listing.productionDayMinutes ?? DEFAULT_DAY_MINUTES,
-    );
+  if (draft.time && timeChanged(draft, listing)) {
+    const problem = choiceProblem(draft.time);
     if (problem) return problem.charAt(0).toLowerCase() + problem.slice(1);
   }
   if (
@@ -405,18 +429,37 @@ export default function ListingEditorPage() {
   const [replacingPhoto, setReplacingPhoto] = useState<string | null>(null);
   const [addingPhoto, setAddingPhoto] = useState(false);
   const [step, setStep] = useState<EditorStepId>("pick");
-  const [expressPending, setExpressPending] = useState<boolean | null>(null);
-  const [expressError, setExpressError] = useState<string | null>(null);
+  const [applying, setApplying] = useState(false);
+  const [applyError, setApplyError] = useState<string | null>(null);
+  const [applyNotice, setApplyNotice] = useState<string | null>(null);
+  const [listingCount, setListingCount] = useState<number | null>(null);
+  const [keepError, setKeepError] = useState<string | null>(null);
   const [a3LimitBps, setA3LimitBps] = useState(DEFAULT_A3_LIMIT_BPS);
   const dirtyRef = useRef(false);
   const busyRef = useRef(false);
+  // While "Use for all my listings" runs, a live reload is held and run once
+  // afterwards: a server copy landing in the draft mid-request would look like
+  // the shop's own edit when the draft is rebased on the result.
+  const applyingRef = useRef(false);
+  const loadGeneration = useRef(0);
+  const reloadHeld = useRef(false);
 
   const working = draft ?? (listing ? draftFrom(listing) : null);
 
   const load = useSerializedLoad(
     useCallback(async () => {
+      const generation = loadGeneration.current;
+      // Started or finished while Use for all ran: drop it and read again,
+      // after the request if it is still running, or now if it has ended.
+      const held = () => {
+        if (!applyingRef.current && generation === loadGeneration.current) return false;
+        if (applyingRef.current) reloadHeld.current = true;
+        else void loadRef.current().catch(() => undefined);
+        return true;
+      };
+      if (held()) return;
       try {
-        const [itemBody, servicesBody, tax, stepsBody, formatList, ready] =
+        const [itemBody, servicesBody, tax, stepsBody, formatList, ready, board] =
           await Promise.all([
             getCatalogItem(id),
             loadShopServiceLines().catch(() => ({ services: [] })),
@@ -424,7 +467,9 @@ export default function ListingEditorPage() {
             listCatalogItemPrepSteps(id).catch(() => ({ prepSteps: [] })),
             listAcceptedFileFormats().catch(() => []),
             getSupplierReadiness().then(normalizeListingReadiness, () => null),
+            listCatalogItems({ limit: 1 }).then(normalizeBoardPage, () => null),
           ]);
+        if (held()) return;
         const next = normalizeListing(itemBody);
         if (!next) throw new Error("unreadable");
         setListing(next);
@@ -433,9 +478,11 @@ export default function ListingEditorPage() {
         setTaxonomy(tax);
         setPrepSteps(normalizePrepSteps(stepsBody));
         setFormats(formatList);
+        if (board) setListingCount(board.total);
         setError(null);
         if (!dirtyRef.current) setDraft(draftFrom(next));
       } catch (err) {
+        if (held()) return;
         if (
           isApiError(err) &&
           ["unauthorized", "forbidden", "not_found"].includes(err.kind)
@@ -451,6 +498,9 @@ export default function ListingEditorPage() {
       }
     }, [id]),
   );
+
+  const loadRef = useRef(load);
+  loadRef.current = load;
 
   useLiveReload(["catalog", "services"], load);
 
@@ -499,13 +549,20 @@ export default function ListingEditorPage() {
           minimumOrderQuantity: asksQuantity(working.pricingUnit)
             ? working.minimumOrderQuantity || null
             : null,
-          turnaroundMode: working.turnaroundMode,
-          turnaround: working.turnaroundMode === "override" ? working.turnaround : null,
-          minimumTurnaround:
-            working.turnaroundMode === "override" &&
-            !sameTime(working.minimumTurnaround, working.turnaround)
-              ? working.minimumTurnaround
-              : null,
+          // A changed answer is the listing's own time once saved.
+          ...(working.time && timeChanged(working, listing)
+            ? (() => {
+                const { min, max } = choiceTimes(working.time);
+                return {
+                  turnaroundMode: "override" as const,
+                  turnaround: max,
+                  minimumTurnaround:
+                    working.time.mode === "days" && working.time.minDays < working.time.maxDays
+                      ? min
+                      : null,
+                };
+              })()
+            : {}),
           subcategoryCode: working.subcategoryCode,
           printerMaxWidthFeet: needsPrinterMaxWidth(working.subcategoryCode)
             ? working.printerMaxWidthFeet
@@ -536,10 +593,15 @@ export default function ListingEditorPage() {
           dirty ? null : readiness,
         )
       : null;
-  const inheritedTime = context?.inheritedTurnaround ?? null;
-  const readyIn = merged
-    ? readyInLine(effectiveTurnaround(merged, inheritedTime), effectiveMinimumTurnaround(merged))
-    : readyInLine(null);
+  // An older range that mixes hours and days has no one answer (`productionTime`
+  // is null) but still schedules: say what it is rather than "not set".
+  const heldMax =
+    listing && listing.productionTime === null
+      ? effectiveTurnaround(listing, context?.inheritedTurnaround ?? null)
+      : null;
+  const heldMin = listing ? effectiveMinimumTurnaround(listing) : null;
+  const heldLine =
+    heldMax && heldMin && heldMin.unit !== heldMax.unit ? readyInLine(heldMax, heldMin) : null;
   const covers = listing
     ? coversFor(
         taxonomy,
@@ -555,13 +617,14 @@ export default function ListingEditorPage() {
       return false;
     }
     const submitted = working;
+    const payload = savePayload(working, listing);
     setBusy(true);
     setActionError(null);
     setSaveState({ kind: "saving" });
     try {
       const saved = normalizeListing(
         await updateCatalogItem(listing.id, working.version, {
-          ...savePayload(working, listing),
+          ...payload,
           ...(onTheBoard != null ? { active: onTheBoard } : {}),
         }),
       );
@@ -603,7 +666,9 @@ export default function ListingEditorPage() {
     } catch (err) {
       setSaveState({
         kind: "error",
-        message: listingErrorMessage(err, "Could not save this listing."),
+        message:
+          productionTimeSaveError(err, "productionTime" in payload) ??
+          listingErrorMessage(err, "Could not save this listing."),
       });
       return false;
     } finally {
@@ -612,19 +677,69 @@ export default function ListingEditorPage() {
   }
 
   /**
-   * Express saves on its own, at once: only `express` with the version the
-   * draft carries, so it never sends half-typed edits and never opens review.
-   * The draft moves to the new version so the next autosave is not stale.
+   * "Use for all my listings": this answer on every listing the shop has.
+   * The API takes every listing's version and applies nothing if one moved,
+   * so the whole board is read again right before sending.
    */
-  async function saveExpress(next: boolean) {
-    if (!listing || !working || busyRef.current) return;
+  async function applyToAll() {
+    if (!listing || !working?.time || busyRef.current) return;
+    const choice = working.time;
+    const submitted = working;
     setBusy(true);
     busyRef.current = true;
-    setExpressPending(next);
-    setExpressError(null);
+    applyingRef.current = true;
+    loadGeneration.current += 1;
+    setApplying(true);
+    setApplyError(null);
+    setApplyNotice(null);
+    try {
+      const all = await readAllOwnListings();
+      const versions = expectedVersionsOf(all);
+      if (!versions) throw new Error("unversioned");
+      const updated = normalizeBoardPage(await applyProductionTimeToAll(choice, versions));
+      const saved = updated.listings.find((entry) => entry.id === listing.id);
+      if (saved) {
+        setListing(saved);
+        setDraft((current) => (current == null ? current : rebaseDraft(current, submitted, saved)));
+      }
+      setListingCount(updated.total);
+      setApplyNotice(
+        `Done. ${updated.total === 1 ? "Your listing takes" : `All ${updated.total} listings take`} ${choiceLine(choice)} now.`,
+      );
+      void refreshReadiness();
+    } catch (err) {
+      setApplyError(
+        isApiError(err) && err.code === "catalog_items_stale"
+          ? "One of your listings changed while this was being applied, so nothing was changed. Try again."
+          : (productionTimeSaveError(err, true) ??
+            listingErrorMessage(err, "Could not apply this to all your listings. Nothing was changed.")),
+      );
+    } finally {
+      applyingRef.current = false;
+      setApplying(false);
+      setBusy(false);
+      if (reloadHeld.current) {
+        reloadHeld.current = false;
+        void load().catch(() => undefined);
+      }
+    }
+  }
+
+  /**
+   * The reminder's "Keep": saves the answer the listing already holds, which
+   * is how a shop confirms a time GRIDGO rounded up. Only while nothing else
+   * is waiting to save, so it never sends half-typed edits.
+   */
+  async function keepTime() {
+    if (!listing || !working || busyRef.current || dirtyRef.current) return;
+    const held = listingChoice(listing);
+    if (!held) return;
+    setBusy(true);
+    busyRef.current = true;
+    setKeepError(null);
     try {
       const saved = normalizeListing(
-        await updateCatalogItem(listing.id, working.version, { express: next }),
+        await updateCatalogItem(listing.id, working.version, { productionTime: held }),
       );
       if (!saved) throw new Error("unreadable");
       setListing(saved);
@@ -633,9 +748,11 @@ export default function ListingEditorPage() {
       );
       void refreshReadiness();
     } catch (err) {
-      setExpressError(listingErrorMessage(err, "Could not change Express."));
+      setKeepError(
+        productionTimeSaveError(err, true) ??
+          listingErrorMessage(err, "Could not save this production time."),
+      );
     } finally {
-      setExpressPending(null);
       setBusy(false);
     }
   }
@@ -1016,6 +1133,17 @@ export default function ListingEditorPage() {
         {notice ? <p className="text-body text-text-secondary m-0">{notice}</p> : null}
       </div>
 
+      {listing.productionTimeReview?.required ? (
+        <ProductionTimeReviewBanner
+          reasons={listing.productionTimeReview.reasons}
+          onCheck={step === "speed" ? undefined : () => setStep("speed")}
+          keepLabel={keepLabelFor(listing, working, dirty)}
+          onKeep={() => void keepTime()}
+          busy={busy}
+          error={keepError}
+        />
+      ) : null}
+
       <ListingReviewNotice
         listing={listing}
         busy={busy || dirty}
@@ -1304,56 +1432,20 @@ export default function ListingEditorPage() {
                       <FieldDescription>0 means no minimum.</FieldDescription>
                     </Field>
                   ) : null}
-                  <div className="flex flex-col gap-1">
-                    <h3
-                      id="ready-in-heading"
-                      className="text-body text-text-primary m-0"
-                      style={{ fontFamily: "var(--font-medium)" }}
-                    >
-                      Production time
-                    </h3>
-                    <p className="text-caption text-text-secondary m-0 max-w-prose">
-                      {PRODUCTION_TIME_HINT}
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                    <SegmentedControl
-                      id="turnaround-mode"
-                      aria-labelledby="ready-in-heading"
-                      options={TURNAROUND_CHOICES}
-                      value={working.turnaroundMode}
-                      onChange={(turnaroundMode) => setDraft({ ...working, turnaroundMode })}
-                    />
-                    <p className="text-body text-text-secondary m-0" role="status">
-                      {readyIn}
-                    </p>
-                  </div>
-                  {working.turnaroundMode === "override" ? (
-                    <ProductionTimeField
-                      idPrefix="listing-time"
-                      min={working.minimumTurnaround}
-                      max={working.turnaround}
-                      dayMinutes={listing.productionDayMinutes ?? DEFAULT_DAY_MINUTES}
-                      onChange={({ min, max }) =>
-                        setDraft({ ...working, minimumTurnaround: min, turnaround: max })
-                      }
-                    />
-                  ) : (
-                    <p className="text-caption text-text-secondary m-0">
-                      {inheritedTime
-                        ? `Your shop's usual time is ${timeLabel(inheritedTime)}.`
-                        : "Your shop has no usual production time yet. Set one for this listing."}
-                    </p>
-                  )}
-                  {listing.express != null ? (
-                    <ExpressField
-                      on={listing.express}
-                      pending={expressPending}
-                      disabled={busy}
-                      error={expressError}
-                      onChange={(next) => void saveExpress(next)}
-                    />
-                  ) : null}
+                  <HowLongField
+                    itemId={listing.id}
+                    choice={working.time}
+                    heldLine={heldLine}
+                    onChange={(time) => setDraft({ ...working, time })}
+                    dayMinutes={listing.productionDayMinutes ?? DEFAULT_DAY_MINUTES}
+                    speedTiers={listing.speedTiers}
+                    listingCount={listingCount}
+                    applyBlocked={busy || dirty}
+                    applying={applying}
+                    applyError={applyError}
+                    applyNotice={applyNotice}
+                    onApplyToAll={applyToAll}
+                  />
                 </FieldGroup>
               </Section>
             ) : null}

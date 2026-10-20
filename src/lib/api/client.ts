@@ -88,6 +88,13 @@ import type {
   StoredFile,
   FileRetentionReport,
   FoundingTestersPage,
+  TesterInvite,
+  TesterInviteStatus,
+  TesterInvitesPage,
+  TesterReward,
+  TesterRewardStatus,
+  TesterRewardsPage,
+  TesterBudget,
   SupplierService,
   PublicCatalogShop,
   PublicCatalogShopSummary,
@@ -146,6 +153,7 @@ import type {
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
 import { acceptsReviewData, withReviewData } from "@/lib/review-data";
+import { previewParams, type ProductionTimeChoice } from "@/lib/production-time-choice";
 import {
   normalizeShopHours,
   normalizeShopHoursList,
@@ -1754,6 +1762,71 @@ export async function listFoundingTesters(
   );
 }
 
+/**
+ * Operations/Super Admin: recorded tester sign-up form responses, newest
+ * first. Contract: gridgo-api docs/FOUNDING_TESTER_API.md.
+ */
+export async function listTesterInvites(
+  filter: { status?: TesterInviteStatus; inviterId?: string } = {},
+  page: { offset?: number; limit?: number } = {},
+): Promise<TesterInvitesPage> {
+  return request<TesterInvitesPage>(
+    `/ops/tester-invites${buildQuery({ status: filter.status, inviterId: filter.inviterId, offset: page.offset ?? 0, limit: page.limit ?? 100 })}`,
+  );
+}
+
+/** Operations/Super Admin: record one form response (code + email). Issues nothing. */
+export async function recordTesterInvite(input: {
+  code: string;
+  email: string;
+}): Promise<TesterInvite> {
+  const result = await request<{ invite: TesterInvite }>("/ops/tester-invites", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  return result.invite;
+}
+
+/** Operations/Super Admin: retry every unmatched form response. Issues nothing. */
+export async function matchTesterInvites(): Promise<{ matched: number; unmatched: number }> {
+  return request<{ matched: number; unmatched: number }>("/ops/tester-invites/match", {
+    method: "POST",
+    body: "{}",
+  });
+}
+
+/** Operations/Super Admin: tester rewards, newest first, with this month's budget. */
+export async function listTesterRewards(
+  filter: { status?: TesterRewardStatus; clientId?: string } = {},
+  page: { offset?: number; limit?: number } = {},
+): Promise<TesterRewardsPage> {
+  return request<TesterRewardsPage>(
+    `/ops/tester-rewards${buildQuery({ status: filter.status, clientId: filter.clientId, offset: page.offset ?? 0, limit: page.limit ?? 100 })}`,
+  );
+}
+
+/** Super Admin: void an issued or paused reward (both referral vouchers together). */
+export async function voidTesterReward(
+  rewardId: string,
+  reason: string,
+): Promise<{ reward: TesterReward; budget: TesterBudget }> {
+  return request<{ reward: TesterReward; budget: TesterBudget }>(
+    `/admin/tester-rewards/${encodeURIComponent(rewardId)}/void`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
+}
+
+/** Super Admin: try a paused reward again; it may stay paused or become blocked. */
+export async function resumeTesterReward(
+  rewardId: string,
+  reason: string,
+): Promise<{ reward: TesterReward; budget: TesterBudget }> {
+  return request<{ reward: TesterReward; budget: TesterBudget }>(
+    `/admin/tester-rewards/${encodeURIComponent(rewardId)}/resume`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
+}
+
 /** Super Admin only. */
 export async function updateUserRole(
   userId: string,
@@ -2666,6 +2739,8 @@ export type StaffCatalogQuery = {
   supplierId?: string | null;
   minPriceMinor?: number | null;
   maxPriceMinor?: number | null;
+  /** Only listings whose shop is asked to check their production time. */
+  productionTimeReview?: "required" | null;
   limit?: number | null;
   cursor?: string | null;
 };
@@ -2682,6 +2757,7 @@ export async function listStaffCatalogItems(
     params.set("minPriceMinor", String(query.minPriceMinor));
   if (query.maxPriceMinor != null)
     params.set("maxPriceMinor", String(query.maxPriceMinor));
+  if (query.productionTimeReview) params.set("productionTimeReview", query.productionTimeReview);
   if (query.limit != null) params.set("limit", String(query.limit));
   if (query.cursor) params.set("cursor", query.cursor);
   const search = params.toString();
@@ -2836,6 +2912,36 @@ export async function updateCatalogItem(
   return request<unknown>(`/me/catalog-items/${encodeURIComponent(itemId)}`, {
     method: "PATCH",
     ...versioned(version, body),
+  });
+}
+
+/**
+ * The dates a client would be offered if this listing took `choice`, before
+ * it is saved. Advisory; read through `normalizePreview`. Contract: "Preview
+ * before saving" in gridgo-api docs/SCHEDULING_API.md.
+ */
+export async function previewProductionTime(
+  itemId: string,
+  choice: ProductionTimeChoice,
+  days?: number,
+): Promise<unknown> {
+  return request<unknown>(
+    `/me/catalog-items/${encodeURIComponent(itemId)}/production-time-preview?${previewParams(choice, days)}`,
+  );
+}
+
+/**
+ * One production time on every listing the shop has, hidden and drafts
+ * included. `expectedVersions` names each of them; a stale or missing one is
+ * `409 catalog_items_stale` and nothing changes.
+ */
+export async function applyProductionTimeToAll(
+  productionTime: ProductionTimeChoice,
+  expectedVersions: Record<string, number>,
+): Promise<unknown> {
+  return request<unknown>("/me/catalog-items/production-time", {
+    method: "POST",
+    body: JSON.stringify({ productionTime, expectedVersions }),
   });
 }
 

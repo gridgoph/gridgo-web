@@ -229,30 +229,46 @@ export type User = {
 };
 
 // ---- Founding Tester missions ----
-// Contract: gridgo-api docs/VOUCHERS_API.md, "Founding Tester missions".
+// Contracts: gridgo-api docs/FOUNDING_TESTER_API.md (the five-step path,
+// invites, rewards and monthly budget) over docs/VOUCHERS_API.md, "Founding
+// Tester missions".
 
-export type FoundingTesterMission = "placed" | "received" | "rated";
+export type FoundingTesterMission = "added" | "placed" | "tracked" | "received" | "rated";
 
 /**
  * `issued` is a new ₱15 voucher; `existing_survey_reward` means the client's
  * earlier survey voucher became this reward, with no new money or expiry.
+ * `paused` is five of five held by the monthly budget; `voided` is Super
+ * Admin's void (the label stays).
  */
 export type FoundingTesterRewardStatus =
   | "pending"
   | "ineligible"
+  | "paused"
   | "issued"
-  | "existing_survey_reward";
+  | "existing_survey_reward"
+  | "voided";
 
 /** One client's missions, label and reward, as staff read it. */
 export type FoundingTesterProgress = {
   eligible: boolean;
   label: "Founding Tester" | null;
   awardedAt: string | null;
-  missions: Record<FoundingTesterMission, boolean>;
+  /** An older API sends only the three original keys. */
+  missions: Partial<Record<FoundingTesterMission, boolean>>;
   completedCount: number;
   rewardStatus: FoundingTesterRewardStatus;
   /** The wallet item. Its private `code` is the client's; this portal never shows it. */
   reward: Voucher | null;
+};
+
+/** A client's personal invite and what came of it. Staff-visible only here. */
+export type TesterInviteCounts = {
+  code: string | null;
+  link: string | null;
+  invited: number;
+  joined: number;
+  completed: number;
 };
 
 /** `GET /users/:id` for a client: the full Founding Tester projection. */
@@ -266,12 +282,100 @@ export type FoundingTesterRow = {
   clientId: string;
   name: string;
   foundingTester: FoundingTesterProgress;
+  /** Absent on an API from before invites. */
+  invites?: TesterInviteCounts;
+};
+
+/** This Asia/Manila month's tester voucher budget, the whole programme. */
+export type TesterBudget = {
+  month: string;
+  timezone: "Asia/Manila";
+  /** Null is no limit. */
+  limitMinor: number | null;
+  usedMinor: number;
+  /** Null with no limit. */
+  remainingMinor: number | null;
+  resumePolicy: "super_admin_per_reward";
 };
 
 export type FoundingTestersPage = {
   serverTime: string;
   total: number;
   clients: FoundingTesterRow[];
+  /** Absent on an API from before the budget. */
+  budget?: TesterBudget;
+};
+
+export type TesterInviteStatus = "unmatched" | "joined" | "completed";
+
+export type TesterInviteUnmatchedReason =
+  | "no_client_account"
+  | "ambiguous_email"
+  | "self_invite"
+  | "account_already_attributed";
+
+/** One recorded sign-up form response. The email is staff-only. */
+export type TesterInvite = {
+  id: string;
+  inviterId: string;
+  code: string;
+  email: string;
+  clientId: string | null;
+  createdAt: string;
+  matchedAt: string | null;
+  completedAt: string | null;
+  unmatchedReason: TesterInviteUnmatchedReason | null;
+  /** List rows only. */
+  status?: TesterInviteStatus;
+};
+
+export type TesterInvitesPage = {
+  serverTime: string;
+  total: number;
+  invites: TesterInvite[];
+};
+
+export type TesterRewardStatus = "issued" | "paused" | "voided" | "blocked";
+
+export type TesterCheckKey = "phone" | "device" | "address";
+
+/** One abuse check on a referral, with who it could and could not compare. */
+export type TesterRewardCheck = {
+  status: "match" | "no_match" | "missing";
+  comparedClientIds: string[];
+  missingClientIds: string[];
+  matchedClientIds: string[];
+};
+
+export type TesterReward = {
+  id: string;
+  kind: "mission" | "referral";
+  /** The mission owner, or the invited friend. */
+  clientId: string;
+  inviterId: string | null;
+  inviteId: string | null;
+  /** 1500 mission, 3000 a referral pair, 0 a reused survey voucher. */
+  amountMinor: number;
+  status: TesterRewardStatus;
+  createdAt: string;
+  issuedAt: string | null;
+  voidedAt: string | null;
+  voucherId: string | null;
+  inviterVoucherId: string | null;
+  /**
+   * `monthly_budget` while paused, `same_phone,same_device,…` when blocked,
+   * Super Admin's words when voided, `existing_survey_reward` or null issued.
+   */
+  reason: string | null;
+  /** Empty for a mission. */
+  checks: Partial<Record<TesterCheckKey, TesterRewardCheck>>;
+};
+
+export type TesterRewardsPage = {
+  serverTime: string;
+  total: number;
+  rewards: TesterReward[];
+  budget: TesterBudget;
 };
 
 /** Identity fields shared by every fixed `/auth/me/*` projection. */
@@ -1588,6 +1692,13 @@ export type OperatingHours = {
   };
   /** Open-time minutes a review takes, 1–540. */
   artworkReviewMinutes: number;
+  /**
+   * Open-time minutes GRIDGO adds after a same-day job's production before
+   * the client's promised time, 0–600 (default 120; contract "Same-day promise
+   * margin control" in `gridgo-api/docs/SCHEDULING_API.md`). Absent from an
+   * older API; leaving it out of a save keeps the stored value.
+   */
+  sameDayPromiseAllowanceMinutes?: number;
   /** Minutes after Manila midnight, 0–1439. Stored only: Priority Delivery is not offered. */
   priorityDispatchCutoffMinute: number;
 };
@@ -1954,6 +2065,13 @@ export type PlatformSettings = {
    */
   foundingTesterLaunchAt?: string | null;
   /**
+   * Founding Tester vouchers a Manila month may issue, in whole centavos;
+   * null is no limit, 0 pauses every new reward. Absent on an older API.
+   */
+  testerMonthlyBudgetMinor?: number | null;
+  /** The tester sign-up form, with `{code}` where the invite code goes; null is unset. */
+  testerSignupFormUrlTemplate?: string | null;
+  /**
    * The hub's pick-up hours and flat fee. Every role reads it; only Super
    * Admin writes it. Absent on an API that predates hub pick-up.
    */
@@ -2024,6 +2142,10 @@ export type UpdateSettingsInput = {
    * instant can earn the Founding Tester label; null opens it to every client.
    */
   foundingTesterLaunchAt?: string | null;
+  /** Super Admin: whole centavos a Manila month for tester vouchers; null is no limit. */
+  testerMonthlyBudgetMinor?: number | null;
+  /** Super Admin: HTTPS sign-up form URL with one `{code}` in its query, or null. */
+  testerSignupFormUrlTemplate?: string | null;
   /** Super Admin only, always `{schedule, feeMinor}`; the point is read-only. */
   hubPickup?: Pick<HubPickup, "schedule" | "feeMinor">;
   /** Pricing dashboard. Whole centavos of monthly fixed cost. */

@@ -685,6 +685,8 @@ const ERROR_COPY: Record<string, string> = {
   voucher_payment_reconciliation_required:
     "A submitted checkout is holding this voucher. Settle that payment, or cancel the checkout, before voiding it.",
   voucher_not_reissuable: "Only a voided voucher can be reissued.",
+  tester_reward_managed:
+    "This voucher is a Founding Tester reward, so it cannot be reissued here. Manage it in Founding Tester rewards.",
   voucher_expired:
     "This voucher has expired, so it cannot be reissued. Issue a new campaign if the client should get another.",
   invalid_voucher_date: "Check the dates in the filter.",

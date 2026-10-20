@@ -1154,7 +1154,7 @@ export function contextTitleForPath(
   if (pathname.startsWith("/ops/refunds/") || pathname.startsWith("/admin/refunds/")) {
     return "Refund case";
   }
-  if (pathname.startsWith("/admin/supplier-products/")) return "Supplier product";
+  if (/^\/(ops|admin)\/supplier-products\/[^/]+/.test(pathname)) return "Supplier product";
   if (pathname.startsWith("/admin/vouchers/")) return "Voucher campaign";
   if (/^\/(ops|admin)\/founding-testers\/[^/]+/.test(pathname)) return "Client account";
   if (/^\/(ops|admin)\/legal\/[^/]+/.test(pathname)) return "Legal document";
