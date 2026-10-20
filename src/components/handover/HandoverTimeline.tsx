@@ -41,9 +41,16 @@ const MARK: Record<
   },
 };
 
-export function HandoverTimeline({ order }: { order: Order }) {
+export function HandoverTimeline({
+  order,
+  audience = "staff",
+}: {
+  order: Order;
+  /** Staff read "you" as Operations. A shop reads the same steps in its own words. */
+  audience?: "staff" | "shop";
+}) {
   const flow = handoverFlowOf(order);
-  const steps = handoverSteps(order, formatDateTime);
+  const steps = handoverSteps(order, formatDateTime, audience);
   if (!flow || steps.length === 0) return null;
   const arrivedPacked = order.shopHandover?.arrivedPacked ?? [];
 
@@ -109,7 +116,9 @@ export function HandoverTimeline({ order }: { order: Order }) {
           );
         })}
       </ol>
-      {arrivedPacked.length && typeof order.shopArrivedPackedCount === "number" ? (
+      {audience === "staff" &&
+      arrivedPacked.length &&
+      typeof order.shopArrivedPackedCount === "number" ? (
         <p className="text-caption text-text-muted m-0">
           {order.shopArrivedPackedCount === 1
             ? "This is the only time this shop has presented a job already packed."
