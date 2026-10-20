@@ -1919,6 +1919,166 @@ describe("listing editor prep steps", () => {
     expect(screen.queryByText(/Your text is still in the box/)).not.toBeInTheDocument();
     expect(mocks.updateCatalogItemPrepStep).toHaveBeenCalledTimes(1);
   });
+
+  /** Step 1's title save is refused once, so its warning and Put back show. */
+  async function refusedTitle(user: ReturnType<typeof userEvent.setup>) {
+    mocks.updateCatalogItemPrepStep.mockRejectedValueOnce(
+      new ApiError(409, { error: "catalog_item_stale" }),
+    );
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+    const title = await screen.findByLabelText("Step 1 title");
+    await user.clear(title);
+    await user.type(title, "Flatten every layer");
+    await user.tab();
+    await screen.findByRole("button", { name: "Put back the saved text" });
+    mocks.updateCatalogItemPrepStep.mockClear();
+    mocks.updateCatalogItemPrepStep.mockResolvedValue({ itemVersion: 4 });
+  }
+
+  it("puts back without saving when the shop clicks it straight from the box", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    const user = userEvent.setup();
+    await refusedTitle(user);
+
+    // Back in the box, then straight to Put back: leaving the box is not a save.
+    await user.click(screen.getByLabelText("Step 1 title"));
+    await user.click(screen.getByRole("button", { name: "Put back the saved text" }));
+
+    expect(screen.getByLabelText("Step 1 title")).toHaveValue("Flatten the art");
+    expect(screen.queryByText(/Your text is still in the box/)).not.toBeInTheDocument();
+    await act(async () => {});
+    expect(mocks.updateCatalogItemPrepStep).not.toHaveBeenCalled();
+  });
+
+  it("puts back without saving when the shop reaches it with Tab", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    mocks.updateCatalogItemPrepStep.mockRejectedValueOnce(
+      new ApiError(409, { error: "catalog_item_stale" }),
+    );
+    const user = userEvent.setup();
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+
+    const details = await screen.findByLabelText("Step 1 details");
+    await user.type(details, "Use CMYK");
+    await user.tab();
+    await screen.findByRole("button", { name: "Put back the saved text" });
+    mocks.updateCatalogItemPrepStep.mockClear();
+
+    // Details, then Tab onto Put back, then Enter.
+    await user.click(screen.getByLabelText("Step 1 details"));
+    await user.tab();
+    expect(screen.getByRole("button", { name: "Put back the saved text" })).toHaveFocus();
+    await user.keyboard("{Enter}");
+
+    expect(screen.getByLabelText("Step 1 details")).toHaveValue("");
+    await act(async () => {});
+    expect(mocks.updateCatalogItemPrepStep).not.toHaveBeenCalled();
+  });
+
+  it("drops an edit still waiting in the queue when the shop puts its text back", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    const user = userEvent.setup();
+    await refusedTitle(user);
+
+    let finishMove!: () => void;
+    mocks.reorderCatalogItemPrepSteps.mockImplementation(
+      () => new Promise((resolve) => (finishMove = () => resolve({ itemVersion: 4 }))),
+    );
+    await user.click(screen.getAllByRole("button", { name: "Later" })[0]);
+    await waitFor(() => expect(mocks.reorderCatalogItemPrepSteps).toHaveBeenCalled());
+
+    // Leaving the box queues a save behind the move; Put back drops it before it runs.
+    await user.click(screen.getByLabelText("Step 1 title"));
+    await user.tab();
+    await user.click(screen.getByRole("button", { name: "Put back the saved text" }));
+    await act(async () => finishMove());
+
+    // Opening, the refused save and the move each read the steps; the dropped save sends nothing.
+    await waitFor(() => expect(mocks.listCatalogItemPrepSteps).toHaveBeenCalledTimes(3));
+    await act(async () => {});
+    expect(mocks.updateCatalogItemPrepStep).not.toHaveBeenCalled();
+    expect(screen.queryByDisplayValue("Flatten every layer")).not.toBeInTheDocument();
+  });
+
+  it("holds Put back while that step's save is with GRIDGO", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    const user = userEvent.setup();
+    await refusedTitle(user);
+
+    let finishSave!: () => void;
+    mocks.updateCatalogItemPrepStep.mockImplementation(
+      () => new Promise((resolve) => (finishSave = () => resolve({ itemVersion: 4 }))),
+    );
+    await user.click(screen.getByLabelText("Step 1 title"));
+    await user.click(screen.getByLabelText("Step 1 details"));
+    const held = await screen.findByRole("button", { name: "Saving your text…" });
+    expect(held).toHaveAttribute("aria-disabled", "true");
+
+    await act(async () => finishSave());
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Saving your text|Put back/ })).not.toBeInTheDocument());
+    expect(mocks.updateCatalogItemPrepStep).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a saved title on screen when the reread of the steps fails", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    mocks.updateCatalogItemPrepStep.mockImplementation(async () => {
+      mocks.listCatalogItemPrepSteps.mockRejectedValue(new ApiError(503, { error: "unavailable" }));
+      return { prepStep: { ...STEPS[0], title: "Flatten every layer" }, itemVersion: 4 };
+    });
+    const user = userEvent.setup();
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+
+    const title = await screen.findByLabelText("Step 1 title");
+    await user.clear(title);
+    await user.type(title, "Flatten every layer");
+    await user.tab();
+
+    expect(
+      await screen.findByText("Could not load the preparation steps. They are not an empty list."),
+    ).toBeVisible();
+    expect(screen.getByLabelText("Step 1 title")).toHaveValue("Flatten every layer");
+    await openEditorStep("About");
+    await openEditorStep("Artwork");
+    expect(await screen.findByLabelText("Step 1 title")).toHaveValue("Flatten every layer");
+  });
+
+  it("autosaves on the version a step edit left when the listing reread fails", async () => {
+    stubLoad(catalogItem());
+    mocks.listCatalogItemPrepSteps.mockResolvedValue({ prepSteps: STEPS });
+    mocks.updateCatalogItemPrepStep.mockImplementation(async () => {
+      mocks.getCatalogItem.mockRejectedValue(new ApiError(503, { error: "unavailable" }));
+      return { prepStep: { ...STEPS[0], title: "Flatten every layer" }, itemVersion: 4 };
+    });
+    const user = userEvent.setup();
+    render(<ListingEditorPage />);
+    await openEditorStep("Artwork");
+
+    const title = await screen.findByLabelText("Step 1 title");
+    await user.clear(title);
+    await user.type(title, "Flatten every layer");
+    await user.tab();
+    await waitFor(() => expect(mocks.getCatalogItem).toHaveBeenCalledTimes(2));
+
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers A5" } });
+    await waitFor(
+      () =>
+        expect(mocks.updateCatalogItem).toHaveBeenCalledWith(
+          "sci_1",
+          4,
+          expect.objectContaining({ name: "Flyers A5" }),
+        ),
+      AUTOSAVE_WAIT,
+    );
+  }, 15_000);
 });
 
 describe("listing editor section numbers", () => {

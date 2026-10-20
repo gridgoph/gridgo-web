@@ -426,6 +426,9 @@ function holdReason(draft: Draft, listing: Listing): string | null {
   return null;
 }
 
+/** A queued prep write that has nothing left to send. */
+const SKIP = Symbol("skip");
+
 type PrepField = "title" | "body";
 type PrepDraft = {
   title?: string;
@@ -516,6 +519,12 @@ export default function ListingEditorPage() {
   // change, and its warning stays until that edit saves or is put back.
   const [prepDrafts, setPrepDrafts] = useState<Record<string, PrepDraft>>({});
   const [prepError, setPrepError] = useState<string | null>(null);
+  // The step whose edit is with GRIDGO now; its Put back waits for the answer.
+  const [prepWriting, setPrepWriting] = useState<string | null>(null);
+  // Set as the pointer goes down on Put back, before the box's blur would save.
+  const discardIntent = useRef<string | null>(null);
+  // Bumped by Put back, so an edit still waiting in the queue is not sent.
+  const discardGeneration = useRef<Record<string, number>>({});
 
   /** A listing's version only moves on, whichever save or read reports it. */
   function adoptVersion(version: number | null | undefined) {
@@ -568,8 +577,7 @@ export default function ListingEditorPage() {
         setServices(normalizeServiceLines(servicesBody));
         setTaxonomy(tax);
         if (stepsBody.ok) {
-          prepStepsRef.current = normalizePrepSteps(stepsBody.body);
-          setPrepSteps(prepStepsRef.current);
+          showSteps(normalizePrepSteps(stepsBody.body));
           setPrepLoadError(null);
         } else {
           setPrepLoadError("Could not load the preparation steps. They are not an empty list.");
@@ -1099,21 +1107,47 @@ export default function ListingEditorPage() {
     }
   }
 
+  /** Puts the steps on screen and where the next queued write reads them. */
+  function showSteps(steps: PrepStep[]) {
+    prepStepsRef.current = steps;
+    setPrepSteps(steps);
+  }
+
   /**
-   * Runs one prep-step write after any still in flight, then rereads the
-   * listing. `settled` runs after the reread, with the refusal if there was one.
+   * This page's own prep write moved the listing from `sent` to `next`. The
+   * listing and an unsaved About draft move with it only if they were still
+   * on `sent`, so an edit made elsewhere still meets its conflict.
+   */
+  function ownPrepVersion(sent: number | null, next: number) {
+    adoptVersion(next);
+    setListing((current) =>
+      current && current.version === sent ? { ...current, version: next } : current,
+    );
+    setDraft((current) =>
+      current && current.version === sent ? { ...current, version: next } : current,
+    );
+  }
+
+  /**
+   * Runs one prep-step write after any still in flight. A stored write is put
+   * on screen from its own answer, so a failed reread after it loses nothing;
+   * the reread then brings in anything changed elsewhere. `settled` runs last,
+   * with the refusal if there was one. A write that returns SKIP sends nothing.
    */
   function queuePrep(
     write: (version: number | null) => Promise<unknown>,
     settled: (err: unknown | null) => void,
+    stored?: (body: unknown) => void,
   ) {
     const run = prepQueue.current.then(async () => {
       let failure: unknown | null = null;
+      const sent = listingVersion.current;
       try {
-        const body = await write(listingVersion.current);
-        adoptVersion(
-          (body as { itemVersion?: unknown } | null)?.itemVersion as number | null | undefined,
-        );
+        const body = await write(sent);
+        if (body === SKIP) return;
+        stored?.(body);
+        const itemVersion = (body as { itemVersion?: unknown } | null)?.itemVersion;
+        if (typeof itemVersion === "number") ownPrepVersion(sent, itemVersion);
       } catch (err) {
         failure = err;
       }
@@ -1133,19 +1167,29 @@ export default function ListingEditorPage() {
 
   async function moveStep(stepId: string, direction: -1 | 1) {
     setBusy(true);
+    let order: string[] = [];
     try {
       await queuePrep(
         async (version) => {
           // Read the order when the move runs: an edit ahead of it may have reread the steps.
-          const order = prepStepsRef.current.map((step) => step.id);
+          order = prepStepsRef.current.map((step) => step.id);
           const index = order.indexOf(stepId);
           const next = index + direction;
-          if (index < 0 || next < 0 || next >= order.length) return null;
+          if (index < 0 || next < 0 || next >= order.length) return SKIP;
           order.splice(index, 1);
           order.splice(next, 0, stepId);
           return reorderCatalogItemPrepSteps(id, version, order);
         },
         prepActionSettled("GRIDGO refused that order. Refresh the steps and try again."),
+        () => {
+          const byId = new Map(prepStepsRef.current.map((step) => [step.id, step]));
+          showSteps(
+            order.flatMap((stepId, sortOrder) => {
+              const step = byId.get(stepId);
+              return step ? [{ ...step, sortOrder }] : [];
+            }),
+          );
+        },
       );
     } finally {
       setBusy(false);
@@ -1166,6 +1210,16 @@ export default function ListingEditorPage() {
             ),
           }),
         prepActionSettled("Could not add that step."),
+        (body) => {
+          const [added] = normalizePrepSteps({ prepSteps: [(body as { prepStep?: unknown })?.prepStep] });
+          if (added) {
+            showSteps(
+              [...prepStepsRef.current.filter((step) => step.id !== added.id), added].sort(
+                (a, b) => a.sortOrder - b.sortOrder,
+              ),
+            );
+          }
+        },
       );
     } finally {
       setBusy(false);
@@ -1177,7 +1231,10 @@ export default function ListingEditorPage() {
   }
 
   /** Saves what was typed into one box, unless it already matches GRIDGO's copy. */
-  function saveStep(step: PrepStep, field: PrepField) {
+  function saveStep(step: PrepStep, field: PrepField, nextFocus: EventTarget | null) {
+    // Leaving the box for Put back the saved text, by pointer or Tab, is not a save.
+    if (discardIntent.current === step.id) return;
+    if (nextFocus instanceof HTMLElement && nextFocus.dataset.putBack === step.id) return;
     const typed = prepDrafts[step.id]?.[field];
     if (typed === undefined) return;
     const value = field === "title" ? typed.trim() : typed;
@@ -1185,9 +1242,16 @@ export default function ListingEditorPage() {
       setPrepDrafts((current) => settleDraft(current, step.id, field, typed));
       return;
     }
+    const generation = discardGeneration.current[step.id] ?? 0;
     void queuePrep(
-      (version) => updateCatalogItemPrepStep(id, step.id, version, { [field]: value }),
-      (err) =>
+      async (version) => {
+        // Put back while this waited its turn: the text it carries was dropped.
+        if ((discardGeneration.current[step.id] ?? 0) !== generation) return SKIP;
+        setPrepWriting(step.id);
+        return updateCatalogItemPrepStep(id, step.id, version, { [field]: value });
+      },
+      (err) => {
+        setPrepWriting(null);
         setPrepDrafts((current) =>
           err == null
             ? settleDraft(current, step.id, field, typed)
@@ -1200,12 +1264,27 @@ export default function ListingEditorPage() {
                   },
                 }
               : current,
-        ),
+        );
+      },
+      (body) => {
+        const [saved] = normalizePrepSteps({ prepSteps: [(body as { prepStep?: unknown })?.prepStep] });
+        showSteps(
+          prepStepsRef.current.map((current) =>
+            current.id !== step.id
+              ? current
+              : saved?.id === step.id
+                ? saved
+                : { ...current, [field]: value },
+          ),
+        );
+      },
     );
   }
 
   /** Drops the shop's unsaved text for a step and shows GRIDGO's copy again. */
   function putBackStep(stepId: string) {
+    discardIntent.current = null;
+    discardGeneration.current[stepId] = (discardGeneration.current[stepId] ?? 0) + 1;
     setPrepDrafts((current) => {
       const rest = { ...current };
       delete rest[stepId];
@@ -1214,10 +1293,14 @@ export default function ListingEditorPage() {
   }
 
   function dropStep(step: PrepStep) {
-    return queuePrep((version) => deleteCatalogItemPrepStep(id, step.id, version), (err) => {
-      prepActionSettled("Could not remove that step.")(err);
-      if (err == null) putBackStep(step.id);
-    });
+    return queuePrep(
+      (version) => deleteCatalogItemPrepStep(id, step.id, version),
+      (err) => {
+        prepActionSettled("Could not remove that step.")(err);
+        if (err == null) putBackStep(step.id);
+      },
+      () => showSteps(prepStepsRef.current.filter((current) => current.id !== step.id)),
+    );
   }
 
   async function saveFormats(mode: "inherit" | "override", codes: string[]) {
@@ -1827,13 +1910,15 @@ export default function ListingEditorPage() {
                             value={prepDrafts[prep.id]?.title ?? prep.title}
                             aria-label={`Step ${index + 1} title`}
                             onChange={(event) => typeStep(prep.id, "title", event.target.value)}
-                            onBlur={() => saveStep(prep, "title")}
+                            onFocus={() => (discardIntent.current = null)}
+                            onBlur={(event) => saveStep(prep, "title", event.relatedTarget)}
                           />
                           <Textarea
                             value={prepDrafts[prep.id]?.body ?? prep.body}
                             aria-label={`Step ${index + 1} details`}
                             onChange={(event) => typeStep(prep.id, "body", event.target.value)}
-                            onBlur={() => saveStep(prep, "body")}
+                            onFocus={() => (discardIntent.current = null)}
+                            onBlur={(event) => saveStep(prep, "body", event.relatedTarget)}
                           />
                           {prepDrafts[prep.id]?.errors?.title || prepDrafts[prep.id]?.errors?.body ? (
                             <div className="flex flex-col items-start gap-1">
@@ -1844,9 +1929,13 @@ export default function ListingEditorPage() {
                                 type="button"
                                 variant="ghost"
                                 size="sm"
+                                disabled={prepWriting === prep.id}
+                                focusableWhenDisabled
+                                data-put-back={prep.id}
+                                onPointerDown={() => (discardIntent.current = prep.id)}
                                 onClick={() => putBackStep(prep.id)}
                               >
-                                Put back the saved text
+                                {prepWriting === prep.id ? "Saving your text…" : "Put back the saved text"}
                               </Button>
                             </div>
                           ) : null}
