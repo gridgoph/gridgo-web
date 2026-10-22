@@ -1786,6 +1786,8 @@ export type Notification = {
   orderId?: string | null;
   approvalCaseId?: string | null;
   catalogItemId?: string | null;
+  /** The support thread a shop `support_message` is about. */
+  threadId?: string | null;
   announcementId?: string | null;
   /** Organization reminders and notices name the organization account. */
   organizationUserId?: string | null;

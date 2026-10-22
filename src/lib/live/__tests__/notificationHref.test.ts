@@ -169,8 +169,10 @@ describe("notificationHref", () => {
       const row = note({ type, orderId: "ord_9", title: "Client refund" });
       expect(notificationHref("ops_admin", row)).toBe("/ops/refunds?order=ord_9");
       expect(notificationHref("super_admin", row)).toBe("/admin/refunds?order=ord_9");
-      // The shop's copy never reaches a refund surface.
-      expect(notificationHref("supplier", row)).toBe("/supplier/jobs/ord_9");
+      // The shop's copy never reaches a refund surface. A client transfer is not the shop's job.
+      expect(notificationHref("supplier", row)).toBe(
+        type === "refund_unknown" ? null : "/supplier/jobs/ord_9",
+      );
     }
   });
 
@@ -277,7 +279,7 @@ describe("notificationHref", () => {
     expect(notificationHref("super_admin", reminder)).toBe(
       "/admin/organizations/user_org",
     );
-    expect(notificationHref("supplier", reminder)).toBeNull();
+    expect(notificationHref("supplier", reminder)).toBe("/supplier/jobs");
   });
 
   it("lands hub pick-up alerts on the hub desk, even with an order", () => {

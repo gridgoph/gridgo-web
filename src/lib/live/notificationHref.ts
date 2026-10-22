@@ -1,5 +1,6 @@
 import type { Notification, Role } from "@/lib/api/types";
 import { SHOP_HOURS_NOTICE } from "@/lib/shop-hours";
+import { clientTransferNotice } from "@/lib/shop-notices";
 
 /**
  * Where the inbox row should land.
@@ -232,6 +233,22 @@ export function notificationHref(role: Role, notification: Notification): string
     if (role === "ops_admin") return `/ops/order-chats?order=${order}`;
   }
 
+  if (role === "supplier" && type === "support_message") {
+    return notification.threadId
+      ? `/supplier/chat?thread=${encodeURIComponent(notification.threadId)}`
+      : "/supplier/chat";
+  }
+
+  if (role === "supplier" && type === "pickup_chat_message" && notification.orderId) {
+    return `/supplier/jobs/${encodeURIComponent(notification.orderId)}#pickup-chat`;
+  }
+
+  if (role === "supplier" && type.startsWith("product_type")) {
+    return "/supplier/product-types";
+  }
+
+  if (role === "supplier" && clientTransferNotice(type)) return null;
+
   if (type === "ops_support_message") {
     if (role === "super_admin") return "/admin/chat";
     if (role === "ops_admin") return "/ops/chat";
@@ -257,7 +274,7 @@ export function notificationHref(role: Role, notification: Notification): string
     if (role === "super_admin") return "/admin/overview";
   }
 
-  return null;
+  return role === "supplier" ? "/supplier/jobs" : null;
 }
 
 function isHub(type: string): boolean {

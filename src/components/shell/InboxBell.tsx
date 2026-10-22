@@ -38,6 +38,7 @@ import { useLive } from "@/lib/live/LiveProvider";
 import { notificationHref } from "@/lib/live/notificationHref";
 import { useNotificationSound } from "@/lib/live/useNotificationSound";
 import { FAMILY_ICON, presentSlip, slipFamily } from "@/components/shell/slip";
+import { presentShopNotice } from "@/lib/shop-notices";
 import { isProductionReminder } from "@/lib/live/notificationSound";
 import { DesktopAlertsPrompt, DesktopAlertsRow } from "@/components/shell/DesktopAlerts";
 import { cn } from "@/lib/utils";
@@ -70,14 +71,19 @@ function SlipRow({
   notification,
   onOpen,
   onDelete,
+  role,
 }: {
   notification: Notification;
   onOpen: (notification: Notification) => void;
   onDelete?: (notification: Notification) => void;
+  role: Role;
 }) {
   const unread = !notification.read;
   const reminder = isProductionReminder(notification.type);
-  const { headline, reference } = presentSlip(notification);
+  const shopNotice = role === "supplier" ? presentShopNotice(notification) : null;
+  const { headline: slipHeadline, reference } = presentSlip(notification);
+  const headline = shopNotice?.title ?? slipHeadline;
+  const body = shopNotice?.body ?? notification.body;
   const Icon = FAMILY_ICON[slipFamily(notification)];
 
   return (
@@ -122,7 +128,7 @@ function SlipRow({
             </span>
           ) : null}
           <span className="text-caption text-text-secondary line-clamp-2">
-            {notification.body}
+            {body}
           </span>
         </span>
 
@@ -204,6 +210,7 @@ function InboxList({
           notification={notification}
           onOpen={onOpen}
           onDelete={onDelete}
+          role={role}
         />
       ))}
     </ul>
