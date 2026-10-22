@@ -3,6 +3,7 @@
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Area,
   AreaChart,
@@ -27,7 +28,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { StatCard } from "@/components/ui/StatCard";
-import { ApiError, listJobs } from "@/lib/api/client";
+import { nextObligations, nextSetupStep, shopIsReady } from "@/app/supplier/_lib/home-next";
+import { ApiError, getSupplierReadiness, listJobs } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatPhp } from "@/lib/format";
@@ -62,6 +64,37 @@ const stageChartConfig = {
 } satisfies ChartConfig;
 
 /** Whole hours below two days, then days — a shop does not plan in 37.4 hours. */
+function NextPanel({
+  obligations,
+  setup,
+}: {
+  obligations: ReturnType<typeof nextObligations>;
+  setup: { message: string; href: string } | null;
+}) {
+  if (!obligations.length && !setup) return null;
+  return (
+    <section className="flex flex-col gap-2" aria-label="Next">
+      <h2 className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+        Next
+      </h2>
+      {setup ? (
+        <Link href={setup.href} className="text-body text-text-primary underline">
+          {setup.message}
+        </Link>
+      ) : null}
+      <ul className="m-0 flex list-none flex-col gap-2 p-0">
+        {obligations.slice(0, 5).map((item) => (
+          <li key={item.id}>
+            <Link href={item.href} className="text-body text-text-primary underline">
+              {item.title}. {item.detail}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 function formatDuration(hours: number | null): string {
   if (hours === null) return "—";
   if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m`;
@@ -82,6 +115,7 @@ function axisPhp(minor: number): string {
 
 export default function SupplierDashboardPage() {
   const [jobs, setJobs] = useState<Order[] | null>(null);
+  const [readiness, setReadiness] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -90,7 +124,12 @@ export default function SupplierDashboardPage() {
       setLoading(true);
       setError(null);
       try {
-        setJobs(await listJobs());
+        const [nextJobs, nextReadiness] = await Promise.all([
+          listJobs(),
+          getSupplierReadiness().catch(() => null),
+        ]);
+        setJobs(nextJobs);
+        setReadiness(nextReadiness);
       } catch (err) {
         setJobs(null);
         if (err instanceof ApiError) {
@@ -117,6 +156,8 @@ export default function SupplierDashboardPage() {
   }, [load]);
 
   const rows = useMemo(() => jobs ?? [], [jobs]);
+  const obligations = useMemo(() => nextObligations(rows), [rows]);
+  const setup = useMemo(() => (shopIsReady(readiness) ? null : nextSetupStep(readiness)), [readiness]);
   const weeks = useMemo(() => finishedByWeek(rows, WEEKS), [rows]);
   const stages = useMemo(() => stageCounts(rows), [rows]);
   const onTime = useMemo(() => onTimeSummary(rows), [rows]);
@@ -148,6 +189,7 @@ export default function SupplierDashboardPage() {
     return (
       <div className="flex flex-col gap-4">
         <PhoneAppInvite />
+        <NextPanel obligations={obligations} setup={setup} />
         <EmptyState
           title="Nothing to measure yet"
           body="Your first assigned job starts this dashboard. Earnings, on-time delivery and production time all come from the jobs you work."
@@ -164,6 +206,7 @@ export default function SupplierDashboardPage() {
   return (
     <div className="flex flex-col gap-4">
       <PhoneAppInvite />
+      <NextPanel obligations={obligations} setup={setup} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label="On the board"

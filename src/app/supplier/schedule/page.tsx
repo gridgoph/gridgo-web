@@ -16,11 +16,19 @@ import {
   filterEntriesInRange,
   formatRangeLabel,
   groupEntriesByDay,
+  monthContaining,
   shiftRange,
   weekContaining,
   type ScheduleEntry,
   type ScheduleViewMode,
 } from "@/app/supplier/_lib/schedule";
+import {
+  closureBanner,
+  dailyCapacity,
+  dayFace,
+  monthCellLabel,
+  selectedDayEmpty,
+} from "@/app/supplier/_lib/month-board";
 import { Button } from "@/components/ui/button";
 import { describeQuantity } from "@/lib/quantity";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -29,8 +37,8 @@ import { SkeletonCards } from "@/components/ui/loading";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { ApiError, listJobs } from "@/lib/api/client";
-import type { Order } from "@/lib/api/types";
+import { ApiError, getMyShopHours, listJobs, listSupplierServices } from "@/lib/api/client";
+import type { Order, ShopHours, SupplierService } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
 
@@ -44,6 +52,102 @@ function useIsNarrow(breakpoint = 768): boolean {
     return () => mq.removeEventListener("change", apply);
   }, [breakpoint]);
   return narrow;
+}
+
+function DayQuiet({
+  day,
+  hours,
+  jobCount,
+}: {
+  day: Date;
+  hours: ShopHours | null;
+  jobCount: number;
+}) {
+  const face = dayFace(day, hours, jobCount);
+  const banner = closureBanner(face);
+  const empty = selectedDayEmpty(face, jobCount);
+  return (
+    <div className="flex flex-col gap-1">
+      {banner ? <p className="text-caption text-text-secondary m-0">{banner}</p> : null}
+      {face === "not-working" ? <p className="text-caption text-text-secondary m-0">Not a working day</p> : null}
+      {empty ? <p className="text-caption text-text-muted m-0">{empty}</p> : null}
+    </div>
+  );
+}
+
+function monthCells(anchor: Date): { date: Date; inMonth: boolean }[] {
+  const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+  const lead = (first.getDay() + 6) % 7;
+  const start = new Date(first);
+  start.setDate(1 - lead);
+  return Array.from({ length: 42 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return { date, inMonth: date.getMonth() === first.getMonth() };
+  });
+}
+
+function MonthBoard({
+  anchor,
+  hours,
+  capacity,
+  byDay,
+  pending,
+  onSelect,
+}: {
+  anchor: Date;
+  hours: ShopHours | null;
+  capacity: number | null;
+  byDay: Map<string, ScheduleEntry[]>;
+  pending: boolean;
+  onSelect: (day: Date) => void;
+}) {
+  const selectedKey = dayKeyFromDate(anchor);
+  const selectedEntries = byDay.get(selectedKey) ?? [];
+  const selectedFace = dayFace(anchor, hours, selectedEntries.length);
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-7 gap-1" role="grid" aria-label="Month schedule">
+        {monthCells(anchor).map(({ date, inMonth }) => {
+          const key = dayKeyFromDate(date);
+          const count = byDay.get(key)?.length ?? 0;
+          const face = dayFace(date, hours, count);
+          const label = monthCellLabel(face);
+          return (
+            <button
+              key={key}
+              type="button"
+              role="gridcell"
+              aria-pressed={key === selectedKey}
+              aria-label={`${date.getDate()}: ${label}`}
+              disabled={!inMonth}
+              className="flex min-h-11 flex-col items-start rounded-field border border-outline-subtle px-1 py-1 text-left disabled:opacity-40"
+              onClick={() => onSelect(date)}
+            >
+              <span className="text-caption text-text-primary">{date.getDate()}</span>
+              {inMonth ? <span className="text-caption text-text-muted">{label}</span> : null}
+            </button>
+          );
+        })}
+      </div>
+      <section className="flex flex-col gap-2" aria-label="Selected day">
+        <h2 className="text-h3 text-text-primary m-0">
+          {new Intl.DateTimeFormat("en-PH", { weekday: "long", day: "numeric", month: "short" }).format(anchor)}
+        </h2>
+        {closureBanner(selectedFace) ? (
+          <p className="text-caption text-text-secondary m-0">{closureBanner(selectedFace)}</p>
+        ) : null}
+        {capacity != null && selectedEntries.length > 0 ? (
+          <p className="text-caption text-text-secondary m-0">Daily capacity {capacity} units</p>
+        ) : null}
+        {pending ? <SkeletonCards count={1} lines={1} label="Loading jobs due" /> : null}
+        {!pending && selectedEntries.length === 0 ? <DayQuiet day={anchor} hours={hours} jobCount={0} /> : null}
+        {selectedEntries.map((entry) => (
+          <JobCard key={entry.job.id} entry={entry} />
+        ))}
+      </section>
+    </div>
+  );
 }
 
 function JobCard({ entry }: { entry: ScheduleEntry }) {
@@ -76,6 +180,8 @@ function JobCard({ entry }: { entry: ScheduleEntry }) {
 
 export default function SupplierSchedulePage() {
   const [jobs, setJobs] = useState<Order[] | null>(null);
+  const [hours, setHours] = useState<ShopHours | null>(null);
+  const [services, setServices] = useState<SupplierService[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState<ScheduleViewMode>("week");
@@ -87,7 +193,14 @@ export default function SupplierSchedulePage() {
       setLoading(true);
       setError(null);
       try {
-        setJobs(await listJobs());
+        const [nextJobs, nextHours, nextServices] = await Promise.all([
+          listJobs(),
+          getMyShopHours().catch(() => null),
+          listSupplierServices().catch(() => []),
+        ]);
+        setJobs(nextJobs);
+        setHours(nextHours);
+        setServices(nextServices);
       } catch (err) {
         setJobs(null);
         if (err instanceof ApiError) {
@@ -114,7 +227,8 @@ export default function SupplierSchedulePage() {
   }, [load]);
 
   const range = useMemo(
-    () => (mode === "day" ? dayContaining(anchor) : weekContaining(anchor)),
+    () =>
+      mode === "day" ? dayContaining(anchor) : mode === "week" ? weekContaining(anchor) : monthContaining(anchor),
     [mode, anchor],
   );
 
@@ -166,15 +280,16 @@ export default function SupplierSchedulePage() {
         >
           <ToggleGroupItem value="day">Day</ToggleGroupItem>
           <ToggleGroupItem value="week">Week</ToggleGroupItem>
+          <ToggleGroupItem value="month">Month</ToggleGroupItem>
         </ToggleGroup>
 
         <Button
           variant="secondary"
           size="icon"
-          aria-label={mode === "day" ? "Previous day" : "Previous week"}
+          aria-label={mode === "day" ? "Previous day" : mode === "week" ? "Previous week" : "Previous month"}
           onClick={() =>
             setAnchor((a) => {
-              const r = mode === "day" ? dayContaining(a) : weekContaining(a);
+              const r = mode === "day" ? dayContaining(a) : mode === "week" ? weekContaining(a) : monthContaining(a);
               return shiftRange(r, mode, -1).start;
             })
           }
@@ -184,10 +299,10 @@ export default function SupplierSchedulePage() {
         <Button
           variant="secondary"
           size="icon"
-          aria-label={mode === "day" ? "Next day" : "Next week"}
+          aria-label={mode === "day" ? "Next day" : mode === "week" ? "Next week" : "Next month"}
           onClick={() =>
             setAnchor((a) => {
-              const r = mode === "day" ? dayContaining(a) : weekContaining(a);
+              const r = mode === "day" ? dayContaining(a) : mode === "week" ? weekContaining(a) : monthContaining(a);
               return shiftRange(r, mode, 1).start;
             })
           }
@@ -215,7 +330,7 @@ export default function SupplierSchedulePage() {
         </Button>
       </div>
 
-      {!pending && !entries.length ? (
+      {!pending && !entries.length && mode !== "month" ? (
         <EmptyState
           title="Nothing on the production schedule"
           body="When you accept jobs, their promised dates appear here as a week grid on larger screens, or a chronological agenda on phones."
@@ -228,6 +343,15 @@ export default function SupplierSchedulePage() {
               Open job inbox
             </Button>
           }
+        />
+      ) : mode === "month" ? (
+        <MonthBoard
+          anchor={anchor}
+          hours={hours}
+          capacity={dailyCapacity(services)}
+          byDay={byDay}
+          pending={pending}
+          onSelect={setAnchor}
         />
       ) : isNarrow || mode === "day" ? (
         // Mobile (<768): chronological agenda is required, not optional.
@@ -259,7 +383,7 @@ export default function SupplierSchedulePage() {
                 {pending ? (
                   <SkeletonCards count={1} lines={1} label="Loading jobs due" />
                 ) : !dayEntries.length ? (
-                  <p className="text-caption text-text-muted m-0">No jobs due</p>
+                  <DayQuiet day={day} hours={hours} jobCount={0} />
                 ) : (
                   <div className="flex flex-col gap-2">
                     {dayEntries.map((entry) => (
@@ -321,9 +445,7 @@ export default function SupplierSchedulePage() {
                       <JobCard key={entry.job.id} entry={entry} />
                     ))
                   )}
-                  {!pending && !dayEntries.length ? (
-                    <p className="text-caption text-text-muted m-0">—</p>
-                  ) : null}
+                  {!pending && !dayEntries.length ? <DayQuiet day={day} hours={hours} jobCount={0} /> : null}
                 </div>
               </div>
             );

@@ -44,7 +44,7 @@ export function dayKeyForJob(
   }).format(d);
 }
 
-export type ScheduleViewMode = "day" | "week";
+export type ScheduleViewMode = "day" | "week" | "month";
 
 export type DateRange = {
   start: Date;
@@ -80,11 +80,22 @@ export function dayContaining(anchor: Date): DateRange {
   return { start: startOfDay(anchor), end: endOfDay(anchor) };
 }
 
+export function monthContaining(anchor: Date): DateRange {
+  const start = startOfDay(new Date(anchor.getFullYear(), anchor.getMonth(), 1));
+  const end = endOfDay(new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0));
+  return { start, end };
+}
+
 export function shiftRange(
   range: DateRange,
   mode: ScheduleViewMode,
   direction: -1 | 1,
 ): DateRange {
+  if (mode === "month") {
+    const start = new Date(range.start);
+    start.setMonth(start.getMonth() + direction);
+    return monthContaining(start);
+  }
   const days = mode === "day" ? 1 : 7;
   const start = new Date(range.start);
   start.setDate(start.getDate() + days * direction);
@@ -173,6 +184,9 @@ export function groupEntriesByDay(
 }
 
 export function formatRangeLabel(range: DateRange, mode: ScheduleViewMode): string {
+  if (mode === "month") {
+    return new Intl.DateTimeFormat("en-PH", { month: "long", year: "numeric" }).format(range.start);
+  }
   const opts: Intl.DateTimeFormatOptions =
     mode === "day"
       ? { weekday: "short", day: "numeric", month: "short", year: "numeric" }
