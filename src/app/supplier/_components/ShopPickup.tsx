@@ -174,7 +174,13 @@ function ApproachCard({
     routedFrom.current = { lat: ping.lat, lng: ping.lng };
     let gone = false;
     void fetchRoute(ping, shop).then((answer) => {
-      if (!gone) setRoute(answer);
+      if (gone) return;
+      setRoute({
+        routed: answer.routed && answer.durationSeconds != null,
+        distanceMetres: answer.distanceMetres,
+        durationSeconds: answer.durationSeconds ?? 0,
+        coordinates: answer.coordinates,
+      });
     });
     return () => {
       gone = true;
