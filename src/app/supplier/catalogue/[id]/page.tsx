@@ -4,9 +4,9 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Check, Trash2 } from "lucide-react";
 
 import { ListingPreviewBody } from "@/app/supplier/_components/ListingPreviewBody";
@@ -37,6 +37,7 @@ import {
   listingErrorMessage,
   loadShopServiceLines,
 } from "@/app/supplier/_lib/listings-api";
+import { forgetListingDraft } from "@/app/supplier/_lib/listing-draft";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -471,6 +472,7 @@ export default function ListingEditorPage() {
   const params = useParams<{ id: string }>();
   const id = params.id;
   const router = useRouter();
+  const requestedStep = useSearchParams().get("step");
   const shopApproved = useAuth().user?.verificationStatus === "approved";
 
   const [listing, setListing] = useState<Listing | null>(null);
@@ -493,7 +495,11 @@ export default function ListingEditorPage() {
   const [photoNotice, setPhotoNotice] = useState<string | null>(null);
   const [replacingPhoto, setReplacingPhoto] = useState<string | null>(null);
   const [addingPhoto, setAddingPhoto] = useState(false);
-  const [step, setStep] = useState<EditorStepId>("pick");
+  const [step, setStep] = useState<EditorStepId>(
+    EDITOR_STEPS.some((entry) => entry.id === requestedStep)
+      ? (requestedStep as EditorStepId)
+      : "pick",
+  );
   const [applying, setApplying] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
   const [applyNotice, setApplyNotice] = useState<string | null>(null);
@@ -773,6 +779,7 @@ export default function ListingEditorPage() {
               : next.colour,
         };
       });
+      if (onTheBoard) forgetListingDraft();
       setNotice(null);
       setSaveState({ kind: "saved", at: Date.now() });
       void refreshReadiness();
@@ -1364,6 +1371,32 @@ export default function ListingEditorPage() {
   const showStanding = standing && standing.label !== "Not ready yet";
   const stepIndex = EDITOR_STEPS.findIndex((entry) => entry.id === step);
 
+  const STEP_GATE: Partial<Record<EditorStepId, BoardField>> = {
+    about: "photos",
+    steps: "specs",
+    artwork: "formats",
+  };
+
+  async function selectStep(next: EditorStepId): Promise<boolean> {
+    const nextIndex = EDITOR_STEPS.findIndex((entry) => entry.id === next);
+    if (nextIndex > stepIndex) {
+      if (dirty) {
+        const saved = await persist();
+        if (!saved) return false;
+      }
+      const gate = STEP_GATE[step];
+      const row = gate ? checklist.find((requirement) => requirement.key === gate) : undefined;
+      if (row && !row.done) {
+        setActionError(row.sentence);
+        jumpTo(gate as BoardField);
+        return false;
+      }
+    }
+    setActionError(null);
+    setStep(next);
+    return true;
+  }
+
   function jumpTo(field: BoardField) {
     flushSync(() => setStep(STEP_OF_FIELD[field]));
     // A listing priced by colour has no single price field: land on its table.
@@ -1428,7 +1461,7 @@ export default function ListingEditorPage() {
       <div className="lg:grid lg:grid-cols-[minmax(18rem,28rem)_minmax(0,1fr)] lg:items-start lg:gap-8 xl:gap-10">
         <div className="flex flex-col gap-6 lg:col-start-2 lg:row-start-1">
           <SaveStatus state={saveState} onRetry={() => void persist()} />
-          <ListingStepNav step={step} onSelect={setStep} />
+          <ListingStepNav step={step} onSelect={(id) => void selectStep(id)} />
 
           <div
             id="listing-step-panel"
@@ -2091,12 +2124,12 @@ export default function ListingEditorPage() {
 
             <div className="flex flex-wrap gap-2">
               {stepIndex > 0 ? (
-                <Button type="button" onClick={() => setStep(EDITOR_STEPS[stepIndex - 1].id)}>
+                <Button type="button" onClick={() => void selectStep(EDITOR_STEPS[stepIndex - 1].id)}>
                   Back
                 </Button>
               ) : null}
               {stepIndex < EDITOR_STEPS.length - 1 ? (
-                <Button type="button" onClick={() => setStep(EDITOR_STEPS[stepIndex + 1].id)}>
+                <Button type="button" onClick={() => void selectStep(EDITOR_STEPS[stepIndex + 1].id)}>
                   Next
                 </Button>
               ) : null}
@@ -2151,6 +2184,30 @@ export default function ListingEditorPage() {
  * steps stay in the row and read as not done yet. On a phone only the
  * current step is named; the rest keep their numbers.
  */
+function onStepKey(
+  event: KeyboardEvent<HTMLButtonElement>,
+  index: number,
+  onSelect: (id: EditorStepId) => void | boolean | Promise<boolean>,
+) {
+  const target =
+    event.key === "ArrowRight"
+      ? index + 1
+      : event.key === "ArrowLeft"
+        ? index - 1
+        : event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? EDITOR_STEPS.length - 1
+            : null;
+  if (target == null) return;
+  event.preventDefault();
+  const next = EDITOR_STEPS[Math.max(0, Math.min(EDITOR_STEPS.length - 1, target))];
+  void Promise.resolve(onSelect(next.id)).then((moved) => {
+    if (moved === false) return;
+    document.getElementById(`listing-step-${next.id}`)?.focus();
+  });
+}
+
 function ListingStepNav({
   step,
   onSelect,
@@ -2185,6 +2242,7 @@ function ListingStepNav({
               }
               tabIndex={selected ? 0 : -1}
               onClick={() => onSelect(entry.id)}
+              onKeyDown={(event) => onStepKey(event, index, onSelect)}
               className="relative flex min-h-11 flex-col items-center gap-1.5 bg-transparent px-0.5 pt-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action-yellow"
             >
               {index > 0 ? (
