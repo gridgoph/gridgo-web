@@ -99,6 +99,11 @@ export default function SupplierChatPage() {
   selectedIdRef.current = selectedId;
 
   useEffect(() => {
+    const thread = new URLSearchParams(window.location.search).get("thread");
+    if (thread) setSelectedId(thread);
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);

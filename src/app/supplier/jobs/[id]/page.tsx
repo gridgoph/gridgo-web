@@ -3,6 +3,7 @@
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   Camera,
@@ -525,6 +526,12 @@ export default function SupplierJobDetailPage() {
         <SupplierForcedNotice order={job} />
         <HandoverTimeline order={job} audience="shop" />
         <ShopLeaveJob order={job} onChanged={() => void load()} />
+        <Link
+          href={`/supplier/report?orderId=${encodeURIComponent(job.id)}&title=${encodeURIComponent(job.title)}`}
+          className="text-body text-text-primary min-h-11 underline"
+        >
+          Report a problem
+        </Link>
 
         <div className="flex flex-col gap-2 border-t border-outline-subtle pt-3">
           <div

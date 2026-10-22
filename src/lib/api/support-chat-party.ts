@@ -74,21 +74,31 @@ export async function openSupportChatThread(): Promise<{ thread: SupportChatThre
   });
 }
 
+export function supportChatMessageBody(
+  body: string,
+  threadId?: string,
+  attachmentFileIds?: string[],
+  options?: { newThread?: boolean },
+): { body: string; threadId?: string; newThread?: true; attachmentFileIds?: string[] } {
+  return {
+    body,
+    ...(threadId ? { threadId } : options?.newThread ? { newThread: true as const } : {}),
+    ...(attachmentFileIds?.length ? { attachmentFileIds } : {}),
+  };
+}
+
 export async function sendSupportChatMessage(
   body: string,
   threadId?: string,
   attachmentFileIds?: string[],
+  options?: { newThread?: boolean },
 ): Promise<{
   thread: SupportChatThread;
   message: SupportChatMessage;
 }> {
   return partyRequest("/support-chat/me/messages", {
     method: "POST",
-    body: JSON.stringify({
-      body,
-      ...(threadId ? { threadId } : {}),
-      ...(attachmentFileIds?.length ? { attachmentFileIds } : {}),
-    }),
+    body: JSON.stringify(supportChatMessageBody(body, threadId, attachmentFileIds, options)),
   });
 }
 

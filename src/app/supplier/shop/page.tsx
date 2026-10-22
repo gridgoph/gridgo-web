@@ -264,6 +264,19 @@ export default function SupplierShopPage() {
           Edit shop hours
         </Link>
       </section>
+
+      <section className="gg-card flex flex-col gap-2 p-3" aria-label="Help">
+        <h3 className="text-h3 text-text-primary m-0">Help</h3>
+        <Link href="/supplier/legal" className="text-body text-text-primary underline">
+          Legal & privacy
+        </Link>
+        <Link href="/supplier/privacy" className="text-body text-text-primary underline">
+          Your data
+        </Link>
+        <Link href="/supplier/report" className="text-body text-text-primary underline">
+          Report a problem
+        </Link>
+      </section>
     </div>
   );
 }
