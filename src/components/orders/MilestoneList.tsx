@@ -24,7 +24,7 @@ import {
   presentMilestoneStatus,
   type StatePresentation,
 } from "@/lib/order-state";
-import { stageNeedsProof } from "@/lib/payout-plan";
+import { shopProofNotStarted, stageNeedsProof } from "@/lib/payout-plan";
 import { proofCountLabel, shopProofAccess, stageProofIds } from "@/lib/payout-proofs";
 
 const READY_FOR_OPERATIONS: StatePresentation = {
@@ -56,8 +56,8 @@ export function MilestoneList({
   if (!milestones?.length) {
     return (
       <p className="text-body text-text-secondary m-0">
-        Milestones are set up when the supplier accepts and names its price. Operations
-        releases each one once what it waits on is in.
+        Milestones appear once you accept the job. Operations releases each one
+        once what it waits on is in.
       </p>
     );
   }
@@ -93,7 +93,10 @@ export function MilestoneList({
           const status =
             !needsProof && !milestoneIsClosed(milestone) && blocker === null
               ? READY_FOR_OPERATIONS
-              : presentMilestoneStatus(milestone.status, { needsProof });
+              : presentMilestoneStatus(milestone.status, {
+                  needsProof,
+                  reached: !shopProofNotStarted(order, milestone),
+                });
           const released = milestone.status === "released";
           const proofIds = stageProofIds(milestone);
           const proofCount = proofIds.length;
