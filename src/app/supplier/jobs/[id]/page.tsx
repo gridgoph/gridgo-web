@@ -94,6 +94,7 @@ import { SupplierCounterRead } from "@/app/supplier/_components/SupplierCounterR
 import { ShopLeaveJob } from "@/app/supplier/_components/ShopLeaveJob";
 import { SupplierForcedNotice } from "@/app/supplier/_components/SupplierForcedNotice";
 import { HandoverTimeline } from "@/components/handover/HandoverTimeline";
+import { ShopPickup } from "@/app/supplier/_components/ShopPickup";
 import { acceptWindow } from "@/lib/supplier-accept-window";
 import {
   CLAIM_HOLD_PACKING_REASON,
@@ -524,6 +525,7 @@ export default function SupplierJobDetailPage() {
         <SupplierCounterRead order={job} />
         <SupplierForcedNotice order={job} />
         <HandoverTimeline order={job} audience="shop" />
+        <ShopPickup order={job} stopped={stopped} onJobChanged={() => void load()} />
         <ShopLeaveJob order={job} onChanged={() => void load()} />
 
         <div className="flex flex-col gap-2 border-t border-outline-subtle pt-3">
