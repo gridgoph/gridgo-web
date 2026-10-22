@@ -22,10 +22,10 @@ import {
 } from "@/components/ui/collapsible";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/ui/StatusChip";
+import { SpeedTierEditor } from "@/app/supplier/_components/TierEditors";
 import { previewProductionTime } from "@/lib/api/client";
-import { formatPhp } from "@/lib/format";
 import type { SpeedTier } from "@/lib/listings";
-import { DEFAULT_DAY_MINUTES, PRODUCTION_DAYS, timeLabel } from "@/lib/production-time";
+import { DEFAULT_DAY_MINUTES, PRODUCTION_DAYS } from "@/lib/production-time";
 import {
   choiceLine,
   choiceProblem,
@@ -161,8 +161,9 @@ type Props = {
   onChange: (choice: ProductionTimeChoice) => void;
   /** The shop's working day from GRIDGO; its ten-hour default when not sent. */
   dayMinutes?: number;
-  /** Faster price options the listing already offers. Shown, never changed here. */
+  /** Faster price options. Edited here; a priced speed is not an Express surcharge. */
   speedTiers: readonly SpeedTier[];
+  onSpeedTiersChange: (next: SpeedTier[]) => void;
   /** How many listings the shop has, so the bulk confirmation can say it. */
   listingCount: number | null;
   /** True while a save is in flight or this listing has unsaved edits. */
@@ -188,6 +189,7 @@ export function HowLongField({
   onChange,
   dayMinutes = DEFAULT_DAY_MINUTES,
   speedTiers,
+  onSpeedTiersChange,
   listingCount,
   applyBlocked,
   applying,
@@ -378,7 +380,11 @@ export function HowLongField({
               </p>
             ) : null}
           </div>
-          <FasterOptions tiers={speedTiers} />
+          <SpeedTierEditor
+            tiers={speedTiers}
+            onChange={onSpeedTiersChange}
+            dayMinutes={dayMinutes}
+          />
         </CollapsibleContent>
       </Collapsible>
 
@@ -540,38 +546,3 @@ function DatesPreview({
   );
 }
 
-/** The listing's faster price options, read-only: this page never changes them. */
-function FasterOptions({ tiers }: { tiers: readonly SpeedTier[] }) {
-  return (
-    <div className="rounded-field border-outline flex flex-col gap-2 border p-3">
-      <h4 className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
-        Faster price options
-      </h4>
-      {tiers.length ? (
-        <>
-          <ul className="m-0 flex list-none flex-col gap-1 p-0">
-            {tiers.map((tier) => (
-              <li key={tier.id} className="text-body text-text-primary">
-                {tier.label} · {timeLabel(tier.turnaround)} ·{" "}
-                {tier.priceMinor != null
-                  ? formatPhp(tier.priceMinor)
-                  : tier.surchargeMinor != null
-                    ? `${formatPhp(tier.surchargeMinor)} more`
-                    : "No price"}
-              </li>
-            ))}
-          </ul>
-          <p className="text-caption text-text-muted m-0 max-w-prose">
-            A client sees these as Rush, costs more on dates only a faster option reaches.
-            Change them in the shop app.
-          </p>
-        </>
-      ) : (
-        <p className="text-caption text-text-secondary m-0 max-w-prose">
-          None on this listing. Add one in the shop app if you can finish faster for
-          a higher price.
-        </p>
-      )}
-    </div>
-  );
-}

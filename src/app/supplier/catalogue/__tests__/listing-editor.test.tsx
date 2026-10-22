@@ -638,10 +638,11 @@ describe("listing editor: How long does this take? (gridgo-api#292)", () => {
     expect(mocks.updateCatalogItem.mock.calls[0][2]).not.toHaveProperty("productionTime");
   });
 
-  it("shows faster price options under More options, read-only", async () => {
+  it("edits a faster price as a whole-job price and leaves tiers out of an unrelated save", async () => {
     stubLoad(
       catalogItem({
         productionTime: { mode: "days", minDays: 3, maxDays: 5 },
+        priceTiers: [{ minQuantity: 50, unitPriceMinor: 30000 }],
         speedTiers: [
           { id: "st_1", label: "Next day", turnaroundDays: 1, priceMinor: 50000, surchargeMinor: null },
         ],
@@ -650,8 +651,133 @@ describe("listing editor: How long does this take? (gridgo-api#292)", () => {
     render(<ListingEditorPage />);
     await openEditorStep("Speed");
     fireEvent.click(screen.getByRole("button", { name: "More options" }));
-    expect(await screen.findByText(/Next day · 1 working day · ₱500\.00/)).toBeVisible();
-    expect(screen.getByRole("button", { name: "Use for all my listings" })).toBeVisible();
+    expect(await screen.findByText("Next day")).toBeVisible();
+    expect(screen.getByText(/Whole-job price/)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Remove Next day" })).toBeVisible();
+    expect(screen.getByText(/Express is not one of these and has no surcharge/)).toBeVisible();
+
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers A5" } });
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled(), AUTOSAVE_WAIT);
+    const body = mocks.updateCatalogItem.mock.calls[0][2];
+    expect(body).not.toHaveProperty("speedTiers");
+    expect(body).not.toHaveProperty("priceTiers");
+    expect(body).not.toHaveProperty("express");
+    expect(body).not.toHaveProperty("productionTime");
+  });
+
+  it("keeps speed tiers when only the production window changes", async () => {
+    stubLoad(
+      catalogItem({
+        productionTime: { mode: "days", minDays: 2, maxDays: 2 },
+        speedTiers: [
+          { id: "st_1", label: "Next day", turnaroundDays: 1, priceMinor: 50000, surchargeMinor: null },
+        ],
+      }),
+    );
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    fireEvent.click(screen.getByRole("radio", { name: "Same day" }));
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled(), AUTOSAVE_WAIT);
+    const body = mocks.updateCatalogItem.mock.calls[0][2];
+    expect(body.productionTime).toEqual({ mode: "same_day", hours: 2 });
+    expect(body).not.toHaveProperty("speedTiers");
+    expect(body).not.toHaveProperty("express");
+    expect(screen.getByRole("button", { name: "More options" })).toBeVisible();
+  });
+
+  it("sends a new speed as its own whole-job price", async () => {
+    stubLoad(catalogItem({ productionTime: { mode: "days", minDays: 3, maxDays: 5 } }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    fireEvent.change(screen.getByLabelText("What this speed is called"), {
+      target: { value: "Rush" },
+    });
+    fireEvent.change(screen.getByLabelText("Price at this speed"), { target: { value: "700.50" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add this speed" }));
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled(), AUTOSAVE_WAIT);
+    const body = mocks.updateCatalogItem.mock.calls[0][2];
+    expect(body.speedTiers).toEqual([
+      expect.objectContaining({
+        label: "Rush",
+        priceMinor: 70050,
+        surchargeMinor: null,
+        turnaroundDays: 1,
+      }),
+    ]);
+    expect(body).not.toHaveProperty("express");
+  });
+});
+
+describe("listing editor: catalogue money bounds", () => {
+  const over = "90071992547409.92";
+
+  it("saves zero and a sub-peso price as exact centavos", async () => {
+    stubLoad(catalogItem());
+    render(<ListingEditorPage />);
+    await openEditorStep("Price");
+    fireEvent.change(screen.getByLabelText("Your price"), { target: { value: "0.50" } });
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled(), AUTOSAVE_WAIT);
+    expect(mocks.updateCatalogItem.mock.calls[0][2].basePriceMinor).toBe(50);
+  });
+
+  it("holds an amount past the safe centavo integer and says so", async () => {
+    stubLoad(catalogItem());
+    render(<ListingEditorPage />);
+    await openEditorStep("Price");
+    fireEvent.change(screen.getByLabelText("Your price"), { target: { value: over } });
+    expect(
+      await screen.findByText(
+        "Not saved yet — That amount is above the largest whole-centavo price a listing can store.",
+        {},
+        AUTOSAVE_WAIT,
+      ),
+    ).toBeVisible();
+    expect(mocks.updateCatalogItem).not.toHaveBeenCalled();
+  });
+
+  it("holds a pack below 2 and saves a pack above 5,000", async () => {
+    stubLoad(catalogItem());
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    fireEvent.change(screen.getByLabelText("Pieces in a pack"), { target: { value: "1" } });
+    expect(
+      await screen.findByText(
+        "Not saved yet — A pack must be a whole number of at least 2.",
+        {},
+        AUTOSAVE_WAIT,
+      ),
+    ).toBeVisible();
+    expect(mocks.updateCatalogItem).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Pieces in a pack"), { target: { value: "6000" } });
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled(), AUTOSAVE_WAIT);
+    expect(mocks.updateCatalogItem.mock.calls[0][2].packageQty).toBe(6000);
+  });
+
+  it("saves a minimum order above 1,000", async () => {
+    stubLoad(catalogItem());
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    fireEvent.change(screen.getByLabelText("Minimum order"), { target: { value: "1001" } });
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled(), AUTOSAVE_WAIT);
+    expect(mocks.updateCatalogItem.mock.calls[0][2].minimumOrderQuantity).toBe(1001);
+  });
+
+  it("rejects a second bulk break at the same quantity with the API's meaning", async () => {
+    stubLoad(catalogItem({ priceTiers: [{ minQuantity: 20, unitPriceMinor: 1000 }] }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Price");
+    fireEvent.change(screen.getByLabelText("Quantity this break starts at"), {
+      target: { value: "20" },
+    });
+    fireEvent.change(screen.getByLabelText("Rate at this quantity"), { target: { value: "9" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add this break" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Two bulk breaks cannot start at the same quantity.",
+    );
+    expect(mocks.updateCatalogItem).not.toHaveBeenCalled();
   });
 });
 

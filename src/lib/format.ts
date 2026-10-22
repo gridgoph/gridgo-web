@@ -6,15 +6,25 @@ export function formatPhp(minor: number): string {
   })}`;
 }
 
-/** Pesos typed by a shop → PHP minor units. Accepts "400" or "400.00". */
+/**
+ * Pesos typed by a shop → PHP minor units. Accepts "400", "400.00", "0", and
+ * "0.50". A third decimal is refused. Above the catalogue's safe centavo
+ * integer is refused, so the stored number is the typed number.
+ */
 export function pesosToMinor(input: string): number | null {
   const cleaned = input.trim().replace(/,/g, "");
   if (!cleaned) return null;
-  if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return null;
+  if (!/^\d+(\.\d{0,2})?$/.test(cleaned)) return null;
   const [whole, frac = ""] = cleaned.split(".");
-  const minor = Number(whole) * 100 + Number((frac + "00").slice(0, 2));
-  if (!Number.isFinite(minor) || minor < 0) return null;
-  return minor;
+  const cents = (frac + "00").slice(0, 2);
+  let minor: bigint;
+  try {
+    minor = BigInt(whole) * 100n + BigInt(cents);
+  } catch {
+    return null;
+  }
+  if (minor > BigInt(Number.MAX_SAFE_INTEGER)) return null;
+  return Number(minor);
 }
 
 export function minorToPesosInput(minor: number): string {
