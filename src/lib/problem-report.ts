@@ -28,7 +28,15 @@ export function composeProblemReport(input: {
   return lines.join("\n");
 }
 
-export function readBrowserContext(): ProblemReportContext {
-  const browser = typeof navigator === "undefined" ? "unknown browser" : navigator.userAgent || "unknown browser";
-  return { appVersion: "web", browser };
+export function readBrowserContext(
+  build?: { commit: string; builtAt: string } | null,
+): ProblemReportContext {
+  const browser =
+    typeof navigator === "undefined"
+      ? "unknown browser"
+      : navigator.userAgent || "unknown browser";
+  return {
+    appVersion: `web (build ${build?.commit || "unknown"}, built ${build?.builtAt || "unknown"})`,
+    browser,
+  };
 }

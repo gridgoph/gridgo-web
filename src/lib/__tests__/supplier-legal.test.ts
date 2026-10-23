@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { supportChatMessageBody } from "@/lib/api/support-chat-party";
 import { deletionConfirmMethod } from "@/lib/account-deletion";
-import { composeProblemReport, problemReportIssue } from "@/lib/problem-report";
+import {
+  composeProblemReport,
+  problemReportIssue,
+  readBrowserContext,
+} from "@/lib/problem-report";
 import { legalBlocksWork, legalGateAllows } from "@/lib/supplier-legal";
 
 describe("supplier legal and a problem report", () => {
@@ -26,16 +30,29 @@ describe("supplier legal and a problem report", () => {
     expect(body).toContain("Browser: TestBrowser");
     expect(body).not.toContain("Phone:");
     expect(problemReportIssue("  ")).toMatch(/Say what went wrong/);
-    expect(supportChatMessageBody("Problem report", undefined, ["file_1"], { newThread: true })).toEqual({
+    expect(
+      supportChatMessageBody("Problem report", undefined, ["file_1"], {
+        newThread: true,
+      }),
+    ).toEqual({
       body: "Problem report",
       newThread: true,
       attachmentFileIds: ["file_1"],
     });
-    expect(supportChatMessageBody("Hello", "thread_1")).toEqual({ body: "Hello", threadId: "thread_1" });
+    expect(supportChatMessageBody("Hello", "thread_1")).toEqual({
+      body: "Hello",
+      threadId: "thread_1",
+    });
   });
 
   it("asks a password account for a password and a Google-only account for a code", () => {
     expect(deletionConfirmMethod({ passwordEnabled: true })).toBe("password");
     expect(deletionConfirmMethod({ passwordEnabled: false })).toBe("email_code");
   });
+});
+
+it("includes the actual portal build in a browser report", () => {
+  expect(
+    readBrowserContext({ commit: "abc123", builtAt: "2026-10-23T15:00:00Z" }).appVersion,
+  ).toContain("abc123");
 });

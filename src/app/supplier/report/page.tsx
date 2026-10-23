@@ -1,21 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { uploadSupportChatImage } from "@/lib/api/client";
+import { getPortalBuild, uploadSupportChatImage } from "@/lib/api/client";
 import { sendSupportChatMessage } from "@/lib/api/support-chat-party";
-import { PROBLEM_REPORT_MAX, composeProblemReport, problemReportIssue, readBrowserContext } from "@/lib/problem-report";
+import {
+  PROBLEM_REPORT_MAX,
+  composeProblemReport,
+  problemReportIssue,
+  readBrowserContext,
+} from "@/lib/problem-report";
 
 function ReportForm() {
   const router = useRouter();
   const params = useSearchParams();
   const orderId = params.get("orderId")?.trim() || null;
   const title = params.get("title")?.trim() || null;
-  const context = useMemo(() => readBrowserContext(), []);
   const [what, setWhat] = useState("");
   const [files, setFiles] = useState<File[]>([]);
   const [sending, setSending] = useState(false);
@@ -36,17 +40,22 @@ function ReportForm() {
         fileIds.push(stored.fileId);
       }
     } catch {
-      setError("A screenshot did not upload, so nothing was sent. What you wrote is still here.");
+      setError(
+        "A screenshot did not upload, so nothing was sent. What you wrote is still here.",
+      );
       setSending(false);
       return;
     }
     try {
+      const context = readBrowserContext(await getPortalBuild().catch(() => null));
       const body = composeProblemReport({
         what,
         job: orderId ? { orderId, title } : null,
         context,
       });
-      const posted = await sendSupportChatMessage(body, undefined, fileIds, { newThread: true });
+      const posted = await sendSupportChatMessage(body, undefined, fileIds, {
+        newThread: true,
+      });
       router.replace(`/supplier/chat?thread=${encodeURIComponent(posted.thread.id)}`);
     } catch {
       setError("The report did not send. What you wrote is still here.");
@@ -79,7 +88,9 @@ function ReportForm() {
         />
       </label>
       <label className="flex flex-col gap-1">
-        <span className="text-caption text-text-muted">Screenshots (optional, up to 3)</span>
+        <span className="text-caption text-text-muted">
+          Screenshots (optional, up to 3)
+        </span>
         <input
           type="file"
           accept="image/*"

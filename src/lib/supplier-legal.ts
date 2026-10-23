@@ -10,6 +10,7 @@ export type LegalVersion = {
   title: string;
   text: string;
   pdfUrl?: string | null;
+  pdfFileId?: string | null;
   effectiveAt: string;
   placeholder?: boolean;
   penalties?: boolean;
@@ -27,6 +28,7 @@ export type PrivacyRequest = {
   kind: string;
   status: string;
   details?: string | null;
+  resolution?: string | null;
   requestedAt: string;
   dueAt: string;
   updatedAt?: string | null;
@@ -41,16 +43,22 @@ const LIBRARY_ORDER = [
   "cookie-notice",
 ];
 
-export function libraryOrder<T extends { documentId: string; title: string }>(documents: readonly T[]): T[] {
+export function libraryOrder<T extends { documentId: string; title: string }>(
+  documents: readonly T[],
+): T[] {
   const rank = (id: string) => {
     const at = LIBRARY_ORDER.indexOf(id);
     return at === -1 ? LIBRARY_ORDER.length : at;
   };
-  return [...documents].sort((a, b) => rank(a.documentId) - rank(b.documentId) || a.title.localeCompare(b.title));
+  return [...documents].sort(
+    (a, b) => rank(a.documentId) - rank(b.documentId) || a.title.localeCompare(b.title),
+  );
 }
 
 export function gateHeading(pending: readonly { version: number }[]): string {
-  return pending.some((doc) => doc.version > 1) ? "GRIDGO's terms have changed" : "Agree to GRIDGO's terms";
+  return pending.some((doc) => doc.version > 1)
+    ? "GRIDGO's terms have changed"
+    : "Agree to GRIDGO's terms";
 }
 
 export function gateBody(pending: readonly { version: number }[]): string {
@@ -79,7 +87,9 @@ export function legalGateAllows(pathname: string): boolean {
   );
 }
 
-export function legalBlocksWork(answer: { blocking?: boolean; pending?: unknown[] } | null): boolean {
+export function legalBlocksWork(
+  answer: { blocking?: boolean; pending?: unknown[] } | null,
+): boolean {
   return Boolean(answer?.blocking && (answer.pending?.length ?? 0) > 0);
 }
 

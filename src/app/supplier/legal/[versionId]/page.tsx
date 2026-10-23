@@ -11,19 +11,32 @@ import type { LegalVersion } from "@/lib/supplier-legal";
 
 export default function SupplierLegalDocumentPage() {
   const params = useParams<{ versionId: string }>();
-  const versionId = decodeURIComponent(params.versionId);
-  const [document, setDocument] = useState<LegalVersion | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const versionId = params.versionId;
+  const [read, setRead] = useState<{
+    id: string;
+    document: LegalVersion | null;
+    error: string | null;
+  } | null>(null);
+  const current = read?.id === versionId ? read : null;
+  const document = current?.document ?? null;
+  const error = current?.error ?? null;
   const [pdfError, setPdfError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
+    setPdfError(null);
     void getSupplierLegalVersion(versionId)
       .then((answer) => {
-        if (!cancelled) setDocument(answer.document);
+        if (!cancelled)
+          setRead({ id: versionId, document: answer.document, error: null });
       })
       .catch(() => {
-        if (!cancelled) setError("This document did not load.");
+        if (!cancelled)
+          setRead({
+            id: versionId,
+            document: null,
+            error: "This document did not load.",
+          });
       });
     return () => {
       cancelled = true;
@@ -40,7 +53,8 @@ export default function SupplierLegalDocumentPage() {
     }
   }
 
-  if (!document && !error) return <SkeletonCards count={1} lines={4} label="Loading the document" />;
+  if (!document && !error)
+    return <SkeletonCards count={1} lines={4} label="Loading the document" />;
   if (error || !document) {
     return (
       <p className="text-body text-text-primary m-0" role="alert">
@@ -52,10 +66,14 @@ export default function SupplierLegalDocumentPage() {
   return (
     <article className="flex max-w-prose flex-col gap-4">
       <h2 className="text-h2 text-text-primary m-0">{document.title}</h2>
-      <pre className="text-body text-text-primary m-0 whitespace-pre-wrap font-sans">{document.text}</pre>
-      <Button type="button" variant="outline" onClick={() => void openPdf()}>
-        Open PDF
-      </Button>
+      <pre className="text-body text-text-primary m-0 whitespace-pre-wrap font-sans">
+        {document.text}
+      </pre>
+      {document.pdfUrl || document.pdfFileId ? (
+        <Button type="button" variant="outline" onClick={() => void openPdf()}>
+          Open PDF
+        </Button>
+      ) : null}
       {pdfError ? (
         <p className="text-body text-error m-0" role="alert">
           {pdfError}
