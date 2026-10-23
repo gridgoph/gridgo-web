@@ -47,7 +47,8 @@ vi.stubGlobal("PointerEvent", FakePointerEvent);
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ id: "sci_1" }),
-  useRouter: () => ({ replace: vi.fn() }),
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+  useSearchParams: () => ({ get: () => null }),
 }));
 
 vi.mock("@/lib/auth/AuthProvider", () => ({
@@ -1281,6 +1282,74 @@ describe("listing editor review", () => {
 });
 
 describe("listing editor wizard", () => {
+  it("saves About on a newly created zero-price listing before checking the next step", async () => {
+    stubLoad(catalogItem({ basePriceMinor: 0, active: false, photos: [] }));
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New flyers" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled(), AUTOSAVE_WAIT);
+    expect(mocks.updateCatalogItem.mock.calls[0][2].basePriceMinor).toBe(0);
+    expect(screen.getByRole("tab", { name: "About" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("keeps keyboard focus at the missing photo when the next step is refused", async () => {
+    stubLoad(catalogItem({ photos: [] }));
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+    const about = screen.getByRole("tab", { name: "About" });
+    about.focus();
+    await act(async () => fireEvent.keyDown(about, { key: "ArrowRight" }));
+    expect(document.activeElement).toHaveAttribute("id", "listing-photo-add");
+    expect(about).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("waits for one save when Next is pressed again during a save", async () => {
+    stubLoad(catalogItem());
+    let finish!: (value: ReturnType<typeof catalogItem>) => void;
+    mocks.updateCatalogItem.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers A5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(mocks.updateCatalogItem).toHaveBeenCalledTimes(1);
+    await act(async () => finish(catalogItem({ name: "Flyers A5", version: 2 })));
+  });
+
+  it("moves between steps from the keyboard", async () => {
+    stubLoad(catalogItem());
+    render(<ListingEditorPage />);
+    const pick = await screen.findByRole("tab", { name: "Pick" });
+    pick.focus();
+    fireEvent.keyDown(pick, { key: "ArrowRight" });
+    expect(await screen.findByRole("tab", { name: "About" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+  });
+
+  it("points a missing sample at the add control and does not leave About", async () => {
+    stubLoad(catalogItem({ photos: [] }));
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(screen.getByRole("tab", { name: "About" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByText(/Add at least one sample photo/)).toBeVisible();
+    expect(document.activeElement).toHaveAttribute("id", "listing-photo-add");
+  });
+
+  it("stays on the step when the save fails", async () => {
+    stubLoad(catalogItem());
+    mocks.updateCatalogItem.mockRejectedValue(new ApiError(500, { error: "unavailable" }));
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers A5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled(), AUTOSAVE_WAIT);
+    expect(screen.getByRole("tab", { name: "About" })).toHaveAttribute("aria-selected", "true");
+  });
+
   it("walks all seven steps", async () => {
     stubLoad(catalogItem());
     render(<ListingEditorPage />);
