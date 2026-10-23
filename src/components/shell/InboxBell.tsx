@@ -82,7 +82,8 @@ function SlipRow({
   const reminder = isProductionReminder(notification.type);
   const shopNotice = role === "supplier" ? presentShopNotice(notification) : null;
   const { headline: slipHeadline, reference } = presentSlip(notification);
-  const headline = shopNotice?.title ?? slipHeadline;
+  const headline =
+    shopNotice?.title ?? (role === "supplier" ? notification.title : slipHeadline);
   const body = shopNotice?.body ?? notification.body;
   const Icon = FAMILY_ICON[slipFamily(notification)];
 
@@ -91,6 +92,7 @@ function SlipRow({
       <button
         type="button"
         data-slot="inbox-slip"
+        data-notification-id={notification.id}
         data-read={unread ? "false" : "true"}
         className="hover:bg-overlay-hover active:bg-overlay-pressed grid min-h-11 w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 px-4 py-3 text-left transition-colors focus-visible:-outline-offset-2"
         onClick={() => onOpen(notification)}
@@ -103,8 +105,8 @@ function SlipRow({
             reminder && unread
               ? "border-warning bg-warning text-text-primary"
               : unread
-              ? "border-primary bg-primary text-primary-foreground"
-              : "border-outline-subtle bg-surface text-text-muted",
+                ? "border-primary bg-primary text-primary-foreground"
+                : "border-outline-subtle bg-surface text-text-muted",
           )}
         >
           <Icon size={14} strokeWidth={2} />
@@ -127,9 +129,7 @@ function SlipRow({
               {reference}
             </span>
           ) : null}
-          <span className="text-caption text-text-secondary line-clamp-2">
-            {body}
-          </span>
+          <span className="text-caption text-text-secondary line-clamp-2">{body}</span>
         </span>
 
         <span className="flex shrink-0 flex-col items-end gap-0.5">

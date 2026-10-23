@@ -5,7 +5,12 @@
 
 export type ShopNotice = { title: string; body: string };
 
-const CLIENT_TRANSFER = new Set(["refund_destination", "refund_attempt", "refund_unknown", "refund_failed"]);
+const CLIENT_TRANSFER = new Set([
+  "refund_destination",
+  "refund_attempt",
+  "refund_unknown",
+  "refund_failed",
+]);
 
 const REFUND: Record<string, ShopNotice> = {
   refund_requested: {
@@ -22,11 +27,11 @@ const REFUND: Record<string, ShopNotice> = {
   },
   refund_rejected: {
     title: "Refund request closed",
-    body: "The client's refund request was declined, and the pause is lifted. Open the job to pick it up where you left it.",
+    body: "The client's refund request was declined. Its refund hold is lifted; other holds may still apply. Open the job to see the next permitted step.",
   },
   refund_withdrawn: {
     title: "Refund request withdrawn",
-    body: "The client withdrew their refund request, and the pause is lifted. Open the job to pick it up where you left it.",
+    body: "The client withdrew their refund request. Its refund hold is lifted; other holds may still apply. Open the job to see the next permitted step.",
   },
   refund_paid: {
     title: "Refund complete",
@@ -88,11 +93,11 @@ const DEADLINES: Record<string, ShopNotice> = {
   },
   order_reschedule_operations_required: {
     title: "Deadline request with Operations",
-    body: "Operations is deciding what happens next on this job. Your dates stay as they are until they contact you.",
+    body: "Operations is deciding what happens next on this job. Open it to see your current dates, any work hold, and who acts next.",
   },
   order_reschedule_rematched: {
     title: "Job moved to another shop",
-    body: "The client accepted another shop after declining the new deadline. If the job has just reached your floor, answer it within the hour.",
+    body: "The client accepted a replacement shop. Open Jobs for any work currently assigned to you; earlier work stays in Your record.",
   },
   order_reschedule_refund_requested: {
     title: "Client chose a refund",
@@ -108,7 +113,10 @@ export function clientTransferNotice(type: string | undefined): boolean {
   return Boolean(type && CLIENT_TRANSFER.has(type));
 }
 
-export function presentShopNotice(alert: { type?: string; body?: string }): ShopNotice | null {
+export function presentShopNotice(alert: {
+  type?: string;
+  body?: string;
+}): ShopNotice | null {
   const type = alert.type ?? "";
   const body = alert.body ?? "";
   if (type === "order_call_missed") {
@@ -138,7 +146,9 @@ export function presentShopNotice(alert: { type?: string; body?: string }): Shop
     );
   }
   if (type === "production_lapse_warning") {
-    const tier = /\bthis is (minor|moderate|severe) lateness\b/i.exec(body)?.[1]?.toLowerCase();
+    const tier = /\bthis is (minor|moderate|severe) lateness\b/i
+      .exec(body)?.[1]
+      ?.toLowerCase();
     const warningOnly = /\bwarning only\b/i.test(body);
     return {
       title: tier ? `Late production: ${tier}` : "Late production warning",
@@ -151,14 +161,14 @@ export function presentShopNotice(alert: { type?: string; body?: string }): Shop
     const amount = /deduction of (.+?) was applied/i.exec(body)?.[1]?.trim();
     return {
       title: "Late production deduction",
-      body: `${amount ? `${amount} came off` : "A deduction came off"} what GRIDGO still owes you on this job. Nothing carries over to another job.`,
+      body: `${amount ? `${amount} was deducted` : "A deduction was taken"} from this job's remaining unpaid balance at the time of the assessment. Nothing carries over to another job.`,
     };
   }
   if (type === "shop_recovery") {
     if (/accepted a replacement/i.test(body)) {
       return {
         title: "Replacement shop confirmed",
-        body: "The client accepted a replacement shop for this job. If it has just reached your floor, answer it within the hour.",
+        body: "The client accepted a replacement shop. Open Jobs for any work currently assigned to you; earlier work stays in Your record.",
       };
     }
     if (/full refund\. Operations/i.test(body)) {
@@ -169,7 +179,7 @@ export function presentShopNotice(alert: { type?: string; body?: string }): Shop
     }
     return {
       title: "Job back with GRIDGO",
-      body: "GRIDGO is offering the client another shop or a full refund. It is on your shop's record; nothing more is needed from you.",
+      body: "GRIDGO is handling the next step after your shop could not keep this job. Open Jobs for your current assignments; the event stays in Your record.",
     };
   }
   if (type.startsWith("order_reschedule_")) {
@@ -193,8 +203,8 @@ export function presentShopNotice(alert: { type?: string; body?: string }): Shop
     return {
       title: "Taken down by GRIDGO",
       body: reason
-        ? `Reason: ${reason.replace(/[.!?]+$/, "")}. Only GRIDGO can put it back on the board.`
-        : "Only GRIDGO can put it back on the board.",
+        ? `Reason: ${reason.replace(/[.!?]+$/, "")}. Only GRIDGO can lift the take-down. After that, you can put it back on the board.`
+        : "Only GRIDGO can lift the take-down. After that, you can put it back on the board.",
     };
   }
   if (type === "listing_restored") {
@@ -215,7 +225,10 @@ export function presentShopNotice(alert: { type?: string; body?: string }): Shop
           title: "Review finished",
           body: "Operations reviewed what you sent. Open your board to see where it stands.",
         }
-      : { title: "Operations asked for changes", body: `Reason: ${body.trim().replace(/[.!?]+$/, "")}.` };
+      : {
+          title: "Operations asked for changes",
+          body: `Reason: ${body.trim().replace(/[.!?]+$/, "")}.`,
+        };
   }
   return null;
 }

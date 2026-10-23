@@ -25,7 +25,7 @@ describe("notificationHref", () => {
     for (const type of ["privacy.requested", "privacy.updated"]) {
       expect(notificationHref("super_admin", note({ type }))).toBe("/admin/privacy-requests");
       expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/privacy-requests");
-      expect(notificationHref("supplier", note({ type }))).toBeNull();
+      expect(notificationHref("supplier", note({ type }))).toBe("/supplier/privacy");
     }
   });
 
@@ -313,7 +313,7 @@ describe("notificationHref", () => {
   });
 });
 
-it("opens deletion requests only in the matching staff workspace", () => {
+it("opens deletion requests in staff queues and the supplier's own privacy history", () => {
   for (const type of [
     "account_deletion_requested",
     "account_deletion_request_completed",
@@ -322,7 +322,7 @@ it("opens deletion requests only in the matching staff workspace", () => {
     expect(notificationHref("super_admin", note({ type }))).toBe(
       "/admin/account-deletion",
     );
-    expect(notificationHref("supplier", note({ type }))).toBeNull();
+    expect(notificationHref("supplier", note({ type }))).toBe("/supplier/privacy");
     expect(notificationHref("client", note({ type }))).toBeNull();
     expect(notificationHref("rider", note({ type }))).toBeNull();
   }
