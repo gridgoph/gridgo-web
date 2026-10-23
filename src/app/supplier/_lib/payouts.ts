@@ -10,9 +10,16 @@
  * must never try to derive either.
  */
 
+import { changeRequestsOf, finalPayoutStageCode } from "@/lib/order-changes";
 import type { Issue, Order, PayoutMilestone } from "@/lib/api/types";
 import { milestoneName, type StatusIconName, type StatusTone } from "@/lib/order-state";
-import { isLegacyPayoutPlan, shopProofStages, windowStageOf } from "@/lib/payout-plan";
+import {
+  isLegacyPayoutPlan,
+  releaseRequirementOf,
+  shopProofStages,
+  shopProofNotStarted,
+  windowStageOf,
+} from "@/lib/payout-plan";
 
 /** States where a milestone can already have been earned. */
 export const PAYOUT_RELEVANT_STATES = [
@@ -228,6 +235,10 @@ export function buildPayoutRows(
       (j) =>
         isPayoutRelevant(j.state) ||
         j.payoutHold ||
+        // A cancelled settlement may owe nothing more and still have paid history.
+        Boolean(
+          j.payoutMilestones?.some((m) => m.status === "released" || m.status === "superseded"),
+        ) ||
         // A refund settlement can cancel the job and still owe the shop.
         Boolean(j.supplierSettlementPayouts?.length),
     )
@@ -258,7 +269,11 @@ export function buildPayoutRows(
 
       return {
         order,
-        earnsMinor: order.supplierPriceMinor ?? null,
+        earnsMinor:
+          order.supplierEarningsMinor ??
+          order.supplierSettlement?.totalSupplierEarningsMinor ??
+          order.supplierPriceMinor ??
+          null,
         releasedMinor: plus(
           sumMilestones(milestones, (m) => m.status === "released"),
           settlementSum("released"),
@@ -282,6 +297,266 @@ export function buildPayoutRows(
     const db = b.order.updatedAt || b.order.createdAt || "";
     return db.localeCompare(da);
   });
+}
+
+const PRODUCING = new Set([
+  "production",
+  "supplier_self_qc",
+  "ready_for_dispatch",
+  "rider_assigned",
+  "picked_up",
+  "out_for_delivery",
+  "awaiting_collection",
+  "delivered",
+  "issue_window_open",
+  "completed",
+  "payout_released",
+]);
+
+const WINDOW_CLOSED = new Set(["completed", "payout_released"]);
+
+export type ShopEarnings = {
+  totalMinor: number;
+  releasedMinor: number;
+  awaitingReleaseMinor: number;
+  needsProofMinor: number;
+  laterMinor: number;
+  heldMinor: number;
+  pausedMinor: number;
+  /** Replaced by a settlement. Never paid, and not part of `totalMinor`. */
+  supersededMinor: number;
+  /** Already taken out of the stage amounts. Said beside them, not subtracted again. */
+  lateDeductionMinor: number;
+};
+
+export type PayoutHoldKind = "claim" | "refund" | null;
+
+export function payoutHoldKind(
+  order: Pick<Order, "payoutHold" | "refundHold" | "refundDisposition">,
+): PayoutHoldKind {
+  if (order.payoutHold === true) return "claim";
+  if (order.refundHold === true && !order.refundDisposition) return "refund";
+  return null;
+}
+
+function emptyEarnings(): ShopEarnings {
+  return {
+    totalMinor: 0,
+    releasedMinor: 0,
+    awaitingReleaseMinor: 0,
+    needsProofMinor: 0,
+    laterMinor: 0,
+    heldMinor: 0,
+    pausedMinor: 0,
+    supersededMinor: 0,
+    lateDeductionMinor: 0,
+  };
+}
+
+/** Shop money on one job. Superseded shares are left out of the total. */
+export function shopEarnings(order: Order): ShopEarnings {
+  const split = emptyEarnings();
+  const hold = payoutHoldKind(order);
+  for (const milestone of order.payoutMilestones ?? []) {
+    const amount = milestone.amountMinor ?? 0;
+    if (milestone.status === "superseded") {
+      split.supersededMinor += amount;
+      continue;
+    }
+    split.totalMinor += amount;
+    split.lateDeductionMinor += milestone.productionDeductionMinor ?? 0;
+    if (milestone.status === "released") {
+      split.releasedMinor += amount;
+      continue;
+    }
+    if (hold === "refund") {
+      split.pausedMinor += amount;
+      continue;
+    }
+    if (hold === "claim") {
+      split.heldMinor += amount;
+      continue;
+    }
+    if (milestone.status === "pof_attached") {
+      split.awaitingReleaseMinor += amount;
+      continue;
+    }
+    const requirement = releaseRequirementOf(milestone);
+    if (
+      requirement === "shop_proof" &&
+      PRODUCING.has(order.state) &&
+      !shopProofNotStarted(order, milestone)
+    ) {
+      split.needsProofMinor += amount;
+      continue;
+    }
+    if (requirement === "issue_window_closed" && WINDOW_CLOSED.has(order.state)) {
+      split.awaitingReleaseMinor += amount;
+      continue;
+    }
+    split.laterMinor += amount;
+  }
+  for (const payout of order.supplierSettlementPayouts ?? []) {
+    if (payout.status === "superseded") continue;
+    split.totalMinor += payout.amountMinor;
+    if (payout.status === "released") split.releasedMinor += payout.amountMinor;
+    else if (order.payoutHold === true) split.heldMinor += payout.amountMinor;
+    else split.awaitingReleaseMinor += payout.amountMinor;
+  }
+  for (const request of changeRequestsOf(order)) {
+    const payout = request.payout;
+    if (request.status !== "applied" || !payout || payout.status === "superseded") continue;
+    split.totalMinor += payout.amountMinor;
+    if (payout.status === "released") split.releasedMinor += payout.amountMinor;
+    else if (hold === "claim") split.heldMinor += payout.amountMinor;
+    else if (hold === "refund") split.pausedMinor += payout.amountMinor;
+    else if (WINDOW_CLOSED.has(order.state)) split.awaitingReleaseMinor += payout.amountMinor;
+    else split.laterMinor += payout.amountMinor;
+  }
+  return split;
+}
+
+export function addShopEarnings(rows: ShopEarnings[]): ShopEarnings {
+  return rows.reduce((sum, row) => {
+    (Object.keys(sum) as (keyof ShopEarnings)[]).forEach((key) => {
+      sum[key] += row[key];
+    });
+    return sum;
+  }, emptyEarnings());
+}
+
+export function unreleasedMinor(split: ShopEarnings): number {
+  return (
+    split.needsProofMinor +
+    split.awaitingReleaseMinor +
+    split.heldMinor +
+    split.pausedMinor +
+    split.laterMinor
+  );
+}
+
+export type LedgerFilter = "unsettled" | "released" | "all";
+
+export function matchesLedgerFilter(split: ShopEarnings, filter: LedgerFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "released") return split.releasedMinor > 0;
+  return split.totalMinor > split.releasedMinor;
+}
+
+export function originalShopPrice(order: Pick<Order, "supplierSubtotalMinor" | "supplierPriceMinor">): number | null {
+  const minor = order.supplierSubtotalMinor ?? order.supplierPriceMinor;
+  return typeof minor === "number" && Number.isFinite(minor) ? minor : null;
+}
+
+/**
+ * The agreed settlement is what is owed. The original price is shown only as
+ * what it was, and only when the two differ.
+ */
+export function settlementContrast(order: Order, split: ShopEarnings): {
+  replaced: boolean;
+  originalMinor: number | null;
+  agreedMinor: number;
+} {
+  const originalMinor = originalShopPrice(order);
+  const agreedMinor = order.supplierSettlement?.totalSupplierEarningsMinor ?? split.totalMinor;
+  const replaced =
+    split.supersededMinor > 0 ||
+    (Boolean(order.refundDisposition) && originalMinor !== null && originalMinor !== agreedMinor);
+  return { replaced, originalMinor, agreedMinor };
+}
+
+export type ReleaseLine = {
+  key: string;
+  orderId: string;
+  title: string;
+  label: string;
+  amountMinor: number;
+  releasedAt: string;
+  reference: string | null;
+  receiptFileId: string | null;
+};
+
+const MANILA = "Asia/Manila";
+
+export function statementMonthKey(releasedAt: string): string | null {
+  const parsed = Date.parse(releasedAt);
+  if (Number.isNaN(parsed)) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: MANILA,
+    year: "numeric",
+    month: "2-digit",
+  }).formatToParts(new Date(parsed));
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  return year && month ? `${year}-${month}` : null;
+}
+
+export function statementMonthLabel(key: string): string {
+  const [year, month] = key.split("-").map(Number);
+  if (!year || !month) return key;
+  return new Intl.DateTimeFormat("en-PH", {
+    timeZone: MANILA,
+    year: "numeric",
+    month: "long",
+  }).format(new Date(Date.UTC(year, month - 1, 15)));
+}
+
+export function releaseLines(jobs: Order[]): ReleaseLine[] {
+  const lines: ReleaseLine[] = [];
+  for (const job of jobs) {
+    const releasedExtras = changeRequestsOf(job).reduce(
+      (sum, request) =>
+        request.status === "applied" && request.payout?.status === "released"
+          ? sum + request.payout.amountMinor
+          : sum,
+      0,
+    );
+    for (const milestone of job.payoutMilestones ?? []) {
+      if (milestone.status !== "released" || !milestone.releasedAt) continue;
+      const extras = milestone.code === finalPayoutStageCode(job) ? releasedExtras : 0;
+      lines.push({
+        key: `${job.id}-${milestone.code}`,
+        orderId: job.id,
+        title: job.title,
+        label: `${milestoneName(milestone)}${extras > 0 ? " · including changes" : ""}`,
+        amountMinor: (milestone.amountMinor ?? 0) + extras,
+        releasedAt: milestone.releasedAt,
+        reference: milestone.reference ?? null,
+        receiptFileId: milestone.receiptFileId ?? null,
+      });
+    }
+    for (const payout of job.supplierSettlementPayouts ?? []) {
+      if (payout.status !== "released" || !payout.releasedAt) continue;
+      lines.push({
+        key: `${job.id}-${payout.id}`,
+        orderId: job.id,
+        title: job.title,
+        label: payout.label?.trim() || "Agreed refund settlement payout",
+        amountMinor: payout.amountMinor,
+        releasedAt: payout.releasedAt,
+        reference: payout.reference,
+        receiptFileId: payout.receiptFileId,
+      });
+    }
+  }
+  return lines.sort((left, right) => right.releasedAt.localeCompare(left.releasedAt));
+}
+
+export type ReleaseMonth = { key: string; label: string; totalMinor: number; releaseCount: number };
+
+export function releaseMonths(lines: ReleaseLine[]): ReleaseMonth[] {
+  const totals = new Map<string, { totalMinor: number; releaseCount: number }>();
+  for (const line of lines) {
+    const key = statementMonthKey(line.releasedAt);
+    if (!key) continue;
+    const bucket = totals.get(key) ?? { totalMinor: 0, releaseCount: 0 };
+    bucket.totalMinor += line.amountMinor;
+    bucket.releaseCount += 1;
+    totals.set(key, bucket);
+  }
+  return [...totals.entries()]
+    .map(([key, bucket]) => ({ key, label: statementMonthLabel(key), ...bucket }))
+    .sort((left, right) => right.key.localeCompare(left.key));
 }
 
 /** Display money, or say plainly that the figure is not available. */
