@@ -101,16 +101,24 @@ describe("InboxBell", () => {
   it("lets a shop delete a notice only after confirming, and keeps it on Keep", async () => {
     const user = userEvent.setup();
     const remove = vi.fn<(id: string) => Promise<void>>(async () => undefined);
-    resetLive({ notifications: [note({ id: "ntf_a" }), note({ id: "ntf_b" })], unreadCount: 2, remove });
+    resetLive({
+      notifications: [note({ id: "ntf_a" }), note({ id: "ntf_b" })],
+      unreadCount: 2,
+      remove,
+    });
     render(<InboxBell role="supplier" />);
     await user.click(screen.getByRole("button", { name: /Notifications/ }));
     await user.click(screen.getAllByRole("button", { name: "Delete this notice" })[0]);
-    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Delete this notice?");
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent(
+      "Delete this notice?",
+    );
     await user.click(screen.getByRole("button", { name: "Keep" }));
     expect(remove).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Delete these" }));
-    expect(await screen.findByRole("alertdialog")).toHaveTextContent("Delete these 2 notices?");
+    expect(await screen.findByRole("alertdialog")).toHaveTextContent(
+      "Delete these 2 notices?",
+    );
     await user.click(screen.getByRole("button", { name: "Delete" }));
     expect(remove.mock.calls.map(([id]) => id)).toEqual(["ntf_a", "ntf_b"]);
   });
@@ -120,7 +128,9 @@ describe("InboxBell", () => {
     resetLive({ notifications: [note()], unreadCount: 1 });
     render(<InboxBell role="ops_admin" />);
     await user.click(screen.getByRole("button", { name: /Notifications/ }));
-    expect(screen.queryByRole("button", { name: "Delete this notice" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Delete this notice" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders a real button trigger", () => {
@@ -300,4 +310,59 @@ describe("InboxBell", () => {
     expect(markRead).toHaveBeenCalledWith("ntf_1");
     expect(pushMock).toHaveBeenCalledWith("/admin/orders/ord_9");
   });
+});
+
+it("shows shop wording and opens the named support conversation", async () => {
+  const user = userEvent.setup();
+  resetLive({
+    notifications: [
+      note({
+        type: "support_message",
+        threadId: "thread two",
+        title: "Operations replied",
+        body: "Reply text",
+      }),
+    ],
+    unreadCount: 1,
+  });
+  render(<InboxBell role="supplier" />);
+  await user.click(screen.getByRole("button", { name: /Notifications/ }));
+  await user.click(screen.getByRole("button", { name: /Operations replied/ }));
+  expect(pushMock).toHaveBeenCalledWith("/supplier/chat?thread=thread%20two");
+});
+it("preserves an unknown shop notice's original title and body and uses the jobs list", async () => {
+  const user = userEvent.setup();
+  resetLive({
+    notifications: [
+      note({
+        type: "older_notice",
+        title: "Original update · abc123",
+        body: "Original body",
+        orderId: "former-job",
+      }),
+    ],
+    unreadCount: 1,
+  });
+  render(<InboxBell role="supplier" />);
+  await user.click(screen.getByRole("button", { name: /Notifications/ }));
+  await user.click(screen.getByRole("button", { name: /Original update · abc123/ }));
+  expect(pushMock).toHaveBeenCalledWith("/supplier/jobs");
+});
+it("keeps client transfer notices informational for a shop", async () => {
+  const user = userEvent.setup();
+  resetLive({
+    notifications: [
+      note({
+        type: "refund_unknown",
+        title: "Check transfer",
+        body: "Client wallet state",
+      }),
+    ],
+    unreadCount: 1,
+  });
+  render(<InboxBell role="supplier" />);
+  await user.click(screen.getByRole("button", { name: /Notifications/ }));
+  expect(await screen.findByText(/Nothing changes for your shop/)).toBeVisible();
+  await user.click(screen.getByRole("button", { name: /Client refund update/ }));
+  expect(pushMock).not.toHaveBeenCalled();
 });

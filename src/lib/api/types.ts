@@ -1051,8 +1051,9 @@ export type Order = {
   /** API's net earnings after deductions or settlement; Ops / Super Admin and the assigned shop. */
   supplierEarningsMinor?: number;
   /**
-   * The date the client was promised. The shop's own date is deliberately
-   * absent from every client-facing payload, and Operations reads this one.
+   * The shop's internal production ready-by for supplier/staff reads. Client
+   * projections instead put the padded client promise here and never expose
+   * the shop's own date. The supplier projection withholds `promiseBy`.
    */
   readyBy?: string | null;
   /**
@@ -1790,6 +1791,8 @@ export type Notification = {
   orderId?: string | null;
   approvalCaseId?: string | null;
   catalogItemId?: string | null;
+  /** The support thread a shop `support_message` is about. */
+  threadId?: string | null;
   announcementId?: string | null;
   /** Organization reminders and notices name the organization account. */
   organizationUserId?: string | null;

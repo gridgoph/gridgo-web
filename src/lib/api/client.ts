@@ -4227,3 +4227,23 @@ export async function getApprovalProof(orderId: string): Promise<ApprovalProofRe
 export async function downloadApprovalProof(orderId: string): Promise<Blob> {
   return requestBlob(`/orders/${encodeURIComponent(orderId)}/approval-proof/download`);
 }
+
+/** Public metadata for a support report, from this portal's running image. */
+export async function getPortalBuild(): Promise<{ commit: string; builtAt: string }> {
+  return withRequestDeadline(undefined, async (signal) => {
+    const response = await fetch("/api/health", { signal, cache: "no-store" });
+    if (!response.ok) throw new ApiError(response.status, null);
+    const body: unknown = await response.json();
+    if (
+      !body ||
+      typeof body !== "object" ||
+      !("commit" in body) ||
+      !("builtAt" in body) ||
+      typeof body.commit !== "string" ||
+      typeof body.builtAt !== "string"
+    ) {
+      throw new Error("Portal build metadata is unavailable.");
+    }
+    return { commit: body.commit, builtAt: body.builtAt };
+  });
+}

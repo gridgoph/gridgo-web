@@ -1,5 +1,9 @@
 "use client";
 
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { legalGateAllows } from "@/lib/supplier-legal";
+
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -58,7 +62,8 @@ const FORBIDDEN_RECHECK_GAP_MS = 5_000;
  * projection, so a suspension that lands mid-session closes it too.
  *
  * An account hold (Super Admin suspended or removed the person, separate from
- * accreditation) closes every role tree. `/auth/me` carries it at load, and
+ * accreditation) closes work in every role tree. A supplier keeps its own legal
+ * and privacy pages, without the work shell, after its membership is verified. `/auth/me` carries it at load, and
  * each projection carries it again, so a hold that lands mid-session shows on
  * the next navigation, or at once when any endpoint answers
  * `403 account_suspended` / `account_removed`.
@@ -182,9 +187,47 @@ export function RoleGate({ allow, children }: Props) {
 
   const sessionHold =
     (projectionStatus === "held" ? projectionHold : null) ?? accountHold(auth.user);
-  if (auth.status === "mapped" && sessionHold) {
+  const selfService = allow === "supplier" && legalGateAllows(pathname);
+  // Legal/privacy routes are permitted during a hold by LEGAL_API.md. Keep
+  // the fixed membership proof, and never mount the work shell in this view.
+  if (
+    auth.status === "mapped" &&
+    selfService &&
+    ["allowed", "held", "withdrawn"].includes(projectionStatus) &&
+    (sessionHold || standing)
+  ) {
+    return (
+      <main id="main-content" className="min-h-dvh bg-canvas p-4 md:p-8">
+        <div className="mx-auto flex max-w-3xl flex-col gap-6">
+          <p className="text-body text-text-primary m-0">
+            {sessionHold?.title ?? "Your shop's work access is unavailable."}
+          </p>
+          <nav aria-label="Account help" className="flex flex-wrap items-center gap-4">
+            <Link
+              href="/supplier/legal"
+              className="text-body text-text-primary underline"
+            >
+              Legal documents
+            </Link>
+            <Link
+              href="/supplier/privacy"
+              className="text-body text-text-primary underline"
+            >
+              Your data
+            </Link>
+            <Button type="button" variant="outline" onClick={() => void auth.signOut()}>
+              Sign out
+            </Button>
+          </nav>
+          {children}
+        </div>
+      </main>
+    );
+  }
+  if (auth.status === "mapped" && sessionHold && !selfService) {
     return (
       <AccountStatusNotice
+        supplierSelfService={allow === "supplier"}
         title={sessionHold.title}
         reason={sessionHold.reason}
         onSignOut={() => void auth.signOut()}
