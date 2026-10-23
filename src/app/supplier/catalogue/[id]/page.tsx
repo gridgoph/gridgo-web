@@ -11,6 +11,7 @@ import { Check, Trash2 } from "lucide-react";
 
 import { ListingPreviewBody } from "@/app/supplier/_components/ListingPreviewBody";
 import { HowLongField } from "@/app/supplier/_components/HowLongField";
+import { PriceTierEditor } from "@/app/supplier/_components/TierEditors";
 import { ProductionTimeReviewBanner } from "@/app/supplier/_components/ProductionTimeReviewBanner";
 import { PrinterMaxWidthField } from "@/app/supplier/_components/PrinterMaxWidthField";
 import { PrintLayoutsField } from "@/app/supplier/_components/PrintLayoutsField";
@@ -82,6 +83,11 @@ import {
 } from "@/lib/api/client";
 import type { Taxonomy } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import {
+  minimumOrderProblem,
+  packProblem,
+  parseCatalogMoney,
+} from "@/lib/catalog-money";
 import { minorToPesosInput, pesosToMinor } from "@/lib/format";
 import {
   LISTING_CAPS,
@@ -110,14 +116,17 @@ import {
   specs,
   subcategoryName,
   unitChoiceLabel,
+  unitLine,
   type BoardField,
   type Listing,
   type ListingReadiness,
   type PrepStep,
   type MeasureUnit,
+  type PriceTier,
   type PricingUnit,
   type ServiceLine,
   type SpecGroup,
+  type SpeedTier,
 } from "@/lib/listings";
 import {
   billablePayload,
@@ -127,7 +136,7 @@ import {
   sizeText,
 } from "@/lib/listing-measure";
 import { changeNotice, replacedNotice } from "@/lib/listing-photos";
-import { DEFAULT_DAY_MINUTES, readyInLine } from "@/lib/production-time";
+import { DEFAULT_DAY_MINUTES, readyInLine, timeFields, timeKey } from "@/lib/production-time";
 import {
   choiceFromTimes,
   choiceLine,
@@ -173,6 +182,8 @@ type Draft = {
   minimumWidth: string;
   minimumHeight: string;
   minimumLength: string;
+  priceTiers: PriceTier[];
+  speedTiers: SpeedTier[];
 };
 
 /** Section and field ids; the readiness checklist scrolls to these. */
@@ -255,7 +266,7 @@ function draftFrom(listing: Listing): Draft {
     version: listing.version,
     name: listing.name,
     description: listing.description,
-    price: listing.basePriceMinor ? minorToPesosInput(listing.basePriceMinor) : "",
+    price: Number.isFinite(listing.basePriceMinor) ? minorToPesosInput(listing.basePriceMinor) : "",
     pricingUnit: listing.pricingUnit,
     packageQty: listing.packageQty ?? 100,
     minimumOrderQuantity: listing.minimumOrderQuantity ?? 0,
@@ -270,6 +281,35 @@ function draftFrom(listing: Listing): Draft {
     minimumWidth: sizeText(listing.minimumWidthMilli),
     minimumHeight: sizeText(listing.minimumHeightMilli),
     minimumLength: sizeText(listing.minimumLengthMilli),
+    priceTiers: listing.priceTiers,
+    speedTiers: listing.speedTiers,
+  };
+}
+
+function priceTierKey(tiers: readonly PriceTier[]): string {
+  return [...tiers]
+    .sort((left, right) => left.minQuantity - right.minQuantity)
+    .map((tier) => `${tier.minQuantity}:${tier.unitPriceMinor}`)
+    .join(",");
+}
+
+function speedTierKey(tiers: readonly SpeedTier[]): string {
+  return tiers
+    .map(
+      (tier) =>
+        `${timeKey(tier.turnaround)}:${tier.label}:${tier.priceMinor ?? ""}:${tier.surchargeMinor ?? ""}`,
+    )
+    .join("|");
+}
+
+/** A speed as the catalogue API stores it. A new one carries a unit rate and no surcharge. */
+function speedTierBody(tier: SpeedTier) {
+  return {
+    id: tier.id,
+    label: tier.label,
+    ...timeFields("turnaround", tier.turnaround),
+    priceMinor: tier.priceMinor,
+    surchargeMinor: tier.surchargeMinor,
   };
 }
 
@@ -357,17 +397,24 @@ async function readAllOwnListings(): Promise<Listing[]> {
 
 const MAX_OWN_LISTING_PAGES = 40;
 
+function draftPriceMinor(price: string): number {
+  const money = parseCatalogMoney(price);
+  return money.ok ? (money.minor ?? 0) : 0;
+}
+
 /** Exactly what `updateCatalogItem` receives for a draft, minus `active`. */
 function payloadOf(draft: Draft) {
   return {
     name: draft.name.trim(),
     description: draft.description.trim(),
-    basePriceMinor: pesosToMinor(draft.price) ?? 0,
+    basePriceMinor: draftPriceMinor(draft.price),
     pricingUnit: draft.pricingUnit,
     packageQty: draft.pricingUnit === "per_package" ? draft.packageQty : null,
     minimumOrderQuantity: asksQuantity(draft.pricingUnit)
       ? draft.minimumOrderQuantity || null
       : null,
+    priceTiers: asksQuantity(draft.pricingUnit) ? draft.priceTiers : [],
+    speedTiers: draft.speedTiers.map(speedTierBody),
     // One answer, never the older duration fields or `express` beside it.
     productionTime: draft.time,
     subcategoryCode: draft.subcategoryCode,
@@ -386,6 +433,12 @@ function payloadOf(draft: Draft) {
 function savePayload(draft: Draft, listing: Listing) {
   const payload: Record<string, unknown> = payloadOf(draft);
   if (!timeChanged(draft, listing) || !draft.time) delete payload.productionTime;
+  // Tiers are replaced as a set. An edit that does not touch them leaves the
+  // stored rows alone, including when only the production window changes.
+  const nextBreaks = asksQuantity(draft.pricingUnit) ? draft.priceTiers : [];
+  const heldBreaks = asksQuantity(listing.pricingUnit) ? listing.priceTiers : [];
+  if (priceTierKey(nextBreaks) === priceTierKey(heldBreaks)) delete payload.priceTiers;
+  if (speedTierKey(draft.speedTiers) === speedTierKey(listing.speedTiers)) delete payload.speedTiers;
   // The set is replaced whole and a change opens review, so it is sent only
   // when the shop changed it.
   if (sameLayouts(draft.printLayouts, listing.printLayouts)) delete payload.printLayouts;
@@ -407,9 +460,22 @@ function holdReason(draft: Draft, listing: Listing): string | null {
     if (draft.printLayouts && draft.printLayouts.length === 0) {
       return "keep at least one print layout on the Artwork step while this listing is priced by colour.";
     }
-  } else if (pesosToMinor(draft.price) == null) {
-    return "enter a price in pesos, like 400.00.";
+  } else {
+    const money = parseCatalogMoney(draft.price);
+    if (!money.ok) return money.error;
+    if (money.minor == null) return "enter a price in pesos, like 400.00.";
   }
+  const pack = packProblem(
+    draft.pricingUnit,
+    draft.pricingUnit === "per_package" ? draft.packageQty : null,
+  );
+  if (pack) return pack;
+  const minimum = minimumOrderProblem(
+    draft.pricingUnit,
+    asksQuantity(draft.pricingUnit) ? draft.minimumOrderQuantity || null : null,
+    asksQuantity(draft.pricingUnit),
+  );
+  if (minimum) return minimum;
   const measured = billableProblem(draft);
   if (measured) return measured;
   if (draft.time && timeChanged(draft, listing)) {
@@ -638,10 +704,13 @@ export default function ListingEditorPage() {
 
   // Dirty means the API would receive something different, not that a string
   // differs — a trailing space or "400" against "400.00" is not a change.
+  const typedPrice = working && !colourOn(working) ? parseCatalogMoney(working.price) : null;
+  const priceUnfinished = typedPrice != null && (!typedPrice.ok || typedPrice.minor == null);
   const dirty = Boolean(
     listing &&
     working &&
-    JSON.stringify(payloadOf(working)) !== JSON.stringify(payloadOf(draftFrom(listing))),
+    (priceUnfinished ||
+      JSON.stringify(payloadOf(working)) !== JSON.stringify(payloadOf(draftFrom(listing)))),
   );
   dirtyRef.current = dirty;
   busyRef.current = busy;
@@ -1641,6 +1710,17 @@ export default function ListingEditorPage() {
                     </div>
                   </Field>
                   )}
+                  {asksQuantity(working.pricingUnit) && !colourOn(working) ? (
+                    <PriceTierEditor
+                      tiers={working.priceTiers}
+                      unitLabel={unitLine({
+                        pricingUnit: working.pricingUnit,
+                        packageQty: working.pricingUnit === "per_package" ? working.packageQty : null,
+                        measureUnit: working.measureUnit,
+                      })}
+                      onChange={(priceTiers) => setDraft({ ...working, priceTiers })}
+                    />
+                  ) : null}
                   {measurementKind(working.pricingUnit) === "area" ||
                   measurementKind(working.pricingUnit) === "length" ? (
                     <div className="flex flex-col gap-3" id="measure-unit">
@@ -1766,6 +1846,7 @@ export default function ListingEditorPage() {
                         type="number"
                         min={2}
                         value={working.packageQty}
+                        aria-describedby="pack-rule"
                         onChange={(event) =>
                           setDraft({
                             ...working,
@@ -1773,6 +1854,9 @@ export default function ListingEditorPage() {
                           })
                         }
                       />
+                      <FieldDescription id="pack-rule">
+                        A whole number of at least 2.
+                      </FieldDescription>
                     </Field>
                   ) : null}
                   {asksQuantity(working.pricingUnit) ? (
@@ -1790,7 +1874,9 @@ export default function ListingEditorPage() {
                           })
                         }
                       />
-                      <FieldDescription>0 means no minimum.</FieldDescription>
+                      <FieldDescription>
+                        A whole number of at least 1, or 0 for none.
+                      </FieldDescription>
                     </Field>
                   ) : null}
                   <HowLongField
@@ -1799,7 +1885,13 @@ export default function ListingEditorPage() {
                     heldLine={heldLine}
                     onChange={(time) => setDraft({ ...working, time })}
                     dayMinutes={listing.productionDayMinutes ?? DEFAULT_DAY_MINUTES}
-                    speedTiers={listing.speedTiers}
+                    speedTiers={working.speedTiers}
+                    speedUnitLabel={unitLine({
+                      pricingUnit: working.pricingUnit,
+                      packageQty: working.pricingUnit === "per_package" ? working.packageQty : null,
+                      measureUnit: working.measureUnit,
+                    })}
+                    onSpeedTiersChange={(speedTiers) => setDraft({ ...working, speedTiers })}
                     listingCount={listingCount}
                     applyBlocked={busy || dirty}
                     applying={applying}
