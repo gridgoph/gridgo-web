@@ -10,6 +10,7 @@
  * must never try to derive either.
  */
 
+import { changeRequestsOf, finalPayoutStageCode } from "@/lib/order-changes";
 import type { Issue, Order, PayoutMilestone } from "@/lib/api/types";
 import { milestoneName, type StatusIconName, type StatusTone } from "@/lib/order-state";
 import {
@@ -234,6 +235,10 @@ export function buildPayoutRows(
       (j) =>
         isPayoutRelevant(j.state) ||
         j.payoutHold ||
+        // A cancelled settlement may owe nothing more and still have paid history.
+        Boolean(
+          j.payoutMilestones?.some((m) => m.status === "released" || m.status === "superseded"),
+        ) ||
         // A refund settlement can cancel the job and still owe the shop.
         Boolean(j.supplierSettlementPayouts?.length),
     )
@@ -398,6 +403,16 @@ export function shopEarnings(order: Order): ShopEarnings {
     else if (order.payoutHold === true) split.heldMinor += payout.amountMinor;
     else split.awaitingReleaseMinor += payout.amountMinor;
   }
+  for (const request of changeRequestsOf(order)) {
+    const payout = request.payout;
+    if (request.status !== "applied" || !payout || payout.status === "superseded") continue;
+    split.totalMinor += payout.amountMinor;
+    if (payout.status === "released") split.releasedMinor += payout.amountMinor;
+    else if (hold === "claim") split.heldMinor += payout.amountMinor;
+    else if (hold === "refund") split.pausedMinor += payout.amountMinor;
+    else if (WINDOW_CLOSED.has(order.state)) split.awaitingReleaseMinor += payout.amountMinor;
+    else split.laterMinor += payout.amountMinor;
+  }
   return split;
 }
 
@@ -489,14 +504,22 @@ export function statementMonthLabel(key: string): string {
 export function releaseLines(jobs: Order[]): ReleaseLine[] {
   const lines: ReleaseLine[] = [];
   for (const job of jobs) {
+    const releasedExtras = changeRequestsOf(job).reduce(
+      (sum, request) =>
+        request.status === "applied" && request.payout?.status === "released"
+          ? sum + request.payout.amountMinor
+          : sum,
+      0,
+    );
     for (const milestone of job.payoutMilestones ?? []) {
       if (milestone.status !== "released" || !milestone.releasedAt) continue;
+      const extras = milestone.code === finalPayoutStageCode(job) ? releasedExtras : 0;
       lines.push({
         key: `${job.id}-${milestone.code}`,
         orderId: job.id,
         title: job.title,
-        label: milestoneName(milestone),
-        amountMinor: milestone.amountMinor ?? 0,
+        label: `${milestoneName(milestone)}${extras > 0 ? " · including changes" : ""}`,
+        amountMinor: (milestone.amountMinor ?? 0) + extras,
         releasedAt: milestone.releasedAt,
         reference: milestone.reference ?? null,
         receiptFileId: milestone.receiptFileId ?? null,

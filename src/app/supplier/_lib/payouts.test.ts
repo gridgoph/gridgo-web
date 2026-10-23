@@ -12,7 +12,7 @@ import {
   unreleasedMinor,
 } from "./payouts";
 import { shopProofNotStarted } from "@/lib/payout-plan";
-import type { Issue, Order, PayoutMilestone } from "@/lib/api/types";
+import type { Issue, Order, OrderChangeRequest, PayoutMilestone } from "@/lib/api/types";
 import { escrowStages, released } from "@/test/payout-plans";
 
 /** The four milestones as the server sends them to a supplier. */
@@ -348,7 +348,13 @@ describe("shop earnings ledger", () => {
   });
 
   it("uses the API's net earnings without presenting the gross price as what is earned", () => {
-    const order = job({ id: "net", state: "production", totalMinor: 11000, supplierPriceMinor: 10000, supplierEarningsMinor: 9500 });
+    const order = job({
+      id: "net",
+      state: "production",
+      totalMinor: 11000,
+      supplierPriceMinor: 10000,
+      supplierEarningsMinor: 9500,
+    });
     expect(buildPayoutRows([order])[0].earnsMinor).toBe(9500);
   });
 
@@ -361,7 +367,9 @@ describe("shop earnings ledger", () => {
       payoutMilestones: milestones(),
     });
     expect(shopProofNotStarted(order, order.payoutMilestones![1]!)).toBe(true);
-    expect(shopProofNotStarted(order, { ...order.payoutMilestones![1]!, status: "pending" })).toBe(true);
+    expect(
+      shopProofNotStarted(order, { ...order.payoutMilestones![1]!, status: "pending" }),
+    ).toBe(true);
     expect(shopEarnings(order).needsProofMinor).toBe(50000);
     expect(shopEarnings(order).laterMinor).toBe(50000);
   });
@@ -377,6 +385,81 @@ describe("shop earnings ledger", () => {
       })),
     });
     expect(releaseLines([order])[0].label).toBe("Packaging");
+  });
+
+  it.each([1, 2])("counts applied change extras once on payout plan %i", (version) => {
+    const change = (
+      status: "pending" | "released" | "superseded",
+      amountMinor: number,
+    ): OrderChangeRequest => ({
+      id: "change_" + status,
+      lineItemId: null,
+      status: "applied",
+      version: 4,
+      reason: "Agreed finish",
+      proposedSpec: "Stapled",
+      createdAt: "2026-09-01T00:00:00Z",
+      extraPrincipalMinor: amountMinor,
+      payout: { status, amountMinor },
+    });
+    const order = job({
+      id: "extra",
+      state: "production",
+      totalMinor: 100000,
+      payoutPlanVersion: version,
+      payoutMilestones: version === 1 ? milestones() : escrowStages(),
+      changeRequests: [change("pending", 2000), change("superseded", 900)],
+    });
+    expect(shopEarnings(order).totalMinor).toBe(102000);
+    const noExtras = { ...order, changeRequests: [] };
+    expect(shopEarnings(order).laterMinor - shopEarnings(noExtras).laterMinor).toBe(2000);
+    expect(shopEarnings({ ...order, payoutHold: true }).heldMinor).toBe(102000);
+    expect(shopEarnings({ ...order, refundHold: true }).pausedMinor).toBe(102000);
+    const completed = { ...order, state: "completed" };
+    expect(
+      shopEarnings(completed).awaitingReleaseMinor -
+        shopEarnings({ ...completed, changeRequests: [] }).awaitingReleaseMinor,
+    ).toBe(2000);
+    const paid = {
+      ...completed,
+      payoutMilestones: order.payoutMilestones!.map((m) => ({
+        ...m,
+        status: "released" as const,
+        releasedAt: "2026-09-01T00:00:00Z",
+        reference: "COMBINED",
+        receiptFileId: "receipt",
+      })),
+      changeRequests: [change("released", 2000), change("superseded", 900)],
+    };
+    expect(shopEarnings(paid).releasedMinor).toBe(102000);
+    const lines = releaseLines([paid]);
+    expect(lines.reduce((total, line) => total + line.amountMinor, 0)).toBe(102000);
+    const final = lines.find((line) =>
+      line.key.endsWith(version === 1 ? "retention" : "issue_window"),
+    )!;
+    expect(final.amountMinor).toBe((version === 1 ? 10000 : 25000) + 2000);
+    expect(final.label).toMatch(/including changes/);
+    expect(final.receiptFileId).toBe("receipt");
+    expect(releaseMonths(lines)[0].totalMinor).toBe(102000);
+  });
+
+  it("retains a cancelled refund job whose agreed amount was already released", () => {
+    const order = job({
+      id: "settled-paid",
+      state: "cancelled",
+      totalMinor: 100000,
+      payoutMilestones: milestones({
+        printing: "released",
+        packaging_qc: "superseded",
+        delivered: "superseded",
+        retention: "superseded",
+      }),
+      supplierSettlementPayouts: [],
+    });
+    expect(buildPayoutRows([order])).toHaveLength(1);
+    expect(shopEarnings(order).totalMinor).toBe(50000);
+    expect(shopEarnings(order).releasedMinor).toBe(50000);
+    expect(unreleasedMinor(shopEarnings(order))).toBe(0);
   });
 
   it("puts shop proof that can be filed now apart from a stage the job has not reached", () => {
