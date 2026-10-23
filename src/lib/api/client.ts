@@ -121,7 +121,10 @@ import type {
   SupplierPayoutAccountPatch,
   IssueReport,
   IssueReportCounts,
+  IssueReportListFilters,
   IssueReportStatus,
+  IssueReportTriageCounts,
+  IssueReportTriageInput,
   RecordTrackerDecisionInput,
   TrackerBoard,
   TrackerItem,
@@ -3283,17 +3286,29 @@ export async function reorderCatalogPhotos(
 
 /**
  * Newest first. `limit` (API cap 500) and `before` (the id of the last report
- * already shown) page the list; `counts` are always the totals per status.
+ * already shown) page the list; `counts` are always the totals per status and
+ * `triageCounts` the triage totals, whatever the filters.
  */
 export async function listIssueReports(
   status: IssueReportStatus | "priorities",
   page: { limit?: number; before?: string | null } = {},
-): Promise<{ reports: IssueReport[]; counts: IssueReportCounts }> {
+  filters: IssueReportListFilters = {},
+): Promise<{ reports: IssueReport[]; counts: IssueReportCounts; triageCounts?: IssueReportTriageCounts }> {
   return request(
-    `/ops/issue-reports${buildQuery({ status: status === "priorities" ? undefined : status, priority: status === "priorities" ? "true" : undefined, limit: page.limit, before: page.before })}`,
+    `/ops/issue-reports${buildQuery({
+      status: status === "priorities" ? undefined : status,
+      priority: status === "priorities" ? "true" : undefined,
+      limit: page.limit,
+      before: page.before,
+      validity: filters.validity?.length ? filters.validity.join(",") : undefined,
+      triageCategory: filters.triageCategory?.length ? filters.triageCategory.join(",") : undefined,
+      label: filters.label || undefined,
+      aiReviewed: filters.aiReviewed === undefined ? undefined : String(filters.aiReviewed),
+    })}`,
   );
 }
 
+/** Workflow, priority and triage are separate writes; the API refuses a mix. */
 export async function updateIssueReport(
   id: string,
   input:
@@ -3302,7 +3317,8 @@ export async function updateIssueReport(
         publishedIn?: string | null;
         trackerIssueUrl?: string | null;
       }
-    | { priority: boolean },
+    | { priority: boolean }
+    | { triage: IssueReportTriageInput },
 ): Promise<IssueReport> {
   return request<IssueReport>(`/ops/issue-reports/${encodeURIComponent(id)}`, {
     method: "PATCH",

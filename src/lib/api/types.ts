@@ -3413,6 +3413,68 @@ export type IssueReport = {
   createdAt: string;
   updatedAt: string;
   screenshots: IssueReportScreenshot[];
+  /** Staff triage beside the workflow status; absent on an API before triage. */
+  triage?: IssueReportTriage;
+  /** Firstmate's suggestion, `null` until it reviews the report. */
+  aiReview?: IssueReportAiReview | null;
+};
+
+/** Whether a person judged the report real. Independent of `status`. */
+export type IssueReportValidity = "unreviewed" | "valid" | "spam" | "duplicate";
+/** The staff category; the reporter's own `category` is never rewritten. */
+export type IssueReportTriageCategory = "bug" | "feature" | "question" | "feedback" | "other";
+
+export type IssueReportTriage = {
+  validity: IssueReportValidity;
+  category: IssueReportTriageCategory | null;
+  /** Lowercase slugs (`^[a-z0-9][a-z0-9-]{0,31}$`), at most 10. */
+  labels: string[];
+  /** Another report's id, only while `validity` is `duplicate`. */
+  duplicateOf: string | null;
+  triagedBy: { id: string; name: string | null } | null;
+  triagedAt: string | null;
+};
+
+export type IssueReportAiReview = {
+  reviewedAt: string;
+  validity: Exclude<IssueReportValidity, "unreviewed">;
+  category: IssueReportTriageCategory | null;
+  labels: string[];
+  duplicateOf: string | null;
+  note: string | null;
+  /**
+   * The person's triage against this suggestion: `pending` while unreviewed,
+   * `confirmed` when validity (and any category or duplicate the AI named)
+   * match, else `overridden`. Labels never count.
+   */
+  outcome: "pending" | "confirmed" | "overridden";
+};
+
+/** `PATCH /ops/issue-reports/:id` `{ triage }`; omitted fields keep their value. */
+export type IssueReportTriageInput = {
+  validity?: IssueReportValidity;
+  category?: IssueReportTriageCategory | null;
+  labels?: string[];
+  duplicateOf?: string | null;
+};
+
+/** Totals over every report, whatever the list's filters. */
+export type IssueReportTriageCounts = {
+  validity: Record<IssueReportValidity, number>;
+  aiReviewed: number;
+  /** AI reviewed, still `unreviewed` by a person. */
+  aiAwaitingHuman: number;
+  /** Every label in use, most used first. */
+  labels: { label: string; count: number }[];
+};
+
+/** List filters beside `status`; each is left off the query when absent. */
+export type IssueReportListFilters = {
+  validity?: IssueReportValidity[];
+  /** `none` matches reports with no staff category. */
+  triageCategory?: (IssueReportTriageCategory | "none")[];
+  label?: string;
+  aiReviewed?: boolean;
 };
 
 /** `tracked` is missing from an API that predates the tracker link. */
