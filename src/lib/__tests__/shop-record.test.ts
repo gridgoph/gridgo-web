@@ -40,6 +40,8 @@ describe("shop record feeds", () => {
     );
     expect(applied).toContain("100");
     expect(applied).not.toContain("150");
+    expect(applied).toMatch(/at the time/);
+    expect(applied).not.toMatch(/still owed/);
   });
 
   it("treats an unreadable lapse body as not open yet", () => {

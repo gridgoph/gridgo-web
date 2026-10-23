@@ -227,7 +227,7 @@ export function lapseStandingLine(lapse: ProductionLapse): string {
     case "warned":
       return NO_MONEY_TAKEN;
     case "applied":
-      return `${formatPhp(cappedDeductionMinor(lapse))} off ${formatPhp(lapse.remainingBalanceMinor)} still owed`;
+      return `${formatPhp(cappedDeductionMinor(lapse))} taken from the ${formatPhp(lapse.remainingBalanceMinor)} unpaid balance at the time`;
     case "closed":
       return "Closed, no deduction";
   }
