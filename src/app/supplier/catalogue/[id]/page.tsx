@@ -256,7 +256,7 @@ function draftFrom(listing: Listing): Draft {
     version: listing.version,
     name: listing.name,
     description: listing.description,
-    price: listing.basePriceMinor ? minorToPesosInput(listing.basePriceMinor) : "",
+    price: Number.isFinite(listing.basePriceMinor) ? minorToPesosInput(listing.basePriceMinor) : "",
     pricingUnit: listing.pricingUnit,
     packageQty: listing.packageQty ?? 100,
     minimumOrderQuantity: listing.minimumOrderQuantity ?? 0,
@@ -1378,6 +1378,7 @@ export default function ListingEditorPage() {
   };
 
   async function selectStep(next: EditorStepId): Promise<boolean> {
+    if (busyRef.current) return false;
     const nextIndex = EDITOR_STEPS.findIndex((entry) => entry.id === next);
     if (nextIndex > stepIndex) {
       if (dirty) {
@@ -1461,7 +1462,7 @@ export default function ListingEditorPage() {
       <div className="lg:grid lg:grid-cols-[minmax(18rem,28rem)_minmax(0,1fr)] lg:items-start lg:gap-8 xl:gap-10">
         <div className="flex flex-col gap-6 lg:col-start-2 lg:row-start-1">
           <SaveStatus state={saveState} onRetry={() => void persist()} />
-          <ListingStepNav step={step} onSelect={(id) => void selectStep(id)} />
+          <ListingStepNav step={step} onSelect={selectStep} />
 
           <div
             id="listing-step-panel"
@@ -2213,7 +2214,7 @@ function ListingStepNav({
   onSelect,
 }: {
   step: EditorStepId;
-  onSelect: (id: EditorStepId) => void;
+  onSelect: (id: EditorStepId) => void | boolean | Promise<boolean>;
 }) {
   const currentIndex = EDITOR_STEPS.findIndex((entry) => entry.id === step);
   return (

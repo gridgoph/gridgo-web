@@ -1130,6 +1130,41 @@ describe("listing editor review", () => {
 });
 
 describe("listing editor wizard", () => {
+  it("saves About on a newly created zero-price listing before checking the next step", async () => {
+    stubLoad(catalogItem({ basePriceMinor: 0, active: false, photos: [] }));
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New flyers" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled(), AUTOSAVE_WAIT);
+    expect(mocks.updateCatalogItem.mock.calls[0][2].basePriceMinor).toBe(0);
+    expect(screen.getByRole("tab", { name: "About" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("keeps keyboard focus at the missing photo when the next step is refused", async () => {
+    stubLoad(catalogItem({ photos: [] }));
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+    const about = screen.getByRole("tab", { name: "About" });
+    about.focus();
+    await act(async () => fireEvent.keyDown(about, { key: "ArrowRight" }));
+    expect(document.activeElement).toHaveAttribute("id", "listing-photo-add");
+    expect(about).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("waits for one save when Next is pressed again during a save", async () => {
+    stubLoad(catalogItem());
+    let finish!: (value: ReturnType<typeof catalogItem>) => void;
+    mocks.updateCatalogItem.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    render(<ListingEditorPage />);
+    await openEditorStep("About");
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers A5" } });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(mocks.updateCatalogItem).toHaveBeenCalledTimes(1);
+    await act(async () => finish(catalogItem({ name: "Flyers A5", version: 2 })));
+  });
+
   it("moves between steps from the keyboard", async () => {
     stubLoad(catalogItem());
     render(<ListingEditorPage />);
