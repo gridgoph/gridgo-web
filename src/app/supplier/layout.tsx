@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 
+import { SupplierLegalGate } from "@/app/supplier/_components/SupplierLegalGate";
 import { RoleGate } from "@/components/shell/RoleGate";
 
 /**
@@ -35,5 +36,9 @@ export default function SupplierLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <RoleGate allow="supplier">{children}</RoleGate>;
+  return (
+    <RoleGate allow="supplier">
+      <SupplierLegalGate>{children}</SupplierLegalGate>
+    </RoleGate>
+  );
 }

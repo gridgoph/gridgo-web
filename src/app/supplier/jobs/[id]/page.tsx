@@ -3,6 +3,7 @@
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   Camera,
@@ -94,6 +95,7 @@ import { SupplierCounterRead } from "@/app/supplier/_components/SupplierCounterR
 import { ShopLeaveJob } from "@/app/supplier/_components/ShopLeaveJob";
 import { SupplierForcedNotice } from "@/app/supplier/_components/SupplierForcedNotice";
 import { HandoverTimeline } from "@/components/handover/HandoverTimeline";
+import { ShopPickup } from "@/app/supplier/_components/ShopPickup";
 import { acceptWindow } from "@/lib/supplier-accept-window";
 import {
   CLAIM_HOLD_PACKING_REASON,
@@ -524,7 +526,14 @@ export default function SupplierJobDetailPage() {
         <SupplierCounterRead order={job} />
         <SupplierForcedNotice order={job} />
         <HandoverTimeline order={job} audience="shop" />
+        <ShopPickup order={job} stopped={stopped} onJobChanged={() => void load()} />
         <ShopLeaveJob order={job} onChanged={() => void load()} />
+        <Link
+          href={`/supplier/report?orderId=${encodeURIComponent(job.id)}&title=${encodeURIComponent(job.title)}`}
+          className="text-body text-text-primary min-h-11 underline"
+        >
+          Report a problem
+        </Link>
 
         <div className="flex flex-col gap-2 border-t border-outline-subtle pt-3">
           <div

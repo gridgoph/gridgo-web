@@ -282,19 +282,21 @@ Both were evaluated here and deliberately not adopted:
 6. An authenticated but unmapped identity, or one with no portal membership, gets the
    access-not-assigned screen and can sign out to use another account.
 7. A suspended or rejected shop keeps its supplier membership (the projection allows it)
-   but every supplier endpoint answers `403 forbidden`. `RoleGate` reads the projection's
+   but ordinary work endpoints answer `403 forbidden`. `RoleGate` reads the projection's
    `approvalCase` (`withdrawnStanding`, `src/lib/auth/account-standing.ts`) and renders
    `AccountStandingNotice` **instead of** `AppShell`, so the live stream, rail counts and
-   page reads never mount. A 403 from any supplier endpoint (`onForbidden` in the API
+   work-page reads never mount; legal and privacy self-service stays available after
+   membership verification. A 403 from any supplier endpoint (`onForbidden` in the API
    client) re-checks the projection, closing the workspace mid-session too. Pending shops
    keep their workspace. Reuse the notice (status + reason props) for other withdrawn
    accounts rather than a second screen.
-8. An **account hold** (`accountStatus` `suspended`/`removed`, Super Admin only via
+8. An **account hold** (`accountStatus` `suspended`/`removed`, via
    `PATCH /users/:id/account`) is a separate axis from accreditation (7). `RoleGate`
    reads it from `/auth/me` and from every projection (`accountHold`), and any role
    re-checks on `403 account_suspended`/`account_removed`; `AccountStatusNotice` then
-   replaces the shell. On Roles, "Account" stays accreditation and "Standing" is the
-   hold, each with its own facet. Screenshots: `docs/screenshots/account-standing/`.
+   replaces the work shell; supplier legal and privacy pages remain available after the
+   fixed membership projection succeeds. On Roles, "Account" stays accreditation and
+   "Standing" is the hold, each with its own facet. Screenshots: `docs/screenshots/account-standing/`.
 
 `/login` never offers sign-up: `SignIn` uses `withSignUp={false}` and
 `transferable={false}`. Clerk still draws its "Don't have an account? Sign up" footer while the

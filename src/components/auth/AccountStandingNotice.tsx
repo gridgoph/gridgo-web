@@ -1,10 +1,15 @@
 "use client";
 
+import Link from "next/link";
+
 import { ExternalLink } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { StatusChip } from "@/components/ui/StatusChip";
-import { OPERATIONS_CONTACT_URL, type WithdrawnStatus } from "@/lib/auth/account-standing";
+import {
+  OPERATIONS_CONTACT_URL,
+  type WithdrawnStatus,
+} from "@/lib/auth/account-standing";
 import type { StatusIconName, StatusTone } from "@/lib/order-state";
 
 type StandingCopy = {
@@ -79,7 +84,11 @@ export function AccountStandingNotice({
         className="flex w-full max-w-xl flex-col rounded-card border border-outline bg-surface p-6 shadow-card md:p-8"
       >
         <div className="self-start">
-          <StatusChip tone={copy.chip.tone} label={copy.chip.label} icon={copy.chip.icon} />
+          <StatusChip
+            tone={copy.chip.tone}
+            label={copy.chip.label}
+            icon={copy.chip.icon}
+          />
         </div>
 
         <h1 id="account-standing-title" className="text-h1 text-text-primary m-0 mt-5">
@@ -91,7 +100,9 @@ export function AccountStandingNotice({
           </p>
         ) : null}
 
-        <p className="text-body-lg text-text-secondary m-0 mt-5 max-w-prose">{copy.body}</p>
+        <p className="text-body-lg text-text-secondary m-0 mt-5 max-w-prose">
+          {copy.body}
+        </p>
 
         <div className="mt-6 border-l-2 border-text-primary py-1 pl-4">
           <p className="text-caption text-text-muted m-0">Reason from Operations</p>
@@ -122,6 +133,20 @@ export function AccountStandingNotice({
             </a>
             <Button onClick={onSignOut}>Sign out</Button>
           </div>
+          <nav aria-label="Account help" className="flex flex-wrap gap-4">
+            <Link
+              href="/supplier/legal"
+              className="text-body text-text-primary underline"
+            >
+              Legal documents
+            </Link>
+            <Link
+              href="/supplier/privacy"
+              className="text-body text-text-primary underline"
+            >
+              Your data
+            </Link>
+          </nav>
           {onCheckAgain ? (
             <p className="text-body text-text-muted m-0 flex flex-wrap items-center gap-x-1">
               {copy.recheckLead}
