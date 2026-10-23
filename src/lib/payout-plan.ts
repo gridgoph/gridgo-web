@@ -100,6 +100,35 @@ export function releaseRequirementOf(stage: PlanStage): PayoutReleaseRequirement
  * complaint window, never on a file. Legacy retention still needs the
  * delivered proof it inherits, so it keeps the old rule.
  */
+const PRODUCING = new Set([
+  "production",
+  "supplier_self_qc",
+  "ready_for_dispatch",
+  "rider_assigned",
+  "picked_up",
+  "out_for_delivery",
+  "awaiting_collection",
+  "delivered",
+  "issue_window_open",
+  "completed",
+  "payout_released",
+]);
+
+/** A shop proof the job has not reached. It is not work the shop is behind on. */
+export function shopProofNotStarted(
+  order: Pick<Order, "state"> & PlanOrder,
+  stage: PlanStage & Pick<PayoutMilestone, "status">,
+): boolean {
+  return (
+    (stage.status === "pending_pof" || stage.status === "pending") &&
+    releaseRequirementOf(stage) === "shop_proof" &&
+    (!PRODUCING.has(order.state) ||
+      (isLegacyStage(order, stage) &&
+        stage.code === "packaging_qc" &&
+        order.state === "production"))
+  );
+}
+
 export function stageNeedsProof(order: PlanOrder, stage: PlanStage): boolean {
   if (releaseRequirementOf(stage) !== "issue_window_closed") return true;
   return isLegacyStage(order, stage);

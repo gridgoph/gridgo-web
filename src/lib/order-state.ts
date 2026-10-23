@@ -431,7 +431,7 @@ export function milestoneProofSource(
 
 export function presentMilestoneStatus(
   status: PayoutMilestone["status"],
-  { needsProof = true }: { needsProof?: boolean } = {},
+  { needsProof = true, reached = true }: { needsProof?: boolean; reached?: boolean } = {},
 ): StatePresentation {
   switch (status) {
     case "released":
@@ -443,6 +443,8 @@ export function presentMilestoneStatus(
       return { label: "Proof attached", tone: "info", icon: "circle-check" };
     case "pending_pof":
     case "pending":
+      // A shop proof the job has not reached is not work the shop is behind on.
+      if (needsProof && !reached) return { label: "Not started", tone: "neutral", icon: "clock" };
       // The share the complaint window pays waits on the clock, not a file.
       return needsProof
         ? { label: "Proof needed", tone: "warning", icon: "clock" }

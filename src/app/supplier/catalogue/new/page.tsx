@@ -4,12 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { PrinterMaxWidthField } from "@/app/supplier/_components/PrinterMaxWidthField";
+import { rememberListingDraft, readListingDraft, forgetListingDraft } from "@/app/supplier/_lib/listing-draft";
 import { listingErrorMessage } from "@/app/supplier/_lib/listings-api";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -27,7 +27,6 @@ import {
 } from "@/lib/api/client";
 import type { Taxonomy } from "@/lib/api/types";
 import {
-  LISTING_CAPS,
   boardTargets,
   needsPrinterMaxWidth,
   normalizeServiceLines,
@@ -51,8 +50,8 @@ export default function NewListingPage() {
   const [starterId, setStarterId] = useState<string>(BLANK);
   const [starters, setStarters] = useState<ListingStarter[]>([]);
   const [startersLoading, setStartersLoading] = useState(false);
-  const [name, setName] = useState("");
   const [printerMaxWidthFeet, setPrinterMaxWidthFeet] = useState<number | null>(null);
+  const [draftId, setDraftId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -77,6 +76,10 @@ export default function NewListingPage() {
     return () => {
       gone = true;
     };
+  }, []);
+
+  useEffect(() => {
+    setDraftId(readListingDraft());
   }, []);
 
   const targets = useMemo(() => boardTargets(taxonomy, services), [taxonomy, services]);
@@ -115,7 +118,7 @@ export default function NewListingPage() {
   }, [subcategoryCode]);
 
   async function create() {
-    if (!target || !subcategoryCode || !name.trim()) return;
+    if (!target || !subcategoryCode) return;
     if (
       needsPrinterMaxWidth(subcategoryCode) &&
       parsePrinterMaxWidthFeet(printerMaxWidthFeet) == null
@@ -128,7 +131,9 @@ export default function NewListingPage() {
       const body: Record<string, unknown> = {
         supplierServiceId: target.service.id,
         subcategoryCode,
-        name: name.trim(),
+        name:
+          target.covers.find((cover) => cover.code === subcategoryCode)?.name ??
+          subcategoryCode,
         active: false,
         ...printerMaxWidthFeetWrite(subcategoryCode, printerMaxWidthFeet, "create"),
       };
@@ -139,7 +144,8 @@ export default function NewListingPage() {
           ? (created as { item?: { id?: string } }).item?.id
           : (created as { id?: string })?.id;
       if (!id) throw new Error("unreadable");
-      router.replace(`/supplier/catalogue/${id}`);
+      rememberListingDraft(id);
+      router.replace(`/supplier/catalogue/${id}?step=about`);
     } catch (err) {
       setSaveError(listingErrorMessage(err, "Could not open this listing."));
       setSaving(false);
@@ -178,9 +184,35 @@ export default function NewListingPage() {
     severalCategories: targets.length > 1,
     categoryCode,
     subcategoryCode,
-    name,
     printerMaxWidthFeet,
   });
+
+  if (draftId) {
+    return (
+      <div className="flex max-w-xl flex-col gap-4">
+        <h3 className="text-body-lg text-text-primary m-0" style={{ fontFamily: "var(--font-bold)" }}>
+          Resume this listing?
+        </h3>
+        <p className="text-body text-text-secondary m-0 max-w-prose">
+          You started a listing and left it. It opens only if you choose to resume it.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="primary" onClick={() => router.push(`/supplier/catalogue/${draftId}?step=about`)}>
+            Resume
+          </Button>
+          <Button
+            type="button"
+            onClick={() => {
+              forgetListingDraft();
+              setDraftId(null);
+            }}
+          >
+            Start another
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-10">
@@ -194,8 +226,8 @@ export default function NewListingPage() {
             What it is
           </h3>
           <p className="text-caption text-text-secondary m-0 max-w-prose">
-            File it under a category you are accredited for and name it the way a client
-            would ask for it.
+            File it under a category you are accredited for. You name it on the listing
+            after this opens, not on this page.
           </p>
         </div>
 
@@ -269,17 +301,6 @@ export default function NewListingPage() {
               onChange={setPrinterMaxWidthFeet}
             />
           ) : null}
-
-          <Field>
-            <FieldLabel htmlFor="listing-name">What clients will call it</FieldLabel>
-            <Input
-              id="listing-name"
-              value={name}
-              maxLength={LISTING_CAPS.nameChars}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Flyers"
-            />
-          </Field>
         </FieldGroup>
       </div>
 
@@ -373,7 +394,7 @@ export default function NewListingPage() {
             After this listing opens
           </h3>
           <p className="text-body text-text-secondary m-0 max-w-prose">
-            Photos, price, and review come on the editor. This page only opens the listing.
+            Name, photos, price, and review come next. This page does not ask them again.
           </p>
         </div>
         <ul className="m-0 grid list-none gap-3 p-0 sm:grid-cols-3">
@@ -412,7 +433,6 @@ function firstMissingField(input: {
   severalCategories: boolean;
   categoryCode: string | null;
   subcategoryCode: string | null;
-  name: string;
   printerMaxWidthFeet: number | null;
 }): string | null {
   if (input.severalCategories && !input.categoryCode) return "Category";
@@ -423,6 +443,5 @@ function firstMissingField(input: {
   ) {
     return "Max printer width";
   }
-  if (!input.name.trim()) return "What clients will call it";
   return null;
 }

@@ -400,6 +400,9 @@ async function request<T>(
   });
 }
 
+/** Shared JSON transport for endpoint modules, including workspace revocation checks. */
+export { request as apiRequest };
+
 /** Raw bytes from an authenticated endpoint; errors still carry `{ error }`. */
 async function requestBlob(path: string, init: RequestInit = {}): Promise<Blob> {
   return withRequestDeadline(init.signal, async (signal) => {
