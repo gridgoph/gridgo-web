@@ -713,6 +713,16 @@ describe("listing editor: How long does this take? (gridgo-api#292)", () => {
 describe("listing editor: catalogue money bounds", () => {
   const over = "90071992547409.92";
 
+  it("explains an invalid draft even when the saved price is zero", async () => {
+    stubLoad(catalogItem({ basePriceMinor: 0 }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Price");
+    fireEvent.change(screen.getByLabelText("Your price"), { target: { value: "10.005" } });
+    expect(await screen.findByText(/Enter an amount in pesos, for example 1200.00./)).toBeVisible();
+    expect(screen.getByLabelText("Your price")).toHaveValue("10.005");
+    expect(mocks.updateCatalogItem).not.toHaveBeenCalled();
+  });
+
   it("saves zero and a sub-peso price as exact centavos", async () => {
     stubLoad(catalogItem());
     render(<ListingEditorPage />);

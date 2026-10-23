@@ -704,10 +704,13 @@ export default function ListingEditorPage() {
 
   // Dirty means the API would receive something different, not that a string
   // differs — a trailing space or "400" against "400.00" is not a change.
+  const typedPrice = working && !colourOn(working) ? parseCatalogMoney(working.price) : null;
+  const priceUnfinished = typedPrice != null && (!typedPrice.ok || typedPrice.minor == null);
   const dirty = Boolean(
     listing &&
     working &&
-    JSON.stringify(payloadOf(working)) !== JSON.stringify(payloadOf(draftFrom(listing))),
+    (priceUnfinished ||
+      JSON.stringify(payloadOf(working)) !== JSON.stringify(payloadOf(draftFrom(listing)))),
   );
   dirtyRef.current = dirty;
   busyRef.current = busy;
