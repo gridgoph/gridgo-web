@@ -38,8 +38,12 @@ describe("ROLE_NAV", () => {
       "/supplier/product-types",
       "/supplier/schedule",
       "/supplier/shop-hours",
+      "/supplier/legal",
+      "/supplier/privacy",
+      "/supplier/report",
       "/supplier/capacity",
       "/supplier/payouts",
+      "/supplier/record",
       "/supplier/payout-account",
     ]);
   });
@@ -217,9 +221,13 @@ describe("ROLE_NAV", () => {
       "/supplier/dashboard",
       "/supplier/documents",
       "/supplier/jobs",
+      "/supplier/legal",
       "/supplier/payout-account",
       "/supplier/payouts",
+      "/supplier/privacy",
       "/supplier/product-types",
+      "/supplier/record",
+      "/supplier/report",
       "/supplier/schedule",
       "/supplier/services",
       "/supplier/shop",
@@ -410,13 +418,16 @@ describe("ROLE_NAV", () => {
       "/supplier/product-types",
       "/supplier/schedule",
       "/supplier/shop-hours",
+      "/supplier/legal",
+      "/supplier/privacy",
+      "/supplier/report",
       "/supplier/capacity",
     ]);
     expect(
       ROLE_NAV_GROUPS.supplier
         .find((g) => g.id === "supplier-money")
         ?.items.map((n) => n.href),
-    ).toEqual(["/supplier/payouts", "/supplier/payout-account"]);
+    ).toEqual(["/supplier/payouts", "/supplier/record", "/supplier/payout-account"]);
 
     const grouped = Object.values(ROLE_NAV_GROUPS).flatMap((groups) =>
       groups.flatMap((group) => group.items.map((item) => item.href)),

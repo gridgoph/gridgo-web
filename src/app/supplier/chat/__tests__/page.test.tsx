@@ -2,7 +2,14 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -13,6 +20,11 @@ import type { SupportChatEvent } from "@/lib/api/types";
 import { formatDate } from "@/lib/format";
 
 vi.stubGlobal("React", React);
+
+const query = vi.hoisted(() => ({ value: "" }));
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(query.value),
+}));
 
 const {
   getSupportChatMe,
@@ -80,7 +92,11 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  vi.spyOn(apiClient, "getFileDownloadUrl").mockResolvedValue("https://files.test/photo.jpg");
+  query.value = "";
+  window.history.replaceState(null, "", "/supplier/chat");
+  vi.spyOn(apiClient, "getFileDownloadUrl").mockResolvedValue(
+    "https://files.test/photo.jpg",
+  );
   getSupportChatMe.mockReset();
   getSupportChatThread.mockReset();
   openSupportChatThread.mockReset();
@@ -294,12 +310,24 @@ describe("supplier chat", () => {
     getSupportChatThread.mockResolvedValue({
       thread: { ...thread, unreadCount: 0 },
       messages: [
-        shopLine({ id: "in", body: "We are looking.", mine: false, createdAt: "2026-09-21T03:00:00.000Z" }),
-        shopLine({ id: "out", body: "Where is the payout?", mine: true, createdAt: "2026-09-21T03:05:00.000Z" }),
+        shopLine({
+          id: "in",
+          body: "We are looking.",
+          mine: false,
+          createdAt: "2026-09-21T03:00:00.000Z",
+        }),
+        shopLine({
+          id: "out",
+          body: "Where is the payout?",
+          mine: true,
+          createdAt: "2026-09-21T03:05:00.000Z",
+        }),
       ],
     });
     render(<SupplierChatPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "Operations, Where is the payout?" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Operations, Where is the payout?" }),
+    );
     const runs = await screen.findAllByTestId("chat-run");
     expect(runs).toHaveLength(2);
     expect(runs[0]).toHaveAttribute("data-side", "incoming");
@@ -315,12 +343,24 @@ describe("supplier chat", () => {
     getSupportChatThread.mockResolvedValue({
       thread: { ...thread, unreadCount: 0 },
       messages: [
-        shopLine({ id: "a", body: "We are looking.", mine: false, createdAt: "2026-09-21T03:00:00.000Z" }),
-        shopLine({ id: "b", body: "Still checking.", mine: false, createdAt: "2026-09-21T03:05:00.000Z" }),
+        shopLine({
+          id: "a",
+          body: "We are looking.",
+          mine: false,
+          createdAt: "2026-09-21T03:00:00.000Z",
+        }),
+        shopLine({
+          id: "b",
+          body: "Still checking.",
+          mine: false,
+          createdAt: "2026-09-21T03:05:00.000Z",
+        }),
       ],
     });
     render(<SupplierChatPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "Operations, Where is the payout?" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Operations, Where is the payout?" }),
+    );
     const run = await screen.findByTestId("chat-run");
     expect(run).toHaveAttribute("data-side", "incoming");
     expect(within(run).getAllByTestId("chat-avatar")).toHaveLength(1);
@@ -344,7 +384,9 @@ describe("supplier chat", () => {
       ],
     });
     render(<SupplierChatPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "Operations, Where is the payout?" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Operations, Where is the payout?" }),
+    );
     const run = await screen.findByTestId("chat-run");
     fireEvent.click(await within(run).findByRole("img", { name: "proof.jpg" }));
     expect(await screen.findByRole("img", { name: "proof.jpg preview" })).toBeTruthy();
@@ -360,12 +402,24 @@ describe("supplier chat", () => {
     getSupportChatThread.mockResolvedValue({
       thread: { ...thread, unreadCount: 0 },
       messages: [
-        shopLine({ id: "y", body: "Noted yesterday.", mine: false, createdAt: yesterday.toISOString() }),
-        shopLine({ id: "t", body: "Noted today.", mine: true, createdAt: today.toISOString() }),
+        shopLine({
+          id: "y",
+          body: "Noted yesterday.",
+          mine: false,
+          createdAt: yesterday.toISOString(),
+        }),
+        shopLine({
+          id: "t",
+          body: "Noted today.",
+          mine: true,
+          createdAt: today.toISOString(),
+        }),
       ],
     });
     render(<SupplierChatPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "Operations, Where is the payout?" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Operations, Where is the payout?" }),
+    );
     const chips = await screen.findAllByTestId("chat-day");
     expect(chips.map((chip) => chip.textContent)).toEqual([
       formatDate(yesterday.toISOString()),
@@ -375,12 +429,18 @@ describe("supplier chat", () => {
 
   it("keeps Operations and Send outside the scrolling messages", async () => {
     render(<SupplierChatPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "Operations, Where is the payout?" }));
-    const transcript = (await screen.findByTestId("chat-run")).closest("div.overflow-y-auto")!;
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Operations, Where is the payout?" }),
+    );
+    const transcript = (await screen.findByTestId("chat-run")).closest(
+      "div.overflow-y-auto",
+    )!;
     expect(transcript.contains(screen.getByRole("button", { name: "Send" }))).toBe(false);
     expect(transcript.contains(screen.getByLabelText("Message Operations"))).toBe(false);
     expect(
-      screen.getAllByRole("heading", { name: "Operations" }).every((name) => !transcript.contains(name)),
+      screen
+        .getAllByRole("heading", { name: "Operations" })
+        .every((name) => !transcript.contains(name)),
     ).toBe(true);
     expect(transcript.closest(".grid")).toHaveClass("min-h-0", "flex-1");
     expect(transcript.closest(".grid")).not.toHaveClass("lg:min-h-[36rem]");
@@ -400,7 +460,9 @@ describe("supplier chat", () => {
       unreadCount: 0,
     });
     render(<SupplierChatPage />);
-    expect(await screen.findByRole("button", { name: "Operations, Preview 0" })).toBeTruthy();
+    expect(
+      await screen.findByRole("button", { name: "Operations, Preview 0" }),
+    ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Operations, Preview 8" })).toBeNull();
     expect(screen.getByText("Page 1 of 2")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Next page" }));
@@ -439,3 +501,25 @@ function shopLine({
     attachments,
   };
 }
+
+it("adopts a second conversation query without remounting the chat", async () => {
+  window.history.replaceState(null, "", "/supplier/chat?thread=thread-1");
+  query.value = "thread=thread-1";
+  const view = render(<SupplierChatPage />);
+  await waitFor(() => expect(getSupportChatThread).toHaveBeenCalledWith("thread-1"));
+  query.value = "thread=thread-2";
+  window.history.replaceState(null, "", "/supplier/chat?thread=thread-2");
+  view.rerender(<SupplierChatPage />);
+  await waitFor(() => expect(getSupportChatThread).toHaveBeenCalledWith("thread-2"));
+});
+
+it("keeps the conversation URL aligned with manual selection and returning to the inbox", async () => {
+  render(<SupplierChatPage />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Operations, Where is the payout?" }),
+  );
+  await screen.findByLabelText("Message Operations");
+  expect(new URLSearchParams(window.location.search).get("thread")).toBe("thread-1");
+  fireEvent.click(screen.getByRole("button", { name: "All conversations" }));
+  expect(new URLSearchParams(window.location.search).get("thread")).toBeNull();
+});

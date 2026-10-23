@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ChevronLeft, Info, Plus } from "lucide-react";
 
 import {
@@ -20,7 +21,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { ChatAttachButton } from "@/components/chat/ChatAttachButton";
 import { ChatAvatar } from "@/components/chat/ChatAvatar";
 import { ConversationDetails } from "@/components/chat/ConversationDetails";
-import { INBOX_PAGE_SIZE, InboxPager, inboxPageCount, sliceInboxPage } from "@/components/chat/InboxPager";
+import {
+  INBOX_PAGE_SIZE,
+  InboxPager,
+  inboxPageCount,
+  sliceInboxPage,
+} from "@/components/chat/InboxPager";
 import { ApiError, uploadSupportChatImage } from "@/lib/api/client";
 import { openSupportChatStream } from "@/lib/api/support-chat";
 import {
@@ -31,11 +37,12 @@ import {
   openSupportChatThread,
   sendSupportChatMessage,
 } from "@/lib/api/support-chat-party";
-import {
-  SUPPORT_CHAT_IMAGE_MAX_COUNT,
-  validateSupportChatImage,
-} from "@/lib/chatImages";
-import type { SupportChatAttachment, SupportChatMessage, SupportChatThread } from "@/lib/api/types";
+import { SUPPORT_CHAT_IMAGE_MAX_COUNT, validateSupportChatImage } from "@/lib/chatImages";
+import type {
+  SupportChatAttachment,
+  SupportChatMessage,
+  SupportChatThread,
+} from "@/lib/api/types";
 import { ChatTranscript } from "@/components/chat/ChatTranscript";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -72,7 +79,8 @@ function prependThread(
  * app: history, a new chat, one open thread, send, mark read, and the live
  * stream. The staff desk is a different surface.
  */
-export default function SupplierChatPage() {
+function SupplierChat() {
+  const requestedThread = useSearchParams().get("thread");
   const [threads, setThreads] = useState<SupportChatThread[] | null>(null);
   const [messages, setMessages] = useState<SupportChatMessage[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -97,6 +105,19 @@ export default function SupplierChatPage() {
   const endRef = useRef<HTMLDivElement | null>(null);
   const selectedIdRef = useRef<string | null>(null);
   selectedIdRef.current = selectedId;
+
+  function selectThread(id: string | null) {
+    setSelectedId(id);
+    const url = new URL(window.location.href);
+    if (id) url.searchParams.set("thread", id);
+    else url.searchParams.delete("thread");
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+
+  useEffect(() => {
+    setSelectedId(requestedThread || null);
+    setDetailsOpen(false);
+  }, [requestedThread]);
 
   useEffect(() => {
     const thread = new URLSearchParams(window.location.search).get("thread");
@@ -241,7 +262,9 @@ export default function SupplierChatPage() {
 
   function changeInboxPageSize(next: number) {
     setInboxPageSize(next);
-    setInboxPage((page) => (page >= inboxPageCount(threads?.length ?? 0, next) ? 0 : page));
+    setInboxPage((page) =>
+      page >= inboxPageCount(threads?.length ?? 0, next) ? 0 : page,
+    );
   }
 
   async function openNew() {
@@ -251,7 +274,7 @@ export default function SupplierChatPage() {
     try {
       const opened = await openSupportChatThread();
       setThreads((current) => replaceThread(current, opened.thread));
-      setSelectedId(opened.thread.id);
+      selectThread(opened.thread.id);
       setInboxPage(0);
     } catch (err) {
       setError(errorCopy(err, "start a new chat"));
@@ -277,7 +300,7 @@ export default function SupplierChatPage() {
         : await sendSupportChatMessage(body, selectedId);
       setDraft("");
       setPendingFiles([]);
-      setSelectedId(posted.thread.id);
+      selectThread(posted.thread.id);
       setMessages((current) =>
         current.some((row) => row.id === posted.message.id)
           ? current
@@ -318,7 +341,7 @@ export default function SupplierChatPage() {
       await deleteSupportChatThread(id);
       setConfirmDelete(false);
       setThreads((current) => (current ?? []).filter((row) => row.id !== id));
-      setSelectedId((current) => (current === id ? null : current));
+      if (selectedIdRef.current === id) selectThread(null);
       setMessages([]);
     } catch (err) {
       setError(errorCopy(err, "delete this chat"));
@@ -430,7 +453,7 @@ export default function SupplierChatPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        setSelectedId(thread.id);
+                        selectThread(thread.id);
                       }}
                       aria-current={active ? "true" : undefined}
                       aria-label={`Operations, ${preview}`}
@@ -499,7 +522,7 @@ export default function SupplierChatPage() {
                 variant="ghost"
                 size="sm"
                 className="shrink-0 self-start lg:hidden"
-                onClick={() => setSelectedId(null)}
+                onClick={() => selectThread(null)}
               >
                 <ChevronLeft data-icon="inline-start" aria-hidden />
                 All conversations
@@ -603,26 +626,36 @@ export default function SupplierChatPage() {
           </aside>
         ) : null}
       </div>
-        <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>Are you sure you want to delete this chat?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This conversation and its photos are removed for everyone in it.
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-              <AlertDialogAction
-                variant="destructive"
-                disabled={deleting}
-                onClick={() => void removeChat()}
-              >
-                Delete chat
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Are you sure you want to delete this chat?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This conversation and its photos are removed for everyone in it.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleting}
+              onClick={() => void removeChat()}
+            >
+              Delete chat
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
+  );
+}
+
+export default function SupplierChatPage() {
+  return (
+    <Suspense fallback={null}>
+      <SupplierChat />
+    </Suspense>
   );
 }
