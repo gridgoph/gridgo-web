@@ -24,6 +24,8 @@ vi.mock("@/lib/api/client", () => ({
 }));
 
 const TRACKER_URL = "https://github.com/gridgoph/gridgo-web/issues/62";
+/** The desk starts with spam hidden. */
+const NOT_SPAM = { validity: ["unreviewed", "valid", "duplicate"] };
 
 const report = {
   id: "50d4f603-c50a-4e95-93f8-107a1cd8cf91",
@@ -63,15 +65,17 @@ describe("IssueReportsDesk", () => {
     expect(screen.getByText(/Bug, issue or concern/, { selector: "p" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Screenshot 1/ })).toHaveAttribute("src", report.screenshots[0].url);
     expect(screen.getByRole("button", { name: "New · 1" })).toBeInTheDocument();
-    expect(listIssueReports).toHaveBeenCalledWith("new", { limit: 25 });
+    expect(listIssueReports).toHaveBeenCalledWith("new", { limit: 25 }, NOT_SPAM);
   });
 
   it("marks a report published with the reports page date, then reloads", async () => {
     render(<IssueReportsDesk />);
     await screen.findByRole("heading", { name: /Report 50D4F603/ });
     listIssueReports.mockResolvedValue({ reports: [], counts: { new: 0, published: 3, dismissed: 0 } });
-    fireEvent.change(screen.getByPlaceholderText("09-25-2026"), { target: { value: "09-25-2026" } });
-    fireEvent.click(screen.getByRole("button", { name: "Mark published" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mark published…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Publish report 50D4F603" });
+    fireEvent.change(within(dialog).getByLabelText("Reports page date (optional)"), { target: { value: "09-25-2026" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Mark published" }));
     await waitFor(() =>
       expect(updateIssueReport).toHaveBeenCalledWith(report.id, { status: "published", publishedIn: "09-25-2026" }),
     );
@@ -110,7 +114,7 @@ describe("IssueReportsDesk", () => {
 
     listIssueReports.mockResolvedValue({ reports: [], counts: { new: 1, tracked: 0, published: 2, dismissed: 0 } });
     fireEvent.click(screen.getByRole("button", { name: "Tracked · 4" }));
-    await waitFor(() => expect(listIssueReports).toHaveBeenLastCalledWith("tracked", { limit: 25 }));
+    await waitFor(() => expect(listIssueReports).toHaveBeenLastCalledWith("tracked", { limit: 25 }, NOT_SPAM));
     expect(await screen.findByText("No tracked reports")).toBeInTheDocument();
   });
 
@@ -158,10 +162,12 @@ describe("IssueReportsDesk", () => {
   it("marks a report tracked with a pasted GitHub issue link", async () => {
     render(<IssueReportsDesk trackerLinks />);
     await screen.findByRole("heading", { name: /Report 50D4F603/ });
-    fireEvent.change(screen.getByLabelText("GitHub tracker issue"), {
+    fireEvent.click(screen.getByRole("button", { name: "Mark tracked…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Track report 50D4F603" });
+    fireEvent.change(within(dialog).getByLabelText("GitHub tracker issue"), {
       target: { value: ` ${TRACKER_URL}/#issuecomment-1 ` },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Mark tracked" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Mark tracked" }));
     await waitFor(() =>
       expect(updateIssueReport).toHaveBeenCalledWith(report.id, {
         status: "tracked",
@@ -179,9 +185,11 @@ describe("IssueReportsDesk", () => {
   ])("refuses %j before sending it", async (value, message) => {
     render(<IssueReportsDesk trackerLinks />);
     await screen.findByRole("heading", { name: /Report 50D4F603/ });
-    const input = screen.getByLabelText("GitHub tracker issue");
+    fireEvent.click(screen.getByRole("button", { name: "Mark tracked…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Track report 50D4F603" });
+    const input = within(dialog).getByLabelText("GitHub tracker issue");
     fireEvent.change(input, { target: { value } });
-    fireEvent.click(screen.getByRole("button", { name: "Mark tracked" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Mark tracked" }));
     expect(await screen.findByRole("alert")).toHaveTextContent(message);
     expect(input).toHaveAttribute("aria-invalid", "true");
     expect(updateIssueReport).not.toHaveBeenCalled();
@@ -194,9 +202,11 @@ describe("IssueReportsDesk", () => {
     });
     render(<IssueReportsDesk trackerLinks />);
     await screen.findByRole("heading", { name: /Report 50D4F603/ });
-    expect(screen.getByLabelText("GitHub tracker issue")).toHaveValue(TRACKER_URL);
-    fireEvent.change(screen.getByPlaceholderText("09-25-2026"), { target: { value: "09-26-2026" } });
-    fireEvent.click(screen.getByRole("button", { name: "Mark published" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mark published…" }));
+    const dialog = await screen.findByRole("dialog", { name: "Publish report 50D4F603" });
+    expect(within(dialog).getByLabelText("GitHub tracker issue (optional)")).toHaveValue(TRACKER_URL);
+    fireEvent.change(within(dialog).getByLabelText("Reports page date (optional)"), { target: { value: "09-26-2026" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Mark published" }));
     await waitFor(() =>
       expect(updateIssueReport).toHaveBeenCalledWith(report.id, {
         status: "published",
@@ -242,8 +252,11 @@ describe("IssueReportsDesk", () => {
       });
       render(<IssueReportsDesk />);
       await screen.findByRole("heading", { name: /Report 50D4F603/ });
-      fireEvent.change(screen.getByPlaceholderText("09-25-2026"), { target: { value: "09-26-2026" } });
-      fireEvent.click(screen.getByRole("button", { name: "Mark published" }));
+      fireEvent.click(screen.getByRole("button", { name: "Mark published…" }));
+      const dialog = await screen.findByRole("dialog", { name: "Publish report 50D4F603" });
+      expect(within(dialog).queryByLabelText(/tracker issue/i)).toBeNull();
+      fireEvent.change(within(dialog).getByLabelText("Reports page date (optional)"), { target: { value: "09-26-2026" } });
+      fireEvent.click(within(dialog).getByRole("button", { name: "Mark published" }));
       await waitFor(() =>
         expect(updateIssueReport).toHaveBeenCalledWith(report.id, { status: "published", publishedIn: "09-26-2026" }),
       );
@@ -292,8 +305,11 @@ describe("IssueReportsDesk", () => {
     });
     render(<IssueReportsDesk trackerLinks />);
     expect(await screen.findByText(`See ${TRACKER_URL}`, { selector: "p" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Mark tracked" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Save link" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Mark tracked/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Change GitHub link" }));
+    const dialog = await screen.findByRole("dialog", { name: "GitHub issue for report 50D4F603" });
+    expect(within(dialog).getByLabelText("GitHub tracker issue")).toHaveValue(TRACKER_URL);
+    expect(within(dialog).getByRole("button", { name: "Save link" })).toBeInTheDocument();
   });
 
   it("reloads when issue reports change and keeps the open report", async () => {
@@ -360,12 +376,12 @@ describe("IssueReportsDesk", () => {
       listIssueReports.mockResolvedValueOnce({ reports: first, counts: COUNTS });
       render(<IssueReportsDesk />);
       expect(await screen.findByText("Showing 25 of 30")).toBeInTheDocument();
-      expect(listIssueReports).toHaveBeenCalledWith("new", { limit: 25 });
+      expect(listIssueReports).toHaveBeenCalledWith("new", { limit: 25 }, NOT_SPAM);
 
       listIssueReports.mockResolvedValueOnce({ reports: many(5, 25), counts: COUNTS });
       fireEvent.click(screen.getByRole("button", { name: "Load more" }));
       expect(await screen.findByText("30 reports")).toBeInTheDocument();
-      expect(listIssueReports).toHaveBeenLastCalledWith("new", { limit: 25, before: first[24].id });
+      expect(listIssueReports).toHaveBeenLastCalledWith("new", { limit: 25, before: first[24].id }, NOT_SPAM);
       expect(within(screen.getByRole("list", { name: "Issue reports" })).getAllByRole("listitem")).toHaveLength(30);
       expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
       // The tab counts stay the API's totals.
@@ -382,7 +398,7 @@ describe("IssueReportsDesk", () => {
 
       listIssueReports.mockResolvedValueOnce({ reports: many(30), counts: COUNTS });
       fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-      await waitFor(() => expect(listIssueReports).toHaveBeenLastCalledWith("new", { limit: 50 }));
+      await waitFor(() => expect(listIssueReports).toHaveBeenLastCalledWith("new", { limit: 50 }, NOT_SPAM));
       expect(await screen.findByText("30 reports")).toBeInTheDocument();
     });
 
@@ -396,7 +412,7 @@ describe("IssueReportsDesk", () => {
         .mockResolvedValueOnce({ reports: many(30), counts: COUNTS });
       fireEvent.click(screen.getByRole("button", { name: "Load more" }));
       expect(await screen.findByText("30 reports")).toBeInTheDocument();
-      expect(listIssueReports).toHaveBeenLastCalledWith("new", { limit: 50 });
+      expect(listIssueReports).toHaveBeenLastCalledWith("new", { limit: 50 }, NOT_SPAM);
     });
 
     it("says when the next page fails and offers to try again", async () => {
@@ -423,7 +439,7 @@ describe("IssueReportsDesk", () => {
         counts: { ...COUNTS, tracked: 40 },
       });
       fireEvent.click(screen.getByRole("button", { name: "Tracked · 40" }));
-      await waitFor(() => expect(listIssueReports).toHaveBeenLastCalledWith("tracked", { limit: 25 }));
+      await waitFor(() => expect(listIssueReports).toHaveBeenLastCalledWith("tracked", { limit: 25 }, NOT_SPAM));
       expect(await screen.findByText("Showing 25 of 40")).toBeInTheDocument();
     });
   });
@@ -512,7 +528,7 @@ describe("Report priorities", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /^Priorities/ }));
     await waitFor(() =>
-      expect(listIssueReports).toHaveBeenLastCalledWith("priorities", { limit: 25 }),
+      expect(listIssueReports).toHaveBeenLastCalledWith("priorities", { limit: 25 }, NOT_SPAM),
     );
     fireEvent.click(screen.getByRole("button", { name: "Unpin report 50D4F603" }));
     await waitFor(() =>

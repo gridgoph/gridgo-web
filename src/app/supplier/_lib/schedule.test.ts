@@ -7,13 +7,13 @@ import {
   formatRangeLabel,
   isOnSchedule,
   shiftRange,
+  scheduleDateIso,
+  scheduleToday,
   weekContaining,
 } from "./schedule";
 import type { Order } from "@/lib/api/types";
 
-function job(
-  partial: Partial<Order> & Pick<Order, "id" | "state">,
-): Order {
+function job(partial: Partial<Order> & Pick<Order, "id" | "state">): Order {
   return {
     clientId: "c1",
     supplierId: "user_supplier",
@@ -121,4 +121,29 @@ describe("formatRangeLabel", () => {
     const week = weekContaining(new Date(2026, 7, 12));
     expect(formatRangeLabel(week, "week").length).toBeGreaterThan(5);
   });
+});
+
+it("uses the ready-by date for grouping and falls back only to recorded legacy dates", () => {
+  const row = job({
+    id: "ready",
+    state: "production",
+    readyBy: "2026-08-10T10:00:00+08:00",
+    promisedDate: "2026-08-11T10:00:00+08:00",
+    deadline: "2026-08-12T10:00:00+08:00",
+    readyAt: "2026-08-09T00:00:00Z",
+  });
+  expect(buildScheduleEntries([row])[0].dayKey).toBe("2026-08-10");
+  expect(scheduleDateIso({ ...row, readyBy: "invalid" })).toBe(row.promisedDate);
+  expect(scheduleDateIso({ ...row, readyBy: null, promisedDate: null })).toBe(
+    row.deadline,
+  );
+  expect(
+    scheduleDateIso({ ...row, readyBy: null, promisedDate: null, deadline: null }),
+  ).toBeNull();
+});
+
+it("uses the Manila calendar day around UTC midnight", () => {
+  expect(dayKeyFromDate(scheduleToday(new Date("2026-10-23T16:01:00Z")))).toBe(
+    "2026-10-24",
+  );
 });

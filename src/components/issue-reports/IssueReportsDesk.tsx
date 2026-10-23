@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, Pin } from "lucide-react";
+import { ChevronLeft, Pin, Undo2 } from "lucide-react";
 import {
   type KeyboardEvent,
   useCallback,
@@ -11,10 +11,8 @@ import {
 } from "react";
 
 import {
-  checkTrackerIssueUrl,
   parseTrackerIssueUrl,
   trackerIssueLabel,
-  TRACKER_URL_EXAMPLE,
   withoutGithubLinks,
 } from "@/components/issue-reports/tracker-link";
 import {
@@ -25,12 +23,27 @@ import {
   reloadLimit,
   showingLabel,
 } from "@/components/issue-reports/paging";
+import {
+  aiRowLabel,
+  DEFAULT_FILTERS,
+  filterQuery,
+  isDefaultFilters,
+  listIsWhole,
+  matchesFilters,
+  reportReference,
+  triageCategoryLabel,
+  triageOf,
+  VALIDITY,
+  VERDICTS,
+  type TriageFilters as Filters,
+} from "@/components/issue-reports/triage";
+import { TriageFilters } from "@/components/issue-reports/TriageFilters";
+import { AiSuggestion, TriageDetails, VerdictBar } from "@/components/issue-reports/TriagePanel";
+import { PublishDialog, TrackDialog } from "@/components/issue-reports/WorkflowDialogs";
 import { PriorityButton } from "@/components/ui/PriorityButton";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip, StatusChipLink } from "@/components/ui/StatusChip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -40,10 +53,15 @@ import type {
   IssueReportCategory,
   IssueReportCounts,
   IssueReportStatus,
+  IssueReportTriageCounts,
+  IssueReportTriageInput,
+  IssueReportValidity,
 } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { cn } from "@/lib/utils";
+
+export { reportReference };
 
 type ReportFilter = IssueReportStatus | "priorities";
 
@@ -55,16 +73,12 @@ const STATUS_TABS: { value: ReportFilter; label: string }[] = [
   { value: "dismissed", label: "Dismissed" },
 ];
 
+/** The category the reporter picked on the website's form. */
 export function categoryLabel(category: IssueReportCategory | null): string {
   if (category === "bug") return "Bug, issue or concern";
   if (category === "feature") return "Feature or change request";
   if (category === "other") return "Something else";
   return "No category";
-}
-
-/** The reference the reporter was shown on the landing page. */
-export function reportReference(id: string): string {
-  return id.slice(0, 8).toUpperCase();
 }
 
 const EMPTY_BODY: Record<ReportFilter, string> = {
@@ -73,6 +87,12 @@ const EMPTY_BODY: Record<ReportFilter, string> = {
   tracked: "Reports the team is tracking land here.",
   published: "Reports named in a dated reports page land here.",
   dismissed: "Reports you dismiss land here.",
+};
+
+/** What each next step means, under the buttons that take it. */
+const NEXT_STEP_HELP: Partial<Record<IssueReportStatus, string>> = {
+  new: "Track it when the team takes it on. Publish it once the reports page covers it. Dismiss it if nobody will act on it.",
+  tracked: "Publish it once the reports page covers it, or dismiss it if nobody will act on it.",
 };
 
 function publishedChip(report: IssueReport, trackerLinks: boolean) {
@@ -136,6 +156,27 @@ function statusChips(report: IssueReport, trackerLinks: boolean) {
   return chips;
 }
 
+/** A row's verdict and AI marker; "To review" with no AI review says nothing. */
+function triageChips(report: IssueReport) {
+  const triage = triageOf(report);
+  const chips = [];
+  if (triage.validity !== "unreviewed") {
+    chips.push(
+      <span key="validity">
+        <StatusChip {...VALIDITY[triage.validity]} />
+      </span>,
+    );
+  }
+  if (report.aiReview) {
+    chips.push(
+      <span key="ai">
+        <StatusChip tone="info" icon="sparkles" label={aiRowLabel(report.aiReview)} />
+      </span>,
+    );
+  }
+  return chips;
+}
+
 function firstLine(text: string): string {
   const line = text.split("\n").find((part) => part.trim()) ?? text;
   return line.length > 120 ? `${line.slice(0, 117)}…` : line;
@@ -148,6 +189,23 @@ function sideBySide(): boolean {
   return typeof window !== "undefined" && typeof window.matchMedia === "function"
     ? window.matchMedia(SIDE_BY_SIDE_QUERY).matches
     : true;
+}
+
+/** Typing in a field never triggers a verdict key. */
+function typingIn(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.closest("[role=dialog],[role=listbox]") !== null;
+}
+
+function triageErrorCopy(err: unknown): string {
+  if (isApiError(err) && err.code === "issue_report_not_found") {
+    return "This report no longer exists. Press Refresh.";
+  }
+  if (isApiError(err) && err.kind === "forbidden") return "Your account cannot sort issue reports.";
+  if (isApiError(err) && err.kind === "validation") {
+    return "The server refused that change. Check the label or the repeated report and try again.";
+  }
+  return "Could not save the change. Try again.";
 }
 
 function ListSkeleton() {
@@ -177,10 +235,13 @@ function DetailSkeleton() {
   );
 }
 
+type Undo = { id: string; validity: IssueReportValidity; previous: IssueReportTriageInput };
+
 /**
  * Issues anyone filed from the landing site's /report page. Operations and
- * Super Admin read them here, then mark each one tracked, published (with the
- * reports page date) or dismissed.
+ * Super Admin sort them here (a verdict of valid, spam or duplicate, their
+ * own category and labels, beside the AI's separate suggestion), then mark
+ * each one tracked, published (with the reports page date) or dismissed.
  *
  * `trackerLinks` is Super Admin's: the GitHub tracker issue a report became,
  * its chip and the field that sets it. Without it the desk never shows a
@@ -189,14 +250,17 @@ function DetailSkeleton() {
  * `tracker_issue_url_forbidden`).
  *
  * The desk fills the window under the header: the list scrolls on its own
- * and loads a page at a time, and the open report keeps its actions pinned
- * at the bottom of its panel. Below 1024px it is one pane at a time (the
- * list, then the report with a way back).
+ * and loads a page at a time, and the open report keeps its verdict and next
+ * step pinned at the bottom of its panel. Below 1024px it is one pane at a
+ * time (the list, then the report with a way back).
  */
 export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: boolean } = {}) {
   const [status, setStatus] = useState<ReportFilter>("new");
+  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [reports, setReports] = useState<IssueReport[] | null>(null);
   const [counts, setCounts] = useState<IssueReportCounts | null>(null);
+  const [triageCounts, setTriageCounts] = useState<IssueReportTriageCounts | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -207,9 +271,9 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
   const [detailOpen, setDetailOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [publishedIn, setPublishedIn] = useState("");
-  const [trackerUrl, setTrackerUrl] = useState("");
-  const [trackerError, setTrackerError] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<"publish" | "track" | null>(null);
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const [undo, setUndo] = useState<Undo | null>(null);
 
   const listRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -225,19 +289,29 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
     reportsRef.current = reports ?? [];
   }, [reports]);
 
+  const query = useMemo(() => filterQuery(filters), [filters]);
+
+  /** Whether the API's per-status counts still total this list. */
+  const countsFor = useCallback(
+    (latestCounts: IssueReportCounts, latestTriage: IssueReportTriageCounts | null | undefined) =>
+      listIsWhole(filters, latestTriage) ? latestCounts : null,
+    [filters],
+  );
+
   /** Refetches the tab, keeping as many pages as are already loaded. */
   const load = useCallback(async (keepId?: string | null) => {
     const generation = ++generationRef.current;
     setError(null);
     setMoreError(null);
     const requested = reloadLimit(reportsRef.current.length);
-    const result = await listIssueReports(status, { limit: requested });
+    const result = await listIssueReports(status, { limit: requested }, query);
     if (generation !== generationRef.current) return;
     reportsRef.current = result.reports;
     setReports(result.reports);
     setCounts(result.counts);
+    setTriageCounts(result.triageCounts ?? null);
     setHasMore(
-      hasMoreReports(result.reports.length, result.counts, status, {
+      hasMoreReports(result.reports.length, countsFor(result.counts, result.triageCounts), status, {
         received: result.reports.length,
         requested,
       }),
@@ -247,7 +321,7 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
       if (preferred && result.reports.some((report) => report.id === preferred)) return preferred;
       return result.reports[0]?.id ?? null;
     });
-  }, [status]);
+  }, [status, query, countsFor]);
 
   const loadMore = useCallback(async () => {
     const current = reportsRef.current;
@@ -258,20 +332,21 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
     setMoreError(null);
     const generation = generationRef.current;
     try {
-      const result = await listIssueReports(status, { limit: ISSUE_REPORTS_PAGE_SIZE, before: last.id });
+      const result = await listIssueReports(status, { limit: ISSUE_REPORTS_PAGE_SIZE, before: last.id }, query);
       if (generation !== generationRef.current) return;
       const page = appendPage(current, result.reports);
       if (page.ignoredCursor) {
         // An API without `before` paging: ask for a longer first page instead.
         const requested = Math.min(current.length + ISSUE_REPORTS_PAGE_SIZE, ISSUE_REPORTS_MAX_LIMIT);
-        const grown = await listIssueReports(status, { limit: requested });
+        const grown = await listIssueReports(status, { limit: requested }, query);
         if (generation !== generationRef.current) return;
         reportsRef.current = grown.reports;
         setReports(grown.reports);
         setCounts(grown.counts);
+        setTriageCounts(grown.triageCounts ?? null);
         setHasMore(
           grown.reports.length > current.length &&
-            hasMoreReports(grown.reports.length, grown.counts, status, {
+            hasMoreReports(grown.reports.length, countsFor(grown.counts, grown.triageCounts), status, {
               received: grown.reports.length,
               requested,
             }),
@@ -281,9 +356,10 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
       reportsRef.current = page.reports;
       setReports(page.reports);
       setCounts(result.counts);
+      setTriageCounts(result.triageCounts ?? null);
       setHasMore(
         page.added > 0 &&
-          hasMoreReports(page.reports.length, result.counts, status, {
+          hasMoreReports(page.reports.length, countsFor(result.counts, result.triageCounts), status, {
             received: result.reports.length,
             requested: ISSUE_REPORTS_PAGE_SIZE,
           }),
@@ -294,7 +370,7 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
       loadingMoreRef.current = false;
       setLoadingMore(false);
     }
-  }, [status]);
+  }, [status, query, countsFor]);
 
   useLiveReload("issue-reports", load);
 
@@ -353,32 +429,33 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
     [reports, selectedId],
   );
 
-  // Refill the form whenever a different report (or a changed one) is shown.
-  // Done while rendering, not in an effect, so the fields never show a frame
-  // of the previous report's values.
   const storedTrackerUrl = trackerLinks ? (selected?.trackerIssueUrl ?? null) : null;
-  const formKey = selected
-    ? `${selected.id}|${selected.publishedIn ?? ""}|${storedTrackerUrl ?? ""}`
-    : null;
-  const [filledFor, setFilledFor] = useState<string | null>(null);
-  if (formKey !== filledFor) {
-    setFilledFor(formKey);
+  // A different report clears the last report's refusal.
+  const [errorFor, setErrorFor] = useState<string | null>(null);
+  if ((selected?.id ?? null) !== errorFor) {
+    setErrorFor(selected?.id ?? null);
     setActionError(null);
-    setTrackerError(null);
-    const storedPublishedIn = selected?.publishedIn ?? "";
-    setPublishedIn(trackerLinks ? storedPublishedIn : withoutGithubLinks(storedPublishedIn));
-    setTrackerUrl(storedTrackerUrl ?? "");
   }
 
-  function changeStatus(next: ReportFilter) {
-    if (next === status) return;
+  function resetList() {
     generationRef.current += 1;
     reportsRef.current = [];
     setReports(null);
     setHasMore(false);
     setSelectedId(null);
     setDetailOpen(false);
+    setUndo(null);
+  }
+
+  function changeStatus(next: ReportFilter) {
+    if (next === status) return;
+    resetList();
     setStatus(next);
+  }
+
+  function changeFilters(next: Filters) {
+    resetList();
+    setFilters(next);
   }
 
   function openReport(id: string) {
@@ -409,46 +486,102 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
     listRef.current?.querySelector<HTMLButtonElement>(`[data-report-id="${id}"] button`)?.focus();
   }
 
-  async function mark(next: IssueReportStatus) {
+  /**
+   * Reloads after a change to `target`. One that left this view hands over
+   * to the report below it, so the desk works down the list instead of
+   * jumping back to the top.
+   */
+  async function reloadAfter(target: IssueReport, stays: boolean) {
+    const list = reports ?? [];
+    const index = list.findIndex((report) => report.id === target.id);
+    const neighbour = list[index + 1] ?? list[index - 1] ?? null;
+    await load(stays ? target.id : (neighbour?.id ?? null));
+    if (!stays && !sideBySide()) backToList();
+  }
+
+  async function mark(
+    next: IssueReportStatus,
+    extra: { publishedIn?: string | null; trackerIssueUrl?: string | null } = {},
+  ) {
     if (!selected || saving) return;
     const input: Parameters<typeof updateIssueReport>[1] = {
       status: next,
-      publishedIn: next === "published" ? publishedIn.trim() || null : null,
+      publishedIn: next === "published" ? (extra.publishedIn ?? null) : null,
+      ...(extra.trackerIssueUrl !== undefined ? { trackerIssueUrl: extra.trackerIssueUrl } : {}),
     };
-    // Tracked needs a link. Published keeps one if the field holds it; the
-    // API clears the link on New and Dismissed by itself. Operations sends no
-    // link at all, and the API keeps the stored one.
-    if (trackerLinks && (next === "tracked" || (next === "published" && (trackerUrl.trim() || storedTrackerUrl)))) {
-      if (next === "published" && !trackerUrl.trim()) {
-        input.trackerIssueUrl = null;
-      } else {
-        const check = checkTrackerIssueUrl(trackerUrl);
-        if (!check.ok) {
-          setTrackerError(check.error);
-          return;
-        }
-        input.trackerIssueUrl = check.url;
-      }
-    }
     setSaving(true);
     setActionError(null);
-    setTrackerError(null);
+    setDialogError(null);
+    setUndo(null);
     try {
       await updateIssueReport(selected.id, input);
-      const stays = next === status || status === "priorities";
-      // A report that leaves this tab hands over to the one below it, so the
-      // desk works down the list instead of jumping back to the top.
-      const list = reports ?? [];
-      const index = list.findIndex((report) => report.id === selected.id);
-      const neighbour = list[index + 1] ?? list[index - 1] ?? null;
-      await load(stays ? selected.id : (neighbour?.id ?? null));
-      if (!stays && !sideBySide()) backToList();
+      setDialog(null);
+      await reloadAfter(selected, next === status || status === "priorities");
     } catch (err) {
-      setActionError(
+      const message =
         trackerLinks && isApiError(err) && err.kind === "validation"
           ? "The server refused that change. Check the GitHub issue link and try again."
-          : "Could not update this report. Try again.",
-      );
+          : "Could not update this report. Try again.";
+      if (dialog) setDialogError(message);
+      else setActionError(message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  /** Moving back keeps a Super Admin's stored link on the way to Tracked. */
+  function moveBack(next: "new" | "tracked") {
+    void mark(next, next === "tracked" && storedTrackerUrl ? { trackerIssueUrl: storedTrackerUrl } : {});
+  }
+
+  async function saveTriage(input: IssueReportTriageInput, target: IssueReport | null = selected) {
+    if (!target || saving) return;
+    const before = triageOf(target);
+    setSaving(true);
+    setActionError(null);
+    try {
+      const updated = await updateIssueReport(target.id, { triage: input });
+      const stays = matchesFilters(updated, filters);
+      if (input.validity && input.validity !== before.validity) {
+        setUndo(
+          stays
+            ? null
+            : {
+                id: target.id,
+                validity: input.validity,
+                previous: {
+                  validity: before.validity,
+                  ...(before.validity === "duplicate" ? { duplicateOf: before.duplicateOf } : {}),
+                },
+              },
+        );
+      }
+      // Show the change at once; the reload brings the counts.
+      const next = reportsRef.current.map((report) => (report.id === updated.id ? updated : report));
+      reportsRef.current = next;
+      setReports(next);
+      try {
+        await reloadAfter(target, stays);
+      } catch {
+        setError("Saved, but the list could not refresh. Press Refresh.");
+      }
+    } catch (err) {
+      setActionError(triageErrorCopy(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function undoVerdict() {
+    if (!undo || saving) return;
+    const target = undo;
+    setSaving(true);
+    try {
+      await updateIssueReport(target.id, { triage: target.previous });
+      setUndo(null);
+      await load(target.id);
+    } catch {
+      setError("Could not undo. Find the report under its verdict and change it there.");
     } finally {
       setSaving(false);
     }
@@ -498,6 +631,17 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
     }
   }
 
+  // V, S and D give the open report its verdict, unless someone is typing.
+  function onDeskKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (!selected || saving || dialog || event.altKey || event.ctrlKey || event.metaKey || typingIn(event.target)) {
+      return;
+    }
+    const verdict = VERDICTS.find((entry) => entry.key === event.key.toLowerCase());
+    if (!verdict || triageOf(selected).validity === verdict.validity) return;
+    event.preventDefault();
+    void saveTriage({ validity: verdict.validity });
+  }
+
   if (error && !reports) {
     return (
       <ErrorState
@@ -510,10 +654,15 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
   }
 
   const initialLoad = loading && !reports;
-  const total = counts?.[status];
+  const total = counts && listIsWhole(filters, triageCounts) ? counts[status] : undefined;
+  const filtered = !isDefaultFilters(filters);
+  const labelSuggestions = (triageCounts?.labels ?? []).map((entry) => entry.label);
 
   return (
-    <div className="grid h-[calc(100dvh-5rem)] min-h-[30rem] gap-3 lg:grid-cols-[22rem_minmax(0,1fr)] lg:gap-4">
+    <div
+      onKeyDown={onDeskKeyDown}
+      className="grid h-[calc(100dvh-5rem)] min-h-[30rem] gap-3 lg:grid-cols-[24rem_minmax(0,1fr)] lg:gap-4 xl:grid-cols-[26rem_minmax(0,1fr)]"
+    >
       <aside
         aria-label="Report list"
         className={cn("gg-card-flush min-h-0 min-w-0 flex-col", detailOpen ? "hidden lg:flex" : "flex")}
@@ -522,7 +671,7 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
           <div className="flex items-start justify-between gap-2">
             <div>
               <h2 className="text-h3 text-text-primary m-0">Reports</h2>
-              <p className="text-caption text-text-muted m-0 mt-1">
+              <p className="text-caption text-text-muted m-0 mt-1 hidden md:block">
                 Filed by anyone from the website&apos;s Report an issue page.
               </p>
             </div>
@@ -548,8 +697,30 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
               </ToggleGroupItem>
             ))}
           </ToggleGroup>
+          <TriageFilters
+            filters={filters}
+            triageCounts={triageCounts}
+            moreOpen={moreOpen}
+            onMoreOpenChange={setMoreOpen}
+            onChange={changeFilters}
+          />
         </div>
 
+        {undo ? (
+          <div
+            role="status"
+            className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-outline px-4 py-1"
+          >
+            <span className="text-caption text-text-secondary">
+              Report {reportReference(undo.id)} marked {VALIDITY[undo.validity].label.toLowerCase()} and hidden by
+              your filters.
+            </span>
+            <Button variant="ghost" size="xs" disabled={saving} onClick={() => void undoVerdict()}>
+              <Undo2 aria-hidden />
+              Undo
+            </Button>
+          </div>
+        ) : null}
         {error ? (
           <p role="alert" className="text-caption text-error m-0 px-4 py-2">
             {error}
@@ -566,17 +737,34 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
               <ListSkeleton />
             </>
           ) : !reports?.length ? (
-            <EmptyState title={`No ${status} reports`} body={EMPTY_BODY[status]} className="border-0" />
+            filtered ? (
+              <EmptyState
+                title="Nothing matches"
+                body={`No ${status === "priorities" ? "priority" : status} reports match these filters.`}
+                className="border-0"
+                action={<Button onClick={() => changeFilters(DEFAULT_FILTERS)}>Reset filters</Button>}
+              />
+            ) : (
+              <EmptyState title={`No ${status} reports`} body={EMPTY_BODY[status]} className="border-0" />
+            )
           ) : (
             <>
               <div role="list" aria-label="Issue reports" className="flex flex-col gap-0.5">
                 {reports.map((report) => {
                   const active = report.id === selectedId;
+                  const triage = triageOf(report);
                   // New and Dismissed rows sit in their own tab; the chip would repeat it.
-                  const chips =
-                    report.status === "tracked" || report.status === "published"
+                  const chips = [
+                    ...(report.status === "tracked" || report.status === "published"
                       ? statusChips(report, trackerLinks)
-                      : [];
+                      : []),
+                    ...triageChips(report),
+                  ];
+                  const sorted = [
+                    triage.category ? triageCategoryLabel(triage.category) : null,
+                    ...triage.labels.slice(0, 3).map((label) => `#${label}`),
+                    triage.labels.length > 3 ? `+${triage.labels.length - 3}` : null,
+                  ].filter(Boolean);
                   return (
                     <div
                       key={report.id}
@@ -606,7 +794,10 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
                           </span>
                         ) : null}
                         <span
-                          className="text-body text-text-primary line-clamp-2"
+                          className={cn(
+                            "text-body line-clamp-2",
+                            triage.validity === "spam" ? "text-text-muted" : "text-text-primary",
+                          )}
                           style={{ fontFamily: "var(--font-medium)" }}
                         >
                           {firstLine(trackerLinks ? report.issue : withoutGithubLinks(report.issue))}
@@ -614,14 +805,20 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
                         <span className="text-caption text-text-muted">
                           {reportReference(report.id)} ·{" "}
                           {formatDateTime(report.createdAt)}
-                          {report.category ? ` · ${categoryLabel(report.category)}` : ""}
                           {report.screenshots.length
                             ? ` · ${report.screenshots.length} screenshot${report.screenshots.length === 1 ? "" : "s"}`
                             : ""}
                         </span>
+                        {sorted.length ? (
+                          <span className="text-caption text-text-secondary flex flex-wrap gap-x-2">
+                            {sorted.map((token) => (
+                              <span key={token}>{token}</span>
+                            ))}
+                          </span>
+                        ) : null}
                       </button>
                       {chips.length ? (
-                        <div className="-mt-1 flex flex-wrap items-center gap-x-2 px-3 pb-1">{chips}</div>
+                        <div className="-mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 px-3 pb-2">{chips}</div>
                       ) : null}
                     </div>
                   );
@@ -669,8 +866,8 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
               title={reports?.length ? "Pick a report" : "Nothing to open"}
               body={
                 reports?.length
-                  ? "The full text, category and screenshots open here."
-                  : "Reports in this tab open here."
+                  ? "The full text, screenshots, AI suggestion and your sorting open here."
+                  : "Reports in this view open here."
               }
               className="border-0 p-0"
             />
@@ -688,12 +885,15 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
                     Report {reportReference(selected.id)}
                   </h2>
                   <p className="text-caption text-text-muted m-0 mt-1">
-                    Received {formatDateTime(selected.createdAt)} ·{" "}
+                    Received {formatDateTime(selected.createdAt)} · Reporter picked{" "}
                     {categoryLabel(selected.category)}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {statusChips(selected, trackerLinks)}
+                  {triageOf(selected).validity !== "unreviewed" ? (
+                    <StatusChip {...VALIDITY[triageOf(selected).validity]} />
+                  ) : null}
                   <PriorityButton
                     priority={!!selected.priority}
                     name={`report ${reportReference(selected.id)}`}
@@ -710,134 +910,162 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
               role="region"
               aria-label={`Report ${reportReference(selected.id)} text`}
               tabIndex={0}
-              className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain p-4"
+              className="grid min-h-0 flex-1 content-start gap-6 overflow-y-auto overscroll-contain p-4 xl:grid-cols-[minmax(0,1fr)_18rem]"
             >
-              <p className="text-body text-text-primary m-0 max-w-[72ch] whitespace-pre-wrap break-words">
-                {trackerLinks ? selected.issue : withoutGithubLinks(selected.issue)}
-              </p>
+              <div className="flex min-w-0 flex-col gap-4">
+                <p className="text-body text-text-primary m-0 max-w-[72ch] whitespace-pre-wrap break-words">
+                  {trackerLinks ? selected.issue : withoutGithubLinks(selected.issue)}
+                </p>
 
-              {selected.screenshots.length > 0 ? (
-                <div className="flex flex-col gap-2">
-                  <h3 className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
-                    Screenshots
-                  </h3>
-                  <ul className="m-0 grid list-none grid-cols-2 gap-3 p-0 sm:grid-cols-3">
-                    {selected.screenshots.map((shot) => (
-                      <li key={shot.position}>
-                        <a
-                          href={shot.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block overflow-hidden rounded-[var(--radius-field)] border border-border bg-muted"
-                        >
-                          {/* Presigned MinIO links, so next/image cannot optimise them. */}
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={shot.url}
-                            alt={`Screenshot ${shot.position + 1} for report ${reportReference(selected.id)}`}
-                            className="aspect-[4/3] w-full object-cover"
-                          />
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="text-caption text-text-muted m-0">
-                    Open a screenshot to see it full size. Links expire after a few minutes; press Refresh for new ones.
-                  </p>
-                </div>
-              ) : null}
+                {selected.screenshots.length > 0 ? (
+                  <div className="flex flex-col gap-2">
+                    <h3 className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+                      Screenshots
+                    </h3>
+                    <ul className="m-0 grid list-none grid-cols-2 gap-3 p-0 sm:grid-cols-3">
+                      {selected.screenshots.map((shot) => (
+                        <li key={shot.position}>
+                          <a
+                            href={shot.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block overflow-hidden rounded-[var(--radius-field)] border border-border bg-muted"
+                          >
+                            {/* Presigned MinIO links, so next/image cannot optimise them. */}
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={shot.url}
+                              alt={`Screenshot ${shot.position + 1} for report ${reportReference(selected.id)}`}
+                              className="aspect-[4/3] w-full object-cover"
+                            />
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-caption text-text-muted m-0">
+                      Open a screenshot to see it full size. Links expire after a few minutes; press Refresh for new ones.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex min-w-0 flex-col gap-6 border-t border-outline pt-4 xl:border-t-0 xl:border-l xl:pt-0 xl:pl-4">
+                <AiSuggestion
+                  report={selected}
+                  reports={reports ?? []}
+                  trackerLinks={trackerLinks}
+                  disabled={saving}
+                  onTriage={(input) => void saveTriage(input)}
+                  onOpenReport={openReport}
+                />
+                <TriageDetails
+                  key={selected.id}
+                  report={selected}
+                  reports={reports ?? []}
+                  labelSuggestions={labelSuggestions}
+                  disabled={saving}
+                  onTriage={(input) => void saveTriage(input)}
+                  onOpenReport={openReport}
+                />
+              </div>
             </div>
 
             {/* Pinned to the bottom of the panel, however long the report. */}
             <div className="flex shrink-0 flex-col gap-3 border-t border-outline bg-surface p-4">
-              {selected.status === "new" || selected.status === "tracked" ? (
-                <>
-                  {trackerLinks ? (
-                    <Field data-invalid={trackerError ? true : undefined} className="gap-1">
-                      {/* Type and colour stay off merged primitives (AGENTS.md). */}
-                      <FieldLabel htmlFor="tracker-issue-url">
-                        <span className="text-caption text-text-secondary">GitHub tracker issue</span>
-                      </FieldLabel>
-                      <div className="flex flex-wrap gap-2">
-                        <Input
-                          id="tracker-issue-url"
-                          type="url"
-                          inputMode="url"
-                          value={trackerUrl}
-                          onChange={(event) => {
-                            setTrackerUrl(event.target.value);
-                            setTrackerError(null);
+              <VerdictBar report={selected} disabled={saving} onTriage={(input) => void saveTriage(input)} />
+              <div className="flex flex-col gap-1.5 md:flex-row md:items-start md:gap-3">
+                <p className="text-caption text-text-secondary m-0 md:w-24 md:shrink-0 md:pt-3.5">Next step</p>
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {selected.status === "new" || selected.status === "tracked" ? (
+                      <>
+                        {trackerLinks ? (
+                          <Button
+                                                        disabled={saving}
+                            onClick={() => {
+                              setDialogError(null);
+                              setDialog("track");
+                            }}
+                          >
+                            {selected.status === "tracked"
+                              ? storedTrackerUrl
+                                ? "Change GitHub link"
+                                : "Add GitHub link"
+                              : "Mark tracked…"}
+                          </Button>
+                        ) : selected.status === "new" ? (
+                          <Button disabled={saving} onClick={() => void mark("tracked")}>
+                            Mark tracked
+                          </Button>
+                        ) : null}
+                        <Button
+                          variant="primary"
+                                                    disabled={saving}
+                          onClick={() => {
+                            setDialogError(null);
+                            setDialog("publish");
                           }}
-                          placeholder={TRACKER_URL_EXAMPLE}
-                          aria-invalid={trackerError ? true : undefined}
-                          aria-describedby={trackerError ? "tracker-issue-url-error" : "tracker-issue-url-help"}
-                          maxLength={300}
-                          className="min-w-0 max-w-md flex-1"
-                        />
-                        <Button disabled={saving} onClick={() => void mark("tracked")}>
-                          {selected.status === "tracked" ? "Save link" : "Mark tracked"}
+                        >
+                          Mark published…
                         </Button>
-                      </div>
-                      {trackerError ? (
-                        <FieldError id="tracker-issue-url-error">
-                          <span className="text-caption text-error">{trackerError}</span>
-                        </FieldError>
-                      ) : (
-                        <FieldDescription id="tracker-issue-url-help">
-                          <span className="text-caption text-text-muted">
-                            Paste the link of the issue this report was filed as, or linked to.
-                          </span>
-                        </FieldDescription>
-                      )}
-                    </Field>
-                  ) : null}
-                  <div className="flex flex-wrap items-end gap-2">
-                    <label className="flex min-w-0 flex-col gap-1">
-                      <span className="text-caption text-text-secondary">Reports page date (optional)</span>
-                      <Input
-                        value={publishedIn}
-                        onChange={(event) => setPublishedIn(event.target.value)}
-                        placeholder="09-25-2026"
-                        maxLength={200}
-                        className="w-40"
-                      />
-                    </label>
-                    <Button variant="primary" disabled={saving} onClick={() => void mark("published")}>
-                      Mark published
-                    </Button>
-                    <Button disabled={saving} onClick={() => void mark("dismissed")}>
-                      Dismiss
-                    </Button>
-                    {!trackerLinks && selected.status === "new" ? (
-                      <Button disabled={saving} onClick={() => void mark("tracked")}>
-                        Mark tracked
-                      </Button>
-                    ) : null}
-                    {selected.status === "tracked" ? (
-                      <Button disabled={saving} onClick={() => void mark("new")}>
-                        Move back to New
-                      </Button>
-                    ) : null}
+                        <Button disabled={saving} onClick={() => void mark("dismissed")}>
+                          Dismiss
+                        </Button>
+                        {selected.status === "tracked" ? (
+                          <Button variant="ghost" disabled={saving} onClick={() => moveBack("new")}>
+                            Move back to New
+                          </Button>
+                        ) : null}
+                      </>
+                    ) : (
+                      <>
+                        {selected.status === "published" && (storedTrackerUrl || !trackerLinks) ? (
+                          <Button disabled={saving} onClick={() => moveBack("tracked")}>
+                            Move back to Tracked
+                          </Button>
+                        ) : null}
+                        <Button disabled={saving} onClick={() => moveBack("new")}>
+                          Move back to New
+                        </Button>
+                      </>
+                    )}
                   </div>
-                </>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {selected.status === "published" && (storedTrackerUrl || !trackerLinks) ? (
-                    <Button disabled={saving} onClick={() => void mark("tracked")}>
-                      Move back to Tracked
-                    </Button>
+                  {NEXT_STEP_HELP[selected.status] ? (
+                    <p className="text-caption text-text-muted m-0 hidden md:block">{NEXT_STEP_HELP[selected.status]}</p>
                   ) : null}
-                  <Button disabled={saving} onClick={() => void mark("new")}>
-                    Move back to New
-                  </Button>
                 </div>
-              )}
+              </div>
               {actionError ? (
                 <p role="alert" className="text-caption text-error m-0">
                   {actionError}
                 </p>
               ) : null}
             </div>
+
+            {dialog === "publish" ? (
+              <PublishDialog
+                open
+                reference={reportReference(selected.id)}
+                busy={saving}
+                error={dialogError}
+                onCancel={() => setDialog(null)}
+                storedDate={trackerLinks ? (selected.publishedIn ?? "") : withoutGithubLinks(selected.publishedIn ?? "")}
+                trackerLinks={trackerLinks}
+                storedUrl={storedTrackerUrl}
+                onPublish={(input) => void mark("published", input)}
+              />
+            ) : null}
+            {dialog === "track" ? (
+              <TrackDialog
+                open
+                reference={reportReference(selected.id)}
+                busy={saving}
+                error={dialogError}
+                onCancel={() => setDialog(null)}
+                storedUrl={storedTrackerUrl}
+                onTrack={(url) => void mark("tracked", { trackerIssueUrl: url })}
+              />
+            ) : null}
           </>
         )}
       </section>

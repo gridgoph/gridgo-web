@@ -22,16 +22,17 @@ export function isOnSchedule(state: string): boolean {
   return (SCHEDULE_STATES as readonly string[]).includes(state);
 }
 
-/** Prefer promised date, fall back to deadline. */
+/** The shop ready-by date, then recorded legacy dates. Never use actual finish time. */
 export function scheduleDateIso(job: Order): string | null {
-  return job.promisedDate || job.deadline || null;
+  return (
+    [job.readyBy, job.promisedDate, job.deadline].find(
+      (iso) => iso && Number.isFinite(Date.parse(iso)),
+    ) ?? null
+  );
 }
 
 /** Local calendar day key YYYY-MM-DD for a job's schedule date. */
-export function dayKeyForJob(
-  job: Order,
-  timeZone = "Asia/Manila",
-): string | null {
+export function dayKeyForJob(job: Order, timeZone = "Asia/Manila"): string | null {
   const iso = scheduleDateIso(job);
   if (!iso) return null;
   const d = new Date(iso);
@@ -44,12 +45,25 @@ export function dayKeyForJob(
   }).format(d);
 }
 
-export type ScheduleViewMode = "day" | "week";
+export type ScheduleViewMode = "day" | "week" | "month";
 
 export type DateRange = {
   start: Date;
   end: Date;
 };
+
+/** A Manila calendar date represented as a local Date for calendar arithmetic. */
+export function scheduleToday(now = new Date()): Date {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Manila",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((p) => p.type === type)?.value);
+  return new Date(part("year"), part("month") - 1, part("day"));
+}
 
 /** Start of local calendar day. */
 export function startOfDay(d: Date): Date {
@@ -80,11 +94,22 @@ export function dayContaining(anchor: Date): DateRange {
   return { start: startOfDay(anchor), end: endOfDay(anchor) };
 }
 
+export function monthContaining(anchor: Date): DateRange {
+  const start = startOfDay(new Date(anchor.getFullYear(), anchor.getMonth(), 1));
+  const end = endOfDay(new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0));
+  return { start, end };
+}
+
 export function shiftRange(
   range: DateRange,
   mode: ScheduleViewMode,
   direction: -1 | 1,
 ): DateRange {
+  if (mode === "month") {
+    const start = new Date(range.start);
+    start.setMonth(start.getMonth() + direction);
+    return monthContaining(start);
+  }
   const days = mode === "day" ? 1 : 7;
   const start = new Date(range.start);
   start.setDate(start.getDate() + days * direction);
@@ -173,6 +198,11 @@ export function groupEntriesByDay(
 }
 
 export function formatRangeLabel(range: DateRange, mode: ScheduleViewMode): string {
+  if (mode === "month") {
+    return new Intl.DateTimeFormat("en-PH", { month: "long", year: "numeric" }).format(
+      range.start,
+    );
+  }
   const opts: Intl.DateTimeFormatOptions =
     mode === "day"
       ? { weekday: "short", day: "numeric", month: "short", year: "numeric" }
