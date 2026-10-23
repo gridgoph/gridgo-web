@@ -242,8 +242,6 @@ function PickupConversation({ orderId, fallback }: { orderId: string; fallback: 
   const [sendError, setSendError] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
-  const chatRef = useRef(chat);
-  chatRef.current = chat;
   const load = useCallback(async () => {
     try {
       const result = await pickupApi.getPickupChat(orderId);
@@ -257,7 +255,7 @@ function PickupConversation({ orderId, fallback }: { orderId: string; fallback: 
         setUnavailable(closed);
         setChat(null);
         setMessages([]);
-      } else if (!chatRef.current) {
+      } else {
         setLoadError("Could not load your messages. Check your connection and try again.");
       }
     } finally {
@@ -342,14 +340,15 @@ function PickupConversation({ orderId, fallback }: { orderId: string; fallback: 
           <span>{pickupChatNotice(chat)}</span>
         </p>
       ) : null}
-      {loadError && !chat ? (
+      {loadError ? (
         <p className="text-caption text-error m-0" role="alert">
           {loadError}{" "}
           <button type="button" className="underline" onClick={() => void load()}>
             Try again
           </button>
         </p>
-      ) : (
+      ) : null}
+      {!loadError || messages.length > 0 ? (
         <div className="flex max-h-80 flex-col gap-3 overflow-y-auto" aria-label="Messages with the rider" data-testid="pickup-chat-transcript">
           {loading && messages.length === 0 ? (
             <p className="text-caption text-text-muted m-0">Loading messages.</p>
@@ -382,7 +381,7 @@ function PickupConversation({ orderId, fallback }: { orderId: string; fallback: 
           )}
           <div ref={endRef} />
         </div>
-      )}
+      ) : null}
       {sendError ? (
         <p className="text-caption text-error m-0" role="alert">
           {sendError}
@@ -507,7 +506,7 @@ function PickupCall({ orderId, riderFirstName }: { orderId: string; riderFirstNa
         if (gone) return;
         setCalls(next);
         const incoming = next.find((call) => isRingingForMe(call));
-        if (incoming && !session.current) {
+        if (incoming && (!session.current || session.current.isFinished)) {
           const runtime = loadCallRuntime();
           if (!runtime) {
             setBlocked("unsupported");
@@ -572,10 +571,9 @@ function PickupCall({ orderId, riderFirstName }: { orderId: string; riderFirstNa
 
   const close = () => {
     setOpen(false);
-    if (session.current?.isFinished) {
-      session.current = null;
-      setSnapshot(null);
-    }
+    session.current?.dispose();
+    session.current = null;
+    setSnapshot(null);
   };
 
   const missed = latestMissedCall(calls);

@@ -6,8 +6,7 @@
  * `/orders/:id/calls`. These are the shop's own job, not an operations desk.
  */
 
-import { withRequestDeadline } from "@/lib/api/requestDeadline";
-import { ApiError, getApiBase, getAuthToken, getWorkspaceRole } from "@/lib/api/client";
+import { apiRequest as shopRequest } from "@/lib/api/client";
 import type { StoredFile } from "@/lib/api/types";
 import {
   parseCall,
@@ -21,37 +20,6 @@ import {
   type PickupChatSummary,
 } from "@/lib/pickup-chat";
 import { parseRiderApproach, type RiderApproach } from "@/lib/rider-approach";
-
-async function shopRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  return withRequestDeadline(init.signal, async (signal) => {
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-      ...(init.headers as Record<string, string> | undefined),
-    };
-    const form = typeof FormData !== "undefined" && init.body instanceof FormData;
-    if (init.body && !form && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
-    signal.throwIfAborted();
-    const token = await getAuthToken();
-    signal.throwIfAborted();
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-      const role = getWorkspaceRole();
-      if (role) headers["X-GRIDGO-Role"] = role;
-    }
-    const res = await fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
-    const text = await res.text();
-    let data: unknown = null;
-    if (text) {
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = text;
-      }
-    }
-    if (!res.ok) throw new ApiError(res.status, data);
-    return data as T;
-  });
-}
 
 export async function getRiderApproach(orderId: string): Promise<RiderApproach> {
   return parseRiderApproach(await shopRequest<unknown>(`/dispatch/${encodeURIComponent(orderId)}/location`));

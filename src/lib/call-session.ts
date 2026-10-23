@@ -142,6 +142,10 @@ export class CallSession {
   }
 
   private adopt(call: OrderCall): void {
+    if (call.state === "accepted") {
+      const expires = Date.parse(call.leaseExpiresAt ?? "");
+      if (Number.isFinite(expires)) this.leaseExpiresAt = expires;
+    }
     this.set({ call, otherName: otherParty(call).firstName || this.snapshot.otherName });
   }
 
@@ -257,7 +261,8 @@ export class CallSession {
   }
 
   dispose(): void {
-    this.finish("ended", true);
+    this.aborted = true;
+    void this.hangUp();
   }
 
   private async openPeer(): Promise<void> {
@@ -386,7 +391,10 @@ export class CallSession {
 
   private startPolling(): void {
     if (this.pollTimer) return;
-    this.pollTimer = setInterval(() => void this.poll(), CALL_POLL_MS);
+    this.pollTimer = setInterval(() => {
+      this.checkLease();
+      void this.poll();
+    }, CALL_POLL_MS);
   }
 
   private async poll(): Promise<void> {
@@ -467,7 +475,7 @@ export class CallSession {
 
   private startHeartbeat(): void {
     if (this.heartbeatTimer) return;
-    this.leaseExpiresAt = this.deps.now() + CALL_LEASE_MS;
+    this.leaseExpiresAt ??= this.deps.now() + CALL_LEASE_MS;
     this.heartbeatTimer = setInterval(() => void this.beat(), CALL_HEARTBEAT_MS);
   }
 

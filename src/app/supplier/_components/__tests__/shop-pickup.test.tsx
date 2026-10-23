@@ -17,7 +17,12 @@ const { getPickupChat, getRiderApproach, listCalls } = vi.hoisted(() => ({
 vi.stubGlobal("React", React);
 
 vi.mock("@/lib/osrm", () => ({
-  fetchRoute: vi.fn(async () => ({ routed: false, distanceMetres: 800, durationSeconds: 0, coordinates: [] })),
+  fetchRoute: vi.fn(async () => ({
+    routed: false,
+    distanceMetres: 800,
+    durationSeconds: 0,
+    coordinates: [],
+  })),
 }));
 
 vi.mock("@/lib/api/supplier-pickup", () => ({
@@ -58,9 +63,34 @@ function order(patch: Partial<Order>): Order {
 }
 
 describe("ShopPickup", () => {
+  it("reports a failed first history load instead of claiming nobody wrote", async () => {
+    getPickupChat.mockRejectedValue(new Error("offline"));
+    render(
+      <ShopPickup
+        order={order({
+          state: "delivered",
+          pickupChat: { status: "read_only", riderFirstName: "Jun" },
+        })}
+        stopped={false}
+        onJobChanged={vi.fn()}
+      />,
+    );
+    expect(await screen.findByText(/Could not load your messages/)).toBeVisible();
+    expect(
+      screen.queryByText("Nobody wrote during this pickup."),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeVisible();
+  });
+
   it("keeps a delivered conversation read-only and offers no call", async () => {
     getPickupChat.mockResolvedValue({
-      chat: { status: "read_only", unread: 0, closesAt: null, retentionHours: 24, riderFirstName: "Jun" },
+      chat: {
+        status: "read_only",
+        unread: 0,
+        closesAt: null,
+        retentionHours: 24,
+        riderFirstName: "Jun",
+      },
       messages: [],
     });
     render(
@@ -73,7 +103,9 @@ describe("ShopPickup", () => {
         onJobChanged={vi.fn()}
       />,
     );
-    expect(await screen.findByText("Nobody wrote during this pickup.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Nobody wrote during this pickup."),
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText("Message Jun")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Call Jun/ })).not.toBeInTheDocument();
     expect(getRiderApproach).not.toHaveBeenCalled();
@@ -81,8 +113,22 @@ describe("ShopPickup", () => {
 
   it("lets an open pickup be written, and drops the approach when sharing stops", async () => {
     getPickupChat.mockResolvedValue({
-      chat: { status: "open", unread: 0, closesAt: null, retentionHours: 24, riderFirstName: "Jun" },
-      messages: [{ id: "m1", senderRole: "rider", body: "At the gate", createdAt: "2026-10-16T03:00:00.000Z", mine: false }],
+      chat: {
+        status: "open",
+        unread: 0,
+        closesAt: null,
+        retentionHours: 24,
+        riderFirstName: "Jun",
+      },
+      messages: [
+        {
+          id: "m1",
+          senderRole: "rider",
+          body: "At the gate",
+          createdAt: "2026-10-16T03:00:00.000Z",
+          mine: false,
+        },
+      ],
     });
     getRiderApproach.mockResolvedValue({ ping: null, shop: null, hidden: "picked_up" });
     listCalls.mockResolvedValue([]);
@@ -95,13 +141,19 @@ describe("ShopPickup", () => {
     );
     expect(await screen.findByText("At the gate")).toBeInTheDocument();
     expect(screen.getByLabelText("Message Jun")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Call Jun over the internet" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Call Jun over the internet" }),
+    ).toBeInTheDocument();
     expect(screen.queryByTestId("rider-approach")).not.toBeInTheDocument();
   });
 
   it("says a stale position is old, and a missing one has not been shared", async () => {
     getRiderApproach.mockResolvedValue({
-      ping: { lat: 7.08, lng: 125.61, at: new Date(Date.now() - 10 * 60_000).toISOString() },
+      ping: {
+        lat: 7.08,
+        lng: 125.61,
+        at: new Date(Date.now() - 10 * 60_000).toISOString(),
+      },
       shop: { lat: 7.07, lng: 125.61 },
       hidden: null,
     });
