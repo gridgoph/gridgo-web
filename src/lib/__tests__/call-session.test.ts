@@ -104,6 +104,35 @@ describe("browser call lifecycle", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("ends an acceptance that returns after the view was disposed", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const { session, api, track } = fixture();
+    let resolve!: (value: OrderCall) => void;
+    api.callAction.mockImplementationOnce(
+      () =>
+        new Promise((done) => {
+          resolve = done;
+        }),
+    );
+    session.receive(call({ mine: false }));
+    const accepting = session.accept();
+    session.dispose();
+    resolve(
+      call({
+        mine: false,
+        state: "accepted",
+        leaseExpiresAt: new Date(NOW + 90000).toISOString(),
+      }),
+    );
+    await accepting;
+    expect(session.current.phase).toBe("ended");
+    expect(session.isFinished).toBe(true);
+    expect(track.stop).not.toHaveBeenCalled();
+    expect(api.callAction).toHaveBeenLastCalledWith("ord_1", "call_1", "end");
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("stops at the server lease even while a state poll is still pending", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);

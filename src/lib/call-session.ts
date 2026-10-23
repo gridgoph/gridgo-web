@@ -150,6 +150,7 @@ export class CallSession {
   }
 
   async startOutgoing(retried = false): Promise<void> {
+    if (this.finished || this.aborted) return;
     this.set({ phase: "calling" });
     let call: OrderCall;
     try {
@@ -210,7 +211,14 @@ export class CallSession {
     if (!call || this.snapshot.phase !== "incoming") return;
     this.set({ phase: "connecting" });
     try {
-      this.adopt(await this.deps.api.callAction(call.orderId, call.id, "accept"));
+      const accepted = await this.deps.api.callAction(call.orderId, call.id, "accept");
+      if (this.finished || this.aborted) {
+        if (!isTerminal(accepted.state)) {
+          await this.deps.api.callAction(call.orderId, call.id, "end").catch(() => undefined);
+        }
+        return;
+      }
+      this.adopt(accepted);
     } catch (error) {
       return this.settleAfterRefusal(error);
     }
