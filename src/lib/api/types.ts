@@ -1018,6 +1018,12 @@ export type Order = {
   clientId: string;
   supplierId: string | null;
   riderId: string | null;
+  /**
+   * The shop's conversation with the rider collecting this job, when GRIDGO
+   * has opened one. Absent means there is no conversation. Read through
+   * `pickupChatOf` in `src/lib/pickup-chat.ts`.
+   */
+  pickupChat?: unknown;
   state: string;
   productId?: string | null;
   title: string;
@@ -1038,14 +1044,12 @@ export type Order = {
   // Money. Every field is PHP minor units.
   // Server-side projection decides which of these a caller receives:
   // supplier price is hidden from the client; commission is Ops / Super Admin only.
-  /** Supplier's own asking price. Ops / Super Admin and the assigned supplier. */
-  /**
-   * What the shop is paid for the work. The API has always called it this;
-   * `supplierPriceMinor` was the quote-era name and appears nowhere in it, so a
-   * screen reading that field read undefined on every order.
-   */
+  /** Shop's agreed price. Ops / Super Admin and the assigned shop only. */
   supplierSubtotalMinor?: number;
+  /** API alias for the same shop price. */
   supplierPriceMinor?: number;
+  /** API's net earnings after deductions or settlement; Ops / Super Admin and the assigned shop. */
+  supplierEarningsMinor?: number;
   /**
    * The date the client was promised. The shop's own date is deliberately
    * absent from every client-facing payload, and Operations reads this one.
@@ -1191,7 +1195,7 @@ export type Order = {
    */
   payoutPlanVersion?: PayoutPlanVersion | number | null;
   payoutMilestones?: PayoutMilestone[];
-  /** Ops / Super Admin only. The API's own released-versus-outstanding roll-up. */
+  /** Ops / Super Admin and the assigned shop. The API's released-versus-outstanding roll-up. */
   supplierSettlement?: SupplierSettlement;
   /**
    * Client refunds (`gridgo-api/docs/REFUNDS_API.md`). `refundHold`: an active

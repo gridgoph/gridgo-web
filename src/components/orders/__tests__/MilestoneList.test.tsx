@@ -99,7 +99,7 @@ describe("MilestoneList", () => {
 
   it("explains itself when the order has no milestones yet", () => {
     render(<MilestoneList order={order([])} />);
-    expect(screen.getByText(/set up when the supplier accepts/i)).toBeInTheDocument();
+    expect(screen.getByText(/appear once the shop accepts the job/i)).toBeInTheDocument();
   });
 });
 

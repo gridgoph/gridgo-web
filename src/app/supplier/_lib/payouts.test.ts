@@ -5,8 +5,14 @@ import {
   formatMoneyOrUnavailable,
   isPayoutRelevant,
   presentSettlement,
+  releaseMonths,
+  releaseLines,
+  settlementContrast,
+  shopEarnings,
+  unreleasedMinor,
 } from "./payouts";
-import type { Issue, Order, PayoutMilestone } from "@/lib/api/types";
+import { shopProofNotStarted } from "@/lib/payout-plan";
+import type { Issue, Order, OrderChangeRequest, PayoutMilestone } from "@/lib/api/types";
 import { escrowStages, released } from "@/test/payout-plans";
 
 /** The four milestones as the server sends them to a supplier. */
@@ -244,8 +250,311 @@ describe("presentSettlement on an escrow-plan order", () => {
 
   it("keeps the legacy copy on a four-stage order", () => {
     expect(
-      presentSettlement({ state: "production", payoutHold: false, payoutMilestones: milestones() })
-        .detail,
-    ).toBe("Upload a Proof of Fulfilment for printing, and Operations can release the first 50%.");
+      presentSettlement({
+        state: "production",
+        payoutHold: false,
+        payoutMilestones: milestones(),
+      }).detail,
+    ).toBe(
+      "Upload a Proof of Fulfilment for printing, and Operations can release the first 50%.",
+    );
+  });
+});
+
+describe("shop earnings ledger", () => {
+  it("keeps a replaced share out of what is owed, and counts the settlement once", () => {
+    const order = job({
+      id: "s1",
+      state: "cancelled",
+      totalMinor: 100000,
+      supplierSubtotalMinor: 100000,
+      payoutHold: false,
+      payoutMilestones: [
+        {
+          code: "printing",
+          sharePercent: 50,
+          amountMinor: 50000,
+          status: "superseded",
+          pofFileIds: [],
+        },
+        {
+          code: "delivered",
+          sharePercent: 25,
+          amountMinor: 20000,
+          status: "released",
+          pofFileIds: [],
+          releasedAt: "2026-08-31T15:00:00.000Z",
+        },
+      ],
+      supplierSettlement: { totalSupplierEarningsMinor: 50000 },
+      supplierSettlementPayouts: [
+        {
+          id: "pay_1",
+          settlementId: "set_1",
+          orderId: "s1",
+          supplierId: "user_supplier",
+          amountMinor: 30000,
+          status: "pending",
+          reference: null,
+          receiptFileId: null,
+          releasedAt: null,
+          releasedBy: null,
+          createdAt: "2026-09-01T00:00:00.000Z",
+          code: "refund_settlement",
+          label: "Agreed refund settlement payout",
+          releaseRequires: "operations",
+        },
+      ],
+    });
+    const split = shopEarnings(order);
+    expect(split.supersededMinor).toBe(50000);
+    expect(split.totalMinor).toBe(50000);
+    expect(split.releasedMinor).toBe(20000);
+    expect(unreleasedMinor(split)).toBe(30000);
+    expect(split.awaitingReleaseMinor).toBe(30000);
+    const contrast = settlementContrast(order, split);
+    expect(contrast.replaced).toBe(true);
+    expect(contrast.agreedMinor).toBe(50000);
+    expect(contrast.originalMinor).toBe(100000);
+    expect(contrast.agreedMinor).not.toBe(
+      contrast.originalMinor! + split.supersededMinor,
+    );
+  });
+
+  it("does not invent a settlement from net deductions or missing milestone amounts", () => {
+    for (const payoutMilestones of [
+      [],
+      [
+        {
+          code: "printing",
+          sharePercent: 50,
+          amountMinor: 9500,
+          productionDeductionMinor: 500,
+          status: "released" as const,
+          pofFileIds: [],
+        },
+      ],
+    ]) {
+      const order = job({
+        id: "ordinary",
+        state: "production",
+        totalMinor: 10000,
+        supplierSubtotalMinor: 10000,
+        supplierSettlement: { totalSupplierEarningsMinor: 9500 },
+        payoutMilestones,
+      });
+      expect(settlementContrast(order, shopEarnings(order)).replaced).toBe(false);
+    }
+  });
+
+  it("uses the API's net earnings without presenting the gross price as what is earned", () => {
+    const order = job({
+      id: "net",
+      state: "production",
+      totalMinor: 11000,
+      supplierPriceMinor: 10000,
+      supplierEarningsMinor: 9500,
+    });
+    expect(buildPayoutRows([order])[0].earnsMinor).toBe(9500);
+  });
+
+  it("keeps an unreached legacy packaging stage out of evidence owed now", () => {
+    const order = job({
+      id: "legacy",
+      state: "production",
+      totalMinor: 100000,
+      payoutPlanVersion: 1,
+      payoutMilestones: milestones(),
+    });
+    expect(shopProofNotStarted(order, order.payoutMilestones![1]!)).toBe(true);
+    expect(
+      shopProofNotStarted(order, { ...order.payoutMilestones![1]!, status: "pending" }),
+    ).toBe(true);
+    expect(shopEarnings(order).needsProofMinor).toBe(50000);
+    expect(shopEarnings(order).laterMinor).toBe(50000);
+  });
+
+  it("uses the plain-language stage name on an older released transfer", () => {
+    const order = job({
+      id: "legacy-release",
+      state: "completed",
+      totalMinor: 100000,
+      payoutMilestones: milestones({ packaging_qc: "released" }).map((m) => ({
+        ...m,
+        releasedAt: "2026-09-01T00:00:00Z",
+      })),
+    });
+    expect(releaseLines([order])[0].label).toBe("Packaging");
+  });
+
+  it.each([1, 2])("counts applied change extras once on payout plan %i", (version) => {
+    const change = (
+      status: "pending" | "released" | "superseded",
+      amountMinor: number,
+    ): OrderChangeRequest => ({
+      id: "change_" + status,
+      lineItemId: null,
+      status: "applied",
+      version: 4,
+      reason: "Agreed finish",
+      proposedSpec: "Stapled",
+      createdAt: "2026-09-01T00:00:00Z",
+      extraPrincipalMinor: amountMinor,
+      payout: { status, amountMinor },
+    });
+    const order = job({
+      id: "extra",
+      state: "production",
+      totalMinor: 100000,
+      payoutPlanVersion: version,
+      payoutMilestones: version === 1 ? milestones() : escrowStages(),
+      changeRequests: [change("pending", 2000), change("superseded", 900)],
+    });
+    expect(shopEarnings(order).totalMinor).toBe(102000);
+    const noExtras = { ...order, changeRequests: [] };
+    expect(shopEarnings(order).laterMinor - shopEarnings(noExtras).laterMinor).toBe(2000);
+    expect(shopEarnings({ ...order, payoutHold: true }).heldMinor).toBe(102000);
+    expect(shopEarnings({ ...order, refundHold: true }).pausedMinor).toBe(102000);
+    const completed = { ...order, state: "completed" };
+    expect(
+      shopEarnings(completed).awaitingReleaseMinor -
+        shopEarnings({ ...completed, changeRequests: [] }).awaitingReleaseMinor,
+    ).toBe(2000);
+    const paid = {
+      ...completed,
+      payoutMilestones: order.payoutMilestones!.map((m) => ({
+        ...m,
+        status: "released" as const,
+        releasedAt: "2026-09-01T00:00:00Z",
+        reference: "COMBINED",
+        receiptFileId: "receipt",
+      })),
+      changeRequests: [change("released", 2000), change("superseded", 900)],
+    };
+    expect(shopEarnings(paid).releasedMinor).toBe(102000);
+    const lines = releaseLines([paid]);
+    expect(lines.reduce((total, line) => total + line.amountMinor, 0)).toBe(102000);
+    const final = lines.find((line) =>
+      line.key.endsWith(version === 1 ? "retention" : "issue_window"),
+    )!;
+    expect(final.amountMinor).toBe((version === 1 ? 10000 : 25000) + 2000);
+    expect(final.label).toMatch(/including changes/);
+    expect(final.receiptFileId).toBe("receipt");
+    expect(releaseMonths(lines)[0].totalMinor).toBe(102000);
+  });
+
+  it("retains a cancelled refund job whose agreed amount was already released", () => {
+    const order = job({
+      id: "settled-paid",
+      state: "cancelled",
+      totalMinor: 100000,
+      payoutMilestones: milestones({
+        printing: "released",
+        packaging_qc: "superseded",
+        delivered: "superseded",
+        retention: "superseded",
+      }),
+      supplierSettlementPayouts: [],
+    });
+    expect(buildPayoutRows([order])).toHaveLength(1);
+    expect(shopEarnings(order).totalMinor).toBe(50000);
+    expect(shopEarnings(order).releasedMinor).toBe(50000);
+    expect(unreleasedMinor(shopEarnings(order))).toBe(0);
+  });
+
+  it("puts shop proof that can be filed now apart from a stage the job has not reached", () => {
+    const producing = shopEarnings(
+      job({
+        id: "p",
+        state: "production",
+        totalMinor: 100000,
+        payoutPlanVersion: 2,
+        payoutMilestones: escrowStages(),
+      }),
+    );
+    expect(producing.needsProofMinor).toBeGreaterThan(0);
+    expect(producing.laterMinor).toBeGreaterThan(0);
+    const waiting = job({
+      id: "w",
+      state: "accepted",
+      totalMinor: 100000,
+      payoutMilestones: milestones(),
+    });
+    expect(shopEarnings(waiting).needsProofMinor).toBe(0);
+    expect(shopEarnings(waiting).laterMinor).toBe(100000);
+    expect(shopProofNotStarted(waiting, waiting.payoutMilestones![0]!)).toBe(true);
+  });
+
+  it("says a late deduction beside the net amount and does not subtract it again", () => {
+    const split = shopEarnings(
+      job({
+        id: "late",
+        state: "production",
+        totalMinor: 10000,
+        payoutMilestones: [
+          {
+            code: "printing",
+            sharePercent: 50,
+            amountMinor: 9500,
+            productionDeductionMinor: 500,
+            status: "released",
+            pofFileIds: [],
+            releasedAt: "2026-08-31T16:30:00.000Z",
+            reference: "GCASH-1",
+            receiptFileId: "file_receipt",
+          },
+        ],
+      }),
+    );
+    expect(split.releasedMinor).toBe(9500);
+    expect(split.lateDeductionMinor).toBe(500);
+    const [line] = releaseLines([
+      job({
+        id: "late",
+        state: "production",
+        totalMinor: 10000,
+        title: "Banners",
+        payoutMilestones: [
+          {
+            code: "printing",
+            sharePercent: 50,
+            amountMinor: 9500,
+            status: "released",
+            pofFileIds: [],
+            releasedAt: "2026-08-31T16:30:00.000Z",
+            reference: "GCASH-1",
+            receiptFileId: "file_receipt",
+          },
+        ],
+      }),
+    ]);
+    expect(line.reference).toBe("GCASH-1");
+    expect(line.receiptFileId).toBe("file_receipt");
+    expect(releaseMonths([line])[0]).toMatchObject({ key: "2026-09", totalMinor: 9500 });
+  });
+
+  it("buckets a claim hold and a refund pause, and leaves a superseded share unpaid", () => {
+    const held = shopEarnings(
+      job({
+        id: "h",
+        state: "production",
+        totalMinor: 1000,
+        payoutHold: true,
+        payoutMilestones: milestones(),
+      }),
+    );
+    expect(held.heldMinor).toBe(100000);
+    expect(held.needsProofMinor).toBe(0);
+    const paused = shopEarnings(
+      job({
+        id: "r",
+        state: "production",
+        totalMinor: 1000,
+        refundHold: true,
+        payoutMilestones: milestones(),
+      }),
+    );
+    expect(paused.pausedMinor).toBe(100000);
+    expect(paused.heldMinor).toBe(0);
   });
 });
