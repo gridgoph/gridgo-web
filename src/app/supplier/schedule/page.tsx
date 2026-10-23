@@ -10,6 +10,8 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import {
   buildScheduleEntries,
+  scheduleDateIso,
+  scheduleToday,
   dayContaining,
   dayKeyFromDate,
   eachDayInRange,
@@ -24,11 +26,11 @@ import {
 } from "@/app/supplier/_lib/schedule";
 import {
   closureBanner,
-  dailyCapacity,
   dayFace,
   monthCellLabel,
   selectedDayEmpty,
 } from "@/app/supplier/_lib/month-board";
+import { sumDeclaredCapacity } from "@/app/supplier/_lib/capacity";
 import { Button } from "@/components/ui/button";
 import { describeQuantity } from "@/lib/quantity";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -37,9 +39,13 @@ import { SkeletonCards } from "@/components/ui/loading";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { ApiError, getMyShopHours, listJobs, listSupplierServices } from "@/lib/api/client";
+import {
+  ApiError,
+  getMyShopHours,
+  listJobs,
+  listSupplierServices,
+} from "@/lib/api/client";
 import type { Order, ShopHours, SupplierService } from "@/lib/api/types";
-import { formatDateTime } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
 
 function useIsNarrow(breakpoint = 768): boolean {
@@ -69,7 +75,9 @@ function DayQuiet({
   return (
     <div className="flex flex-col gap-1">
       {banner ? <p className="text-caption text-text-secondary m-0">{banner}</p> : null}
-      {face === "not-working" ? <p className="text-caption text-text-secondary m-0">Not a working day</p> : null}
+      {face === "not-working" ? (
+        <p className="text-caption text-text-secondary m-0">Not a working day</p>
+      ) : null}
       {empty ? <p className="text-caption text-text-muted m-0">{empty}</p> : null}
     </div>
   );
@@ -104,10 +112,23 @@ function MonthBoard({
 }) {
   const selectedKey = dayKeyFromDate(anchor);
   const selectedEntries = byDay.get(selectedKey) ?? [];
-  const selectedFace = dayFace(anchor, hours, selectedEntries.length);
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-7 gap-1" role="grid" aria-label="Month schedule">
+      <div
+        className="grid grid-cols-7 gap-1"
+        role="group"
+        aria-label="Month schedule"
+        aria-busy={pending || undefined}
+      >
+        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+          <span
+            key={day}
+            className="text-caption text-text-secondary text-center"
+            aria-hidden
+          >
+            {day}
+          </span>
+        ))}
         {monthCells(anchor).map(({ date, inMonth }) => {
           const key = dayKeyFromDate(date);
           const count = byDay.get(key)?.length ?? 0;
@@ -117,31 +138,41 @@ function MonthBoard({
             <button
               key={key}
               type="button"
-              role="gridcell"
               aria-pressed={key === selectedKey}
-              aria-label={`${date.getDate()}: ${label}`}
+              aria-label={`${new Intl.DateTimeFormat("en-PH", { weekday: "long", year: "numeric", month: "long", day: "numeric" }).format(date)}: ${pending ? "Loading jobs" : label}${!pending && count ? `, ${count} job${count === 1 ? "" : "s"} due` : ""}`}
               disabled={!inMonth}
-              className="flex min-h-11 flex-col items-start rounded-field border border-outline-subtle px-1 py-1 text-left disabled:opacity-40"
+              className="flex min-h-11 min-w-0 cursor-pointer flex-col items-start rounded-field border border-outline-subtle px-1 py-1 text-left hover:bg-surface-variant focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground aria-pressed:border-outline aria-pressed:bg-surface-variant disabled:cursor-default disabled:opacity-40"
               onClick={() => onSelect(date)}
             >
               <span className="text-caption text-text-primary">{date.getDate()}</span>
-              {inMonth ? <span className="text-caption text-text-muted">{label}</span> : null}
+              {inMonth ? (
+                <span className="text-caption text-text-muted break-words">
+                  {pending ? "Loading jobs" : label}
+                  {!pending && count ? ` · ${count}` : ""}
+                </span>
+              ) : null}
             </button>
           );
         })}
       </div>
       <section className="flex flex-col gap-2" aria-label="Selected day">
         <h2 className="text-h3 text-text-primary m-0">
-          {new Intl.DateTimeFormat("en-PH", { weekday: "long", day: "numeric", month: "short" }).format(anchor)}
+          {new Intl.DateTimeFormat("en-PH", {
+            weekday: "long",
+            day: "numeric",
+            month: "short",
+          }).format(anchor)}
         </h2>
-        {closureBanner(selectedFace) ? (
-          <p className="text-caption text-text-secondary m-0">{closureBanner(selectedFace)}</p>
+        {capacity != null ? (
+          <p className="text-caption text-text-secondary m-0">
+            Declared daily capacity: {capacity.toLocaleString("en-PH")} units across live
+            service lines. This is not remaining capacity.
+          </p>
         ) : null}
-        {capacity != null && selectedEntries.length > 0 ? (
-          <p className="text-caption text-text-secondary m-0">Daily capacity {capacity} units</p>
+        {!pending ? (
+          <DayQuiet day={anchor} hours={hours} jobCount={selectedEntries.length} />
         ) : null}
         {pending ? <SkeletonCards count={1} lines={1} label="Loading jobs due" /> : null}
-        {!pending && selectedEntries.length === 0 ? <DayQuiet day={anchor} hours={hours} jobCount={0} /> : null}
         {selectedEntries.map((entry) => (
           <JobCard key={entry.job.id} entry={entry} />
         ))}
@@ -152,6 +183,7 @@ function MonthBoard({
 
 function JobCard({ entry }: { entry: ScheduleEntry }) {
   const status = presentOrderState(entry.job.state);
+  const readyBy = scheduleDateIso(entry.job);
   return (
     <Link
       href={`/supplier/jobs/${entry.job.id}`}
@@ -167,7 +199,9 @@ function JobCard({ entry }: { entry: ScheduleEntry }) {
       <div className="flex flex-wrap items-center gap-2">
         <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
         <span className="text-caption text-text-muted">
-          Due {formatDateTime(entry.job.deadline || entry.job.promisedDate)}
+          {readyBy
+            ? `Ready by ${new Intl.DateTimeFormat("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" }).format(new Date(readyBy))} (Manila)`
+            : "Ready-by date not recorded"}
         </span>
       </div>
       <p className="text-caption text-text-secondary m-0">
@@ -184,8 +218,9 @@ export default function SupplierSchedulePage() {
   const [services, setServices] = useState<SupplierService[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [feedErrors, setFeedErrors] = useState<string[]>([]);
   const [mode, setMode] = useState<ScheduleViewMode>("week");
-  const [anchor, setAnchor] = useState(() => new Date());
+  const [anchor, setAnchor] = useState(() => scheduleToday());
   const isNarrow = useIsNarrow(768);
 
   const load = useSerializedLoad(
@@ -193,16 +228,26 @@ export default function SupplierSchedulePage() {
       setLoading(true);
       setError(null);
       try {
-        const [nextJobs, nextHours, nextServices] = await Promise.all([
+        const [nextJobs, nextHours, nextServices] = await Promise.allSettled([
           listJobs(),
-          getMyShopHours().catch(() => null),
-          listSupplierServices().catch(() => []),
+          getMyShopHours(),
+          listSupplierServices(),
         ]);
-        setJobs(nextJobs);
-        setHours(nextHours);
-        setServices(nextServices);
+        const failed: string[] = [];
+        if (nextHours.status === "fulfilled") setHours(nextHours.value);
+        else
+          failed.push(
+            "Opening hours and closures could not be refreshed. Any previously loaded hours are still shown.",
+          );
+        if (nextServices.status === "fulfilled") setServices(nextServices.value);
+        else
+          failed.push(
+            "Declared capacity could not be refreshed. Any previously loaded capacity is still shown.",
+          );
+        setFeedErrors(failed);
+        if (nextJobs.status === "rejected") throw nextJobs.reason;
+        setJobs(nextJobs.value);
       } catch (err) {
-        setJobs(null);
         if (err instanceof ApiError) {
           setError(
             err.status === 403
@@ -210,9 +255,7 @@ export default function SupplierSchedulePage() {
               : `Could not load schedule (${err.code}).`,
           );
         } else {
-          setError(
-            "Network error loading schedule. Confirm the demo API is running, then retry.",
-          );
+          setError("Could not load your schedule. Check your connection and try again.");
         }
       } finally {
         setLoading(false);
@@ -228,7 +271,11 @@ export default function SupplierSchedulePage() {
 
   const range = useMemo(
     () =>
-      mode === "day" ? dayContaining(anchor) : mode === "week" ? weekContaining(anchor) : monthContaining(anchor),
+      mode === "day"
+        ? dayContaining(anchor)
+        : mode === "week"
+          ? weekContaining(anchor)
+          : monthContaining(anchor),
     [mode, anchor],
   );
 
@@ -238,11 +285,11 @@ export default function SupplierSchedulePage() {
 
   const byDay = useMemo(() => groupEntriesByDay(visible), [visible]);
   const days = useMemo(() => eachDayInRange(range), [range]);
-  const todayKey = dayKeyFromDate(new Date());
+  const todayKey = dayKeyFromDate(scheduleToday());
 
   const pending = loading && !jobs;
 
-  if (!pending && (error || !jobs)) {
+  if (!pending && !jobs) {
     return (
       <ErrorState
         body={error ?? "Could not load schedule."}
@@ -259,14 +306,48 @@ export default function SupplierSchedulePage() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Accepted jobs by promised date. Open any entry for the existing job workspace —
-          this view never creates a parallel record.
+          Accepted jobs by your ready-by date, in Manila time. Open a job to see its next
+          step.
         </p>
         <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
         </Button>
       </div>
 
+      {hours?.temporarilyClosed ? (
+        <p className="text-body text-text-secondary m-0">
+          Temporarily closed to new work. Existing commitments remain on this schedule.{" "}
+          <Link className="underline" href="/supplier/shop-hours">
+            Shop hours
+          </Link>
+        </p>
+      ) : null}
+      {hours?.calendarAvailable === false ? (
+        <p className="text-body text-text-secondary m-0">
+          Your saved hours could not be read.{" "}
+          <Link className="underline" href="/supplier/shop-hours">
+            Set your shop hours
+          </Link>
+          .
+        </p>
+      ) : null}
+      {error || feedErrors.length ? (
+        <div role="alert" className="gg-panel flex flex-col gap-1">
+          {error ? (
+            <p className="text-body m-0">
+              Could not refresh jobs. Your last loaded schedule is still shown.
+            </p>
+          ) : null}
+          {feedErrors.map((message) => (
+            <p key={message} className="text-body m-0">
+              {message}
+            </p>
+          ))}
+          <Button variant="secondary" disabled={loading} onClick={() => void load()}>
+            Retry schedule
+          </Button>
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <ToggleGroup
           value={[mode]}
@@ -286,10 +367,21 @@ export default function SupplierSchedulePage() {
         <Button
           variant="secondary"
           size="icon"
-          aria-label={mode === "day" ? "Previous day" : mode === "week" ? "Previous week" : "Previous month"}
+          aria-label={
+            mode === "day"
+              ? "Previous day"
+              : mode === "week"
+                ? "Previous week"
+                : "Previous month"
+          }
           onClick={() =>
             setAnchor((a) => {
-              const r = mode === "day" ? dayContaining(a) : mode === "week" ? weekContaining(a) : monthContaining(a);
+              const r =
+                mode === "day"
+                  ? dayContaining(a)
+                  : mode === "week"
+                    ? weekContaining(a)
+                    : monthContaining(a);
               return shiftRange(r, mode, -1).start;
             })
           }
@@ -299,10 +391,17 @@ export default function SupplierSchedulePage() {
         <Button
           variant="secondary"
           size="icon"
-          aria-label={mode === "day" ? "Next day" : mode === "week" ? "Next week" : "Next month"}
+          aria-label={
+            mode === "day" ? "Next day" : mode === "week" ? "Next week" : "Next month"
+          }
           onClick={() =>
             setAnchor((a) => {
-              const r = mode === "day" ? dayContaining(a) : mode === "week" ? weekContaining(a) : monthContaining(a);
+              const r =
+                mode === "day"
+                  ? dayContaining(a)
+                  : mode === "week"
+                    ? weekContaining(a)
+                    : monthContaining(a);
               return shiftRange(r, mode, 1).start;
             })
           }
@@ -323,7 +422,7 @@ export default function SupplierSchedulePage() {
         <Button
           variant="secondary"
           onClick={() => {
-            setAnchor(new Date());
+            setAnchor(scheduleToday());
           }}
         >
           Today
@@ -333,7 +432,7 @@ export default function SupplierSchedulePage() {
       {!pending && !entries.length && mode !== "month" ? (
         <EmptyState
           title="Nothing on the production schedule"
-          body="When you accept jobs, their promised dates appear here as a week grid on larger screens, or a chronological agenda on phones."
+          body="When you accept jobs, their ready-by dates appear here as a week grid on larger screens, or a chronological agenda on phones."
           action={
             <Button
               variant="secondary"
@@ -348,7 +447,7 @@ export default function SupplierSchedulePage() {
         <MonthBoard
           anchor={anchor}
           hours={hours}
-          capacity={dailyCapacity(services)}
+          capacity={sumDeclaredCapacity(services).daily}
           byDay={byDay}
           pending={pending}
           onSelect={setAnchor}
@@ -421,7 +520,6 @@ export default function SupplierSchedulePage() {
             return (
               <div
                 key={key}
-                role="gridcell"
                 className={`gg-card flex min-h-[12rem] flex-col gap-2 ${
                   isToday ? "ring-1 ring-outline" : ""
                 }`}
@@ -445,13 +543,28 @@ export default function SupplierSchedulePage() {
                       <JobCard key={entry.job.id} entry={entry} />
                     ))
                   )}
-                  {!pending && !dayEntries.length ? <DayQuiet day={day} hours={hours} jobCount={0} /> : null}
+                  {!pending && !dayEntries.length ? (
+                    <DayQuiet day={day} hours={hours} jobCount={0} />
+                  ) : null}
                 </div>
               </div>
             );
           })}
         </div>
       )}
+      {!pending && entries.some((entry) => !entry.dayKey) ? (
+        <section
+          className="flex flex-col gap-2"
+          aria-label="Jobs without a ready-by date"
+        >
+          <h2 className="text-h3 text-text-primary m-0">Ready-by date not recorded</h2>
+          {entries
+            .filter((entry) => !entry.dayKey)
+            .map((entry) => (
+              <JobCard key={entry.job.id} entry={entry} />
+            ))}
+        </section>
+      ) : null}
     </div>
   );
 }

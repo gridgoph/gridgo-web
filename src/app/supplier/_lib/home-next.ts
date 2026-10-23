@@ -1,5 +1,11 @@
 import type { Order } from "@/lib/api/types";
-import { primaryAction, type SupplierActionKind } from "@/lib/supplier-actions";
+import {
+  primaryAction,
+  shopLetJobGo,
+  shopWorkStopped,
+  supplierWaitingOn,
+  type SupplierActionKind,
+} from "@/lib/supplier-actions";
 import { shopRelease } from "@/lib/supplier-recovery";
 
 export type NextObligation = {
@@ -16,23 +22,51 @@ const DECIDE: SupplierActionKind[] = ["accept", "decline"];
 export function nextObligations(jobs: Order[], now: Date = new Date()): NextObligation[] {
   const rows: NextObligation[] = [];
   for (const job of jobs) {
-    if (shopRelease(job)) continue;
+    if (shopRelease(job) || shopLetJobGo(job) || shopWorkStopped(job, now)) continue;
     const href = `/supplier/jobs/${job.id}`;
     const action = primaryAction(job, now);
+    if (action?.blockedReason) continue;
     if (action?.kind === "add_proof") {
-      rows.push({ id: `${job.id}:proof`, title: job.title, detail: action.label, href, rank: 0 });
+      rows.push({
+        id: `${job.id}:proof`,
+        title: job.title,
+        detail: action.label,
+        href,
+        rank: 0,
+      });
       continue;
     }
     if (action && DECIDE.includes(action.kind)) {
-      rows.push({ id: `${job.id}:decide`, title: job.title, detail: action.label, href, rank: 1 });
+      rows.push({
+        id: `${job.id}:decide`,
+        title: job.title,
+        detail: action.label,
+        href,
+        rank: 1,
+      });
       continue;
     }
     if (action) {
-      rows.push({ id: `${job.id}:produce`, title: job.title, detail: action.label, href, rank: 2 });
+      rows.push({
+        id: `${job.id}:produce`,
+        title: job.title,
+        detail: action.label,
+        href,
+        rank: 2,
+      });
       continue;
     }
-    if (job.state === "ready_for_dispatch" || job.state === "rider_assigned") {
-      rows.push({ id: `${job.id}:pickup`, title: job.title, detail: "Keep it packed for pickup", href, rank: 3 });
+    if (
+      (job.state === "ready_for_dispatch" || job.state === "rider_assigned") &&
+      job.pickupChecklist?.status !== "failed_escalated"
+    ) {
+      rows.push({
+        id: `${job.id}:pickup`,
+        title: job.title,
+        detail: supplierWaitingOn(job.state, job) ?? "Prepare for pickup",
+        href,
+        rank: 3,
+      });
     }
   }
   return rows.sort((a, b) => a.rank - b.rank || a.title.localeCompare(b.title));
@@ -71,7 +105,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function stepsOf(raw: unknown): { message: string; action: string }[] {
   if (!Array.isArray(raw)) return [];
   return raw.flatMap((row) => {
-    if (!isRecord(row) || typeof row.message !== "string" || typeof row.action !== "string") return [];
+    if (
+      !isRecord(row) ||
+      typeof row.message !== "string" ||
+      typeof row.action !== "string"
+    )
+      return [];
     return [{ message: row.message, action: row.action }];
   });
 }
@@ -81,10 +120,7 @@ export function nextSetupStep(body: unknown): SetupStep | null {
   if (!isRecord(body)) return null;
   const operational = isRecord(body.operational) ? body.operational : null;
   const profile = isRecord(body.profileCompletion) ? body.profileCompletion : null;
-  const steps = [
-    ...stepsOf(operational?.missing),
-    ...stepsOf(profile?.missing),
-  ];
+  const steps = [...stepsOf(operational?.missing), ...stepsOf(profile?.missing)];
   for (const step of steps) {
     const href = setupHref(step.action);
     if (href) return { message: step.message, href };

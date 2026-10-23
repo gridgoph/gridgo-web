@@ -28,10 +28,15 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import { StatCard } from "@/components/ui/StatCard";
-import { nextObligations, nextSetupStep, shopIsReady } from "@/app/supplier/_lib/home-next";
+import {
+  nextObligations,
+  nextSetupStep,
+  shopIsReady,
+} from "@/app/supplier/_lib/home-next";
 import { ApiError, getSupplierReadiness, listJobs } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
+import { useAcceptDeadlines } from "@/lib/use-accept-clock";
 import { formatPhp } from "@/lib/format";
 
 import {
@@ -74,7 +79,10 @@ function NextPanel({
   if (!obligations.length && !setup) return null;
   return (
     <section className="flex flex-col gap-2" aria-label="Next">
-      <h2 className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+      <h2
+        className="text-body text-text-primary m-0"
+        style={{ fontFamily: "var(--font-medium)" }}
+      >
         Next
       </h2>
       {setup ? (
@@ -118,30 +126,30 @@ export default function SupplierDashboardPage() {
   const [readiness, setReadiness] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [readinessError, setReadinessError] = useState(false);
 
   const load = useSerializedLoad(
     useCallback(async () => {
       setLoading(true);
       setError(null);
       try {
-        const [nextJobs, nextReadiness] = await Promise.all([
+        const [nextJobs, nextReadiness] = await Promise.allSettled([
           listJobs(),
-          getSupplierReadiness().catch(() => null),
+          getSupplierReadiness(),
         ]);
-        setJobs(nextJobs);
-        setReadiness(nextReadiness);
+        setReadinessError(nextReadiness.status === "rejected");
+        if (nextReadiness.status === "fulfilled") setReadiness(nextReadiness.value);
+        if (nextJobs.status === "rejected") throw nextJobs.reason;
+        setJobs(nextJobs.value);
       } catch (err) {
-        setJobs(null);
         if (err instanceof ApiError) {
           setError(
             err.status === 403
               ? "This dashboard is only available to supplier accounts."
-              : `Could not load your jobs (${err.code}). Check the API and try again.`,
+              : `Could not load your jobs (${err.code}). Try again.`,
           );
         } else {
-          setError(
-            "Network error loading your jobs. Confirm the demo API is running, then retry.",
-          );
+          setError("Could not load your jobs. Check your connection and try again.");
         }
       } finally {
         setLoading(false);
@@ -156,8 +164,12 @@ export default function SupplierDashboardPage() {
   }, [load]);
 
   const rows = useMemo(() => jobs ?? [], [jobs]);
-  const obligations = useMemo(() => nextObligations(rows), [rows]);
-  const setup = useMemo(() => (shopIsReady(readiness) ? null : nextSetupStep(readiness)), [readiness]);
+  const now = useAcceptDeadlines(rows);
+  const obligations = useMemo(() => nextObligations(rows, now), [rows, now]);
+  const setup = useMemo(
+    () => (shopIsReady(readiness) ? null : nextSetupStep(readiness)),
+    [readiness],
+  );
   const weeks = useMemo(() => finishedByWeek(rows, WEEKS), [rows]);
   const stages = useMemo(() => stageCounts(rows), [rows]);
   const onTime = useMemo(() => onTimeSummary(rows), [rows]);
@@ -168,7 +180,7 @@ export default function SupplierDashboardPage() {
   const finishedThisWeek = thisWeek?.earningsMinor ?? 0;
   const anyFinished = weeks.some((week) => week.jobs > 0);
 
-  if (error) {
+  if (error && !jobs) {
     return (
       <ErrorState
         body={error}
@@ -185,10 +197,34 @@ export default function SupplierDashboardPage() {
     return <LoadingBlock label="Loading your shop's figures" />;
   }
 
+  const refresh = (
+    <div className="flex flex-col gap-2">
+      {error || readinessError ? (
+        <p role="alert" className="text-body text-text-secondary m-0">
+          {error
+            ? "Could not refresh jobs. Your last loaded figures are still shown. "
+            : ""}
+          {readinessError
+            ? "Shop readiness could not be refreshed. Any previously loaded setup step is still shown."
+            : ""}
+        </p>
+      ) : null}
+      <Button
+        className="self-start"
+        variant="secondary"
+        disabled={loading}
+        onClick={() => void load()}
+      >
+        Refresh dashboard
+      </Button>
+    </div>
+  );
+
   if (!rows.length) {
     return (
       <div className="flex flex-col gap-4">
         <PhoneAppInvite />
+        {refresh}
         <NextPanel obligations={obligations} setup={setup} />
         <EmptyState
           title="Nothing to measure yet"
@@ -206,6 +242,7 @@ export default function SupplierDashboardPage() {
   return (
     <div className="flex flex-col gap-4">
       <PhoneAppInvite />
+      {refresh}
       <NextPanel obligations={obligations} setup={setup} />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard

@@ -1,32 +1,29 @@
-import type { ScheduleClosure, ShopHours, SupplierService, WeeklyWindow } from "@/lib/api/types";
+import type { ShopHours, WeeklyWindow } from "@/lib/api/types";
+
+import { closureOnDay } from "@/lib/shop-hours";
 
 import { dayKeyFromDate } from "./schedule";
 
-export type DayFace = "closure" | "not-working" | "open" | "booked";
-
-export function closureOn(closures: ScheduleClosure[], dayKey: string): boolean {
-  return closures.some((closure) => dayKey >= closure.startDay && dayKey <= closure.endDay);
-}
+export type DayFace =
+  "closure" | "not-working" | "open" | "booked" | "unknown" | "booked-unknown";
 
 export function workingWeekday(week: WeeklyWindow[], weekday: number): boolean {
   return week.some((window) => window.weekday === weekday);
 }
 
-export function dailyCapacity(services: Pick<SupplierService, "capacityDaily" | "state">[]): number | null {
-  const live = services.filter((service) => service.state === "live" && typeof service.capacityDaily === "number");
-  if (!live.length) return null;
-  return live.reduce((sum, service) => sum + (service.capacityDaily ?? 0), 0);
-}
-
 /** How a day reads. Hours that have not loaded never invent a closure. */
 export function dayFace(
   day: Date,
-  hours: Pick<ShopHours, "week" | "closures"> | null,
+  hours:
+    | (Pick<ShopHours, "week" | "closures"> &
+        Partial<Pick<ShopHours, "calendarAvailable">>)
+    | null,
   jobCount: number,
 ): DayFace {
-  if (!hours) return jobCount ? "booked" : "open";
+  if (!hours || hours.calendarAvailable === false)
+    return jobCount ? "booked-unknown" : "unknown";
   const key = dayKeyFromDate(day);
-  if (closureOn(hours.closures, key)) return "closure";
+  if (closureOnDay(hours.closures, key)) return "closure";
   if (!workingWeekday(hours.week, day.getDay())) return "not-working";
   return jobCount ? "booked" : "open";
 }
@@ -40,12 +37,17 @@ export function monthCellLabel(face: DayFace): string {
     case "open":
       return "Nothing booked";
     case "booked":
-      return "Open";
+      return "Jobs due";
+    case "unknown":
+      return "Hours unavailable";
+    case "booked-unknown":
+      return "Jobs due · hours unavailable";
   }
 }
 
 export function selectedDayEmpty(face: DayFace, jobCount: number): string | null {
   if (jobCount > 0) return null;
+  if (face === "unknown") return "No jobs due. Opening hours unavailable.";
   if (face === "closure") return "Closed, and nothing promised.";
   if (face === "not-working") return "Closed, and nothing promised.";
   return "Nothing promised.";
