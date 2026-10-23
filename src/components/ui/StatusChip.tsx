@@ -7,10 +7,12 @@ import {
   CircleHelp,
   CircleX,
   Clock,
+  Copy,
   ExternalLink,
   FlaskConical,
   GitMerge,
   GitPullRequest,
+  Sparkles,
   Split,
   Store,
   SquarePen,
@@ -39,6 +41,8 @@ export const STATUS_ICONS: Record<StatusIconName, LucideIcon> = {
   zap: Zap,
   "flask-conical": FlaskConical,
   award: Award,
+  copy: Copy,
+  sparkles: Sparkles,
 };
 
 const TONE: Record<

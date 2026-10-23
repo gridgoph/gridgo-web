@@ -57,7 +57,10 @@ export type StatusIconName =
   // A test account's order (docs/REVIEW_DATA_API.md in gridgo-api).
   | "flask-conical"
   // The Founding Tester label (docs/VOUCHERS_API.md in gridgo-api).
-  | "award";
+  | "award"
+  // Issue report triage: a duplicate, and an AI suggestion (docs/ISSUE_REPORTS_API.md).
+  | "copy"
+  | "sparkles";
 
 export type StatePresentation = {
   label: string;
