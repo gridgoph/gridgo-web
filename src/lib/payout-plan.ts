@@ -116,13 +116,16 @@ const PRODUCING = new Set([
 
 /** A shop proof the job has not reached. It is not work the shop is behind on. */
 export function shopProofNotStarted(
-  order: Pick<Order, "state">,
+  order: Pick<Order, "state"> & PlanOrder,
   stage: PlanStage & Pick<PayoutMilestone, "status">,
 ): boolean {
   return (
-    stage.status === "pending_pof" &&
+    (stage.status === "pending_pof" || stage.status === "pending") &&
     releaseRequirementOf(stage) === "shop_proof" &&
-    !PRODUCING.has(order.state)
+    (!PRODUCING.has(order.state) ||
+      (isLegacyStage(order, stage) &&
+        stage.code === "packaging_qc" &&
+        order.state === "production"))
   );
 }
 

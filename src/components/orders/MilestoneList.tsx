@@ -56,7 +56,7 @@ export function MilestoneList({
   if (!milestones?.length) {
     return (
       <p className="text-body text-text-secondary m-0">
-        Milestones appear once you accept the job. Operations releases each one
+        Milestones appear once the shop accepts the job. Operations releases each one
         once what it waits on is in.
       </p>
     );

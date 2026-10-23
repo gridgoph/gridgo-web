@@ -250,9 +250,14 @@ describe("presentSettlement on an escrow-plan order", () => {
 
   it("keeps the legacy copy on a four-stage order", () => {
     expect(
-      presentSettlement({ state: "production", payoutHold: false, payoutMilestones: milestones() })
-        .detail,
-    ).toBe("Upload a Proof of Fulfilment for printing, and Operations can release the first 50%.");
+      presentSettlement({
+        state: "production",
+        payoutHold: false,
+        payoutMilestones: milestones(),
+      }).detail,
+    ).toBe(
+      "Upload a Proof of Fulfilment for printing, and Operations can release the first 50%.",
+    );
   });
 });
 
@@ -265,8 +270,21 @@ describe("shop earnings ledger", () => {
       supplierSubtotalMinor: 100000,
       payoutHold: false,
       payoutMilestones: [
-        { code: "printing", sharePercent: 50, amountMinor: 50000, status: "superseded", pofFileIds: [] },
-        { code: "delivered", sharePercent: 25, amountMinor: 20000, status: "released", pofFileIds: [], releasedAt: "2026-08-31T15:00:00.000Z" },
+        {
+          code: "printing",
+          sharePercent: 50,
+          amountMinor: 50000,
+          status: "superseded",
+          pofFileIds: [],
+        },
+        {
+          code: "delivered",
+          sharePercent: 25,
+          amountMinor: 20000,
+          status: "released",
+          pofFileIds: [],
+          releasedAt: "2026-08-31T15:00:00.000Z",
+        },
       ],
       supplierSettlement: { totalSupplierEarningsMinor: 50000 },
       supplierSettlementPayouts: [
@@ -298,7 +316,67 @@ describe("shop earnings ledger", () => {
     expect(contrast.replaced).toBe(true);
     expect(contrast.agreedMinor).toBe(50000);
     expect(contrast.originalMinor).toBe(100000);
-    expect(contrast.agreedMinor).not.toBe(contrast.originalMinor! + split.supersededMinor);
+    expect(contrast.agreedMinor).not.toBe(
+      contrast.originalMinor! + split.supersededMinor,
+    );
+  });
+
+  it("does not invent a settlement from net deductions or missing milestone amounts", () => {
+    for (const payoutMilestones of [
+      [],
+      [
+        {
+          code: "printing",
+          sharePercent: 50,
+          amountMinor: 9500,
+          productionDeductionMinor: 500,
+          status: "released" as const,
+          pofFileIds: [],
+        },
+      ],
+    ]) {
+      const order = job({
+        id: "ordinary",
+        state: "production",
+        totalMinor: 10000,
+        supplierSubtotalMinor: 10000,
+        supplierSettlement: { totalSupplierEarningsMinor: 9500 },
+        payoutMilestones,
+      });
+      expect(settlementContrast(order, shopEarnings(order)).replaced).toBe(false);
+    }
+  });
+
+  it("uses the API's net earnings without presenting the gross price as what is earned", () => {
+    const order = job({ id: "net", state: "production", totalMinor: 11000, supplierPriceMinor: 10000, supplierEarningsMinor: 9500 });
+    expect(buildPayoutRows([order])[0].earnsMinor).toBe(9500);
+  });
+
+  it("keeps an unreached legacy packaging stage out of evidence owed now", () => {
+    const order = job({
+      id: "legacy",
+      state: "production",
+      totalMinor: 100000,
+      payoutPlanVersion: 1,
+      payoutMilestones: milestones(),
+    });
+    expect(shopProofNotStarted(order, order.payoutMilestones![1]!)).toBe(true);
+    expect(shopProofNotStarted(order, { ...order.payoutMilestones![1]!, status: "pending" })).toBe(true);
+    expect(shopEarnings(order).needsProofMinor).toBe(50000);
+    expect(shopEarnings(order).laterMinor).toBe(50000);
+  });
+
+  it("uses the plain-language stage name on an older released transfer", () => {
+    const order = job({
+      id: "legacy-release",
+      state: "completed",
+      totalMinor: 100000,
+      payoutMilestones: milestones({ packaging_qc: "released" }).map((m) => ({
+        ...m,
+        releasedAt: "2026-09-01T00:00:00Z",
+      })),
+    });
+    expect(releaseLines([order])[0].label).toBe("Packaging");
   });
 
   it("puts shop proof that can be filed now apart from a stage the job has not reached", () => {

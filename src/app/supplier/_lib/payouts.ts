@@ -16,6 +16,7 @@ import {
   isLegacyPayoutPlan,
   releaseRequirementOf,
   shopProofStages,
+  shopProofNotStarted,
   windowStageOf,
 } from "@/lib/payout-plan";
 
@@ -263,7 +264,11 @@ export function buildPayoutRows(
 
       return {
         order,
-        earnsMinor: order.supplierPriceMinor ?? null,
+        earnsMinor:
+          order.supplierEarningsMinor ??
+          order.supplierSettlement?.totalSupplierEarningsMinor ??
+          order.supplierPriceMinor ??
+          null,
         releasedMinor: plus(
           sumMilestones(milestones, (m) => m.status === "released"),
           settlementSum("released"),
@@ -372,7 +377,11 @@ export function shopEarnings(order: Order): ShopEarnings {
       continue;
     }
     const requirement = releaseRequirementOf(milestone);
-    if (requirement === "shop_proof" && PRODUCING.has(order.state)) {
+    if (
+      requirement === "shop_proof" &&
+      PRODUCING.has(order.state) &&
+      !shopProofNotStarted(order, milestone)
+    ) {
       split.needsProofMinor += amount;
       continue;
     }
@@ -436,7 +445,8 @@ export function settlementContrast(order: Order, split: ShopEarnings): {
   const originalMinor = originalShopPrice(order);
   const agreedMinor = order.supplierSettlement?.totalSupplierEarningsMinor ?? split.totalMinor;
   const replaced =
-    split.supersededMinor > 0 || (originalMinor !== null && originalMinor !== agreedMinor);
+    split.supersededMinor > 0 ||
+    (Boolean(order.refundDisposition) && originalMinor !== null && originalMinor !== agreedMinor);
   return { replaced, originalMinor, agreedMinor };
 }
 
@@ -485,7 +495,7 @@ export function releaseLines(jobs: Order[]): ReleaseLine[] {
         key: `${job.id}-${milestone.code}`,
         orderId: job.id,
         title: job.title,
-        label: milestone.label?.trim() || milestone.code,
+        label: milestoneName(milestone),
         amountMinor: milestone.amountMinor ?? 0,
         releasedAt: milestone.releasedAt,
         reference: milestone.reference ?? null,
