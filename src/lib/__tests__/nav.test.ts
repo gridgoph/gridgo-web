@@ -43,6 +43,7 @@ describe("ROLE_NAV", () => {
       "/supplier/report",
       "/supplier/capacity",
       "/supplier/payouts",
+      "/supplier/record",
       "/supplier/payout-account",
     ]);
   });
@@ -225,6 +226,7 @@ describe("ROLE_NAV", () => {
       "/supplier/payouts",
       "/supplier/privacy",
       "/supplier/product-types",
+      "/supplier/record",
       "/supplier/report",
       "/supplier/schedule",
       "/supplier/services",
@@ -425,7 +427,7 @@ describe("ROLE_NAV", () => {
       ROLE_NAV_GROUPS.supplier
         .find((g) => g.id === "supplier-money")
         ?.items.map((n) => n.href),
-    ).toEqual(["/supplier/payouts", "/supplier/payout-account"]);
+    ).toEqual(["/supplier/payouts", "/supplier/record", "/supplier/payout-account"]);
 
     const grouped = Object.values(ROLE_NAV_GROUPS).flatMap((groups) =>
       groups.flatMap((group) => group.items.map((item) => item.href)),
