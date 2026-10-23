@@ -163,6 +163,7 @@ type Props = {
   dayMinutes?: number;
   /** Faster price options. Edited here; a priced speed is not an Express surcharge. */
   speedTiers: readonly SpeedTier[];
+  speedUnitLabel?: string;
   onSpeedTiersChange: (next: SpeedTier[]) => void;
   /** How many listings the shop has, so the bulk confirmation can say it. */
   listingCount: number | null;
@@ -189,6 +190,7 @@ export function HowLongField({
   onChange,
   dayMinutes = DEFAULT_DAY_MINUTES,
   speedTiers,
+  speedUnitLabel = "per unit",
   onSpeedTiersChange,
   listingCount,
   applyBlocked,
@@ -382,6 +384,7 @@ export function HowLongField({
           </div>
           <SpeedTierEditor
             tiers={speedTiers}
+            unitLabel={speedUnitLabel}
             onChange={onSpeedTiersChange}
             dayMinutes={dayMinutes}
           />

@@ -30,7 +30,7 @@ import {
  * them: add a row, remove a row, and say what the price is.
  *
  * A bulk break is a unit price from that quantity up. A speed the shop adds
- * is a price for the whole job at that time, never a fee on top and never an
+ * replaces the unit rate at that time, never a fee on top and never an
  * Express surcharge. Express stays its own same-day commitment.
  */
 
@@ -151,10 +151,12 @@ export function PriceTierEditor({
 
 export function SpeedTierEditor({
   tiers,
+  unitLabel,
   onChange,
   dayMinutes = DEFAULT_DAY_MINUTES,
 }: {
   tiers: readonly SpeedTier[];
+  unitLabel: string;
   onChange: (next: SpeedTier[]) => void;
   dayMinutes?: number;
 }) {
@@ -177,7 +179,7 @@ export function SpeedTierEditor({
       return;
     }
     if (money.minor == null) {
-      setError("Enter the price for this speed.");
+      setError("Enter the unit price for this speed.");
       return;
     }
     onChange([
@@ -201,24 +203,24 @@ export function SpeedTierEditor({
         Faster price options
       </h4>
       <p className="text-caption text-text-muted m-0 max-w-prose">
-        Faster, for more — optional. A client&apos;s date picks one of these, so each is a
-        price for the whole job at that speed, not a fee on top. Express is not one of
-        these and has no surcharge.
+        At this speed, enter the rate {unitLabel}. GRIDGO uses it with the client&apos;s
+        quantity and measurements. It replaces your usual rate, never a fee on top.
+        Express stays separate and has no surcharge.
       </p>
       {tiers.length ? (
         <ul className="m-0 flex list-none flex-col gap-2 p-0">
           {tiers.map((tier) => {
-            const wholeJob = tier.priceMinor != null;
+            const hasRate = tier.priceMinor != null;
             return (
               <li key={tier.id || timeKey(tier.turnaround)} className="flex items-center gap-2">
                 <div className="min-w-0 flex-1">
                   <p className="text-body text-text-primary m-0">{tier.label}</p>
                   <p className="text-body text-text-primary m-0">
-                    {wholeJob
+                    {hasRate
                       ? formatPhp(tier.priceMinor ?? 0)
                       : `${formatPhp(tier.surchargeMinor ?? 0)} more`}{" "}
                     <span className="text-caption text-text-muted">
-                      {timeLabel(tier.turnaround)} · {wholeJob ? "Whole-job price" : "Fee on top"}
+                      {timeLabel(tier.turnaround)} · {hasRate ? `Unit price · ${unitLabel}` : "Fee on top"}
                     </span>
                   </p>
                 </div>
@@ -266,7 +268,7 @@ export function SpeedTierEditor({
             </p>
           ) : null}
           <label className="text-caption text-text-secondary flex flex-col gap-1">
-            Price at this speed
+            Rate at this speed
             <Input
               inputMode="decimal"
               value={price}

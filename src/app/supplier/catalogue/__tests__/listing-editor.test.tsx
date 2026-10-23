@@ -638,7 +638,7 @@ describe("listing editor: How long does this take? (gridgo-api#292)", () => {
     expect(mocks.updateCatalogItem.mock.calls[0][2]).not.toHaveProperty("productionTime");
   });
 
-  it("edits a faster price as a whole-job price and leaves tiers out of an unrelated save", async () => {
+  it("edits a faster price as a unit rate and leaves tiers out of an unrelated save", async () => {
     stubLoad(
       catalogItem({
         productionTime: { mode: "days", minDays: 3, maxDays: 5 },
@@ -652,9 +652,9 @@ describe("listing editor: How long does this take? (gridgo-api#292)", () => {
     await openEditorStep("Speed");
     fireEvent.click(screen.getByRole("button", { name: "More options" }));
     expect(await screen.findByText("Next day")).toBeVisible();
-    expect(screen.getByText(/Whole-job price/)).toBeVisible();
+    expect(screen.getByText(/Unit price · per pack of 100/)).toBeVisible();
     expect(screen.getByRole("button", { name: "Remove Next day" })).toBeVisible();
-    expect(screen.getByText(/Express is not one of these and has no surcharge/)).toBeVisible();
+    expect(screen.getByText(/Express stays separate and has no surcharge/)).toBeVisible();
 
     await openEditorStep("About");
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Flyers A5" } });
@@ -686,7 +686,7 @@ describe("listing editor: How long does this take? (gridgo-api#292)", () => {
     expect(screen.getByRole("button", { name: "More options" })).toBeVisible();
   });
 
-  it("sends a new speed as its own whole-job price", async () => {
+  it("sends a new speed as its own unit rate", async () => {
     stubLoad(catalogItem({ productionTime: { mode: "days", minDays: 3, maxDays: 5 } }));
     render(<ListingEditorPage />);
     await openEditorStep("Speed");
@@ -694,7 +694,7 @@ describe("listing editor: How long does this take? (gridgo-api#292)", () => {
     fireEvent.change(screen.getByLabelText("What this speed is called"), {
       target: { value: "Rush" },
     });
-    fireEvent.change(screen.getByLabelText("Price at this speed"), { target: { value: "700.50" } });
+    fireEvent.change(screen.getByLabelText("Rate at this speed"), { target: { value: "700.50" } });
     fireEvent.click(screen.getByRole("button", { name: "Add this speed" }));
     await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled(), AUTOSAVE_WAIT);
     const body = mocks.updateCatalogItem.mock.calls[0][2];
@@ -707,6 +707,22 @@ describe("listing editor: How long does this take? (gridgo-api#292)", () => {
       }),
     ]);
     expect(body).not.toHaveProperty("express");
+  });
+});
+
+describe("speed prices use the listing's unit", () => {
+  it.each([
+    ["per_unit", null, "per piece"],
+    ["per_package", null, "per pack of 100"],
+    ["per_area", "ft", "per sq.ft"],
+    ["per_length", "m", "per m"],
+  ])("names the unit for %s", async (pricingUnit, measureUnit, unit) => {
+    stubLoad(catalogItem({ pricingUnit, measureUnit }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Speed");
+    fireEvent.click(screen.getByRole("button", { name: "More options" }));
+    expect(screen.getByText(`At this speed, enter the rate ${unit}.`, { exact: false })).toBeVisible();
+    expect(screen.queryByText(/each is a price for the whole job/i)).not.toBeInTheDocument();
   });
 });
 

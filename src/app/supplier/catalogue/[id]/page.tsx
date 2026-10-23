@@ -302,7 +302,7 @@ function speedTierKey(tiers: readonly SpeedTier[]): string {
     .join("|");
 }
 
-/** A speed as the catalogue API stores it. A new one carries a whole-job price and no surcharge. */
+/** A speed as the catalogue API stores it. A new one carries a unit rate and no surcharge. */
 function speedTierBody(tier: SpeedTier) {
   return {
     id: tier.id,
@@ -1886,6 +1886,11 @@ export default function ListingEditorPage() {
                     onChange={(time) => setDraft({ ...working, time })}
                     dayMinutes={listing.productionDayMinutes ?? DEFAULT_DAY_MINUTES}
                     speedTiers={working.speedTiers}
+                    speedUnitLabel={unitLine({
+                      pricingUnit: working.pricingUnit,
+                      packageQty: working.pricingUnit === "per_package" ? working.packageQty : null,
+                      measureUnit: working.measureUnit,
+                    })}
                     onSpeedTiersChange={(speedTiers) => setDraft({ ...working, speedTiers })}
                     listingCount={listingCount}
                     applyBlocked={busy || dirty}
