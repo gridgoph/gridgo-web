@@ -19,7 +19,7 @@ export function pesosToMinor(input: string): number | null {
   const cents = (frac + "00").slice(0, 2);
   let minor: bigint;
   try {
-    minor = BigInt(whole) * 100n + BigInt(cents);
+    minor = BigInt(whole) * BigInt(100) + BigInt(cents);
   } catch {
     return null;
   }
@@ -28,7 +28,10 @@ export function pesosToMinor(input: string): number | null {
 }
 
 export function minorToPesosInput(minor: number): string {
-  return (minor / 100).toFixed(2);
+  const magnitude = Math.abs(minor);
+  const whole = Math.trunc(magnitude / 100);
+  const cents = String(magnitude % 100).padStart(2, "0");
+  return `${minor < 0 ? "-" : ""}${whole}.${cents}`;
 }
 
 /** Short date/time for deadlines and timeline rows. */

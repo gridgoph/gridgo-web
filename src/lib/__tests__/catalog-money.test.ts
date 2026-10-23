@@ -9,7 +9,7 @@ import {
   packProblem,
   parseCatalogMoney,
 } from "@/lib/catalog-money";
-import { pesosToMinor } from "@/lib/format";
+import { minorToPesosInput, pesosToMinor } from "@/lib/format";
 
 /** The largest peso amount whose centavos are still a safe integer. */
 const AT_LIMIT = "90071992547409.91";
@@ -34,6 +34,13 @@ describe("catalogue money matches the API", () => {
       ok: true,
       minor: Number.MAX_SAFE_INTEGER,
     });
+  });
+
+  it("keeps exact centavos when a saved large price opens for editing", () => {
+    for (const minor of [0, 50, 100000100, Number.MAX_SAFE_INTEGER - 1, Number.MAX_SAFE_INTEGER]) {
+      expect(pesosToMinor(minorToPesosInput(minor))).toBe(minor);
+    }
+    expect(minorToPesosInput(-1)).toBe("-0.01");
   });
 
   it("explains a pack below 2 and allows a pack above 5,000", () => {

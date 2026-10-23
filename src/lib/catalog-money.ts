@@ -53,7 +53,7 @@ export function parseCatalogMoney(value: string): CatalogMoney {
   const cents = (frac + "00").slice(0, 2);
   let minor: bigint;
   try {
-    minor = BigInt(whole) * 100n + BigInt(cents);
+    minor = BigInt(whole) * BigInt(100) + BigInt(cents);
   } catch {
     return { ok: false, error: CATALOG_MONEY_INVALID };
   }
