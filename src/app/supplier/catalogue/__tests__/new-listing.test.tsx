@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   listMySupplierServices: vi.fn(),
   listListingStarters: vi.fn(),
   createCatalogItem: vi.fn(),
+  replace: vi.fn(),
+  push: vi.fn(),
 }));
 
 vi.stubGlobal("React", React);
@@ -26,7 +28,7 @@ class FakePointerEvent extends MouseEvent {
 vi.stubGlobal("PointerEvent", FakePointerEvent);
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: vi.fn() }),
+  useRouter: () => ({ replace: mocks.replace, push: mocks.push }),
 }));
 
 vi.mock("@/lib/api/client", async () => {
@@ -47,6 +49,7 @@ import NewListingPage from "@/app/supplier/catalogue/new/page";
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  sessionStorage.clear();
 });
 
 const taxonomy: Taxonomy = {
@@ -113,7 +116,8 @@ describe("new listing printer cap", () => {
     stubLoad();
     render(<NewListingPage />);
 
-    expect(await screen.findByLabelText("What clients will call it")).toBeVisible();
+    expect(await screen.findByRole("combobox", { name: "Kind of work" })).toBeVisible();
+    expect(screen.queryByLabelText("What clients will call it")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Max printer width")).not.toBeInTheDocument();
 
     await chooseKind("Flyers");
@@ -129,8 +133,7 @@ describe("new listing printer cap", () => {
     stubLoad();
     render(<NewListingPage />);
 
-    const name = await screen.findByLabelText("What clients will call it");
-    await user.type(name, "A5 Flyers");
+    await screen.findByRole("combobox", { name: "Kind of work" });
     await chooseKind("Flyers");
     await user.click(screen.getByRole("button", { name: "Open this listing" }));
 
@@ -138,9 +141,10 @@ describe("new listing printer cap", () => {
     const flyersBody = mocks.createCatalogItem.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(flyersBody).toMatchObject({
       subcategoryCode: "flyers",
-      name: "A5 Flyers",
+      name: "Flyers",
     });
     expect(flyersBody).not.toHaveProperty("printerMaxWidthFeet");
+    expect(mocks.replace).toHaveBeenCalledWith("/supplier/catalogue/sci_new?step=about");
   });
 
   it("blocks create until tarpaulin listings set max printer width in feet", async () => {
@@ -148,8 +152,7 @@ describe("new listing printer cap", () => {
     stubLoad();
     render(<NewListingPage />);
 
-    const name = await screen.findByLabelText("What clients will call it");
-    await user.type(name, "Storefront tarpaulin");
+    await screen.findByRole("combobox", { name: "Kind of work" });
     await chooseKind("Tarpaulin & Outdoor Banners");
     expect(screen.getByRole("button", { name: "Open this listing" })).toBeDisabled();
     await user.type(screen.getByLabelText("Max printer width"), "7");
@@ -158,8 +161,45 @@ describe("new listing printer cap", () => {
     await waitFor(() => expect(mocks.createCatalogItem).toHaveBeenCalled());
     expect(mocks.createCatalogItem.mock.calls[0]?.[0]).toMatchObject({
       subcategoryCode: "tarpaulins_outdoor_banners",
-      name: "Storefront tarpaulin",
+      name: "Tarpaulin & Outdoor Banners",
       printerMaxWidthFeet: 7,
     });
+  });
+});
+
+describe("new listing continuation", () => {
+  it("offers the remembered draft without opening it until Resume is chosen", async () => {
+    sessionStorage.setItem("gridgo.supplierListingDraft", "sci_started");
+    stubLoad();
+    const user = userEvent.setup();
+    render(<NewListingPage />);
+    await screen.findByRole("button", { name: "Resume" });
+    expect(mocks.push).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Resume" }));
+    expect(mocks.push).toHaveBeenCalledWith("/supplier/catalogue/sci_started?step=about");
+  });
+
+  it("starts another without opening the remembered draft", async () => {
+    sessionStorage.setItem("gridgo.supplierListingDraft", "sci_started");
+    stubLoad();
+    const user = userEvent.setup();
+    render(<NewListingPage />);
+    await user.click(await screen.findByRole("button", { name: "Start another" }));
+    expect(await screen.findByRole("combobox", { name: "Kind of work" })).toBeVisible();
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("gridgo.supplierListingDraft")).toBeNull();
+  });
+
+  it("keeps the new-listing form after a refused create", async () => {
+    stubLoad();
+    mocks.createCatalogItem.mockRejectedValueOnce(new Error("offline"));
+    const user = userEvent.setup();
+    render(<NewListingPage />);
+    await screen.findByRole("combobox", { name: "Kind of work" });
+    await chooseKind("Flyers");
+    await user.click(screen.getByRole("button", { name: "Open this listing" }));
+    expect(await screen.findByText(/Could not open this listing/)).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "Kind of work" })).toBeVisible();
+    expect(mocks.replace).not.toHaveBeenCalled();
   });
 });

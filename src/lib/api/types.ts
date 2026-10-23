@@ -1018,6 +1018,12 @@ export type Order = {
   clientId: string;
   supplierId: string | null;
   riderId: string | null;
+  /**
+   * The shop's conversation with the rider collecting this job, when GRIDGO
+   * has opened one. Absent means there is no conversation. Read through
+   * `pickupChatOf` in `src/lib/pickup-chat.ts`.
+   */
+  pickupChat?: unknown;
   state: string;
   productId?: string | null;
   title: string;
