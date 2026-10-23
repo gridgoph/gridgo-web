@@ -4,11 +4,14 @@ import "@testing-library/jest-dom/vitest";
 
 import { cleanup, render, screen, within } from "@testing-library/react";
 import React from "react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Order } from "@/lib/api/types";
 
-const { listJobsMock } = vi.hoisted(() => ({ listJobsMock: vi.fn() }));
+const { listJobsMock, readinessMock } = vi.hoisted(() => ({
+  listJobsMock: vi.fn(),
+  readinessMock: vi.fn(),
+}));
 
 vi.stubGlobal("React", React);
 
@@ -26,7 +29,7 @@ vi.mock("@/lib/api/client", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api/client")>(
     "@/lib/api/client",
   );
-  return { ...actual, listJobs: listJobsMock };
+  return { ...actual, listJobs: listJobsMock, getSupplierReadiness: readinessMock };
 });
 
 import SupplierDashboardPage from "@/app/supplier/dashboard/page";
@@ -42,6 +45,13 @@ beforeAll(() => {
     unobserve() {}
     disconnect() {}
   } as unknown as typeof ResizeObserver;
+});
+
+beforeEach(() => {
+  listJobsMock.mockReset();
+  // Home loads jobs and readiness together. Both must settle independently of
+  // a developer's API or CI network before these figures can render.
+  readinessMock.mockReset().mockResolvedValue({ operational: { ready: true } });
 });
 
 afterEach(() => {
@@ -83,6 +93,7 @@ describe("SupplierDashboardPage", () => {
     render(<SupplierDashboardPage />);
 
     expect(await screen.findByText("Nothing to measure yet")).toBeInTheDocument();
+    expect(readinessMock).toHaveBeenCalledOnce();
   });
 
   it("values the board from the shop's own price, excluding closed work", async () => {

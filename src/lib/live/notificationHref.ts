@@ -1,5 +1,6 @@
 import type { Notification, Role } from "@/lib/api/types";
 import { SHOP_HOURS_NOTICE } from "@/lib/shop-hours";
+import { clientTransferNotice } from "@/lib/shop-notices";
 
 /**
  * Where the inbox row should land.
@@ -13,6 +14,20 @@ import { SHOP_HOURS_NOTICE } from "@/lib/shop-hours";
  */
 export function notificationHref(role: Role, notification: Notification): string | null {
   const type = notification.type ?? "";
+
+  // These events carry no current shop ownership. The former shop loses order
+  // access after replacement, while the new shop finds its offer in Jobs.
+  if (role === "supplier") {
+    if (type.startsWith("legal.")) return "/supplier/legal";
+    if (
+      type.startsWith("privacy.") ||
+      type === "account_deletion_requested" ||
+      type === "account_deletion_request_completed"
+    )
+      return "/supplier/privacy";
+    if (type === "shop_recovery" || type === "order_reschedule_rematched")
+      return "/supplier/jobs";
+  }
 
   if (
     (type === "listing_suspended" || type === "listing_restored") &&
@@ -170,8 +185,15 @@ export function notificationHref(role: Role, notification: Notification): string
     return "/admin/overview";
   }
 
-  if (type === "account_deletion_requested" || type === "account_deletion_request_completed") {
-    return role === "super_admin" ? "/admin/account-deletion" : role === "ops_admin" ? "/ops/account-deletion" : null;
+  if (
+    type === "account_deletion_requested" ||
+    type === "account_deletion_request_completed"
+  ) {
+    return role === "super_admin"
+      ? "/admin/account-deletion"
+      : role === "ops_admin"
+        ? "/ops/account-deletion"
+        : null;
   }
 
   // Legal library and privacy queue (LEGAL_API.md). The notice names no
@@ -195,7 +217,11 @@ export function notificationHref(role: Role, notification: Notification): string
   // Post-order survey (SURVEY_API.md). Only Super Admin can read answers, so
   // a submission opens that response there; Operations' copy, and the
   // opened/skipped notices that carry no answer, fall through to the order.
-  if (type === "order_survey_submitted" && role === "super_admin" && notification.orderId) {
+  if (
+    type === "order_survey_submitted" &&
+    role === "super_admin" &&
+    notification.orderId
+  ) {
     return `/admin/survey-responses?response=${encodeURIComponent(notification.orderId)}`;
   }
 
@@ -232,6 +258,24 @@ export function notificationHref(role: Role, notification: Notification): string
     if (role === "ops_admin") return `/ops/order-chats?order=${order}`;
   }
 
+  if (role === "supplier" && type === "support_message") {
+    return notification.threadId
+      ? `/supplier/chat?thread=${encodeURIComponent(notification.threadId)}`
+      : "/supplier/chat";
+  }
+
+  if (role === "supplier" && type === "pickup_chat_message" && notification.orderId) {
+    return `/supplier/jobs/${encodeURIComponent(notification.orderId)}#pickup-chat`;
+  }
+
+  // Forward-compatible only: today's API emits catalog_review_decided for
+  // product-type and listing decisions alike; both keep the shared board above.
+  if (role === "supplier" && type === "product_type.review") {
+    return "/supplier/product-types";
+  }
+
+  if (role === "supplier" && clientTransferNotice(type)) return null;
+
   if (type === "ops_support_message") {
     if (role === "super_admin") return "/admin/chat";
     if (role === "ops_admin") return "/ops/chat";
@@ -246,7 +290,17 @@ export function notificationHref(role: Role, notification: Notification): string
   }
 
   if (notification.orderId) {
-    if (role === "supplier") return `/supplier/jobs/${notification.orderId}`;
+    if (role === "supplier") {
+      // Keep legacy order slips and known job families useful. An unrecognised
+      // event can carry an old order id, so its safe fallback is the inbox.
+      return !type ||
+        /^(order_|refund_|production_lapse_|pickup_|shop_|supplier_invoice_|client_shop_chat_|handover_|issue_|milestone_|payout_)/.test(
+          type,
+        ) ||
+        type === "supplier_performance_notice"
+        ? `/supplier/jobs/${encodeURIComponent(notification.orderId)}`
+        : "/supplier/jobs";
+    }
     if (role === "ops_admin") return `/ops/orders/${notification.orderId}`;
     if (role === "super_admin") return `/admin/orders/${notification.orderId}`;
     return null;
@@ -257,7 +311,7 @@ export function notificationHref(role: Role, notification: Notification): string
     if (role === "super_admin") return "/admin/overview";
   }
 
-  return null;
+  return role === "supplier" ? "/supplier/jobs" : null;
 }
 
 function isHub(type: string): boolean {
@@ -274,6 +328,7 @@ function isPayout(type: string): boolean {
 
 function isSignup(notification: Notification): boolean {
   const type = notification.type ?? "";
+
   return (
     Boolean(notification.approvalCaseId) ||
     type === "ops_signup_submitted" ||
