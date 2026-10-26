@@ -32,10 +32,14 @@ function json(body: unknown, status = 200) {
   });
 }
 
+function named(source: Order, shopName: string): Order {
+  return { ...source, supplierContact: { shopName, contactName: "Counter" } };
+}
+
 beforeEach(() => {
   vi.stubGlobal("React", React);
-  order = shopA;
-  basket = basketOf([shopA, shopB]);
+  order = named(shopA, "North Press");
+  basket = basketOf([order, named(shopB, "South Bindery")]);
   requests = [];
   setTokenProvider(() => "fixture-token");
   vi.stubGlobal(
@@ -105,6 +109,15 @@ it("shows one payment over every shop group, each with its own money", async () 
 
   const a = screen.getByTestId("group-Shop A");
   const b = screen.getByTestId("group-Shop B");
+  const north = within(a).getByRole("link", { name: "North Press" });
+  expect(north).toHaveAttribute("href", "/ops/shop-performance/shop1");
+  expect(north).toHaveAttribute("target", "_blank");
+  expect(north).toHaveAttribute("rel", "noopener noreferrer");
+  expect(within(a).getByText("Shop A")).toBeInTheDocument();
+  const south = within(b).getByRole("link", { name: "South Bindery" });
+  expect(south).toHaveAttribute("href", "/ops/shop-performance/shop2");
+  expect(south).toHaveAttribute("target", "_blank");
+  expect(within(b).getByText("Shop B")).toBeInTheDocument();
   expect(within(a).getByText("This order")).toBeInTheDocument();
   expect(money(a, "Shop price")).toHaveTextContent("₱400.00");
   expect(money(a, "Service fee (10%)")).toHaveTextContent("₱40.00");
@@ -197,9 +210,18 @@ it("offers no payment action when the basket could not be read", async () => {
 });
 
 it("keeps a single-shop order's money card and asks for no basket", async () => {
-  order = { ...shopA, basketId: null, groupLabel: null };
+  order = {
+    ...shopA,
+    basketId: null,
+    groupLabel: null,
+    supplierContact: { shopName: "North Press", contactName: "Ana" },
+  };
   render(<OrderWorkspace queueHref="/ops/orders" />);
 
+  const shop = await screen.findByRole("link", { name: "North Press" });
+  expect(shop).toHaveAttribute("href", "/ops/shop-performance/shop1");
+  expect(shop).toHaveAttribute("target", "_blank");
+  expect(shop).toHaveAttribute("rel", "noopener noreferrer");
   const rail = await screen.findByRole("complementary", { name: "Order details" });
   expect(
     await within(rail).findByText("Client total", { selector: "dt" }),
@@ -237,10 +259,16 @@ it("shows an organization discount coming out of GRIDGO's fee, never the shop's 
 });
 
 it("shows the deadline on each same-shop group without claiming two shops", async () => {
+  const contact = { shopName: "North Press", contactName: "Ana" };
   basket = basketOf(
     [
-      { ...shopA, deadline: "2026-11-10T08:00:00.000Z" },
-      { ...shopA, id: "ord_b", deadline: "2026-11-12T08:00:00.000Z" },
+      { ...shopA, deadline: "2026-11-10T08:00:00.000Z", supplierContact: contact },
+      {
+        ...shopA,
+        id: "ord_b",
+        deadline: "2026-11-12T08:00:00.000Z",
+        supplierContact: contact,
+      },
     ],
     { deadline: null },
   );
@@ -251,6 +279,16 @@ it("shows the deadline on each same-shop group without claiming two shops", asyn
   await screen.findByTestId("basket-total");
   const groups = screen.getAllByTestId("group-Shop A");
   expect(groups).toHaveLength(2);
+  expect(within(groups[0]).getByRole("link", { name: "North Press" })).toHaveAttribute(
+    "href",
+    "/ops/shop-performance/shop1",
+  );
+  expect(within(groups[1]).getByRole("link", { name: "North Press" })).toHaveAttribute(
+    "href",
+    "/ops/shop-performance/shop1",
+  );
+  expect(within(groups[0]).getByText("Shop A")).toBeInTheDocument();
+  expect(within(groups[1]).getByText("Shop A")).toBeInTheDocument();
   expect(within(groups[0]).getByText("Needed by").nextElementSibling).toHaveTextContent(
     "Nov 10",
   );
@@ -267,4 +305,82 @@ it("shows the deadline on each same-shop group without claiming two shops", asyn
   expect(sections).toHaveLength(2);
   expect(sections[0]).toHaveTextContent("Needed by Nov 10");
   expect(sections[1]).toHaveTextContent("Needed by Nov 12");
+  expect(sections[0]).not.toHaveTextContent("North Press");
+});
+
+it("opens the shop's performance page in the admin tree", async () => {
+  render(<OrderWorkspace queueHref="/admin/orders" />);
+  const south = await screen.findByRole("link", { name: "South Bindery" });
+  expect(south).toHaveAttribute("href", "/admin/shop-performance/shop2");
+  expect(south).toHaveAttribute("target", "_blank");
+  expect(south).toHaveAttribute("rel", "noopener noreferrer");
+});
+
+it("uses the looked-up shop name when the projection's name is blank", async () => {
+  order = { ...shopA, supplierContact: { shopName: "  ", contactName: null } };
+  basket = basketOf([
+    order,
+    { ...shopB, supplierContact: { shopName: null, contactName: null } },
+  ]);
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const path = new URL(String(input)).pathname;
+      if (path === "/users/shop1") {
+        return json({ user: { id: "shop1", name: "Ana", supplierName: "North Press" } });
+      }
+      if (path === "/users/shop2") {
+        return json({
+          user: { id: "shop2", name: "Ben", supplierName: "South Bindery" },
+        });
+      }
+      if (path === "/baskets/bsk_1") return json({ basket });
+      return json({ order });
+    }),
+  );
+  render(<OrderWorkspace queueHref="/ops/orders" />);
+  const a = await screen.findByTestId("group-Shop A");
+  expect(await within(a).findByRole("link", { name: "North Press" })).toHaveAttribute(
+    "href",
+    "/ops/shop-performance/shop1",
+  );
+  expect(
+    within(screen.getByTestId("group-Shop B")).getByRole("link", {
+      name: "South Bindery",
+    }),
+  ).toHaveAttribute("href", "/ops/shop-performance/shop2");
+});
+
+it("does not link a group that has no shop yet", async () => {
+  basket = basketOf([
+    named(shopA, "North Press"),
+    { ...shopB, supplierId: null, supplierContact: null },
+  ]);
+  render(<OrderWorkspace queueHref="/ops/orders" />);
+  const b = await screen.findByTestId("group-Shop B");
+  expect(within(b).getByText("Shop not assigned yet")).toBeInTheDocument();
+  expect(within(b).getByText("Shop B")).toBeInTheDocument();
+  expect(
+    within(b)
+      .getAllByRole("link")
+      .some((link) => link.getAttribute("href")?.includes("shop-performance")),
+  ).toBe(false);
+});
+
+it("shows no trading name on a client or shop payload", async () => {
+  const clientSeen = { ...shopA, supplierId: null, supplierContact: undefined };
+  const shopSeen = { ...shopB, supplierContact: undefined };
+  expect(clientSeen.supplierContact).toBeUndefined();
+  expect(shopSeen.supplierContact).toBeUndefined();
+  expect(JSON.stringify(clientSeen)).not.toContain("North Press");
+  expect(JSON.stringify(shopSeen)).not.toContain("South Bindery");
+
+  order = clientSeen;
+  basket = basketOf([clientSeen, { ...shopSeen, supplierId: null }]);
+  render(<OrderWorkspace queueHref="/ops/orders" />);
+  expect(await screen.findAllByText("Shop not assigned yet")).toHaveLength(2);
+  expect(screen.queryByRole("link", { name: "North Press" })).toBeNull();
+  expect(screen.queryByRole("link", { name: "South Bindery" })).toBeNull();
+  expect(screen.getByText("This is Shop A")).toBeInTheDocument();
+  expect(screen.getByTestId("group-Shop B")).toHaveTextContent("Shop B");
 });

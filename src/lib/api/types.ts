@@ -1016,8 +1016,23 @@ export type Order = {
   /** A test account's simulated order (docs/REVIEW_DATA_API.md in gridgo-api). */
   reviewData?: boolean;
   clientId: string;
+  /**
+   * Operations and Super Admin only. The client's name from their user
+   * record. Null when that record has no name. Absent for a client, a shop,
+   * and a rider.
+   */
+  clientName?: string | null;
   supplierId: string | null;
   riderId: string | null;
+  /**
+   * The shop at the counter. Operations, Super Admin, the assigned shop, and
+   * the rider already receive it (`supplierContactFor`). Absent on a client
+   * payload. `shopName` is the trading name; `groupLabel` stays "Shop A".
+   */
+  supplierContact?: {
+    shopName: string | null;
+    contactName: string | null;
+  } | null;
   /**
    * The shop's conversation with the rider collecting this job, when GRIDGO
    * has opened one. Absent means there is no conversation. Read through

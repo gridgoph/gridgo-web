@@ -5,6 +5,7 @@ import Link from "next/link";
 import { CircleCheck, TriangleAlert } from "lucide-react";
 
 import { OrderMoneyLines } from "@/components/orders/OrderMoneyLines";
+import { ShopHeading } from "@/components/orders/ShopHeading";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { getBasketInvoice } from "@/lib/api/client";
@@ -154,8 +155,13 @@ function GroupBlock({
       data-testid={`group-${group.label}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-body-lg text-text-primary m-0" style={medium}>
-          {group.label}
+        <h3 className="text-body-lg text-text-primary m-0 min-w-0" style={medium}>
+          <ShopHeading
+            order={order}
+            names={names}
+            tree={tree}
+            anonymousLabel={group.label}
+          />
         </h3>
         {current ? (
           <span className="text-caption text-text-secondary">This order</span>
