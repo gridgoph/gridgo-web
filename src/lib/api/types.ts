@@ -1019,6 +1019,15 @@ export type Order = {
   supplierId: string | null;
   riderId: string | null;
   /**
+   * The shop at the counter. Operations, Super Admin, the assigned shop, and
+   * the rider already receive it (`supplierContactFor`). Absent on a client
+   * payload. `shopName` is the trading name; `groupLabel` stays "Shop A".
+   */
+  supplierContact?: {
+    shopName: string | null;
+    contactName: string | null;
+  } | null;
+  /**
    * The shop's conversation with the rider collecting this job, when GRIDGO
    * has opened one. Absent means there is no conversation. Read through
    * `pickupChatOf` in `src/lib/pickup-chat.ts`.
