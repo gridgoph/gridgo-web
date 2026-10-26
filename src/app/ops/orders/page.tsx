@@ -147,7 +147,7 @@ export default function OpsOrdersPage() {
         primary: true,
         sortValue: (order) => order.title ?? "",
         filterValue: (order) =>
-          `${order.title ?? ""} ${order.id} ${order.material ?? ""} ${shopModeLabel(shopModeOf(order, shopCounts))} ${order.groupLabel ?? ""}`,
+          `${order.title ?? ""} ${order.id} ${order.material ?? ""} ${shopModeLabel(shopModeOf(order, shopCounts))} ${order.groupLabel ?? ""} ${clientLabel(order)}`,
         cell: (order) => {
           const position = groupPositionLabel(order, shopCounts);
           return (
@@ -162,6 +162,9 @@ export default function OpsOrdersPage() {
                 <ShopModeChip mode={shopModeOf(order, shopCounts)} />
                 <TestOrderChip order={order} />
               </div>
+              <p className="text-caption text-text-secondary m-0 mt-0.5 truncate">
+                {clientLabel(order)}
+              </p>
               <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
                 {position ? `${position} · ` : ""}Order {order.id}
               </p>
@@ -394,6 +397,12 @@ const SPEED_FACETS: DataTableFacet[] = [
     ),
   },
 ];
+
+/** The client's name, or an explicit gap when the staff projection has none. */
+function clientLabel(order: Order): string {
+  const name = order.clientName?.trim() ?? "";
+  return name || "Unavailable";
+}
 
 /** Whose move it is, when it is not Operations'. */
 function waitingOn(state: string): string {
