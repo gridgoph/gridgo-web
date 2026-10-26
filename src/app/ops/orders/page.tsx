@@ -35,6 +35,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { SkeletonLines } from "@/components/ui/loading";
 import { ApiError, getSettings, listOrders } from "@/lib/api/client";
+import { clientLabel } from "@/lib/client-name";
 import type { OperatingHours, Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
@@ -147,7 +148,7 @@ export default function OpsOrdersPage() {
         primary: true,
         sortValue: (order) => order.title ?? "",
         filterValue: (order) =>
-          `${order.title ?? ""} ${order.id} ${order.material ?? ""} ${shopModeLabel(shopModeOf(order, shopCounts))} ${order.groupLabel ?? ""}`,
+          `${order.title ?? ""} ${order.id} ${order.material ?? ""} ${shopModeLabel(shopModeOf(order, shopCounts))} ${order.groupLabel ?? ""} ${clientLabel(order)}`,
         cell: (order) => {
           const position = groupPositionLabel(order, shopCounts);
           return (
@@ -162,6 +163,9 @@ export default function OpsOrdersPage() {
                 <ShopModeChip mode={shopModeOf(order, shopCounts)} />
                 <TestOrderChip order={order} />
               </div>
+              <p className="text-caption text-text-secondary m-0 mt-0.5 truncate">
+                {clientLabel(order)}
+              </p>
               <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
                 {position ? `${position} · ` : ""}Order {order.id}
               </p>

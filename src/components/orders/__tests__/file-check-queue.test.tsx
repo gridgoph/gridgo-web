@@ -245,3 +245,63 @@ it("shows the artwork warnings on the row and the full record before passing", a
   expect(record).toHaveTextContent(/Client accepted on/);
   expect(record).toHaveTextContent("Not accepted by the client");
 });
+
+it("shows the client's name on every list, and finds a file by it", () => {
+  const named = order("ord_qa_case", "Review flyers", "needs_qa", 10, {
+    clientName: "  Mina Cruz ",
+  });
+  const nameless = order("o-nameless", "Plain banner", "needs_qa", 20, {
+    clientName: null,
+  });
+  const paying = order("o-paying", "Paying stickers", "initial_payment_review", 30, {
+    clientName: "Rosa Lim",
+  });
+  const back = order("o-back-named", "Fixing poster", "client_correction", null, {
+    clientName: "Ana Reyes",
+    fileCheck: {
+      status: "failed",
+      requestedAt: ago(100),
+      reviewedAt: ago(50),
+      reason: "Too small.",
+      waitingSeconds: 0,
+    },
+  });
+  const held = order("o-held", "Held shirts", "client_correction", null, {
+    clientName: "Lito Garcia",
+    fileCheck: {
+      status: "failed",
+      reasonCode: "prohibited_item",
+      requestedAt: ago(100),
+      reviewedAt: ago(50),
+      reason: "Not allowed.",
+      waitingSeconds: 0,
+    },
+  } as Partial<Order>);
+  render(
+    <FileCheckQueue
+      orders={[named, nameless, paying, back, held]}
+      onChanged={() => {}}
+    />,
+  );
+
+  const table = screen.getByRole("table", { name: /Files waiting on your check/ });
+  const namedRow = within(table).getByText("Review flyers").closest("tr")!;
+  const namelessRow = within(table).getByText("Plain banner").closest("tr")!;
+  expect(within(namedRow).getByText("Mina Cruz")).toBeInTheDocument();
+  expect(within(namelessRow).getByText("Unavailable")).toBeInTheDocument();
+
+  const section = (heading: RegExp) =>
+    within(screen.getByRole("heading", { name: heading }).closest("section")!);
+  expect(section(/^Payment first/).getByText("Rosa Lim")).toBeInTheDocument();
+  expect(section(/^Sent back to the client/).getByText("Ana Reyes")).toBeInTheDocument();
+  expect(
+    section(/^On hold for a prohibited item/).getByText("Lito Garcia"),
+  ).toBeInTheDocument();
+
+  fireEvent.change(screen.getByRole("searchbox", { name: "Filter by order…" }), {
+    target: { value: "mina" },
+  });
+  const filtered = screen.getByRole("table", { name: /Files waiting on your check/ });
+  expect(within(filtered).getByText("Review flyers")).toBeInTheDocument();
+  expect(within(filtered).queryByText("Plain banner")).toBeNull();
+});

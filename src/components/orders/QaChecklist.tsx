@@ -68,15 +68,11 @@ export function QaChecklistFields({
           const blocked = status !== "ready";
           return (
             <Field key={check.id} orientation="horizontal">
-              <input
+              <TickTarget
                 id={`${prefix}-${check.id}`}
-                type="checkbox"
-                className="mt-1"
                 checked={Boolean(checked[check.id])}
                 disabled={disabled || blocked}
-                onChange={(event) =>
-                  onCheck({ ...checked, [check.id]: event.target.checked })
-                }
+                onChange={(value) => onCheck({ ...checked, [check.id]: value })}
               />
               <FieldLabel
                 htmlFor={`${prefix}-${check.id}`}
@@ -94,6 +90,43 @@ export function QaChecklistFields({
         })}
       </FieldGroup>
     </FieldSet>
+  );
+}
+
+/**
+ * A 44px hit target for one check. The checkbox stays a checkbox. Clicks here
+ * do not bubble into the accordion trigger beside it.
+ */
+function TickTarget({
+  id,
+  labelledBy,
+  checked,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  labelledBy?: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label
+      data-testid="qa-tick"
+      className="inline-flex size-11 min-h-11 min-w-11 shrink-0 items-center justify-center"
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <input
+        id={id}
+        type="checkbox"
+        className="size-4"
+        aria-labelledby={labelledBy}
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+    </label>
   );
 }
 
@@ -154,18 +187,14 @@ function QaChecklistSteps({
           const labelId = `${prefix}-${check.id}-label`;
           return (
             <AccordionItem key={check.id} value={check.id}>
-              <AccordionHeader className="items-stretch">
-                <div className={cn("flex items-start py-3 pl-4", shown && "bg-surface-variant/40")}>
-                  <input
+              <AccordionHeader className="items-center">
+                <div className={cn("flex shrink-0 items-center pl-2", shown && "bg-surface-variant/40")}>
+                  <TickTarget
                     id={`${prefix}-${check.id}`}
-                    type="checkbox"
-                    className="mt-1"
-                    aria-labelledby={labelId}
+                    labelledBy={labelId}
                     checked={ticked}
                     disabled={disabled || blocked}
-                    onChange={(event) =>
-                      onCheck({ ...checked, [check.id]: event.target.checked })
-                    }
+                    onChange={(value) => onCheck({ ...checked, [check.id]: value })}
                   />
                 </div>
                 <AccordionTrigger
