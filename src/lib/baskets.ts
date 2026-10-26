@@ -6,8 +6,9 @@
  * ordinary order with its own job, rider, payout stages and refunds; only the
  * payment is shared. An order without a `basketId` is a single-shop order.
  *
- * Groups are named "Shop A", "Shop B", … on every screen here, never by the
- * shop's trading name. Pure functions, unit tested.
+ * These helpers name groups "Shop A", "Shop B", …, never by the shop's
+ * trading name. The staff order workspace shows that name beside this label;
+ * nothing in this file does. Pure functions, unit tested.
  */
 
 import type { Basket, BasketGroup, Order } from "@/lib/api/types";

@@ -68,6 +68,7 @@ import { CoverSpineRecord } from "@/components/orders/CoverSpineRecord";
 import { ExactColoursRecord } from "@/components/orders/ExactColours";
 import { ColourPricingRecord } from "@/components/orders/ColourPricingRecord";
 import { BasketPanel } from "@/components/orders/BasketPanel";
+import { ShopHeading } from "@/components/orders/ShopHeading";
 import { BasketPayment } from "@/components/orders/BasketPayment";
 import { OrderMoneyLines } from "@/components/orders/OrderMoneyLines";
 import { PaymentSummary } from "@/components/orders/PaymentSummary";
@@ -513,9 +514,11 @@ export function OrderWorkspace({
       if (change.supplierId) ids.add(change.supplierId);
       if (change.payment?.confirmedBy) ids.add(change.payment.confirmedBy);
     }
-    // Each shop group's rider, for the basket panel.
+    // This order's shop, and each group's shop and rider, for the basket panel.
+    if (order?.supplierId) ids.add(order.supplierId);
     for (const group of basket?.groups ?? []) {
       if (group.order.riderId) ids.add(group.order.riderId);
+      if (group.order.supplierId) ids.add(group.order.supplierId);
     }
     return [...ids].sort().join(",");
   }, [order, escalations, corrections, failures, basket, issues]);
@@ -528,7 +531,8 @@ export function OrderWorkspace({
       missing.map((id) =>
         getUser(id).then(
           // A shop reads by its shop name; everyone else by their own.
-          (user) => [id, user.supplierName || user.name] as const,
+          // A record that is not a user stays unresolved.
+          (user) => [id, user?.supplierName || user?.name || ""] as const,
           () => [id, ""] as const,
         ),
       ),
@@ -724,6 +728,11 @@ export function OrderWorkspace({
           <h1 className="text-h2 text-text-primary m-0 mt-1 truncate">
             {order.title || "Untitled order"}
           </h1>
+          {!order.basketId ? (
+            <div className="mt-1">
+              <ShopHeading order={order} names={names} tree={tree} />
+            </div>
+          ) : null}
           {order.basketId || isExpressOrder(order) ? (
             <div className="mt-1 flex flex-wrap items-center gap-2">
               {order.basketId ? (
