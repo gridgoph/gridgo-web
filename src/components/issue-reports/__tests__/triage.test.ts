@@ -1,20 +1,26 @@
 import { describe, expect, it } from "vitest";
 
-import { triageSummary } from "@/components/issue-reports/TriageFilters";
 import {
   acceptSuggestion,
+  activeFilters,
   aiOutcome,
   aiRowLabel,
   checkLabel,
-  DEFAULT_FILTERS,
+  clearFilters,
+  DEFAULT_VIEW,
   filterQuery,
-  isDefaultFilters,
-  listIsWhole,
-  matchesFilters,
-  moreFilterCount,
+  knownTotal,
+  matchesSearch,
+  matchesView,
   resolveReportReference,
+  searchFromView,
+  suggestionLabel,
+  tabCount,
   triageOf,
-  type TriageFilters,
+  triageSummary,
+  viewFromSearch,
+  withoutFilter,
+  type DeskView,
 } from "@/components/issue-reports/triage";
 import type { IssueReport, IssueReportAiReview, IssueReportTriage, IssueReportTriageCounts } from "@/lib/api/types";
 
@@ -57,60 +63,136 @@ const counts = (spam: number): IssueReportTriageCounts => ({
   labels: [],
 });
 
+describe("tabs and counts", () => {
+  it("counts each tab from the triage totals, and All as their sum", () => {
+    expect(tabCount("review", counts(1))).toBe(4);
+    expect(tabCount("spam", counts(1))).toBe(1);
+    expect(tabCount("all", counts(1))).toBe(7);
+    expect(tabCount("all", null)).toBeUndefined();
+  });
+
+  it("knows the view's total only while the API's counts can say", () => {
+    const status = { new: 5, tracked: 1, published: 0, dismissed: 1, priorities: 2 };
+    expect(knownTotal(DEFAULT_VIEW, status, counts(1))).toBe(4);
+    expect(knownTotal({ ...DEFAULT_VIEW, tab: "all", status: "new" }, status, counts(1))).toBe(5);
+    expect(knownTotal({ ...DEFAULT_VIEW, tab: "all", priority: true }, status, counts(1))).toBe(2);
+    expect(knownTotal({ ...DEFAULT_VIEW, status: "new" }, status, counts(1))).toBeUndefined();
+    expect(knownTotal({ ...DEFAULT_VIEW, label: "map" }, status, counts(1))).toBeUndefined();
+  });
+});
+
 describe("filterQuery", () => {
-  it("starts with spam hidden and nothing else narrowed", () => {
-    expect(filterQuery(DEFAULT_FILTERS)).toEqual({ validity: ["unreviewed", "valid", "duplicate"] });
-    expect(isDefaultFilters(DEFAULT_FILTERS)).toBe(true);
+  it("asks for the tab's verdict and nothing else by default", () => {
+    expect(filterQuery(DEFAULT_VIEW)).toEqual({ validity: ["unreviewed"] });
+    expect(filterQuery({ ...DEFAULT_VIEW, tab: "all" })).toEqual({});
   });
 
-  it("sends no validity when every verdict is on", () => {
-    expect(filterQuery({ ...DEFAULT_FILTERS, validity: ["spam", "valid", "unreviewed", "duplicate"] })).toEqual({});
-  });
-
-  it("sends the category, label and AI review the desk narrows by", () => {
-    const filters: TriageFilters = { validity: ["spam"], category: "none", label: "checkout", ai: "not_reviewed" };
-    expect(filterQuery(filters)).toEqual({
+  it("sends category, label, suggestion, priority and the received window", () => {
+    const view: DeskView = {
+      ...DEFAULT_VIEW,
+      tab: "spam",
+      category: "none",
+      label: "checkout",
+      ai: "not_reviewed",
+      priority: true,
+      received: "week",
+      q: "ignored by the API",
+    };
+    expect(filterQuery(view, Date.parse("2026-10-27T00:00:00.000Z"))).toEqual({
       validity: ["spam"],
       triageCategory: ["none"],
       label: "checkout",
       aiReviewed: false,
+      priority: true,
+      since: "2026-10-20T00:00:00.000Z",
     });
-    expect(moreFilterCount(filters)).toBe(3);
-    expect(isDefaultFilters(filters)).toBe(false);
   });
 });
 
-describe("listIsWhole", () => {
-  it("lets the status counts total the list while no spam exists", () => {
-    expect(listIsWhole(DEFAULT_FILTERS, counts(0))).toBe(true);
-    expect(listIsWhole(DEFAULT_FILTERS, null)).toBe(true);
+describe("the view in the URL", () => {
+  it("round-trips every filter and the open report, leaving defaults off", () => {
+    const view: DeskView = {
+      tab: "duplicate",
+      status: "tracked",
+      priority: true,
+      category: "bug",
+      label: "rider-map",
+      received: "month",
+      ai: "reviewed",
+      q: "checkout",
+    };
+    const query = searchFromView(view, report.id);
+    expect(viewFromSearch(new URLSearchParams(query))).toEqual(view);
+    expect(new URLSearchParams(query).get("report")).toBe(report.id);
+    expect(searchFromView(DEFAULT_VIEW)).toBe("");
   });
 
-  it("stops trusting them once spam is hidden or another filter is set", () => {
-    expect(listIsWhole(DEFAULT_FILTERS, counts(1))).toBe(false);
-    expect(listIsWhole({ ...DEFAULT_FILTERS, validity: ["unreviewed", "valid", "duplicate", "spam"], ai: "reviewed" }, counts(0))).toBe(false);
+  it("falls back on anything it does not know", () => {
+    expect(viewFromSearch(new URLSearchParams("tab=bogus&status=x&label=NO!&received=year"))).toEqual(DEFAULT_VIEW);
+    expect(viewFromSearch(null)).toEqual(DEFAULT_VIEW);
   });
 });
 
-describe("matchesFilters", () => {
-  it("drops a report marked spam from the default view", () => {
-    expect(matchesFilters(report, DEFAULT_FILTERS)).toBe(true);
-    expect(matchesFilters({ ...report, triage: { ...triage, validity: "spam" } }, DEFAULT_FILTERS)).toBe(false);
+describe("filter chips", () => {
+  const view: DeskView = { ...DEFAULT_VIEW, tab: "valid", status: "new", label: "map", q: "rider", priority: true };
+
+  it("lists each filter in force, in toolbar order", () => {
+    expect(activeFilters(view).map((chip) => chip.label)).toEqual([
+      "Search: “rider”",
+      "Status: New",
+      "Label: map",
+      "Priority only",
+    ]);
+    expect(activeFilters(DEFAULT_VIEW)).toEqual([]);
   });
 
-  it("checks category, label and AI review", () => {
-    const sorted = { ...report, triage: { ...triage, category: "bug" as const, labels: ["map"] }, aiReview: ai };
-    expect(matchesFilters(sorted, { ...DEFAULT_FILTERS, category: "bug", label: "map", ai: "reviewed" })).toBe(true);
-    expect(matchesFilters(sorted, { ...DEFAULT_FILTERS, category: "none" })).toBe(false);
-    expect(matchesFilters(report, { ...DEFAULT_FILTERS, category: "none" })).toBe(true);
-    expect(matchesFilters(sorted, { ...DEFAULT_FILTERS, label: "checkout" })).toBe(false);
-    expect(matchesFilters(sorted, { ...DEFAULT_FILTERS, ai: "not_reviewed" })).toBe(false);
+  it("removes one, or clears all while keeping the tab", () => {
+    expect(withoutFilter(view, "label").label).toBeNull();
+    expect(clearFilters(view)).toEqual({ ...DEFAULT_VIEW, tab: "valid" });
+  });
+});
+
+describe("matchesView", () => {
+  it("drops a report that left the tab", () => {
+    expect(matchesView(report, DEFAULT_VIEW)).toBe(true);
+    expect(matchesView({ ...report, triage: { ...triage, validity: "spam" } }, DEFAULT_VIEW)).toBe(false);
+    expect(matchesView({ ...report, triage: { ...triage, validity: "spam" } }, { ...DEFAULT_VIEW, tab: "all" })).toBe(true);
   });
 
-  it("reads a report from an API before triage as To review", () => {
+  it("checks status, priority, category, label and suggestion", () => {
+    const sorted = { ...report, priority: true, triage: { ...triage, category: "bug" as const, labels: ["map"] }, aiReview: ai };
+    expect(
+      matchesView(sorted, { ...DEFAULT_VIEW, status: "new", priority: true, category: "bug", label: "map", ai: "reviewed" }),
+    ).toBe(true);
+    expect(matchesView(sorted, { ...DEFAULT_VIEW, status: "tracked" })).toBe(false);
+    expect(matchesView(report, { ...DEFAULT_VIEW, priority: true })).toBe(false);
+    expect(matchesView(sorted, { ...DEFAULT_VIEW, category: "none" })).toBe(false);
+    expect(matchesView(report, { ...DEFAULT_VIEW, category: "none" })).toBe(true);
+    expect(matchesView(sorted, { ...DEFAULT_VIEW, label: "checkout" })).toBe(false);
+    expect(matchesView(sorted, { ...DEFAULT_VIEW, ai: "not_reviewed" })).toBe(false);
+  });
+
+  it("reads a report from an API before triage as needing review", () => {
     const old = { ...report, triage: undefined, aiReview: undefined };
     expect(triageOf(old).validity).toBe("unreviewed");
-    expect(matchesFilters(old, DEFAULT_FILTERS)).toBe(true);
+    expect(matchesView(old, DEFAULT_VIEW)).toBe(true);
+  });
+});
+
+describe("matchesSearch", () => {
+  it("finds every word in the text, reference, labels or suggestion note", () => {
+    const labelled = { ...report, triage: { ...triage, labels: ["rider-map"] }, aiReview: ai };
+    expect(matchesSearch(labelled, "manual REFRESH")).toBe(true);
+    expect(matchesSearch(labelled, "50d4f603")).toBe(true);
+    expect(matchesSearch(labelled, "rider-map promo")).toBe(true);
+    expect(matchesSearch(labelled, "advertising")).toBe(true);
+    expect(matchesSearch(labelled, "refresh missing")).toBe(false);
+    expect(matchesSearch(labelled, "  ")).toBe(true);
+  });
+
+  it("searches only the text the reader may see", () => {
+    const linked = { ...report, issue: "See https://github.com/gridgoph/gridgo-api/issues/9" };
+    expect(matchesSearch(linked, "github", () => "See [link hidden]")).toBe(false);
   });
 });
 
@@ -166,9 +248,16 @@ describe("AI review", () => {
     expect(aiOutcome({ ...ai, outcome: "overridden" }, { ...by, triagedBy: { id: "u1", name: null } }).label).toBe(
       "Overridden by a teammate",
     );
-    expect(aiRowLabel(ai)).toBe("AI suggests spam");
-    expect(aiRowLabel({ ...ai, outcome: "confirmed" })).toBe("Agrees with AI");
-    expect(aiRowLabel({ ...ai, outcome: "overridden" })).toBe("Overrules AI");
+    expect(aiRowLabel(ai)).toBe("Suggested: Spam");
+    expect(aiRowLabel({ ...ai, outcome: "confirmed" })).toBe("Matches the suggestion");
+    expect(aiRowLabel({ ...ai, outcome: "overridden" })).toBe("Suggested: Spam, overruled");
+  });
+
+  it("names the report a suggested duplicate repeats", () => {
+    expect(suggestionLabel({ ...ai, validity: "duplicate", duplicateOf: "3c7d1e2f-0000-4000-8000-000000000001" })).toBe(
+      "Suggested: Duplicate of 3C7D1E2F",
+    );
+    expect(suggestionLabel({ ...ai, validity: "valid" })).toBe("Suggested: Valid");
   });
 
   it("takes the suggestion, adding its labels to the person's", () => {

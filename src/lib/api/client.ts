@@ -3285,19 +3285,21 @@ export async function reorderCatalogPhotos(
 // ---------------------------------------------------------------------------
 
 /**
- * Newest first. `limit` (API cap 500) and `before` (the id of the last report
- * already shown) page the list; `counts` are always the totals per status and
- * `triageCounts` the triage totals, whatever the filters.
+ * Newest first; `status` null lists every status. `limit` (API cap 500) and
+ * `before` (the id of the last report already shown) page the list; `counts`
+ * are always the totals per status and `triageCounts` the triage totals,
+ * whatever the filters.
  */
 export async function listIssueReports(
-  status: IssueReportStatus | "priorities",
+  status: IssueReportStatus | "priorities" | null,
   page: { limit?: number; before?: string | null } = {},
   filters: IssueReportListFilters = {},
 ): Promise<{ reports: IssueReport[]; counts: IssueReportCounts; triageCounts?: IssueReportTriageCounts }> {
   return request(
     `/ops/issue-reports${buildQuery({
-      status: status === "priorities" ? undefined : status,
-      priority: status === "priorities" ? "true" : undefined,
+      status: status === "priorities" || status === null ? undefined : status,
+      priority: status === "priorities" || filters.priority ? "true" : undefined,
+      since: filters.since || undefined,
       limit: page.limit,
       before: page.before,
       validity: filters.validity?.length ? filters.validity.join(",") : undefined,
@@ -3306,6 +3308,11 @@ export async function listIssueReports(
       aiReviewed: filters.aiReviewed === undefined ? undefined : String(filters.aiReviewed),
     })}`,
   );
+}
+
+/** One report, wherever it sits; the same projection as the list. */
+export async function getIssueReport(id: string): Promise<IssueReport> {
+  return request<IssueReport>(`/ops/issue-reports/${encodeURIComponent(id)}`);
 }
 
 /** Workflow, priority and triage are separate writes; the API refuses a mix. */

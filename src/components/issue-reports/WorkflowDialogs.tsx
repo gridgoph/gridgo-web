@@ -105,7 +105,7 @@ export function TrackDialog({
           <DialogHeader>
             <DialogTitle>{storedUrl ? `GitHub issue for report ${reference}` : `Track report ${reference}`}</DialogTitle>
             <DialogDescription>
-              Tracked means the team is working on it in a GitHub issue. The report moves to the Tracked tab.
+              Tracked means the team is working on it in a GitHub issue. Its verdict and labels stay as they are.
             </DialogDescription>
           </DialogHeader>
           <TrackerField
@@ -187,8 +187,8 @@ export function PublishDialog({
           <DialogHeader>
             <DialogTitle>Publish report {reference}</DialogTitle>
             <DialogDescription>
-              Published means the fix or answer is out and the public reports page names this report. The report moves
-              to the Published tab.
+              Published means the fix or answer is out and the public reports page names this report. Its verdict and
+              labels stay as they are.
             </DialogDescription>
           </DialogHeader>
           <FieldGroup className="gap-4">

@@ -1,15 +1,17 @@
 "use client";
 
-import { Plus, Undo2, X } from "lucide-react";
+import { Plus, Sparkles, Undo2, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
 import {
   acceptSuggestion,
   aiOutcome,
+  canAcceptSuggestion,
   checkLabel,
   MAX_LABELS,
   reportReference,
   resolveReportReference,
+  suggestionLabel,
   TRIAGE_CATEGORIES,
   triageCategoryLabel,
   triageOf,
@@ -21,12 +23,13 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { STATUS_ICONS, StatusChip } from "@/components/ui/StatusChip";
+import { STATUS_ICONS, StatusChip, StatusMark } from "@/components/ui/StatusChip";
 import type { IssueReport, IssueReportTriageCategory, IssueReportTriageInput } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const TONE_TEXT = {
+/** Each tone's colour, for an icon outside a chip. */
+export const TONE_COLOR = {
   success: "var(--color-success)",
   error: "var(--color-error)",
   info: "var(--color-info)",
@@ -35,9 +38,10 @@ const TONE_TEXT = {
 } as const;
 
 /**
- * The one-press verdict: Valid, Spam or Duplicate, each also on its key
- * (V, S, D). Pressing the verdict a report already has does nothing; Undo
- * puts it back to To review.
+ * The one-press verdict: Accept suggestion (A) while the suggestion is not
+ * yet the verdict, then Valid, Spam or Duplicate (V, S, D). Pressing the
+ * verdict a report already has does nothing; the last button puts it back to
+ * Needs review. Accept is the panel's one yellow button while it shows.
  */
 export function VerdictBar({
   report,
@@ -49,12 +53,30 @@ export function VerdictBar({
   onTriage: (input: IssueReportTriageInput) => void;
 }) {
   const current = triageOf(report).validity;
+  const review = report.aiReview;
+  const accept = review && canAcceptSuggestion(report) ? acceptSuggestion(review, triageOf(report)) : null;
   return (
     <div className="flex flex-col gap-1.5 md:flex-row md:items-center md:gap-3">
       <p id="verdict-label" className="text-caption text-text-secondary m-0 md:w-24 md:shrink-0">
         Is it real?
       </p>
       <div role="group" aria-labelledby="verdict-label" className="flex flex-wrap items-center gap-2">
+        {accept && review ? (
+          // Default size: `sm` carries a type class that merges away the yellow's text colour.
+          <Button
+            variant="primary"
+            aria-keyshortcuts="A"
+            aria-label={`Accept suggestion: ${suggestionLabel(review).replace(/^Suggested: /, "")}`}
+            disabled={disabled}
+            onClick={() => onTriage(accept)}
+          >
+            <Sparkles aria-hidden />
+            Accept suggestion
+            <kbd className="text-caption ml-1 hidden font-sans opacity-70 lg:inline" aria-hidden>
+              A
+            </kbd>
+          </Button>
+        ) : null}
         {VERDICTS.map(({ validity, key }) => {
           const pressed = current === validity;
           const Icon = STATUS_ICONS[VALIDITY[validity].icon];
@@ -69,9 +91,9 @@ export function VerdictBar({
                 if (!pressed) onTriage({ validity });
               }}
               className={cn(pressed && "bg-muted")}
-              style={pressed ? { borderColor: TONE_TEXT[VALIDITY[validity].tone] } : undefined}
+              style={pressed ? { borderColor: TONE_COLOR[VALIDITY[validity].tone] } : undefined}
             >
-              <Icon aria-hidden style={{ color: TONE_TEXT[VALIDITY[validity].tone] }} />
+              <Icon aria-hidden style={{ color: TONE_COLOR[VALIDITY[validity].tone] }} />
               {pressed ? `Marked ${VALIDITY[validity].label.toLowerCase()}` : VALIDITY[validity].label}
               <kbd className="text-caption text-text-muted ml-1 hidden font-sans lg:inline" aria-hidden>
                 {key.toUpperCase()}
@@ -87,7 +109,7 @@ export function VerdictBar({
             onClick={() => onTriage({ validity: "unreviewed" })}
           >
             <Undo2 aria-hidden />
-            Back to To review
+            Back to Needs review
           </Button>
         ) : null}
       </div>
@@ -95,20 +117,20 @@ export function VerdictBar({
   );
 }
 
-/** The AI's suggestion, and whether a person confirmed or overrode it. */
+/**
+ * The AI's suggestion, kept apart from the staff verdict: what it suggests,
+ * why, and whether a person confirmed or overrode it. Accepting it is the
+ * verdict bar's job, so the button stays in one place.
+ */
 export function AiSuggestion({
   report,
-  reports,
   trackerLinks,
-  disabled,
-  onTriage,
+  reportHref,
   onOpenReport,
 }: {
   report: IssueReport;
-  reports: readonly IssueReport[];
   trackerLinks: boolean;
-  disabled: boolean;
-  onTriage: (input: IssueReportTriageInput) => void;
+  reportHref: (id: string) => string;
   onOpenReport: (id: string) => void;
 }) {
   const review = report.aiReview;
@@ -124,9 +146,7 @@ export function AiSuggestion({
   }
   const triage = triageOf(report);
   const outcome = aiOutcome(review, triage);
-  const suggestion = acceptSuggestion(review, triage);
   const note = review.note && !trackerLinks ? withoutGithubLinks(review.note) : review.note;
-  const Sparkles = STATUS_ICONS.sparkles;
   return (
     <section
       aria-labelledby="ai-review-heading"
@@ -142,63 +162,69 @@ export function AiSuggestion({
             <Sparkles size={16} aria-hidden style={{ color: "var(--color-info)" }} />
             AI suggestion
           </h3>
-          <p className="text-caption text-text-muted m-0">Reviewed {formatDateTime(review.reviewedAt)}</p>
+          <p className="text-caption text-text-muted m-0">
+            Reviewed {formatDateTime(review.reviewedAt)}. Only staff set the verdict.
+          </p>
         </div>
         <StatusChip {...outcome} />
       </div>
-      <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
-        <dt className="text-caption text-text-muted">Verdict</dt>
-        <dd className="text-caption text-text-primary m-0">{VALIDITY[review.validity].label}</dd>
-        {review.category ? (
+      <p className="text-body text-text-primary m-0 inline-flex flex-wrap items-center gap-x-1.5">
+        <StatusMark {...VALIDITY[review.validity]} label={`Suggested: ${VALIDITY[review.validity].label}`} />
+        {review.validity === "duplicate" && review.duplicateOf ? (
           <>
-            <dt className="text-caption text-text-muted">Category</dt>
-            <dd className="text-caption text-text-primary m-0">{triageCategoryLabel(review.category)}</dd>
+            <span>of</span>
+            <ReportRef id={review.duplicateOf} href={reportHref(review.duplicateOf)} onOpen={onOpenReport} />
           </>
         ) : null}
-        {review.labels.length ? (
-          <>
-            <dt className="text-caption text-text-muted">Labels</dt>
-            <dd className="text-caption text-text-primary m-0">{review.labels.join(", ")}</dd>
-          </>
-        ) : null}
-        {review.duplicateOf ? (
-          <>
-            <dt className="text-caption text-text-muted">Repeats</dt>
-            <dd className="text-caption text-text-primary m-0">
-              <ReportRef id={review.duplicateOf} reports={reports} onOpen={onOpenReport} />
-            </dd>
-          </>
-        ) : null}
-      </dl>
+      </p>
+      {review.category || review.labels.length ? (
+        <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
+          {review.category ? (
+            <>
+              <dt className="text-caption text-text-muted">Category</dt>
+              <dd className="text-caption text-text-primary m-0">{triageCategoryLabel(review.category)}</dd>
+            </>
+          ) : null}
+          {review.labels.length ? (
+            <>
+              <dt className="text-caption text-text-muted">Labels</dt>
+              <dd className="text-caption text-text-primary m-0">{review.labels.join(", ")}</dd>
+            </>
+          ) : null}
+        </dl>
+      ) : null}
       {note ? (
         <p className="text-caption text-text-secondary m-0 whitespace-pre-wrap break-words">“{note}”</p>
-      ) : null}
-      {review.outcome !== "confirmed" ? (
-        <Button size="sm" className="self-start" disabled={disabled} onClick={() => onTriage(suggestion)}>
-          Use AI suggestion
-        </Button>
       ) : null}
     </section>
   );
 }
 
-/** "Report 1A2B3C4D", a button when that report is in the list. */
-function ReportRef({
+/**
+ * "Report 1A2B3C4D", a real link to that report on this desk: a plain press
+ * opens it in place, wherever it is filed; a modified one follows the link.
+ */
+export function ReportRef({
   id,
-  reports,
+  href,
   onOpen,
 }: {
   id: string;
-  reports: readonly IssueReport[];
+  href: string;
   onOpen: (id: string) => void;
 }) {
-  const label = `report ${reportReference(id)}`;
-  return reports.some((report) => report.id === id) ? (
-    <Button variant="link" className="text-caption" onClick={() => onOpen(id)}>
-      Open {label}
-    </Button>
-  ) : (
-    <span>{label}</span>
+  return (
+    <a
+      href={href}
+      onClick={(event) => {
+        if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+        event.preventDefault();
+        onOpen(id);
+      }}
+      className="inline-flex min-h-11 items-center text-[var(--color-brand)] underline underline-offset-4"
+    >
+      Report {reportReference(id)}
+    </a>
   );
 }
 
@@ -212,6 +238,7 @@ export function TriageDetails({
   labelSuggestions,
   disabled,
   onTriage,
+  reportHref,
   onOpenReport,
 }: {
   report: IssueReport;
@@ -219,6 +246,7 @@ export function TriageDetails({
   labelSuggestions: readonly string[];
   disabled: boolean;
   onTriage: (input: IssueReportTriageInput) => void;
+  reportHref: (id: string) => string;
   onOpenReport: (id: string) => void;
 }) {
   const triage = triageOf(report);
@@ -276,17 +304,17 @@ export function TriageDetails({
             if (next !== triage.category) onTriage({ category: next });
           }}
         >
-          <SelectTrigger id="triage-category" className="h-11 w-full" aria-label={`Category of report ${ref}`}>
+          <SelectTrigger id="triage-category" className="min-h-11 w-full" aria-label={`Category of report ${ref}`}>
             <SelectValue>{triageCategoryLabel(triage.category)}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
               {TRIAGE_CATEGORIES.map((category) => (
-                <SelectItem key={category} value={category}>
+                <SelectItem className="min-h-11" key={category} value={category}>
                   {triageCategoryLabel(category)}
                 </SelectItem>
               ))}
-              <SelectItem value="none">Not set</SelectItem>
+              <SelectItem className="min-h-11" value="none">Not set</SelectItem>
             </SelectGroup>
           </SelectContent>
         </Select>
@@ -368,7 +396,7 @@ export function TriageDetails({
           </FieldLabel>
           {triage.duplicateOf ? (
             <p className="text-caption text-text-primary m-0 inline-flex flex-wrap items-center gap-x-2">
-              Same as <ReportRef id={triage.duplicateOf} reports={reports} onOpen={onOpenReport} />
+              Same as <ReportRef id={triage.duplicateOf} href={reportHref(triage.duplicateOf)} onOpen={onOpenReport} />
             </p>
           ) : null}
           <form className="flex gap-2" onSubmit={saveRepeat}>
