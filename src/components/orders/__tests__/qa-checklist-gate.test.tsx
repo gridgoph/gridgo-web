@@ -192,3 +192,53 @@ it("keeps one quality step open, and opens the next step after that check is tic
   expect(screen.queryByText("CMYK")).not.toBeInTheDocument();
   expect(screen.getByRole("checkbox", { name: "Artwork is print-ready" })).toBeChecked();
 });
+
+it("changes the check from the tick area, and not from the step trigger", async () => {
+  const user = userEvent.setup();
+  const onCheck = vi.fn();
+  const panels = {
+    artwork: "ready" as const,
+    spec: "ready" as const,
+    quantity: "ready" as const,
+    address: "ready" as const,
+  };
+  const { rerender } = render(
+    <QaChecklistFields
+      order={order}
+      checked={{}}
+      onCheck={onCheck}
+      disabled={false}
+      panels={panels}
+      before={(check) => <p>{check.id} panel</p>}
+    />,
+  );
+  expect(screen.getByText("artwork panel")).toBeInTheDocument();
+  const area = screen.getAllByTestId("qa-tick")[0];
+  expect(area).toHaveClass("size-11", "min-h-11", "min-w-11");
+  await user.click(area);
+  expect(onCheck).toHaveBeenCalledWith({ artwork: true });
+  expect(screen.getByText("artwork panel")).toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "Artwork is print-ready" })).not.toBeChecked();
+
+  onCheck.mockClear();
+  await user.click(
+    screen.getByRole("button", { name: "Hide step 1: Artwork is print-ready" }),
+  );
+  expect(onCheck).not.toHaveBeenCalled();
+  expect(screen.queryByText("artwork panel")).not.toBeInTheDocument();
+  expect(screen.getByRole("checkbox", { name: "Artwork is print-ready" })).not.toBeChecked();
+
+  rerender(
+    <QaChecklistFields
+      order={order}
+      checked={{}}
+      onCheck={onCheck}
+      disabled={false}
+      panels={{ ...panels, artwork: "loading" }}
+      before={(check) => <p>{check.id} panel</p>}
+    />,
+  );
+  await user.click(screen.getAllByTestId("qa-tick")[0]);
+  expect(onCheck).not.toHaveBeenCalled();
+  expect(screen.getByRole("checkbox", { name: "Artwork is print-ready" })).toBeDisabled();
+});
