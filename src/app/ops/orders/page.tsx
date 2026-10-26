@@ -35,6 +35,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { SkeletonLines } from "@/components/ui/loading";
 import { ApiError, getSettings, listOrders } from "@/lib/api/client";
+import { clientLabel } from "@/lib/client-name";
 import type { OperatingHours, Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
@@ -397,12 +398,6 @@ const SPEED_FACETS: DataTableFacet[] = [
     ),
   },
 ];
-
-/** The client's name, or an explicit gap when the staff projection has none. */
-function clientLabel(order: Order): string {
-  const name = order.clientName?.trim() ?? "";
-  return name || "Unavailable";
-}
 
 /** Whose move it is, when it is not Operations'. */
 function waitingOn(state: string): string {
