@@ -564,6 +564,68 @@ describe("bulk actions", () => {
     expect(updateIssueReport.mock.calls.slice(1).map((call) => call[0])).toEqual([second.id, third.id]);
   });
 
+  describe("after a run that both stopped and failed", () => {
+    const reports = [withSuggestion(first, "valid"), withSuggestion(second, "valid"), withSuggestion(third, "valid")];
+    const saved = async (id: string) => ({ ...first, id, triage: { ...triage, validity: "valid" as const } });
+
+    // Three selected, the first write held; Stop, then the first write fails.
+    async function stoppedWithFailure() {
+      listIssueReports.mockResolvedValue(answer(reports));
+      let fail!: (err: Error) => void;
+      updateIssueReport.mockReturnValueOnce(
+        new Promise<IssueReport>((_, reject) => {
+          fail = reject;
+        }),
+      );
+      render(<IssueReportsDesk />);
+      await opened();
+      fireEvent.click(screen.getByRole("checkbox", { name: "Select all 3 shown" }));
+      fireEvent.click(screen.getByRole("button", { name: "Accept suggestion" }));
+      fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Accept 3 suggestions" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
+      await act(async () => fail(new Error("offline")));
+      expect(await screen.findByText(/0 saved\. 1 could not be saved\. Stopped before 2 more\./)).toBeInTheDocument();
+      return updateIssueReport.mock.calls[0][1];
+    }
+
+    async function finish() {
+      fireEvent.click(screen.getByRole("button", { name: "Finish the 2 not tried…" }));
+      fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Accept 2 suggestions" }));
+    }
+
+    it("keeps the failure to retry after finishing the rest (Finish, then Retry)", async () => {
+      const failedWrite = await stoppedWithFailure();
+      updateIssueReport.mockImplementation(saved);
+      await finish();
+      expect(await screen.findByText(/Accept 3 suggestions: 2 saved\. 1 could not be saved\./)).toBeInTheDocument();
+      expect(screen.getByRole("list", { name: "Reports not saved" })).toHaveTextContent("Report 50D4F603");
+      expect(screen.queryByRole("button", { name: /Finish the/ })).toBeNull();
+      await waitFor(() => expect(screen.getByText("1 selected")).toBeInTheDocument());
+      expect(screen.getByRole("checkbox", { name: "Select report 50D4F603" })).toBeChecked();
+
+      fireEvent.click(screen.getByRole("button", { name: "Retry the failed report" }));
+      expect(await screen.findByText(/Accept 3 suggestions: 3 saved\.$/)).toBeInTheDocument();
+      expect(screen.queryByRole("list", { name: "Reports not saved" })).toBeNull();
+      expect(updateIssueReport.mock.calls.map((call) => call[0])).toEqual([first.id, second.id, third.id, first.id]);
+      expect(updateIssueReport).toHaveBeenLastCalledWith(first.id, failedWrite);
+    });
+
+    it("keeps the untried reports to finish after retrying the failure (Retry, then Finish)", async () => {
+      const failedWrite = await stoppedWithFailure();
+      updateIssueReport.mockImplementation(saved);
+      fireEvent.click(screen.getByRole("button", { name: "Retry the failed report" }));
+      expect(await screen.findByText(/Accept 3 suggestions: 1 saved\. Stopped before 2 more\./)).toBeInTheDocument();
+      expect(updateIssueReport).toHaveBeenLastCalledWith(first.id, failedWrite);
+      expect(screen.queryByRole("list", { name: "Reports not saved" })).toBeNull();
+      await waitFor(() => expect(screen.getByText("2 selected")).toBeInTheDocument());
+      expect(screen.getByRole("checkbox", { name: "Select report 50D4F603" })).not.toBeChecked();
+
+      await finish();
+      expect(await screen.findByText(/Accept 3 suggestions: 3 saved\.$/)).toBeInTheDocument();
+      expect(updateIssueReport.mock.calls.map((call) => call[0])).toEqual([first.id, first.id, second.id, third.id]);
+    });
+  });
+
   it("marks the selection a duplicate of one report by its reference", async () => {
     listIssueReports.mockResolvedValue(answer([first, second, third]));
     updateIssueReport.mockImplementation(async (id: string) => ({ ...first, id, triage: { ...triage, validity: "duplicate" } }));

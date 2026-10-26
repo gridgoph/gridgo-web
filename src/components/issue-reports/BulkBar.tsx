@@ -6,6 +6,7 @@ import { useId, useRef, useState } from "react";
 import {
   acceptBreakdown,
   actionTitle,
+  mergeRecovery,
   outcomeSummary,
   planBulk,
   runBulk,
@@ -129,8 +130,10 @@ export function BulkBar({ selected, reports, disabled, write, onSaved, onRunning
   /**
    * Saves exactly these writes. A retry passes the failed writes as they
    * were confirmed, never the selection, which may have changed since.
+   * A recovery (`previous`, the batch so far) folds its outcome back into
+   * that batch, keeping whatever it did not rerun still unresolved.
    */
-  async function execute(next: BulkAction, steps: BulkStep[], skipped: number) {
+  async function execute(next: BulkAction, steps: BulkStep[], skipped: number, previous?: BulkOutcome) {
     setResult(null);
     setResumeOpen(false);
     stopRef.current = false;
@@ -147,8 +150,9 @@ export function BulkBar({ selected, reports, disabled, write, onSaved, onRunning
           );
         },
       });
-      setResult({ action: next, outcome, skipped });
-      onFinished(outcome);
+      const batch = previous ? mergeRecovery(previous, steps, outcome) : outcome;
+      setResult({ action: next, outcome: batch, skipped });
+      onFinished(batch);
     } finally {
       setRun(null);
       onRunningChange(false);
@@ -220,7 +224,14 @@ export function BulkBar({ selected, reports, disabled, write, onSaved, onRunning
                 <Button
                   size="sm"
                   disabled={busy}
-                  onClick={() => void execute(result.action, failures.map(({ report, write }) => ({ report, write })), 0)}
+                  onClick={() =>
+                    void execute(
+                      result.action,
+                      failures.map(({ report, write }) => ({ report, write })),
+                      result.skipped,
+                      result.outcome,
+                    )
+                  }
                 >
                   Retry {failures.length === 1 ? "the failed report" : `the ${failures.length} failed`}
                 </Button>
@@ -309,7 +320,7 @@ export function BulkBar({ selected, reports, disabled, write, onSaved, onRunning
             <AlertDialogAction
               variant="primary"
               disabled={busy}
-              onClick={() => result && void execute(result.action, untouched, 0)}
+              onClick={() => result && void execute(result.action, untouched, result.skipped, result.outcome)}
             >
               {result ? actionTitle(result.action, untouched.length) : ""}
             </AlertDialogAction>

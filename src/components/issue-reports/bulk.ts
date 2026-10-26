@@ -131,6 +131,20 @@ export async function runBulk(
   return outcome;
 }
 
+/**
+ * The batch after a recovery run (Retry or Finish) over some of its steps:
+ * those steps take their new outcome, every other failure and untried step
+ * stays as it was, so neither recovery hides the other's unfinished work.
+ */
+export function mergeRecovery(previous: BulkOutcome, ran: readonly BulkStep[], outcome: BulkOutcome): BulkOutcome {
+  const rerun = new Set(ran.map((step) => step.report.id));
+  return {
+    saved: [...previous.saved, ...outcome.saved],
+    failed: [...previous.failed.filter((entry) => !rerun.has(entry.report.id)), ...outcome.failed],
+    untouched: [...previous.untouched.filter((entry) => !rerun.has(entry.report.id)), ...outcome.untouched],
+  };
+}
+
 /** "11 saved. 1 could not be saved." Never a bare success when one failed. */
 export function outcomeSummary(outcome: BulkOutcome, skipped: number): string {
   const parts = [`${outcome.saved.length} saved.`];

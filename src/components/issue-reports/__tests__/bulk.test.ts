@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   acceptBreakdown,
   actionTitle,
+  mergeRecovery,
   outcomeSummary,
   planBulk,
   runBulk,
@@ -89,6 +90,20 @@ describe("planBulk", () => {
     expect(actionTitle({ kind: "verdict", validity: "unreviewed" }, 2)).toBe("Put 2 reports back to Needs review");
     expect(actionTitle({ kind: "duplicate", of: report(1).id }, 3)).toBe("Mark 3 reports duplicate of 00000001");
     expect(actionTitle({ kind: "status", status: "tracked" }, 4)).toBe("Move 4 reports to Tracked");
+  });
+});
+
+describe("mergeRecovery", () => {
+  it("replaces only the steps a recovery reran and keeps the rest unresolved", () => {
+    const step = (n: number) => ({ report: report(n), write: { triage: { validity: "valid" as const } } });
+    const batch = { saved: [report(4)], failed: [{ ...step(1), message: "offline" }], untouched: [step(2), step(3)] };
+    const finished = mergeRecovery(batch, [step(2), step(3)], { saved: [report(2)], failed: [{ ...step(3), message: "gone" }], untouched: [] });
+    expect(finished.saved.map((entry) => entry.id)).toEqual([report(4).id, report(2).id]);
+    expect(finished.failed.map((entry) => entry.report.id)).toEqual([report(1).id, report(3).id]);
+    expect(finished.untouched).toEqual([]);
+    const retried = mergeRecovery(batch, [step(1)], { saved: [report(1)], failed: [], untouched: [] });
+    expect(retried.failed).toEqual([]);
+    expect(retried.untouched.map((entry) => entry.report.id)).toEqual([report(2).id, report(3).id]);
   });
 });
 
