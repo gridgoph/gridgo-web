@@ -81,6 +81,7 @@ import {
 } from "@/lib/file-check";
 import { manilaWhen, manilaWhenFrom } from "@/lib/operating-hours";
 import { OperatingHoursStrip } from "@/components/orders/OperatingHoursStrip";
+import { clientLabel } from "@/lib/client-name";
 import { formatDateTime } from "@/lib/format";
 import { basketShopCounts, groupPositionLabel, shopModeOf } from "@/lib/baskets";
 import { QaChecklistFields } from "./QaChecklist";
@@ -176,7 +177,8 @@ export function FileCheckQueue({
         primary: true,
         alwaysVisible: true,
         sortValue: (row) => row.order.title ?? "",
-        filterValue: (row) => `${row.order.title ?? ""} ${row.order.id}`,
+        filterValue: (row) =>
+          `${row.order.title ?? ""} ${row.order.id} ${clientLabel(row.order)}`,
         cell: (row) => (
           <div className="min-w-0">
             <p
@@ -193,6 +195,9 @@ export function FileCheckQueue({
               {isExpressOrder(row.order) ? <ExpressChip /> : null}
               <TestOrderChip order={row.order} />
             </div>
+            <p className="text-caption text-text-secondary m-0 mt-0.5 truncate">
+              {clientLabel(row.order)}
+            </p>
             <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
               {groupPositionLabel(row.order, shopCounts)
                 ? `${groupPositionLabel(row.order, shopCounts)} · `
@@ -332,12 +337,17 @@ export function FileCheckQueue({
                 key={row.order.id}
                 className="flex flex-wrap items-center justify-between gap-2 border-b border-outline-subtle py-2 last:border-b-0"
               >
-                <Link
-                  href={orderHref(row.order.id)}
-                  className="text-body text-text-primary min-w-0 truncate underline-offset-2 hover:underline"
-                >
-                  {row.order.title || "Untitled order"}
-                </Link>
+                <div className="min-w-0">
+                  <Link
+                    href={orderHref(row.order.id)}
+                    className="text-body text-text-primary block truncate underline-offset-2 hover:underline"
+                  >
+                    {row.order.title || "Untitled order"}
+                  </Link>
+                  <p className="text-caption text-text-secondary m-0 mt-0.5 truncate">
+                    {clientLabel(row.order)}
+                  </p>
+                </div>
                 <ReviewWait
                   seconds={row.waitSeconds}
                   slot={fileCheckReviewSlot(row.order, now, hours)}
@@ -367,12 +377,17 @@ export function FileCheckQueue({
                   className="flex flex-col gap-0.5 border-b border-outline-subtle py-2 last:border-b-0"
                 >
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <Link
-                      href={orderHref(order.id)}
-                      className="text-body text-text-primary min-w-0 truncate underline-offset-2 hover:underline"
-                    >
-                      {order.title || "Untitled order"}
-                    </Link>
+                    <div className="min-w-0">
+                      <Link
+                        href={orderHref(order.id)}
+                        className="text-body text-text-primary block truncate underline-offset-2 hover:underline"
+                      >
+                        {order.title || "Untitled order"}
+                      </Link>
+                      <p className="text-caption text-text-secondary m-0 mt-0.5 truncate">
+                        {clientLabel(order)}
+                      </p>
+                    </div>
                     <span className="text-caption text-text-muted">
                       {check?.reviewedAt
                         ? formatDateTime(check.reviewedAt)
@@ -409,12 +424,17 @@ export function FileCheckQueue({
                   className="flex flex-col gap-1 border-b border-outline-subtle py-2 last:border-b-0"
                 >
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <Link
-                      href={orderHref(order.id)}
-                      className="text-body text-text-primary min-w-0 truncate underline-offset-2 hover:underline"
-                    >
-                      {order.title || "Untitled order"}
-                    </Link>
+                    <div className="min-w-0">
+                      <Link
+                        href={orderHref(order.id)}
+                        className="text-body text-text-primary block truncate underline-offset-2 hover:underline"
+                      >
+                        {order.title || "Untitled order"}
+                      </Link>
+                      <p className="text-caption text-text-secondary m-0 mt-0.5 truncate">
+                        {clientLabel(order)}
+                      </p>
+                    </div>
                     <span className="text-caption text-text-muted">
                       {check?.reviewedAt
                         ? formatDateTime(check.reviewedAt)
