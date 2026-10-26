@@ -1,4 +1,4 @@
-import type { IssueReport, IssueReportCounts, IssueReportStatus } from "@/lib/api/types";
+import type { IssueReport } from "@/lib/api/types";
 
 /** Reports fetched per page of the desk's list. */
 export const ISSUE_REPORTS_PAGE_SIZE = 25;
@@ -16,17 +16,15 @@ export function reloadLimit(loaded: number): number {
 }
 
 /**
- * Whether the tab has reports beyond those loaded. `counts` are the API's
- * totals per status, so they decide; an API without a `tracked` count falls
- * back to "the last page came back full".
+ * Whether the view has reports beyond those loaded. The API's `total` for the
+ * view decides when it is known (`knownTotal`); otherwise "the last page came
+ * back full".
  */
 export function hasMoreReports(
   loaded: number,
-  counts: IssueReportCounts | null,
-  status: IssueReportStatus | "priorities",
+  total: number | undefined,
   lastPage: { received: number; requested: number },
 ): boolean {
-  const total = counts?.[status];
   if (typeof total === "number") return loaded < total;
   return lastPage.received >= lastPage.requested;
 }

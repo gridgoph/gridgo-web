@@ -19,13 +19,11 @@ describe("issue report paging", () => {
     expect(reloadLimit(10_000)).toBe(ISSUE_REPORTS_MAX_LIMIT);
   });
 
-  it("reads more from the status total, or from a full page without one", () => {
-    const counts = { new: 30, published: 0, dismissed: 0, tracked: 4 };
-    expect(hasMoreReports(25, counts, "new", { received: 25, requested: 25 })).toBe(true);
-    expect(hasMoreReports(30, counts, "new", { received: 5, requested: 25 })).toBe(false);
-    const older = { new: 30, published: 0, dismissed: 0 };
-    expect(hasMoreReports(25, older, "tracked", { received: 25, requested: 25 })).toBe(true);
-    expect(hasMoreReports(7, older, "tracked", { received: 7, requested: 25 })).toBe(false);
+  it("reads more from the view's total, or from a full page without one", () => {
+    expect(hasMoreReports(25, 30, { received: 25, requested: 25 })).toBe(true);
+    expect(hasMoreReports(30, 30, { received: 5, requested: 25 })).toBe(false);
+    expect(hasMoreReports(25, undefined, { received: 25, requested: 25 })).toBe(true);
+    expect(hasMoreReports(7, undefined, { received: 7, requested: 25 })).toBe(false);
   });
 
   it("appends only reports not already listed, and spots an ignored cursor", () => {
