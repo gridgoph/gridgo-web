@@ -87,6 +87,8 @@ export function ReportRow({
       : null,
   ].filter(Boolean);
   const accept = suggestionWaiting(report);
+  const rawNote = accept ? report.aiReview?.note?.trim() : null;
+  const note = rawNote ? (trackerLinks ? rawNote : withoutGithubLinks(rawNote)) : null;
 
   return (
     <div
@@ -147,6 +149,12 @@ export function ReportRow({
           <SuggestionMarker report={report} />
           {statusChips}
         </div>
+        {/* One line of the suggestion's note while it waits; the report shows it whole. */}
+        {note ? (
+          <p className="text-caption text-text-muted m-0 truncate" title={note}>
+            <span className="sr-only">Suggestion note: </span>“{note}”
+          </p>
+        ) : null}
       </div>
       {accept ? (
         <Button

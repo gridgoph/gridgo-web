@@ -45,6 +45,13 @@ type Props = {
   onChange: (next: DeskView) => void;
 };
 
+/**
+ * The select primitive pins its trigger to 32px through `data-[size=default]`,
+ * which outranks a plain height class; a minimum height wins over it, so the
+ * triggers and their options meet the 44px touch floor.
+ */
+const TARGET = "min-h-11";
+
 function countSuffix(count: number | undefined): string {
   return typeof count === "number" ? ` (${count})` : "";
 }
@@ -65,7 +72,7 @@ function FilterControls({
   const labelChoices =
     view.label && !labels.some((entry) => entry.label === view.label) ? [{ label: view.label, count: 0 }, ...labels] : labels;
   const idPrefix = stacked ? "sheet" : "bar";
-  const trigger = cn("h-11", stacked ? "w-full" : "w-auto min-w-[9.5rem] max-w-[14rem]");
+  const trigger = cn(TARGET, stacked ? "w-full" : "w-auto min-w-[9.5rem] max-w-[14rem]");
 
   const controls = [
     {
@@ -85,9 +92,9 @@ function FilterControls({
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              <SelectItem value="any">Any status</SelectItem>
+              <SelectItem className={TARGET} value="any">Any status</SelectItem>
               {STATUS_CHOICES.map((choice) => (
-                <SelectItem key={choice.value} value={choice.value}>
+                <SelectItem className={TARGET} key={choice.value} value={choice.value}>
                   {`${choice.label}${countSuffix(counts?.[choice.value])}`}
                 </SelectItem>
               ))}
@@ -111,13 +118,13 @@ function FilterControls({
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              <SelectItem value="any">Any category</SelectItem>
+              <SelectItem className={TARGET} value="any">Any category</SelectItem>
               {TRIAGE_CATEGORIES.map((category) => (
-                <SelectItem key={category} value={category}>
+                <SelectItem className={TARGET} key={category} value={category}>
                   {triageCategoryLabel(category)}
                 </SelectItem>
               ))}
-              <SelectItem value="none">No category yet</SelectItem>
+              <SelectItem className={TARGET} value="none">No category yet</SelectItem>
             </SelectGroup>
           </SelectContent>
         </Select>
@@ -138,9 +145,9 @@ function FilterControls({
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
-              <SelectItem value="any">Any label</SelectItem>
+              <SelectItem className={TARGET} value="any">Any label</SelectItem>
               {labelChoices.map((entry) => (
-                <SelectItem key={entry.label} value={entry.label}>
+                <SelectItem className={TARGET} key={entry.label} value={entry.label}>
                   {entry.count ? `${entry.label} (${entry.count})` : entry.label}
                 </SelectItem>
               ))}
@@ -165,7 +172,7 @@ function FilterControls({
           <SelectContent>
             <SelectGroup>
               {RECEIVED_CHOICES.map((choice) => (
-                <SelectItem key={choice.value} value={choice.value}>
+                <SelectItem className={TARGET} key={choice.value} value={choice.value}>
                   {choice.label}
                 </SelectItem>
               ))}
@@ -190,7 +197,7 @@ function FilterControls({
           <SelectContent>
             <SelectGroup>
               {AI_CHOICES.map((choice) => (
-                <SelectItem key={choice.value} value={choice.value}>
+                <SelectItem className={TARGET} key={choice.value} value={choice.value}>
                   {choice.label}
                 </SelectItem>
               ))}
@@ -260,6 +267,7 @@ export function DeskToolbar({ view, counts, triageCounts, onChange }: Props) {
   const [applied, setApplied] = useState(view.q);
   const [sheetOpen, setSheetOpen] = useState(false);
   const pending = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   // The search lands after a pause; by then another filter may have moved.
   const latest = useRef(view);
   const chips = activeFilters(view);
@@ -277,9 +285,31 @@ export function DeskToolbar({ view, counts, triageCounts, onChange }: Props) {
     latest.current = view;
   }, [view]);
 
+  // A search changed from outside (a chip, Clear all, the empty list's Clear
+  // all filters) drops the one still waiting to land, so it cannot come back.
+  useEffect(() => {
+    if (view.q !== applied && pending.current) {
+      clearTimeout(pending.current);
+      pending.current = null;
+    }
+  }, [view.q, applied]);
+
   useEffect(() => () => {
     if (pending.current) clearTimeout(pending.current);
   }, []);
+
+  function cancelPending() {
+    if (pending.current) clearTimeout(pending.current);
+    pending.current = null;
+  }
+
+  /** Clear all, including a search typed but not yet applied. */
+  function clearAll() {
+    cancelPending();
+    setDraft("");
+    setApplied("");
+    onChange(clearFilters(view));
+  }
 
   function search(next: string, now = false) {
     setDraft(next);
@@ -312,6 +342,7 @@ export function DeskToolbar({ view, counts, triageCounts, onChange }: Props) {
             className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-text-muted"
           />
           <Input
+            ref={inputRef}
             type="search"
             value={draft}
             onChange={(event) => search(event.target.value)}
@@ -334,7 +365,11 @@ export function DeskToolbar({ view, counts, triageCounts, onChange }: Props) {
               size="icon-sm"
               aria-label="Clear search"
               className="absolute top-0 right-0"
-              onClick={() => search("", true)}
+              onClick={() => {
+                search("", true);
+                // The button leaves with the text; focus stays in the search.
+                inputRef.current?.focus();
+              }}
             >
               <X aria-hidden />
             </Button>
@@ -368,7 +403,7 @@ export function DeskToolbar({ view, counts, triageCounts, onChange }: Props) {
             </li>
           ))}
           <li>
-            <Button variant="link" size="sm" onClick={() => onChange(clearFilters(view))}>
+            <Button variant="link" size="sm" onClick={clearAll}>
               Clear all
             </Button>
           </li>

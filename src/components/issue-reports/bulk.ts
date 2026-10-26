@@ -89,13 +89,14 @@ export function writeErrorCopy(err: unknown): string {
   return "Could not save. Check your connection.";
 }
 
-export type BulkFailure = { report: IssueReport; message: string };
+/** A write the API refused, kept whole so a retry sends exactly it again. */
+export type BulkFailure = BulkStep & { message: string };
 
 export type BulkOutcome = {
   saved: IssueReport[];
   failed: BulkFailure[];
-  /** Not tried, because the run was stopped first. */
-  untouched: IssueReport[];
+  /** Not tried, because the run was stopped first; still the confirmed writes. */
+  untouched: BulkStep[];
 };
 
 /**
@@ -114,7 +115,7 @@ export async function runBulk(
   const outcome: BulkOutcome = { saved: [], failed: [], untouched: [] };
   for (const [index, step] of steps.entries()) {
     if (options.stopped?.()) {
-      outcome.untouched = steps.slice(index).map((entry) => entry.report);
+      outcome.untouched = steps.slice(index);
       break;
     }
     try {
@@ -123,7 +124,7 @@ export async function runBulk(
       options.onProgress?.(index + 1, { report: step.report, updated });
     } catch (err) {
       const message = writeErrorCopy(err);
-      outcome.failed.push({ report: step.report, message });
+      outcome.failed.push({ ...step, message });
       options.onProgress?.(index + 1, { report: step.report, error: message });
     }
   }

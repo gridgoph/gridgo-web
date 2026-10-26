@@ -304,17 +304,17 @@ export function TriageDetails({
             if (next !== triage.category) onTriage({ category: next });
           }}
         >
-          <SelectTrigger id="triage-category" className="h-11 w-full" aria-label={`Category of report ${ref}`}>
+          <SelectTrigger id="triage-category" className="min-h-11 w-full" aria-label={`Category of report ${ref}`}>
             <SelectValue>{triageCategoryLabel(triage.category)}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectGroup>
               {TRIAGE_CATEGORIES.map((category) => (
-                <SelectItem key={category} value={category}>
+                <SelectItem className="min-h-11" key={category} value={category}>
                   {triageCategoryLabel(category)}
                 </SelectItem>
               ))}
-              <SelectItem value="none">Not set</SelectItem>
+              <SelectItem className="min-h-11" value="none">Not set</SelectItem>
             </SelectGroup>
           </SelectContent>
         </Select>

@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -347,6 +347,8 @@ describe("validity labels and suggestions", () => {
     const [row, other] = within(list).getAllByRole("listitem");
     expect(within(row).getByText("Needs review")).toBeInTheDocument();
     expect(within(row).getByText("Suggested: Duplicate of 3C7D1E2F")).toBeInTheDocument();
+    expect(within(row).getByText(/Same blank map as the earlier report/)).toBeInTheDocument();
+    expect(within(row).getByText("Suggestion note:")).toHaveClass("sr-only");
     expect(within(other).getByText("Valid")).toBeInTheDocument();
     const card = screen.getByRole("region", { name: "AI suggestion" });
     expect(within(card).getByText("Suggested: Duplicate")).toBeInTheDocument();
@@ -364,6 +366,63 @@ describe("validity labels and suggestions", () => {
     expect(await screen.findByRole("heading", { name: "Report 3C7D1E2F" })).toBeInTheDocument();
     expect(getIssueReport).toHaveBeenCalledWith(original.id);
     expect(screen.getByRole("note")).toHaveTextContent("not in this view: it is valid and new");
+  });
+
+  function deferred() {
+    let resolve!: (report: IssueReport) => void;
+    const promise = new Promise<IssueReport>((done) => {
+      resolve = done;
+    });
+    return { promise, resolve };
+  }
+
+  it("waits on an outside report by name, then drops it if another report was opened first", async () => {
+    listIssueReports.mockResolvedValue(answer([repeat, second]));
+    const read = deferred();
+    getIssueReport.mockReturnValue(read.promise);
+    render(<IssueReportsDesk />);
+    await opened();
+    fireEvent.click(within(screen.getByRole("region", { name: "AI suggestion" })).getByRole("link", { name: "Report 3C7D1E2F" }));
+    expect(await screen.findByText("Opening report 3C7D1E2F…")).toBeInTheDocument();
+    // Nothing can act on the report it is leaving.
+    expect(screen.queryByRole("group", { name: "Is it real?" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Report 50D4F603" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /rider map does not load/ }));
+    expect(await screen.findByRole("heading", { name: "Report AAAA0002" })).toBeInTheDocument();
+    await act(async () => read.resolve({ ...original, triage: { ...triage, validity: "valid" } }));
+    expect(screen.getByRole("heading", { name: "Report AAAA0002" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Report 3C7D1E2F" })).toBeNull();
+    expect(window.location.search).toContain(`report=${second.id}`);
+  });
+
+  it("drops an outside report when the tab changes while it loads", async () => {
+    listIssueReports.mockResolvedValue(answer([repeat]));
+    const read = deferred();
+    getIssueReport.mockReturnValue(read.promise);
+    render(<IssueReportsDesk />);
+    await opened();
+    fireEvent.click(within(screen.getByRole("region", { name: "AI suggestion" })).getByRole("link", { name: "Report 3C7D1E2F" }));
+    await screen.findByText("Opening report 3C7D1E2F…");
+    listIssueReports.mockResolvedValue(answer([second]));
+    fireEvent.click(screen.getByRole("tab", { name: /^Valid/ }));
+    expect(await screen.findByRole("heading", { name: "Report AAAA0002" })).toBeInTheDocument();
+    await act(async () => read.resolve({ ...original, triage: { ...triage, validity: "valid" } }));
+    expect(screen.queryByRole("heading", { name: "Report 3C7D1E2F" })).toBeNull();
+    expect(screen.queryByText(/Opening report/)).toBeNull();
+  });
+
+  it("refreshes an outside report along with the list", async () => {
+    listIssueReports.mockResolvedValue(answer([repeat]));
+    getIssueReport.mockResolvedValue({ ...original, triage: { ...triage, validity: "valid" } });
+    render(<IssueReportsDesk />);
+    await opened();
+    fireEvent.click(within(screen.getByRole("region", { name: "AI suggestion" })).getByRole("link", { name: "Report 3C7D1E2F" }));
+    await screen.findByRole("heading", { name: "Report 3C7D1E2F" });
+    getIssueReport.mockResolvedValue({ ...original, issue: "The map is blank, now on iOS too", triage: { ...triage, validity: "valid" } });
+    fireEvent.click(screen.getByRole("button", { name: "Refresh reports" }));
+    expect(await screen.findByText("The map is blank, now on iOS too")).toBeInTheDocument();
+    expect(getIssueReport).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -450,6 +509,59 @@ describe("bulk actions", () => {
     await waitFor(() => expect(screen.getByText("1 selected")).toBeInTheDocument());
     expect(screen.getByRole("checkbox", { name: "Select report AAAA0002" })).toBeChecked();
     expect(screen.getByRole("button", { name: "Retry the failed report" })).toBeInTheDocument();
+  });
+
+  it("retries only the report that failed, with its write, whatever is selected now", async () => {
+    const reports = [withSuggestion(first, "valid"), withSuggestion(second, "valid")];
+    listIssueReports.mockResolvedValue(answer(reports));
+    updateIssueReport.mockRejectedValueOnce(new Error("offline"));
+    render(<IssueReportsDesk />);
+    await opened();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select report 50D4F603" }));
+    fireEvent.click(screen.getByRole("button", { name: "Accept suggestion" }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Accept 1 suggestion" }));
+    const retry = await screen.findByRole("button", { name: "Retry the failed report" });
+    const failedWrite = updateIssueReport.mock.calls[0][1];
+
+    // The reader moves the selection on before retrying.
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Select report 50D4F603" })).toBeChecked());
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select report 50D4F603" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select report AAAA0002" }));
+    updateIssueReport.mockResolvedValue({ ...reports[0], triage: { ...triage, validity: "valid" } });
+    fireEvent.click(retry);
+
+    expect(await screen.findByText(/1 saved\./)).toBeInTheDocument();
+    expect(updateIssueReport).toHaveBeenCalledTimes(2);
+    expect(updateIssueReport).toHaveBeenLastCalledWith(first.id, failedWrite);
+  });
+
+  it("finishes a stopped run only for the reports it never reached, after a confirm", async () => {
+    const reports = [withSuggestion(first, "spam"), withSuggestion(second, "valid"), withSuggestion(third, "valid")];
+    listIssueReports.mockResolvedValue(answer(reports));
+    let land!: (report: IssueReport) => void;
+    updateIssueReport.mockReturnValueOnce(
+      new Promise<IssueReport>((done) => {
+        land = done;
+      }),
+    );
+    render(<IssueReportsDesk />);
+    await opened();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select all 3 shown" }));
+    fireEvent.click(screen.getByRole("button", { name: "Accept suggestion" }));
+    fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Accept 3 suggestions" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Stop" }));
+    await act(async () => land({ ...reports[0], triage: { ...triage, validity: "spam" } }));
+    expect(await screen.findByText(/1 saved\. Stopped before 2 more\./)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Retry/ })).toBeNull();
+
+    updateIssueReport.mockImplementation(async (id: string) => ({ ...first, id, triage: { ...triage, validity: "valid" } }));
+    fireEvent.click(screen.getByRole("button", { name: "Finish the 2 not tried…" }));
+    const confirm = await screen.findByRole("alertdialog");
+    expect(within(confirm).getByRole("list", { name: "Reports not tried" })).toHaveTextContent("Report AAAA0002");
+    expect(updateIssueReport).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(confirm).getByRole("button", { name: "Accept 2 suggestions" }));
+    await waitFor(() => expect(updateIssueReport).toHaveBeenCalledTimes(3));
+    expect(updateIssueReport.mock.calls.slice(1).map((call) => call[0])).toEqual([second.id, third.id]);
   });
 
   it("marks the selection a duplicate of one report by its reference", async () => {
@@ -549,6 +661,29 @@ describe("filters and chips", () => {
     await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(1));
     expect(within(list).getByText(/rider map does not load/)).toBeInTheDocument();
     expect(screen.getByText("1 match")).toBeInTheDocument();
+  });
+
+  it("keeps focus in the search box after Clear search", async () => {
+    render(<IssueReportsDesk />);
+    await opened();
+    const box = screen.getByRole("searchbox", { name: "Search reports" });
+    fireEvent.change(box, { target: { value: "rider" } });
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(box).toHaveValue("");
+    expect(box).toHaveFocus();
+  });
+
+  it("drops a search still waiting to apply when Clear all is pressed", async () => {
+    search.params = new URLSearchParams("status=new");
+    render(<IssueReportsDesk />);
+    await opened();
+    const box = screen.getByRole("searchbox", { name: "Search reports" });
+    fireEvent.change(box, { target: { value: "rider" } });
+    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    await new Promise((done) => setTimeout(done, 400));
+    expect(box).toHaveValue("");
+    expect(screen.queryByRole("list", { name: "Filters in use" })).toBeNull();
+    expect(window.location.search).not.toContain("q=");
   });
 
   it("offers to clear filters that match nothing", async () => {

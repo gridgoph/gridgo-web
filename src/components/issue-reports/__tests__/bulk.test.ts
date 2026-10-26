@@ -110,7 +110,9 @@ describe("runBulk", () => {
     const outcome = await runBulk(steps, write, { onProgress: progress });
     expect(order).toEqual([report(1).id, report(2).id, report(3).id]);
     expect(outcome.saved.map((entry) => entry.id)).toEqual([report(1).id, report(3).id]);
-    expect(outcome.failed).toEqual([{ report: report(2), message: "This report no longer exists." }]);
+    expect(outcome.failed).toEqual([
+      { report: report(2), write: { triage: { validity: "valid" } }, message: "This report no longer exists." },
+    ]);
     expect(progress).toHaveBeenCalledTimes(3);
     expect(outcomeSummary(outcome, 1)).toBe("2 saved. 1 could not be saved. 1 left as they were.");
   });
@@ -124,7 +126,8 @@ describe("runBulk", () => {
     const { steps } = planBulk({ kind: "verdict", validity: "spam" }, [report(1), report(2), report(3)]);
     const outcome = await runBulk(steps, write, { stopped: () => stop });
     expect(write).toHaveBeenCalledTimes(1);
-    expect(outcome.untouched.map((entry) => entry.id)).toEqual([report(2).id, report(3).id]);
+    expect(outcome.untouched.map((entry) => entry.report.id)).toEqual([report(2).id, report(3).id]);
+    expect(outcome.untouched[0].write).toEqual({ triage: { validity: "spam" } });
     expect(outcomeSummary(outcome, 0)).toBe("1 saved. Stopped before 2 more.");
   });
 });

@@ -265,6 +265,8 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // A report opened from a link that is not in this view's list.
   const [peek, setPeek] = useState<IssueReport | null>(null);
+  // The outside report being fetched; the detail waits on it, not the last one.
+  const [opening, setOpening] = useState<string | null>(null);
   const [selection, setSelection] = useState<ReadonlySet<string>>(new Set());
   const [anchor, setAnchor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -287,6 +289,10 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
   const detailHeadingRef = useRef<HTMLHeadingElement>(null);
   const reportsRef = useRef<IssueReport[]>([]);
   const peekRef = useRef<IssueReport | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
+  // Bumped by every report opened and every view change, so an outside
+  // report that lands after the reader moved on is dropped.
+  const navRef = useRef(0);
   const bulkRunningRef = useRef(false);
   // Bumped by every refresh, so a page that lands after it is dropped.
   const generationRef = useRef(0);
@@ -302,8 +308,17 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
     peekRef.current = peek;
   }, [peek]);
   useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
+  useEffect(() => {
     bulkRunningRef.current = bulkRunning;
   }, [bulkRunning]);
+  useEffect(
+    () => () => {
+      navRef.current += 1;
+    },
+    [],
+  );
 
   const searching = view.q.trim().length > 0;
   const key = apiKey(view);
@@ -392,21 +407,46 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
     }
   }, [statusArg, query, apiView]);
 
-  // A live ping mid-run would reshuffle the rows being saved; the run reloads
-  // when it ends.
-  const liveLoad = useCallback(() => (bulkRunningRef.current ? undefined : load()), [load]);
-  useLiveReload("issue-reports", liveLoad);
-
+  /** Opens a report the list does not hold, unless the reader moves on first. */
   const openPeek = useCallback(async (id: string) => {
+    const nav = ++navRef.current;
+    setOpening(id);
     try {
       const found = await getIssueReport(id);
+      if (nav !== navRef.current) return;
       peekRef.current = found;
       setPeek(found);
       setSelectedId(found.id);
     } catch {
-      setError(`Could not open report ${reportReference(id)}. It may have been removed.`);
+      if (nav === navRef.current) setError(`Could not open report ${reportReference(id)}. It may have been removed.`);
+    } finally {
+      if (nav === navRef.current) setOpening(null);
     }
   }, []);
+
+  /** Renews the open outside report too (its text, verdict and screenshot links). */
+  const refreshPeek = useCallback(async () => {
+    const current = peekRef.current;
+    if (!current || current.id !== selectedIdRef.current) return;
+    const nav = navRef.current;
+    try {
+      const found = await getIssueReport(current.id);
+      if (nav !== navRef.current || peekRef.current?.id !== found.id) return;
+      peekRef.current = found;
+      setPeek(found);
+    } catch {
+      if (nav === navRef.current) setError(`Could not refresh report ${reportReference(current.id)}.`);
+    }
+  }, []);
+
+  const reload = useCallback(async () => {
+    await Promise.all([load(), refreshPeek()]);
+  }, [load, refreshPeek]);
+
+  // A live ping mid-run would reshuffle the rows being saved; the run reloads
+  // when it ends.
+  const liveLoad = useCallback(() => (bulkRunningRef.current ? undefined : reload()), [reload]);
+  useLiveReload("issue-reports", liveLoad);
 
   useEffect(() => {
     let cancelled = false;
@@ -485,11 +525,12 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
   // The single pane moved focus out of view; put it where the reader now is.
   useEffect(() => {
     const target = focusAfterSwitch.current;
-    if (!target) return;
+    // An outside report still loading has no heading yet; focus waits for it.
+    if (!target || (target === "detail" && !detailHeadingRef.current)) return;
     focusAfterSwitch.current = null;
     if (target === "detail") detailHeadingRef.current?.focus();
     else listRef.current?.querySelector<HTMLButtonElement>(`[data-report-id="${selectedId}"] [data-open-report]`)?.focus();
-  }, [detailOpen, selectedId]);
+  }, [detailOpen, selectedId, opening]);
 
   const storedTrackerUrl = trackerLinks ? (selected?.trackerIssueUrl ?? null) : null;
   // A different report clears the last report's refusal.
@@ -505,8 +546,15 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
     return `${pathname ?? ""}${searchFromView(clearFilters({ ...view, tab: "all" }), id)}`;
   }
 
+  /** Drops an outside report still on its way: the reader went elsewhere. */
+  function leaveOpening() {
+    navRef.current += 1;
+    setOpening(null);
+  }
+
   function changeView(next: DeskView) {
     if (bulkRunning) return;
+    leaveOpening();
     setSelection(new Set());
     setAnchor(null);
     setUndo(null);
@@ -524,6 +572,7 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
 
   function openReport(id: string) {
     if (reportsRef.current.some((report) => report.id === id)) {
+      leaveOpening();
       setSelectedId(id);
     } else {
       void openPeek(id);
@@ -550,6 +599,7 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
     else return;
     event.preventDefault();
     const id = visible[next].id;
+    leaveOpening();
     setSelectedId(id);
     listRef.current?.querySelector<HTMLButtonElement>(`[data-report-id="${id}"] [data-open-report]`)?.focus();
   }
@@ -741,7 +791,7 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
 
   function bulkFinished(outcome: BulkOutcome) {
     setUndo(null);
-    setSelection(new Set([...outcome.failed.map((entry) => entry.report.id), ...outcome.untouched.map((report) => report.id)]));
+    setSelection(new Set([...outcome.failed.map((entry) => entry.report.id), ...outcome.untouched.map((entry) => entry.report.id)]));
     void load(selected?.id ?? null).catch(() => setError("Saved, but the list could not refresh. Press Refresh."));
   }
 
@@ -750,7 +800,7 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
   // V, S and D give the open report its verdict, A accepts its suggestion and
   // X selects it, unless someone is typing.
   function onDeskKeyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (!selected || busy || dialog || event.altKey || event.ctrlKey || event.metaKey || typingIn(event.target)) {
+    if (!selected || busy || opening || dialog || event.altKey || event.ctrlKey || event.metaKey || typingIn(event.target)) {
       return;
     }
     const pressed = event.key.toLowerCase();
@@ -839,7 +889,7 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
               size="icon"
               aria-label="Refresh reports"
               disabled={busy || loading}
-              onClick={() => void load().catch(() => setError("Could not refresh."))}
+              onClick={() => void reload().catch(() => setError("Could not refresh."))}
             >
               <RefreshCw aria-hidden />
             </Button>
@@ -980,6 +1030,17 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
         >
           {initialLoad ? (
             <DetailSkeleton />
+          ) : opening ? (
+            <div className="flex flex-col">
+              <Button variant="ghost" size="sm" className="mt-3 ml-2 self-start lg:hidden" onClick={backToList}>
+                <ChevronLeft aria-hidden="true" />
+                All reports
+              </Button>
+              <p role="status" className="text-caption text-text-secondary m-0 px-4 pt-4">
+                Opening report {reportReference(opening)}…
+              </p>
+              <DetailSkeleton />
+            </div>
           ) : !selected ? (
             <div className="p-4">
               <EmptyState

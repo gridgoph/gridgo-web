@@ -12,6 +12,7 @@ import {
   type BulkAction,
   type BulkFailure,
   type BulkOutcome,
+  type BulkStep,
   type BulkWrite,
 } from "@/components/issue-reports/bulk";
 import { reportReference, resolveReportReference, STATUS_CHOICES, VALIDITY } from "@/components/issue-reports/triage";
@@ -84,6 +85,8 @@ export function BulkBar({ selected, reports, disabled, write, onSaved, onRunning
   const [run, setRun] = useState<Run | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [stopping, setStopping] = useState(false);
+  // The confirm for finishing the reports a stopped run never reached.
+  const [resumeOpen, setResumeOpen] = useState(false);
   const stopRef = useRef(false);
   const id = useId();
 
@@ -113,14 +116,23 @@ export function BulkBar({ selected, reports, disabled, write, onSaved, onRunning
   }
   const plan = action ? planBulk(action, selected) : null;
 
-  async function start(next: BulkAction, targets: IssueReport[]) {
+  function start(next: BulkAction, targets: IssueReport[]) {
     const { steps, skipped } = planBulk(next, targets);
     setDraft(null);
-    setResult(null);
     if (!steps.length) {
       setResult({ action: next, outcome: { saved: [], failed: [], untouched: [] }, skipped: skipped.length });
       return;
     }
+    void execute(next, steps, skipped.length);
+  }
+
+  /**
+   * Saves exactly these writes. A retry passes the failed writes as they
+   * were confirmed, never the selection, which may have changed since.
+   */
+  async function execute(next: BulkAction, steps: BulkStep[], skipped: number) {
+    setResult(null);
+    setResumeOpen(false);
     stopRef.current = false;
     setStopping(false);
     setRun({ action: next, total: steps.length, done: 0, failed: 0 });
@@ -135,7 +147,7 @@ export function BulkBar({ selected, reports, disabled, write, onSaved, onRunning
           );
         },
       });
-      setResult({ action: next, outcome, skipped: skipped.length });
+      setResult({ action: next, outcome, skipped });
       onFinished(outcome);
     } finally {
       setRun(null);
@@ -149,11 +161,12 @@ export function BulkBar({ selected, reports, disabled, write, onSaved, onRunning
       setReferenceError(check.ok ? null : check.error);
       return;
     }
-    if (action) void start(action, selected);
+    if (action) start(action, selected);
   }
 
   const count = selected.length;
   const failures: BulkFailure[] = result?.outcome.failed ?? [];
+  const untouched: BulkStep[] = result?.outcome.untouched ?? [];
 
   return (
     <div className="flex shrink-0 flex-col gap-2 border-t border-outline bg-surface p-3">
@@ -201,10 +214,23 @@ export function BulkBar({ selected, reports, disabled, write, onSaved, onRunning
               ))}
             </ul>
           ) : null}
-          {failures.length && selected.length ? (
-            <Button size="sm" className="self-start" disabled={busy} onClick={() => void start(result.action, selected)}>
-              Retry {failures.length === 1 ? "the failed report" : `the ${failures.length} failed`}
-            </Button>
+          {failures.length || untouched.length ? (
+            <div className="flex flex-wrap gap-2">
+              {failures.length ? (
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => void execute(result.action, failures.map(({ report, write }) => ({ report, write })), 0)}
+                >
+                  Retry {failures.length === 1 ? "the failed report" : `the ${failures.length} failed`}
+                </Button>
+              ) : null}
+              {untouched.length ? (
+                <Button size="sm" disabled={busy} onClick={() => setResumeOpen(true)}>
+                  Finish the {untouched.length === 1 ? "1 not tried" : `${untouched.length} not tried`}…
+                </Button>
+              ) : null}
+            </div>
           ) : null}
         </div>
       ) : null}
@@ -261,6 +287,35 @@ export function BulkBar({ selected, reports, disabled, write, onSaved, onRunning
           </Button>
         </div>
       ) : null}
+
+      <AlertDialog open={resumeOpen && untouched.length > 0} onOpenChange={setResumeOpen}>
+        <AlertDialogContent className="data-[size=default]:sm:max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{result ? `${actionTitle(result.action, untouched.length)}?` : ""}</AlertDialogTitle>
+            <AlertDialogDescription>
+              The run stopped before {untouched.length === 1 ? "this report" : "these reports"}. Each gets the change you
+              confirmed then.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <ul aria-label="Reports not tried" className="m-0 flex max-h-40 list-none flex-col gap-0.5 overflow-y-auto p-0">
+            {untouched.map((step) => (
+              <li key={step.report.id} className="text-caption text-text-secondary">
+                Report {reportReference(step.report.id)}
+              </li>
+            ))}
+          </ul>
+          <AlertDialogFooter>
+            <AlertDialogCancel variant="secondary">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="primary"
+              disabled={busy}
+              onClick={() => result && void execute(result.action, untouched, 0)}
+            >
+              {result ? actionTitle(result.action, untouched.length) : ""}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={draft !== null} onOpenChange={(next) => !next && setDraft(null)}>
         <AlertDialogContent className="data-[size=default]:sm:max-w-lg">
