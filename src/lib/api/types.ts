@@ -1016,6 +1016,12 @@ export type Order = {
   /** A test account's simulated order (docs/REVIEW_DATA_API.md in gridgo-api). */
   reviewData?: boolean;
   clientId: string;
+  /**
+   * Operations and Super Admin only. The client's name from their user
+   * record. Null when that record has no name. Absent for a client, a shop,
+   * and a rider.
+   */
+  clientName?: string | null;
   supplierId: string | null;
   riderId: string | null;
   /**
