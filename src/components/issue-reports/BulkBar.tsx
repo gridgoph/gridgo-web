@@ -214,7 +214,7 @@ export function BulkBar({ selected, reports, disabled, write, onSaved, onRunning
           <span className="text-caption text-text-primary tabular-nums mr-auto" aria-live="polite">
             {count} selected
           </span>
-          <Button size="sm" variant="default" disabled={busy} onClick={() => open({ kind: "accept" })}>
+          <Button size="sm" disabled={busy} onClick={() => open({ kind: "accept" })}>
             <Sparkles aria-hidden />
             Accept suggestion
           </Button>

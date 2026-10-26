@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, Undo2 } from "lucide-react";
+import { ChevronLeft, RefreshCw, Undo2 } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   type KeyboardEvent,
@@ -830,18 +830,22 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
               );
             })}
           </TabsList>
-          <p className="text-caption text-text-muted m-0" aria-live="polite">
-            {triageCounts ? triageSummary(triageCounts) : " "}
-          </p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-caption text-text-muted m-0" aria-live="polite">
+              {triageCounts ? triageSummary(triageCounts) : " "}
+            </p>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Refresh reports"
+              disabled={busy || loading}
+              onClick={() => void load().catch(() => setError("Could not refresh."))}
+            >
+              <RefreshCw aria-hidden />
+            </Button>
+          </div>
         </div>
-        <DeskToolbar
-          view={view}
-          counts={counts}
-          triageCounts={triageCounts}
-          busy={busy || loading}
-          onChange={changeView}
-          onRefresh={() => void load().catch(() => setError("Could not refresh."))}
-        />
+        <DeskToolbar view={view} counts={counts} triageCounts={triageCounts} onChange={changeView} />
       </div>
 
       <TabsContent

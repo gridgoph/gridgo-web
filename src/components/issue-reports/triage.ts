@@ -200,7 +200,7 @@ export const RECEIVED_CHOICES: readonly { value: ReceivedWindow; label: string; 
 ];
 
 export const AI_CHOICES: readonly { value: AiFilter; label: string }[] = [
-  { value: "any", label: "With or without a suggestion" },
+  { value: "any", label: "Any suggestion" },
   { value: "reviewed", label: "Has a suggestion" },
   { value: "not_reviewed", label: "No suggestion yet" },
 ];

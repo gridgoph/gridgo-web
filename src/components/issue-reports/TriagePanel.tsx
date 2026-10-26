@@ -62,8 +62,8 @@ export function VerdictBar({
       </p>
       <div role="group" aria-labelledby="verdict-label" className="flex flex-wrap items-center gap-2">
         {accept && review ? (
+          // Default size: `sm` carries a type class that merges away the yellow's text colour.
           <Button
-            size="sm"
             variant="primary"
             aria-keyshortcuts="A"
             aria-label={`Accept suggestion: ${suggestionLabel(review).replace(/^Suggested: /, "")}`}

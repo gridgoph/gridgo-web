@@ -1,6 +1,6 @@
 "use client";
 
-import { Pin, RefreshCw, Search, SlidersHorizontal, X } from "lucide-react";
+import { Pin, Search, SlidersHorizontal, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -42,9 +42,7 @@ type Props = {
   view: DeskView;
   counts: IssueReportCounts | null;
   triageCounts: IssueReportTriageCounts | null;
-  busy: boolean;
   onChange: (next: DeskView) => void;
-  onRefresh: () => void;
 };
 
 function countSuffix(count: number | undefined): string {
@@ -62,7 +60,7 @@ function FilterControls({
   triageCounts,
   onChange,
   stacked,
-}: Omit<Props, "busy" | "onRefresh"> & { stacked: boolean }) {
+}: Props & { stacked: boolean }) {
   const labels = triageCounts?.labels ?? [];
   const labelChoices =
     view.label && !labels.some((entry) => entry.label === view.label) ? [{ label: view.label, count: 0 }, ...labels] : labels;
@@ -257,7 +255,7 @@ function FilterControls({
  * behind one Filters button. Every filter in force shows below as a chip
  * that removes it, with Clear all.
  */
-export function DeskToolbar({ view, counts, triageCounts, busy, onChange, onRefresh }: Props) {
+export function DeskToolbar({ view, counts, triageCounts, onChange }: Props) {
   const [draft, setDraft] = useState(view.q);
   const [applied, setApplied] = useState(view.q);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -302,7 +300,7 @@ export function DeskToolbar({ view, counts, triageCounts, busy, onChange, onRefr
       <div className="flex flex-wrap items-center gap-2">
         <form
           role="search"
-          className="relative min-w-0 flex-1 basis-56"
+          className="relative min-w-0 flex-1 basis-0 md:basis-56"
           onSubmit={(event) => {
             event.preventDefault();
             search(draft, true);
@@ -323,7 +321,7 @@ export function DeskToolbar({ view, counts, triageCounts, busy, onChange, onRefr
                 search("", true);
               }
             }}
-            placeholder="Search text, reference or label"
+            placeholder="Search text or label"
             aria-label="Search reports"
             maxLength={200}
             autoComplete="off"
@@ -350,9 +348,6 @@ export function DeskToolbar({ view, counts, triageCounts, busy, onChange, onRefr
         <Button className="md:hidden" aria-haspopup="dialog" onClick={() => setSheetOpen(true)}>
           <SlidersHorizontal data-icon="inline-start" aria-hidden />
           {sheetCount ? `Filters (${sheetCount})` : "Filters"}
-        </Button>
-        <Button variant="ghost" size="icon" aria-label="Refresh reports" disabled={busy} onClick={onRefresh}>
-          <RefreshCw aria-hidden />
         </Button>
       </div>
 
