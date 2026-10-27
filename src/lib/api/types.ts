@@ -1148,6 +1148,16 @@ export type Order = {
   /** Ops / Super Admin money reporting: the voucher line with its funding split. */
   voucherFunding?: OrderVoucherLine;
   /**
+   * Ops / Super Admin, whole-order (launch) vouchers only (gridgo-api#315):
+   * the part of the voucher taken off the shop price, and what GRIDGO itself
+   * pays the shop and the rider so their gross pay stands. The API strips
+   * all three from the client, shop and rider.
+   */
+  coversOrderTotal?: boolean;
+  voucherSupplierMinor?: number;
+  gridgoSupplierTopupMinor?: number;
+  gridgoRiderTopupMinor?: number;
+  /**
    * Multi-shop checkout (gridgo-api#150, MULTI_SHOP_CHECKOUT_API.md). A basket
    * is one payment over several shop groups; each group is an ordinary order
    * with its own job. Absent on a single-shop order. Read through
@@ -3970,6 +3980,11 @@ export type OrderVoucherLine = {
   amountMinor: number;
   serviceFeeMinor: number;
   deliveryMinor: number;
+  /** Whole-order vouchers only; Ops / Super Admin (see `Order.voucherSupplierMinor`). */
+  coversOrderTotal?: boolean;
+  supplierMinor?: number;
+  gridgoSupplierTopupMinor?: number;
+  gridgoRiderTopupMinor?: number;
 };
 
 export type VoucherCampaignMode = "assigned" | "shared";
