@@ -69,6 +69,7 @@ export type NavIconKey =
   | "colour-price-checks"
   | "featured-prints"
   | "vouchers"
+  | "promotions"
   | "founding-testers"
   | "legal"
   | "acceptances"
@@ -610,6 +611,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          id: "ops-promotions",
+          href: "/ops/promotions",
+          label: "Promotions",
+          title: "Promotions",
+          icon: "promotions",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "ops-founding-testers",
           href: "/ops/founding-testers",
           label: "Founding Testers",
@@ -911,6 +921,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Vouchers",
           title: "Vouchers",
           icon: "vouchers",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-promotions",
+          href: "/admin/promotions",
+          label: "Promotions",
+          title: "Promotions",
+          icon: "promotions",
           ready: true,
           placeholderBody: "",
         },

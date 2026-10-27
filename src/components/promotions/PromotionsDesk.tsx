@@ -1,0 +1,500 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+
+import { BudgetMeter, FoundingSeats } from "@/components/promotions/PromotionGauges";
+import { ClaimsTable, InvitesTable } from "@/components/promotions/PromotionTables";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { ErrorState } from "@/components/ui/ErrorState";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { SkeletonCards } from "@/components/ui/loading";
+import { StatusChip } from "@/components/ui/StatusChip";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  getAdminPromotions,
+  updateAdminPromotions,
+  type AdminPromotions,
+} from "@/lib/api/promotions";
+import { formatPhp } from "@/lib/format";
+import {
+  CONFLICT_COPY,
+  NEW_CLAIMS_ONLY,
+  auditReason,
+  capReached,
+  checkDraft,
+  draftFromSettings,
+  foundingState,
+  friendPassState,
+  isVersionConflict,
+  presentPromotionState,
+  promotionsErrorText,
+  type DraftField,
+  type PromotionDraft,
+} from "@/lib/promotions";
+import { formatManila } from "@/lib/vouchers";
+
+type DeskTab = "claims" | "invites";
+
+function deskTab(value: string | null): DeskTab {
+  return value === "invites" ? "invites" : "claims";
+}
+
+const DATE_FIELDS: DraftField[] = ["foundingStarts", "foundingEnds", "friendUpgrade"];
+
+/**
+ * The launch promotions (27 Oct sprint): the Founding 30, the Friend Pass,
+ * their shared budget cap and the ₱15 rewards. Super Admin edits every figure
+ * and saves once, through the `expectedVersion` handshake; Operations reads
+ * the same page without the form. Changes apply to new claims only.
+ * The tables' tab lives in the URL (`?tab=invites`).
+ */
+export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
+  const canEdit = tree === "admin";
+  const router = useRouter();
+  const search = useSearchParams();
+  const tab = deskTab(search.get("tab"));
+
+  const [data, setData] = useState<AdminPromotions | null>(null);
+  const [loadError, setLoadError] = useState<unknown>(null);
+  const [loading, setLoading] = useState(true);
+  const [edits, setEdits] = useState<Partial<PromotionDraft>>({});
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setLoadError(null);
+    try {
+      setData(await getAdminPromotions());
+    } catch (err) {
+      setLoadError(err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const base = useMemo(() => (data ? draftFromSettings(data.settings) : null), [data]);
+  const draft = useMemo(() => (base ? { ...base, ...edits } : null), [base, edits]);
+  const check = useMemo(
+    () => (data && draft ? checkDraft(draft, data.settings) : null),
+    [data, draft],
+  );
+
+  const edited = useCallback(
+    (field: DraftField) => base !== null && field in edits && edits[field] !== base[field],
+    [base, edits],
+  );
+  const datesEdited = DATE_FIELDS.some(edited);
+  /** Errors show on what was typed; date order shows once any date moves. */
+  const visibleError = (field: DraftField): string | undefined =>
+    edited(field) || (datesEdited && DATE_FIELDS.includes(field)) ? check?.errors[field] : undefined;
+  const blocking = (Object.keys(check?.errors ?? {}) as DraftField[]).some((field) =>
+    Boolean(visibleError(field)),
+  );
+  const changes = check?.changes ?? [];
+  const dirty = changes.length > 0;
+  const pending = dirty || blocking;
+
+  function edit<K extends DraftField>(field: K, value: PromotionDraft[K]) {
+    setEdits((current) => ({ ...current, [field]: value }));
+    setSaveError(null);
+    setSaved(null);
+  }
+
+  async function save() {
+    if (!data || !check || !dirty || blocking || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    setSaved(null);
+    try {
+      const next = await updateAdminPromotions(check.patch, data.version, auditReason(changes));
+      setData(next);
+      setEdits({});
+      setSaved(
+        changes.length === 1 ? "Saved 1 change. New claims use it from now on." : `Saved ${changes.length} changes. New claims use them from now on.`,
+      );
+    } catch (err) {
+      if (isVersionConflict(err)) setConflict(true);
+      else setSaveError(promotionsErrorText(err, "Could not save. Try again."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function reloadAfterConflict() {
+    setEdits({});
+    setConflict(false);
+    setSaveError(null);
+    setSaved(null);
+    await load();
+  }
+
+  function discard() {
+    setEdits({});
+    setSaveError(null);
+    setSaved(null);
+  }
+
+  const goTab = useCallback(
+    (next: DeskTab) => {
+      router.replace(
+        next === "claims" ? `/${tree}/promotions` : `/${tree}/promotions?tab=${next}`,
+        { scroll: false },
+      );
+    },
+    [router, tree],
+  );
+
+  if (!data || !draft) {
+    if (loading)
+      return <SkeletonCards count={4} lines={3} label="Loading promotions" className="gap-3" />;
+    return (
+      <ErrorState
+        title="Promotions could not be loaded"
+        body={promotionsErrorText(loadError, "Try again in a moment.")}
+        action={
+          <Button variant="outline" onClick={() => void load()}>
+            Try again
+          </Button>
+        }
+      />
+    );
+  }
+
+  const now = data.serverTime ? Date.parse(data.serverTime) : Date.now();
+  const founding = presentPromotionState(foundingState(data, now));
+  const friend = presentPromotionState(friendPassState(data, now), "All passes given");
+  const locked = saving || conflict;
+  const upgraded = data.friendPass.invites.filter((invite) => invite.upgradedAt).length;
+  const waitingFriends = data.friendPass.invites.filter((invite) => invite.status === "invited").length;
+  const upgradeDone = now >= Date.parse(data.settings.friendPass.upgradeAt);
+
+  const input = (props: {
+    field: Exclude<DraftField, "foundingEnabled" | "friendEnabled">;
+    label: string;
+    help?: ReactNode;
+    kind?: "money" | "count" | "time";
+    read: string;
+  }) => {
+    const { field, label, help, kind = "money", read } = props;
+    const error = visibleError(field);
+    const id = `promo-${field}`;
+    return (
+      <Field data-invalid={error ? true : undefined} data-disabled={locked || undefined}>
+        <FieldLabel htmlFor={canEdit ? id : undefined}>{label}</FieldLabel>
+        {canEdit ? (
+          <Input
+            id={id}
+            type={kind === "time" ? "datetime-local" : "text"}
+            inputMode={kind === "money" ? "decimal" : kind === "count" ? "numeric" : undefined}
+            value={draft[field]}
+            disabled={locked}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={help ? `${id}-help` : undefined}
+            className={kind === "time" ? "max-w-xs" : "max-w-40 tabular-nums"}
+            onChange={(event) => edit(field, event.target.value)}
+          />
+        ) : (
+          <p className="text-body text-text-primary m-0 tabular-nums">{read}</p>
+        )}
+        {help ? <FieldDescription id={`${id}-help`}>{help}</FieldDescription> : null}
+        {error ? <FieldError>{error}</FieldError> : null}
+      </Field>
+    );
+  };
+
+  const toggle = (field: "foundingEnabled" | "friendEnabled", label: string, help: string) => {
+    const id = `promo-${field}`;
+    return (
+      <Field orientation="horizontal" data-disabled={locked || undefined}>
+        {canEdit ? (
+          <Switch
+            id={id}
+            aria-describedby={`${id}-help`}
+            checked={draft[field]}
+            disabled={locked}
+            onCheckedChange={(value) => edit(field, value)}
+          />
+        ) : null}
+        <div className="flex flex-col gap-0.5">
+          <FieldLabel htmlFor={canEdit ? id : undefined}>
+            {label}
+            {canEdit ? null : `: ${draft[field] ? "on" : "off"}`}
+          </FieldLabel>
+          <FieldDescription id={`${id}-help`}>{help}</FieldDescription>
+        </div>
+      </Field>
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-3 pb-2">
+      <p className="text-body text-text-secondary m-0 max-w-prose">
+        Launch vouchers GRIDGO pays for, taken off the whole order as one discount: the Founding 30
+        for the first clients to claim, and a Friend Pass for one friend of each Founder. One
+        discount per person, never both. Both stop at the budget cap.
+      </p>
+      {canEdit ? null : (
+        <Alert role="note">
+          <AlertTitle>Read only</AlertTitle>
+          <AlertDescription>
+            Super Admin sets these amounts and dates. You can read the counts, claims and invites.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        <section className="gg-card flex flex-col gap-4" aria-labelledby="founding-heading">
+          <header className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 id="founding-heading" className="text-h3 text-text-primary m-0">
+                Founding 30
+              </h2>
+              <p className="text-body text-text-secondary m-0 mt-0.5">
+                <span className="text-text-primary tabular-nums">{data.founding.available}</span> of{" "}
+                <span className="tabular-nums">{data.founding.slots}</span> left to claim
+              </p>
+            </div>
+            <StatusChip {...founding} />
+          </header>
+          <FoundingSeats founding={data.founding} />
+          {data.founding.expiredUnused ? (
+            <p className="text-caption text-text-secondary m-0">
+              {data.founding.expiredUnused === 1
+                ? "1 claim expired unused; its slot went back to the pool."
+                : `${data.founding.expiredUnused} claims expired unused; their slots went back to the pool.`}
+            </p>
+          ) : null}
+          <FieldGroup className="border-outline border-t pt-4">
+            {input({
+              field: "foundingAmount",
+              label: "Amount (pesos)",
+              read: formatPhp(data.settings.founding.amountMinor),
+              help: NEW_CLAIMS_ONLY,
+            })}
+            {input({
+              field: "foundingSlots",
+              label: "Slots",
+              kind: "count",
+              read: String(data.settings.founding.slots),
+              help:
+                data.founding.claimed > 0
+                  ? `${data.founding.claimed} already claimed. Fewer slots than that stops new claims; nobody loses theirs.`
+                  : undefined,
+            })}
+            <div className="grid gap-4 md:grid-cols-2">
+              {input({
+                field: "foundingStarts",
+                label: "Starts (Philippine time)",
+                kind: "time",
+                read: formatManila(data.settings.founding.startsAt),
+              })}
+              {input({
+                field: "foundingEnds",
+                label: "Ends (Philippine time)",
+                kind: "time",
+                read: formatManila(data.settings.founding.endsAt),
+                help: "Unused Founding and Friend Pass vouchers expire at this time.",
+              })}
+            </div>
+            {toggle(
+              "foundingEnabled",
+              "Founding 30 is on",
+              "Off hides the claim prompt from clients. Vouchers already claimed still work.",
+            )}
+          </FieldGroup>
+        </section>
+
+        <section className="gg-card flex flex-col gap-4" aria-labelledby="friend-heading">
+          <header className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <h2 id="friend-heading" className="text-h3 text-text-primary m-0">
+                Friend Pass
+              </h2>
+              <p className="text-body text-text-secondary m-0 mt-0.5">
+                <span className="text-text-primary tabular-nums">{data.friendPass.issued}</span> of{" "}
+                <span className="tabular-nums">{data.friendPass.total}</span> passes claimed
+                {waitingFriends
+                  ? `, ${waitingFriends} ${waitingFriends === 1 ? "friend" : "friends"} yet to claim`
+                  : ""}
+              </p>
+            </div>
+            <StatusChip {...friend} />
+          </header>
+          <p className="text-body text-text-secondary m-0">
+            {upgradeDone
+              ? `Upgrade ran ${formatManila(data.settings.friendPass.upgradeAt)}: ${upgraded} ${upgraded === 1 ? "pass" : "passes"} lifted to the Founding amount, first come first served, while slots and budget lasted.`
+              : `On ${formatManila(data.settings.friendPass.upgradeAt)}, unclaimed Founding slots lift Friend Passes to ${formatPhp(data.settings.founding.amountMinor)}, first come first served.`}
+          </p>
+          <FieldGroup className="border-outline border-t pt-4">
+            {input({
+              field: "friendAmount",
+              label: "Amount (pesos)",
+              read: formatPhp(data.settings.friendPass.amountMinor),
+              help: NEW_CLAIMS_ONLY,
+            })}
+            <div className="grid gap-4 md:grid-cols-2">
+              {input({
+                field: "friendPerFounder",
+                label: "Friends per Founder",
+                kind: "count",
+                read: String(data.settings.friendPass.perFounder),
+              })}
+              {input({
+                field: "friendTotal",
+                label: "Passes in total",
+                kind: "count",
+                read: String(data.settings.friendPass.total),
+              })}
+            </div>
+            {input({
+              field: "friendUpgrade",
+              label: "Upgrade on (Philippine time)",
+              kind: "time",
+              read: formatManila(data.settings.friendPass.upgradeAt),
+              help: "Between the Founding start and end. The upgrade value is the Founding amount.",
+            })}
+            {toggle(
+              "friendEnabled",
+              "Friend Pass is on",
+              "Off stops new invites and claims. Passes already claimed still work.",
+            )}
+          </FieldGroup>
+        </section>
+
+        <section className="gg-card flex flex-col gap-4" aria-labelledby="budget-heading">
+          <header className="flex flex-wrap items-start justify-between gap-2">
+            <h2 id="budget-heading" className="text-h3 text-text-primary m-0">
+              Budget cap
+            </h2>
+            {capReached(data) ? (
+              <StatusChip tone="error" icon="triangle-alert" label="Cap reached" />
+            ) : null}
+          </header>
+          <BudgetMeter budget={data.budget} />
+          <FieldGroup className="border-outline border-t pt-4">
+            {input({
+              field: "budgetCap",
+              label: "Cap (pesos)",
+              read: formatPhp(data.settings.budgetCapMinor),
+              help: "A hard stop. Every claimed Founding and Friend Pass voucher counts at face value, upgrades included, used or not. Nothing new is given past the cap.",
+            })}
+          </FieldGroup>
+        </section>
+
+        <section className="gg-card flex flex-col gap-4" aria-labelledby="rewards-heading">
+          <header>
+            <h2 id="rewards-heading" className="text-h3 text-text-primary m-0">
+              Rewards
+            </h2>
+            <p className="text-body text-text-secondary m-0 mt-0.5 max-w-prose">
+              GRIDGO vouchers clients still earn alongside the launch promotions. {NEW_CLAIMS_ONLY}
+            </p>
+          </header>
+          <FieldGroup>
+            <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+              {input({
+                field: "survey",
+                label: "Order survey (pesos)",
+                read: formatPhp(data.settings.rewards.surveyMinor),
+              })}
+              {input({
+                field: "mission",
+                label: "Founding Tester steps (pesos)",
+                read: formatPhp(data.settings.rewards.missionMinor),
+              })}
+              {input({
+                field: "invite",
+                label: "Invite, each side (pesos)",
+                read: formatPhp(data.settings.rewards.inviteMinor),
+              })}
+            </div>
+            <FieldDescription>
+              An invite pays both people, so each one costs{" "}
+              {formatPhp(data.settings.rewards.inviteMinor * 2)}.
+            </FieldDescription>
+          </FieldGroup>
+        </section>
+      </div>
+
+      <Tabs value={tab} onValueChange={(value) => goTab(deskTab(String(value)))} className="mt-2">
+        <TabsList>
+          <TabsTrigger value="claims">Founding claims ({data.founding.claims.length})</TabsTrigger>
+          <TabsTrigger value="invites">Friend Pass invites ({data.friendPass.invites.length})</TabsTrigger>
+        </TabsList>
+        <TabsContent value="claims" className="mt-4">
+          {tab === "claims" ? <ClaimsTable claims={data.founding.claims} tree={tree} /> : null}
+        </TabsContent>
+        <TabsContent value="invites" className="mt-4">
+          {tab === "invites" ? <InvitesTable invites={data.friendPass.invites} /> : null}
+        </TabsContent>
+      </Tabs>
+
+      {canEdit && (pending || conflict || saveError || saved) ? (
+        <div
+          className="gg-card border-text-primary sticky bottom-3 z-10 flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
+          aria-live="polite"
+        >
+          {conflict ? (
+            <>
+              <div className="flex flex-col gap-0.5">
+                <p className="text-body text-text-primary m-0" role="alert">
+                  {CONFLICT_COPY}
+                </p>
+                <p className="text-caption text-text-muted m-0">Your edits were not saved.</p>
+              </div>
+              <Button variant="primary" onClick={() => void reloadAfterConflict()}>
+                Reload promotions
+              </Button>
+            </>
+          ) : pending ? (
+            <>
+              <div className="flex min-w-0 flex-col gap-0.5">
+                <p className="text-body text-text-primary m-0">
+                  {changes.length === 1 ? "1 unsaved change" : `${changes.length} unsaved changes`}
+                </p>
+                <ul className="text-caption text-text-secondary m-0 list-none p-0">
+                  {changes.slice(0, 4).map((change) => (
+                    <li key={change}>{change}</li>
+                  ))}
+                  {changes.length > 4 ? <li>and {changes.length - 4} more</li> : null}
+                </ul>
+                <p className="text-caption text-text-muted m-0">{NEW_CLAIMS_ONLY}</p>
+                {saveError ? (
+                  <p className="text-caption text-error m-0" role="alert">
+                    {saveError}
+                  </p>
+                ) : null}
+                {blocking ? (
+                  <p className="text-caption text-error m-0">Fix the marked fields to save.</p>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button variant="outline" onClick={discard} disabled={saving}>
+                  Discard
+                </Button>
+                <Button variant="primary" onClick={() => void save()} disabled={saving || blocking || !dirty}>
+                  {saving ? "Saving…" : "Save changes"}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <p className="text-body text-text-primary m-0" role={saveError ? "alert" : "status"}>
+              {saveError ?? saved}
+            </p>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
