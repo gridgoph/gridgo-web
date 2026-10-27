@@ -8,6 +8,7 @@ import {
   capReached,
   checkDraft,
   claimsCsv,
+  INVITE_REWARD_MAX_MINOR,
   draftFromSettings,
   fixFieldsText,
   foundingSeats,
@@ -21,6 +22,7 @@ import {
   pesosInput,
   promotionsErrorText,
   serverNow,
+  upgradeHistory,
 } from "@/lib/promotions";
 import { rawPromotions } from "@/test/promotions";
 
@@ -58,10 +60,11 @@ describe("money", () => {
 });
 
 describe("counts", () => {
-  it("takes whole numbers of at least 1", () => {
+  it("takes whole numbers from 0, as the API does", () => {
     expect(parseCount("30")).toEqual({ value: 30 });
-    expect(parseCount("1")).toEqual({ value: 1 });
-    expect(parseCount("0")).toEqual({ problem: "Enter at least 1." });
+    expect(parseCount("0")).toEqual({ value: 0 });
+    expect(parseCount("0", 1)).toEqual({ problem: "Enter at least 1." });
+    expect(parseCount("-1")).toHaveProperty("problem");
     expect(parseCount("2.5")).toHaveProperty("problem");
     expect(parseCount("")).toHaveProperty("problem");
     expect(parseCount("2000000")).toHaveProperty("problem");
@@ -125,13 +128,37 @@ describe("checkDraft", () => {
     expect(checkDraft({ ...base, foundingAmount: "200.00" }, settings).patch).toEqual({});
   });
 
-  it("refuses amounts that are not positive and counts below 1", () => {
+  it("refuses amounts that are not positive and counts that are not whole", () => {
     const { errors, patch } = checkDraft(
-      { ...base, foundingAmount: "0", friendTotal: "0", foundingSlots: "-1", survey: "" },
+      { ...base, foundingAmount: "0", friendTotal: "1.5", foundingSlots: "-1", survey: "" },
       settings,
     );
     expect(Object.keys(errors).sort()).toEqual(["foundingAmount", "foundingSlots", "friendTotal", "survey"]);
     expect(patch).toEqual({});
+  });
+
+  it("allows zero slots, passes, friends and cap where the API does", () => {
+    const { errors, patch } = checkDraft(
+      { ...base, foundingSlots: "0", friendTotal: "0", friendPerFounder: "0", budgetCap: "0" },
+      settings,
+      0,
+    );
+    expect(errors).toEqual({});
+    expect(patch).toEqual({
+      founding: { slots: 0 },
+      friendPass: { perFounder: 0, total: 0 },
+      budgetCapMinor: 0,
+    });
+  });
+
+  it("keeps the invite reward under the API's per-side ceiling", () => {
+    expect(INVITE_REWARD_MAX_MINOR).toBe(Math.floor(Number.MAX_SAFE_INTEGER / 2));
+    const over = pesosInput(INVITE_REWARD_MAX_MINOR + 1);
+    expect(checkDraft({ ...base, invite: over }, settings).errors.invite).toBe(
+      "That is more than the service allows.",
+    );
+    expect(checkDraft({ ...base, invite: pesosInput(INVITE_REWARD_MAX_MINOR) }, settings).errors).toEqual({});
+    expect(checkDraft({ ...base, survey: over }, settings).errors).toEqual({});
   });
 
   it("wants the end after the start", () => {
@@ -191,6 +218,10 @@ describe("where the promotions stand", () => {
     expect(foundingState(data, NOW)).toBe("open");
     expect(foundingState({ ...data, founding: { ...data.founding, available: 0 } }, NOW)).toBe("sold_out");
     expect(foundingState(data, Date.parse("2026-11-09T00:00:00Z"))).toBe("ended");
+    // At the end time itself, as the API refuses claims there.
+    expect(foundingState(data, Date.parse(settings.founding.endsAt))).toBe("ended");
+    expect(friendPassState(data, Date.parse(settings.founding.endsAt))).toBe("ended");
+    expect(foundingState(data, Date.parse(settings.founding.endsAt) - 1)).toBe("open");
     expect(foundingState(data, Date.parse("2026-10-26T00:00:00Z"))).toBe("not_started");
   });
 
@@ -208,6 +239,22 @@ describe("where the promotions stand", () => {
   it("is off when turned off, whatever else", () => {
     const off = { ...data, settings: { ...settings, founding: { ...settings.founding, enabled: false } } };
     expect(foundingState(off, NOW)).toBe("off");
+  });
+
+  it("turns the Friend Pass off with the Founding 30, the API's master switch", () => {
+    const off = { ...data, settings: { ...settings, founding: { ...settings.founding, enabled: false } } };
+    expect(friendPassState(off, NOW)).toBe("off_with_founding");
+    const tight = { ...off, budget: { ...off.budget, remainingMinor: 5000 } };
+    expect(capReached(tight)).toBe(false);
+  });
+
+  it("counts only upgrades that happened", () => {
+    expect(upgradeHistory(data.friendPass.invites)).toEqual({ count: 0, lastAt: null });
+    const invites = [
+      { ...data.friendPass.invites[0]!, upgradedAt: "2026-11-02T01:00:00.000Z" },
+      { ...data.friendPass.invites[1]!, upgradedAt: "2026-11-01T16:00:00.000Z" },
+    ];
+    expect(upgradeHistory(invites)).toEqual({ count: 2, lastAt: "2026-11-02T01:00:00.000Z" });
   });
 
   it("measures redeemed inside committed against the cap", () => {

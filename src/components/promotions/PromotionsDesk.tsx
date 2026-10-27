@@ -36,6 +36,7 @@ import {
   presentPromotionState,
   promotionsErrorText,
   serverNow,
+  upgradeHistory,
   type DraftField,
   type PromotionDraft,
 } from "@/lib/promotions";
@@ -278,11 +279,12 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
   }
 
   const founding = presentPromotionState(foundingState(data, now));
-  const friend = presentPromotionState(friendPassState(data, now), "All passes given");
+  const friendState = friendPassState(data, now);
+  const friend = presentPromotionState(friendState, "All passes given");
   const locked = saving || conflict;
-  const upgraded = data.friendPass.invites.filter((invite) => invite.upgradedAt).length;
+  const upgrades = upgradeHistory(data.friendPass.invites);
+  const friendSwitchedOff = !data.settings.founding.enabled || !data.settings.friendPass.enabled;
   const waitingFriends = data.friendPass.invites.filter((invite) => invite.status === "invited").length;
-  const upgradeDone = now >= Date.parse(data.settings.friendPass.upgradeAt);
 
   const input = (props: {
     field: Exclude<DraftField, "foundingEnabled" | "friendEnabled">;
@@ -428,13 +430,13 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
                 label: "Ends (Philippine time)",
                 kind: "time",
                 read: formatManila(data.settings.founding.endsAt),
-                help: "Unused Founding and Friend Pass vouchers expire at this time.",
+                help: "New claims, Friend Passes included, expire at this time. Vouchers already claimed keep the expiry they were claimed with.",
               })}
             </div>
             {toggle(
               "foundingEnabled",
               "Founding 30",
-              "Off hides the claim prompt from clients. Vouchers already claimed still work.",
+              "Off hides the claim prompt from clients and stops the Friend Pass too. Vouchers already claimed still work.",
             )}
           </FieldGroup>
         </section>
@@ -455,10 +457,21 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
             </div>
             <StatusChip {...friend} />
           </header>
+          {friendState === "off_with_founding" ? (
+            <p className="text-body text-text-secondary m-0">
+              The Founding 30 is off, so Friend Pass invites, claims and upgrades are off too. They
+              reopen when the Founding 30 is turned back on.
+            </p>
+          ) : null}
           <p className="text-body text-text-secondary m-0">
-            {upgradeDone
-              ? `Upgrade ran ${formatManila(data.settings.friendPass.upgradeAt)}: ${upgraded} ${upgraded === 1 ? "pass" : "passes"} lifted to the Founding amount, first come first served, while slots and budget lasted.`
-              : `On ${formatManila(data.settings.friendPass.upgradeAt)}, unclaimed Founding slots lift Friend Passes to ${formatPhp(data.settings.founding.amountMinor)}, first come first served.`}
+            From {formatManila(data.settings.friendPass.upgradeAt)}, unused Friend Passes upgrade to{" "}
+            {formatPhp(data.settings.founding.amountMinor)} while Founding slots and the budget
+            allow, earliest claim first.{" "}
+            {friendSwitchedOff
+              ? "Upgrades wait while either promotion is off."
+              : upgrades.count
+                ? `${upgrades.count} ${upgrades.count === 1 ? "pass" : "passes"} upgraded so far, the last on ${formatManila(upgrades.lastAt)}.`
+                : "No pass has been upgraded yet."}
           </p>
           <FieldGroup className="border-outline border-t pt-4">
             {input({
@@ -486,12 +499,12 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
               label: "Upgrade on (Philippine time)",
               kind: "time",
               read: formatManila(data.settings.friendPass.upgradeAt),
-              help: "Between the Founding start and end. The upgrade value is the Founding amount.",
+              help: "Between the Founding start and end. From this time, unused passes can upgrade to the Founding amount.",
             })}
             {toggle(
               "friendEnabled",
               "Friend Pass",
-              "Off stops new invites and claims. Passes already claimed still work.",
+              "Off stops new invites, claims and upgrades. Passes already claimed still work. Also off whenever the Founding 30 is off.",
             )}
           </FieldGroup>
         </section>
@@ -511,7 +524,7 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
               field: "budgetCap",
               label: "Cap (pesos)",
               read: formatPhp(data.settings.budgetCapMinor),
-              help: "A hard stop. Every live Founding and Friend Pass voucher counts at face value, upgrades included; used ones stay counted. Nothing new is given past the cap, and it cannot go below what is committed.",
+              help: "A hard stop. Every live Founding and Friend Pass voucher counts at face value, upgrades included; used ones stay counted. Nothing new is given past the cap, and it cannot go below what is committed. ₱0 gives nothing new.",
             })}
           </FieldGroup>
         </section>
@@ -527,7 +540,7 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
             </p>
           </header>
           <FieldGroup>
-            <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+            <div className="grid items-end gap-4 md:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
               {input({
                 field: "survey",
                 label: "Order survey",
@@ -535,7 +548,7 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
               })}
               {input({
                 field: "mission",
-                label: "Each tester step",
+                label: "Founding Tester reward",
                 read: formatPhp(data.settings.rewards.missionMinor),
               })}
               {input({
@@ -545,8 +558,9 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
               })}
             </div>
             <FieldDescription>
-              An invite pays both people, so each one costs{" "}
-              {formatPhp(data.settings.rewards.inviteMinor * 2)}.
+              The Founding Tester reward is one voucher for finishing all five steps; a client who
+              already earned a survey voucher keeps that one instead. An invite pays both people, so
+              each one costs {formatPhp(data.settings.rewards.inviteMinor * 2)}.
             </FieldDescription>
           </FieldGroup>
         </section>

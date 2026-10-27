@@ -274,6 +274,31 @@ describe("during a visit", () => {
   });
 });
 
+describe("the Friend Pass follows the Founding 30", () => {
+  it("shows the Friend Pass off, and why, when the Founding 30 is off", async () => {
+    const raw = rawPromotions();
+    getAdminPromotions.mockResolvedValue(
+      readAdminPromotions({
+        ...raw,
+        settings: { ...raw.settings, founding: { ...raw.settings.founding, enabled: false } },
+      }),
+    );
+    render(<PromotionsDesk tree="ops" />);
+    const friend = within(await screen.findByRole("region", { name: "Friend Pass" }));
+    expect(friend.getByText("Off with the Founding 30")).toBeInTheDocument();
+    expect(friend.getByText(/The Founding 30 is off, so Friend Pass invites, claims and upgrades are off too/)).toBeInTheDocument();
+    expect(friend.getByText(/Upgrades wait while either promotion is off/)).toBeInTheDocument();
+  });
+
+  it("says upgrades are eligible from the date and counts only real ones", async () => {
+    getAdminPromotions.mockResolvedValue(fresh());
+    render(<PromotionsDesk tree="ops" />);
+    const friend = within(await screen.findByRole("region", { name: "Friend Pass" }));
+    expect(friend.getByText(/^From Nov 1, 2026, 11:59 PM, unused Friend Passes upgrade to ₱200\.00/)).toBeInTheDocument();
+    expect(friend.getByText(/No pass has been upgraded yet/)).toBeInTheDocument();
+  });
+});
+
 describe("Operations", () => {
   it("reads every figure with no way to change them", async () => {
     getAdminPromotions.mockResolvedValue(fresh());

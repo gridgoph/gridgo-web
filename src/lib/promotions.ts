@@ -16,6 +16,7 @@ import {
   PromotionsShapeError,
   type AdminPromotions,
   type FoundingClaim,
+  type FriendPassInvite,
   type PromotionSettings,
   type PromotionSettingsPatch,
 } from "@/lib/api/promotions";
@@ -27,6 +28,9 @@ type Presentation = { label: string; tone: StatusTone; icon: StatusIconName };
 
 /** Counts above this are a typing slip, and the API refuses them too. */
 export const PROMOTION_COUNT_MAX = 1_000_000;
+
+/** The API's ceiling on the invite reward: it is paid to both sides, and twice it must stay a safe integer. */
+export const INVITE_REWARD_MAX_MINOR = Math.floor(Number.MAX_SAFE_INTEGER / 2);
 
 /** Above this many slots the strip of seats becomes a plain bar. */
 export const SLOT_STRIP_MAX = 120;
@@ -47,22 +51,29 @@ export function pesosInput(minor: number): string {
 
 export type Parsed = { value: number } | { problem: string };
 
-/** A positive peso amount → centavos. Commas are allowed; a third decimal is not. */
-export function parsePesos(input: string): Parsed {
+/**
+ * A peso amount → centavos. Commas are allowed; a third decimal is not.
+ * Above ₱0 unless `allowZero`; at most `maxMinor` when given.
+ */
+export function parsePesos(
+  input: string,
+  { allowZero = false, maxMinor }: { allowZero?: boolean; maxMinor?: number } = {},
+): Parsed {
   if (!input.trim()) return { problem: "Enter an amount in pesos." };
   const minor = pesosToMinor(input);
   if (minor === null) return { problem: "Enter pesos as a number, like 200 or 200.50." };
-  if (minor <= 0) return { problem: "Enter an amount above ₱0." };
+  if (minor < 0 || (minor === 0 && !allowZero)) return { problem: "Enter an amount above ₱0." };
+  if (maxMinor !== undefined && minor > maxMinor) return { problem: "That is more than the service allows." };
   return { value: minor };
 }
 
-/** A whole number of at least 1. */
-export function parseCount(input: string): Parsed {
+/** A whole number, 0 or more as the API allows (`min` 1 where a field needs one). */
+export function parseCount(input: string, min = 0): Parsed {
   const cleaned = input.trim().replace(/,/g, "");
   if (!cleaned) return { problem: "Enter a number." };
   if (!/^\d+$/.test(cleaned)) return { problem: "Enter a whole number, like 30." };
   const value = Number(cleaned);
-  if (value < 1) return { problem: "Enter at least 1." };
+  if (value < min) return { problem: `Enter at least ${min}.` };
   if (value > PROMOTION_COUNT_MAX) return { problem: "That is more than the service allows." };
   return { value };
 }
@@ -116,7 +127,7 @@ export const FIELD_NAMES: Record<DraftField, string> = {
   friendEnabled: "Friend Pass on or off",
   budgetCap: "Budget cap",
   survey: "Order survey reward",
-  mission: "Tester step reward",
+  mission: "Founding Tester reward",
   invite: "Invite reward",
 };
 
@@ -178,7 +189,12 @@ export function checkDraft(
   const counts: Partial<Record<(typeof COUNT_FIELDS)[number], number>> = {};
 
   for (const field of MONEY_FIELDS) {
-    const parsed = parsePesos(draft[field]);
+    // The API's minimums: a cap may be ₱0 (nothing new is given); the invite
+    // reward is paid to both sides, so it has its own ceiling.
+    const parsed = parsePesos(draft[field], {
+      allowZero: field === "budgetCap",
+      maxMinor: field === "invite" ? INVITE_REWARD_MAX_MINOR : undefined,
+    });
     if ("problem" in parsed) errors[field] = parsed.problem;
     else money[field] = parsed.value;
   }
@@ -235,7 +251,7 @@ export function checkDraft(
     ["friendAmount", stored.friendPass.amountMinor, "Friend Pass amount", (v) => set("friendPass", "amountMinor", v)],
     ["budgetCap", stored.budgetCapMinor, "Budget cap", (v) => (patch.budgetCapMinor = v)],
     ["survey", stored.rewards.surveyMinor, "Survey reward", (v) => set("rewards", "surveyMinor", v)],
-    ["mission", stored.rewards.missionMinor, "Mission reward", (v) => set("rewards", "missionMinor", v)],
+    ["mission", stored.rewards.missionMinor, "Founding Tester reward", (v) => set("rewards", "missionMinor", v)],
     ["invite", stored.rewards.inviteMinor, "Invite reward", (v) => set("rewards", "inviteMinor", v)],
   ];
   for (const [field, was, label, apply] of moneyRows) {
@@ -288,14 +304,22 @@ export function auditReason(changes: string[]): string {
 // Where each promotion stands
 // ---------------------------------------------------------------------------
 
-export type PromotionState = "off" | "not_started" | "open" | "sold_out" | "cap_reached" | "ended";
+export type PromotionState =
+  | "off"
+  /** The Friend Pass's own switch is on, but the Founding 30 is the master switch. */
+  | "off_with_founding"
+  | "not_started"
+  | "open"
+  | "sold_out"
+  | "cap_reached"
+  | "ended";
 
 /** Below the smallest live voucher, nothing more can be given. */
 export function capReached(data: AdminPromotions): boolean {
   const { founding, friendPass } = data.settings;
   const amounts = [
     founding.enabled ? founding.amountMinor : null,
-    friendPass.enabled ? friendPass.amountMinor : null,
+    founding.enabled && friendPass.enabled ? friendPass.amountMinor : null,
   ].filter((value): value is number => value !== null);
   if (!amounts.length) return false;
   return data.budget.remainingMinor < Math.min(...amounts);
@@ -305,7 +329,8 @@ export function foundingState(data: AdminPromotions, now: number): PromotionStat
   const { founding } = data.settings;
   if (!founding.enabled) return "off";
   if (now < Date.parse(founding.startsAt)) return "not_started";
-  if (now > Date.parse(founding.endsAt)) return "ended";
+  // As the API: the end time itself is already past.
+  if (now >= Date.parse(founding.endsAt)) return "ended";
   if (data.founding.available <= 0) return "sold_out";
   if (data.budget.remainingMinor < founding.amountMinor) return "cap_reached";
   return "open";
@@ -314,8 +339,10 @@ export function foundingState(data: AdminPromotions, now: number): PromotionStat
 export function friendPassState(data: AdminPromotions, now: number): PromotionState {
   const { friendPass, founding } = data.settings;
   if (!friendPass.enabled) return "off";
+  // The API's master switch: with the Founding 30 off, no invite, claim or upgrade.
+  if (!founding.enabled) return "off_with_founding";
   if (now < Date.parse(founding.startsAt)) return "not_started";
-  if (now > Date.parse(founding.endsAt)) return "ended";
+  if (now >= Date.parse(founding.endsAt)) return "ended";
   if (data.friendPass.issued >= data.friendPass.total) return "sold_out";
   if (data.budget.remainingMinor < friendPass.amountMinor) return "cap_reached";
   return "open";
@@ -325,6 +352,8 @@ export function presentPromotionState(state: PromotionState, soldOut = "All slot
   switch (state) {
     case "off":
       return { label: "Turned off", tone: "neutral", icon: "ban" };
+    case "off_with_founding":
+      return { label: "Off with the Founding 30", tone: "neutral", icon: "ban" };
     case "not_started":
       return { label: "Not started", tone: "neutral", icon: "clock" };
     case "open":
@@ -391,6 +420,17 @@ export function nextBoundary(settings: PromotionSettings, now: number): number |
     .map((iso) => Date.parse(iso))
     .filter((at) => Number.isFinite(at) && at > now);
   return ahead.length ? Math.min(...ahead) : null;
+}
+
+export type UpgradeHistory = { count: number; lastAt: string | null };
+
+/** Upgrades that really happened, from each pass's own `upgradedAt`. */
+export function upgradeHistory(invites: FriendPassInvite[]): UpgradeHistory {
+  const times = invites
+    .map((invite) => invite.upgradedAt)
+    .filter((at): at is string => Boolean(at) && Number.isFinite(Date.parse(at!)))
+    .sort();
+  return { count: times.length, lastAt: times.at(-1) ?? null };
 }
 
 // ---------------------------------------------------------------------------
