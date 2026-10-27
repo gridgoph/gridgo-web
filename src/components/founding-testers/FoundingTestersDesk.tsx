@@ -47,7 +47,10 @@ export function FoundingTestersDesk({ tree }: { tree: "ops" | "admin" }) {
         {MISSIONS.map((m) => m.label.toLowerCase()).join(", ")}. Finishing all five adds
         the label and a {formatPhp(1500)} GRIDGO voucher valid 30 days, once per account.
         With &ldquo;{INVITE_A_FRIEND}&rdquo;, when a friend they invited finishes all
-        five, both get a voucher too. GRIDGO counts this on its own.
+        five, both get a voucher too. GRIDGO counts this on its own. Share taps count
+        each time a client tried to open the share sheet, with Share or &ldquo;Send to
+        a friend&rdquo;, whether or not it opened; a tap is not a post, and earns
+        nothing.
       </p>
       <Tabs value={tab} onValueChange={(value) => go(deskTab(String(value)))}>
         <TabsList>

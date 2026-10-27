@@ -22,7 +22,8 @@ import type {
   TesterInvite,
 } from "@/lib/api/types";
 
-const { api, nav, live } = vi.hoisted(() => ({
+const { api, nav, live, sharing } = vi.hoisted(() => ({
+  sharing: { readAllShareTaps: vi.fn() },
   live: { reloads: new Set<() => Promise<void> | void>() },
   api: {
     listFoundingTesters: vi.fn(),
@@ -51,6 +52,12 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => nav.params,
   usePathname: () => "/ops/founding-testers",
 }));
+vi.mock("@/lib/api/sharing-reminders", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api/sharing-reminders")>(
+    "@/lib/api/sharing-reminders",
+  );
+  return { ...actual, ...sharing };
+});
 vi.mock("@/lib/api/client", async () => {
   const actual =
     await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
@@ -58,6 +65,7 @@ vi.mock("@/lib/api/client", async () => {
 });
 
 import { ClientAccount } from "@/components/founding-testers/ClientAccount";
+import { FoundingTestersDesk } from "@/components/founding-testers/FoundingTestersDesk";
 import { FoundingTestersList } from "@/components/founding-testers/FoundingTestersList";
 
 afterEach(() => {
@@ -85,6 +93,7 @@ beforeEach(() => {
     budget,
   });
   api.listUsers.mockResolvedValue([]);
+  sharing.readAllShareTaps.mockResolvedValue(new Map());
 });
 
 const progress = (
@@ -132,6 +141,61 @@ function clients(from: number, count: number): FoundingTesterRow[] {
 }
 
 describe("Founding Testers view", () => {
+  it("shows each client's Share and Send to a friend taps, zero included", async () => {
+    api.listFoundingTesters.mockResolvedValue({
+      serverTime: "2026-10-20T08:00:00.000Z",
+      total: 2,
+      clients: clients(1, 2),
+    });
+    sharing.readAllShareTaps.mockResolvedValue(
+      new Map([
+        ["c1", { clientId: "c1", shareTaps: 3, sendToFriendTaps: 2 }],
+        ["c2", { clientId: "c2", shareTaps: 0, sendToFriendTaps: 0 }],
+      ]),
+    );
+    render(<FoundingTestersList tree="ops" />);
+
+    const table = await screen.findByRole("table");
+    expect(within(table).getByRole("columnheader", { name: /Share taps/ })).toBeInTheDocument();
+    const first = within((await within(table).findByText("Client 1")).closest("tr")!);
+    expect(first.getByLabelText("3 Share, 2 Send to a friend")).toHaveTextContent(
+      "3 Share2 Send to a friend",
+    );
+    const second = within(within(table).getByText("Client 2").closest("tr")!);
+    expect(second.getByLabelText("0 Share, 0 Send to a friend")).toBeInTheDocument();
+  });
+
+  it("says a share tap is an attempt to open the share sheet, not an open or a post", async () => {
+    api.listFoundingTesters.mockResolvedValue({
+      serverTime: "2026-10-20T08:00:00.000Z",
+      total: 0,
+      clients: [],
+    });
+    render(<FoundingTestersDesk tree="ops" />);
+
+    expect(
+      await screen.findByText(
+        /Share taps count each time a client tried to open the share sheet, with Share or “Send to a friend”, whether or not it opened; a tap is not a post, and earns nothing\./,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/client opened the share sheet/)).toBeNull();
+  });
+
+  it("still reads when share taps cannot, with a dash in their place", async () => {
+    api.listFoundingTesters.mockResolvedValue({
+      serverTime: "2026-10-20T08:00:00.000Z",
+      total: 1,
+      clients: clients(1, 1),
+    });
+    sharing.readAllShareTaps.mockRejectedValue(new ApiError(404, { error: "not_found" }));
+    render(<FoundingTestersList tree="ops" />);
+
+    const table = await screen.findByRole("table");
+    const first = within((await within(table).findByText("Client 1")).closest("tr")!);
+    expect(first.getByLabelText("Share taps not available")).toHaveTextContent("—");
+    expect(first.getByText("Founding Tester")).toBeVisible();
+  });
+
   // A full page draws 100 rows, which is slow under a loaded full-suite run.
   it(
     "reads 100 a page, shows the range, and pages forward through the URL",

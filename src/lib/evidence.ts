@@ -11,6 +11,7 @@ import type {
   ProductionItem,
   StoredFile,
 } from "@/lib/api/types";
+import { packagePhotoIdsOf } from "@/lib/api/sharing-reminders";
 import { formatDateTime } from "@/lib/format";
 import { listedInstallments, paymentOf } from "@/lib/payments";
 import { presentInstallment } from "@/lib/order-state";
@@ -200,6 +201,17 @@ export function deliveryEvidenceItems(
     fileId,
     kind: "delivery" as const,
     label: all.length > 1 ? `Delivery photo ${index + 1}` : "Delivery photo",
+  }));
+}
+
+/** The rider's optional package-only photo, taken with the client's agreement. */
+export function packagePhotoEvidence(
+  order: Pick<Order, "deliveryReminder" | "deliveryPackagePhotoFileIds">,
+): EvidenceItem[] {
+  return packagePhotoIdsOf(order).map((fileId, index, all) => ({
+    fileId,
+    kind: "delivery" as const,
+    label: all.length > 1 ? `Package photo ${index + 1}` : "Package photo",
   }));
 }
 
