@@ -126,8 +126,9 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonDetail } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { installmentsAwaitingConfirmation } from "@/lib/api/constraints";
+import { deliveryReminderOf } from "@/lib/api/sharing-reminders";
 import { counterRow, counterStep } from "@/lib/counter-check";
-import { deliveryEvidenceItems } from "@/lib/evidence";
+import { deliveryEvidenceItems, packagePhotoEvidence } from "@/lib/evidence";
 import {
   pinPaymentAwaitingOperations,
   pinPaymentCollectedMinor,
@@ -2338,22 +2339,71 @@ function shopProofHeading(milestone: PayoutMilestone): string {
  */
 function DeliveryStep({ order, hint }: { order: Order; hint?: string }) {
   const delivery = deliveryEvidenceItems(order);
+  const packagePhoto = packagePhotoEvidence(order);
 
-  if (delivery.length === 0) {
+  if (delivery.length === 0 && packagePhoto.length === 0) {
     return <p className="text-body text-text-secondary m-0">{hint}</p>;
   }
 
   return (
-    <div>
-      <p
-        className="text-body text-text-primary m-0 mb-2"
-        style={{ fontFamily: "var(--font-medium)" }}
-      >
-        {order.deliveryEvidence
-          ? `At the door, ${formatDateTime(order.deliveryEvidence.recordedAt)}`
-          : "Delivery photos"}
+    <div className="flex flex-col gap-3">
+      <div>
+        <p
+          className="text-body text-text-primary m-0 mb-2"
+          style={{ fontFamily: "var(--font-medium)" }}
+        >
+          {order.deliveryEvidence
+            ? `At the door, ${formatDateTime(order.deliveryEvidence.recordedAt)}`
+            : "Delivery photos"}
+        </p>
+        <EvidenceStrip items={delivery} deletable />
+      </div>
+      <HandoffReminder order={order} />
+      {packagePhoto.length ? (
+        <div>
+          <p className="text-caption text-text-muted m-0 mb-2">
+            Taken with the client&rsquo;s agreement, of the package only.
+          </p>
+          <EvidenceStrip items={packagePhoto} deletable />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * What the rider recorded at the door (gridgo-rider#157): the survey and
+ * share reminder, and whether the client agreed to a package photo. An older
+ * rider app has no reminder step, so it reads as that, never as skipped.
+ */
+function HandoffReminder({ order }: { order: Order }) {
+  const reminder = deliveryReminderOf(order);
+  if (!reminder) return null;
+  if (reminder.protocolVersion === 0) {
+    return (
+      <p className="text-caption text-text-muted m-0">
+        Delivered from an older rider app, which has no reminder step.
       </p>
-      <EvidenceStrip items={delivery} deletable />
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {reminder.remindedClient ? (
+        <StatusChip
+          tone="success"
+          icon="circle-check"
+          label="Rider reminded the client"
+        />
+      ) : (
+        <StatusChip tone="neutral" icon="circle-dashed" label="No reminder recorded" />
+      )}
+      <span className="text-caption text-text-muted">
+        {reminder.clientAgreedToPhoto
+          ? reminder.packagePhotoFileId
+            ? "Client agreed to a package photo."
+            : "Client agreed to a photo; none was taken."
+          : "No package photo."}
+      </span>
     </div>
   );
 }

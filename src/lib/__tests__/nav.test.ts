@@ -64,6 +64,7 @@ describe("ROLE_NAV", () => {
       "/ops/featured-prints",
       "/ops/dispatch",
       "/ops/riders",
+      "/ops/handoff-reminders",
       "/ops/rankings",
       "/ops/shop-hours",
       "/ops/late-production",
@@ -97,6 +98,7 @@ describe("ROLE_NAV", () => {
       "/admin/issue-reports",
       "/admin/survey-responses",
       "/admin/riders",
+      "/admin/handoff-reminders",
       "/admin/hub",
       "/admin/verification",
       "/admin/roles",
@@ -158,6 +160,7 @@ describe("ROLE_NAV", () => {
       "/admin/finance",
       "/admin/finished-work",
       "/admin/founding-testers",
+      "/admin/handoff-reminders",
       "/admin/hub",
       "/admin/issue-reports",
       "/admin/late-production",
@@ -196,6 +199,7 @@ describe("ROLE_NAV", () => {
       "/ops/featured-prints",
       "/ops/finished-work",
       "/ops/founding-testers",
+      "/ops/handoff-reminders",
       "/ops/hub",
       "/ops/issue-reports",
       "/ops/late-production",
@@ -308,6 +312,7 @@ describe("ROLE_NAV", () => {
     ).toEqual([
       "/ops/dispatch",
       "/ops/riders",
+      "/ops/handoff-reminders",
       "/ops/rankings",
       "/ops/shop-hours",
       "/ops/late-production",
@@ -345,6 +350,7 @@ describe("ROLE_NAV", () => {
       "/admin/issue-reports",
       "/admin/survey-responses",
       "/admin/riders",
+      "/admin/handoff-reminders",
       "/admin/hub",
     ]);
     expect(
@@ -595,5 +601,31 @@ describe("test operations rail", () => {
     expect(testOperationsAllowsPath("/ops/audit")).toBe(false);
     expect(testOperationsAllowsPath("/ops/issue-reports")).toBe(false);
     expect(testOperationsAllowsPath("/ops/organizations/usr_1")).toBe(false);
+  });
+});
+
+describe("rider handoff reminders", () => {
+  it("sit beside Riders for Operations and Super Admin, and nowhere for a shop", () => {
+    for (const [role, tree] of [
+      ["ops_admin", "ops"],
+      ["super_admin", "admin"],
+    ] as const) {
+      const hrefs = navForRole(role).map((item) => item.href);
+      const riders = hrefs.indexOf(`/${tree}/riders`);
+      expect(hrefs[riders + 1]).toBe(`/${tree}/handoff-reminders`);
+      expect(contextTitleForPath(`/${tree}/handoff-reminders`, role)).toBe(
+        "Rider handoff reminders",
+      );
+    }
+    expect(navForRole("supplier").some((item) => item.href.includes("handoff"))).toBe(false);
+  });
+
+  it("stay off a test operations login, which runs test orders only", () => {
+    expect(
+      navForRole("ops_admin", { testOperations: true }).some((item) =>
+        item.href.includes("handoff"),
+      ),
+    ).toBe(false);
+    expect(testOperationsAllowsPath("/ops/handoff-reminders")).toBe(false);
   });
 });

@@ -37,6 +37,7 @@ export type NavIconKey =
   | "recovery"
   | "dispatch"
   | "riders"
+  | "handoff-reminders"
   | "rankings"
   | "lapses"
   | "performance"
@@ -483,6 +484,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          id: "ops-handoff-reminders",
+          href: "/ops/handoff-reminders",
+          label: "Handoff reminders",
+          title: "Rider handoff reminders",
+          icon: "handoff-reminders",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "ops-rankings",
           href: "/ops/rankings",
           label: "Shop rankings",
@@ -750,6 +760,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Riders",
           title: "Rider locations",
           icon: "riders",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-handoff-reminders",
+          href: "/admin/handoff-reminders",
+          label: "Handoff reminders",
+          title: "Rider handoff reminders",
+          icon: "handoff-reminders",
           ready: true,
           placeholderBody: "",
         },
