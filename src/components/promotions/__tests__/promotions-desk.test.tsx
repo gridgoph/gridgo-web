@@ -85,6 +85,7 @@ describe("Super Admin", () => {
     render(<PromotionsDesk tree="admin" />);
     fireEvent.change((await loaded()).getByLabelText("Amount (pesos)"), { target: { value: "0" } });
     expect(founding().getByText("Enter an amount above ₱0.")).toBeInTheDocument();
+    expect(screen.getByText("Fix Founding amount to save.")).toBeInTheDocument();
     expect(saveButton()).toBeDisabled();
     fireEvent.change(founding().getByLabelText("Amount (pesos)"), { target: { value: "200" } });
     fireEvent.change(founding().getByLabelText("Ends (Philippine time)"), {
@@ -121,6 +122,15 @@ describe("Super Admin", () => {
     expect(saveButton()).toBeNull();
   });
 
+  it("searches claims by name or email", async () => {
+    getAdminPromotions.mockResolvedValue(fresh());
+    render(<PromotionsDesk tree="admin" />);
+    const search = await screen.findByRole("searchbox", { name: "Search by name or email" });
+    fireEvent.change(search, { target: { value: "ana@example" } });
+    await waitFor(() => expect(screen.queryAllByText("Ven Cruz")).toHaveLength(0));
+    expect(screen.getAllByText("Ana Reyes").length).toBeGreaterThan(0);
+  });
+
   it("shows a load failure with a way to retry", async () => {
     getAdminPromotions.mockRejectedValueOnce(new ApiError(500, { error: "internal" }));
     render(<PromotionsDesk tree="admin" />);
@@ -138,8 +148,9 @@ describe("Operations", () => {
     expect(await screen.findByText("Read only")).toBeInTheDocument();
     expect(founding().getByText("₱200.00")).toBeInTheDocument();
     expect(screen.queryAllByRole("textbox")).toHaveLength(0);
-    expect(screen.getByRole("searchbox", { name: "Search claims" })).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "Search by name or email" })).toBeInTheDocument();
     expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.getByText("Friend Pass: turned on")).toBeInTheDocument();
     expect(saveButton()).toBeNull();
     expect(screen.getAllByRole("link", { name: "Open order" })[0]).toHaveAttribute(
       "href",

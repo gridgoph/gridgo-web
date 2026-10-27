@@ -16,7 +16,6 @@ import {
   PromotionsShapeError,
   type AdminPromotions,
   type FoundingClaim,
-  type FriendPassInvite,
   type PromotionSettings,
   type PromotionSettingsPatch,
 } from "@/lib/api/promotions";
@@ -102,6 +101,32 @@ export type PromotionDraft = {
 };
 
 export type DraftField = keyof PromotionDraft;
+
+/** What each field is called on screen, for "Fix … to save". */
+export const FIELD_NAMES: Record<DraftField, string> = {
+  foundingAmount: "Founding amount",
+  foundingSlots: "Founding slots",
+  foundingStarts: "Founding start",
+  foundingEnds: "Founding end",
+  foundingEnabled: "Founding 30 on or off",
+  friendAmount: "Friend Pass amount",
+  friendPerFounder: "Friends per Founder",
+  friendTotal: "Friend Pass total",
+  friendUpgrade: "Friend Pass upgrade",
+  friendEnabled: "Friend Pass on or off",
+  budgetCap: "Budget cap",
+  survey: "Order survey reward",
+  mission: "Tester step reward",
+  invite: "Invite reward",
+};
+
+/** "Fix Budget cap and Invite reward to save." */
+export function fixFieldsText(fields: DraftField[]): string {
+  const names = fields.map((field) => FIELD_NAMES[field]);
+  const list =
+    names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  return `Fix ${list} to save.`;
+}
 export type DraftErrors = Partial<Record<DraftField, string>>;
 
 export function draftFromSettings(settings: PromotionSettings): PromotionDraft {
@@ -385,21 +410,6 @@ export function presentInviteStatus(status: string): Presentation {
 
 export function personText(name: string | null, email: string | null): string {
   return name || email || "Unnamed account";
-}
-
-/** Case-insensitive match on any of the given fields. */
-export function matchesSearch(query: string, fields: (string | null | undefined)[]): boolean {
-  const needle = query.trim().toLowerCase();
-  if (!needle) return true;
-  return fields.some((field) => field?.toLowerCase().includes(needle));
-}
-
-export function claimMatches(claim: FoundingClaim, query: string): boolean {
-  return matchesSearch(query, [claim.name, claim.email]);
-}
-
-export function inviteMatches(invite: FriendPassInvite, query: string): boolean {
-  return matchesSearch(query, [invite.founder.name, invite.founder.email, invite.friendEmail]);
 }
 
 /** Newest first; a claim without a time sorts last. */

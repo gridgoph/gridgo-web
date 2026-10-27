@@ -27,6 +27,7 @@ import {
   capReached,
   checkDraft,
   draftFromSettings,
+  fixFieldsText,
   foundingState,
   friendPassState,
   isVersionConflict,
@@ -98,9 +99,10 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
   /** Errors show on what was typed; date order shows once any date moves. */
   const visibleError = (field: DraftField): string | undefined =>
     edited(field) || (datesEdited && DATE_FIELDS.includes(field)) ? check?.errors[field] : undefined;
-  const blocking = (Object.keys(check?.errors ?? {}) as DraftField[]).some((field) =>
+  const invalid = (Object.keys(check?.errors ?? {}) as DraftField[]).filter((field) =>
     Boolean(visibleError(field)),
   );
+  const blocking = invalid.length > 0;
   const changes = check?.changes ?? [];
   const dirty = changes.length > 0;
   const pending = dirty || blocking;
@@ -228,8 +230,7 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
         ) : null}
         <div className="flex flex-col gap-0.5">
           <FieldLabel htmlFor={canEdit ? id : undefined}>
-            {label}
-            {canEdit ? null : `: ${draft[field] ? "on" : "off"}`}
+            {canEdit ? `Run the ${label}` : `${label}: ${draft[field] ? "turned on" : "turned off"}`}
           </FieldLabel>
           <FieldDescription id={`${id}-help`}>{help}</FieldDescription>
         </div>
@@ -309,7 +310,7 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
             </div>
             {toggle(
               "foundingEnabled",
-              "Founding 30 is on",
+              "Founding 30",
               "Off hides the claim prompt from clients. Vouchers already claimed still work.",
             )}
           </FieldGroup>
@@ -366,7 +367,7 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
             })}
             {toggle(
               "friendEnabled",
-              "Friend Pass is on",
+              "Friend Pass",
               "Off stops new invites and claims. Passes already claimed still work.",
             )}
           </FieldGroup>
@@ -398,24 +399,25 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
               Rewards
             </h2>
             <p className="text-body text-text-secondary m-0 mt-0.5 max-w-prose">
-              GRIDGO vouchers clients still earn alongside the launch promotions. {NEW_CLAIMS_ONLY}
+              GRIDGO vouchers clients still earn alongside the launch promotions, in pesos.{" "}
+              {NEW_CLAIMS_ONLY}
             </p>
           </header>
           <FieldGroup>
             <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
               {input({
                 field: "survey",
-                label: "Order survey (pesos)",
+                label: "Order survey",
                 read: formatPhp(data.settings.rewards.surveyMinor),
               })}
               {input({
                 field: "mission",
-                label: "Founding Tester steps (pesos)",
+                label: "Each tester step",
                 read: formatPhp(data.settings.rewards.missionMinor),
               })}
               {input({
                 field: "invite",
-                label: "Invite, each side (pesos)",
+                label: "Invite, each side",
                 read: formatPhp(data.settings.rewards.inviteMinor),
               })}
             </div>
@@ -476,7 +478,7 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
                   </p>
                 ) : null}
                 {blocking ? (
-                  <p className="text-caption text-error m-0">Fix the marked fields to save.</p>
+                  <p className="text-caption text-error m-0">{fixFieldsText(invalid)}</p>
                 ) : null}
               </div>
               <div className="flex shrink-0 gap-2">

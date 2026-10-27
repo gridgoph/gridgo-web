@@ -9,6 +9,7 @@ import {
   checkDraft,
   claimsCsv,
   draftFromSettings,
+  fixFieldsText,
   foundingSeats,
   foundingState,
   friendPassState,
@@ -149,6 +150,15 @@ describe("checkDraft", () => {
     const { patch, errors } = checkDraft({ ...base, foundingEnds: "2026-11-10T23:59" }, settings);
     expect(errors).toEqual({});
     expect(patch).toEqual({ founding: { endsAt: "2026-11-10T15:59:59.000Z" } });
+  });
+});
+
+describe("fixFieldsText", () => {
+  it("names the fields to fix", () => {
+    expect(fixFieldsText(["budgetCap"])).toBe("Fix Budget cap to save.");
+    expect(fixFieldsText(["foundingAmount", "budgetCap", "invite"])).toBe(
+      "Fix Founding amount, Budget cap and Invite reward to save.",
+    );
   });
 });
 

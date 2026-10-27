@@ -1,21 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { Download, Search } from "lucide-react";
+import { useMemo } from "react";
+import { Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Input } from "@/components/ui/input";
 import { StatusChip } from "@/components/ui/StatusChip";
 import type { FoundingClaim, FriendPassInvite } from "@/lib/api/promotions";
 import { formatPhp } from "@/lib/format";
 import {
   byNewest,
-  claimMatches,
   claimsCsv,
-  inviteMatches,
   personText,
   presentClaimStatus,
   presentInviteStatus,
@@ -37,55 +34,9 @@ function Person({ name, email }: { name: string | null; email: string | null }) 
   );
 }
 
-function SearchBox({
-  id,
-  label,
-  value,
-  onChange,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <div className="relative w-full md:max-w-xs">
-      <Search
-        size={16}
-        aria-hidden
-        className="text-text-muted pointer-events-none absolute top-1/2 left-3 -translate-y-1/2"
-      />
-      <Input
-        id={id}
-        type="search"
-        aria-label={label}
-        placeholder="Search by name or email"
-        value={value}
-        className="pl-9"
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </div>
-  );
-}
-
-function NoMatches({ query, onClear }: { query: string; onClear: () => void }) {
-  return (
-    <div className="gg-card flex flex-col items-start gap-2">
-      <p className="text-body text-text-primary m-0">Nothing matches &ldquo;{query.trim()}&rdquo;.</p>
-      <Button variant="outline" onClick={onClear}>
-        Clear search
-      </Button>
-    </div>
-  );
-}
-
 /** Who claimed a Founding voucher, when, its value, and whether it was used. */
 export function ClaimsTable({ claims, tree }: { claims: FoundingClaim[]; tree: "ops" | "admin" }) {
-  const [query, setQuery] = useState("");
-  const rows = useMemo(
-    () => byNewest(claims, (claim) => claim.claimedAt).filter((claim) => claimMatches(claim, query)),
-    [claims, query],
-  );
+  const rows = useMemo(() => byNewest(claims, (claim) => claim.claimedAt), [claims]);
 
   const columns = useMemo<DataTableColumn<FoundingClaim>[]>(
     () => [
@@ -96,6 +47,7 @@ export function ClaimsTable({ claims, tree }: { claims: FoundingClaim[]; tree: "
         alwaysVisible: true,
         cell: (row) => <Person name={row.name} email={row.email} />,
         sortValue: (row) => personText(row.name, row.email),
+        filterValue: (row) => `${row.name ?? ""} ${row.email ?? ""}`,
       },
       {
         id: "claimed",
@@ -166,28 +118,23 @@ export function ClaimsTable({ claims, tree }: { claims: FoundingClaim[]; tree: "
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <SearchBox id="claims-search" label="Search claims" value={query} onChange={setQuery} />
-        <Button variant="outline" onClick={exportCsv} disabled={!rows.length}>
-          <Download size={16} aria-hidden />
-          Export CSV
-        </Button>
-      </div>
-      {rows.length ? (
-        <DataTable
-          columns={columns}
-          data={rows}
-          getRowId={(row) => row.voucherId || row.clientId}
-          caption="Founding 30 claims"
-          itemLabel="claims"
-          pageSize={30}
-        />
-      ) : (
-        <NoMatches query={query} onClear={() => setQuery("")} />
-      )}
+      <DataTable
+        columns={columns}
+        data={rows}
+        getRowId={(row) => row.voucherId || row.clientId}
+        caption="Founding 30 claims"
+        itemLabel="claims"
+        filterPlaceholder="Search by name or email"
+        toolbar={
+          <Button variant="outline" onClick={exportCsv}>
+            <Download size={16} aria-hidden />
+            Export CSV
+          </Button>
+        }
+        pageSize={30}
+      />
       <p className="text-caption text-text-muted m-0">
-        Times are Philippine time. The CSV holds the rows shown, so clear the search to export
-        every claim.
+        Times are Philippine time. The CSV holds every claim, whatever the search.
       </p>
     </div>
   );
@@ -195,12 +142,7 @@ export function ClaimsTable({ claims, tree }: { claims: FoundingClaim[]; tree: "
 
 /** Founder to friend: who invited whom, and where each pass stands. */
 export function InvitesTable({ invites }: { invites: FriendPassInvite[] }) {
-  const [query, setQuery] = useState("");
-  const rows = useMemo(
-    () =>
-      byNewest(invites, (invite) => invite.invitedAt).filter((invite) => inviteMatches(invite, query)),
-    [invites, query],
-  );
+  const rows = useMemo(() => byNewest(invites, (invite) => invite.invitedAt), [invites]);
 
   const columns = useMemo<DataTableColumn<FriendPassInvite>[]>(
     () => [
@@ -211,6 +153,7 @@ export function InvitesTable({ invites }: { invites: FriendPassInvite[] }) {
         alwaysVisible: true,
         cell: (row) => <Person name={row.founder.name} email={row.founder.email} />,
         sortValue: (row) => personText(row.founder.name, row.founder.email),
+        filterValue: (row) => `${row.founder.name ?? ""} ${row.founder.email ?? ""}`,
       },
       {
         id: "friend",
@@ -273,20 +216,14 @@ export function InvitesTable({ invites }: { invites: FriendPassInvite[] }) {
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <SearchBox id="invites-search" label="Search invites" value={query} onChange={setQuery} />
-      {rows.length ? (
-        <DataTable
-          columns={columns}
-          data={rows}
-          getRowId={(row) => row.id}
-          caption="Friend Pass invites"
-          itemLabel="invites"
-          pageSize={20}
-        />
-      ) : (
-        <NoMatches query={query} onClear={() => setQuery("")} />
-      )}
-    </div>
+    <DataTable
+      columns={columns}
+      data={rows}
+      getRowId={(row) => row.id}
+      caption="Friend Pass invites"
+      itemLabel="invites"
+      filterPlaceholder="Search by name or email"
+      pageSize={20}
+    />
   );
 }
