@@ -65,6 +65,7 @@ vi.mock("@/lib/api/client", async () => {
 });
 
 import { ClientAccount } from "@/components/founding-testers/ClientAccount";
+import { FoundingTestersDesk } from "@/components/founding-testers/FoundingTestersDesk";
 import { FoundingTestersList } from "@/components/founding-testers/FoundingTestersList";
 
 afterEach(() => {
@@ -162,6 +163,22 @@ describe("Founding Testers view", () => {
     );
     const second = within(within(table).getByText("Client 2").closest("tr")!);
     expect(second.getByLabelText("0 Share, 0 Send to a friend")).toBeInTheDocument();
+  });
+
+  it("says a share tap is an attempt to open the share sheet, not an open or a post", async () => {
+    api.listFoundingTesters.mockResolvedValue({
+      serverTime: "2026-10-20T08:00:00.000Z",
+      total: 0,
+      clients: [],
+    });
+    render(<FoundingTestersDesk tree="ops" />);
+
+    expect(
+      await screen.findByText(
+        /Share taps count each time a client tried to open the share sheet, with Share or “Send to a friend”, whether or not it opened; a tap is not a post, and earns nothing\./,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/client opened the share sheet/)).toBeNull();
   });
 
   it("still reads when share taps cannot, with a dash in their place", async () => {

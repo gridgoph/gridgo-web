@@ -4,7 +4,7 @@
  *
  * `GET /ops/mission-shares` counts each client's Share and "Send to a friend"
  * taps; `GET /ops/delivery-reminders` groups door deliveries by rider and
- * Asia/Manila week with what the reminded clients did next. Both are
+ * Asia/Manila week with what happened next on each reminded order. Both are
  * Operations and Super Admin only, paged by `offset`/`limit` (≤ 500) with a
  * `total`, and filtered by `from` (inclusive) / `to` (exclusive). An order
  * carries the rider's own record as `deliveryReminder`, with any package

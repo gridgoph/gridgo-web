@@ -63,7 +63,7 @@ function riderLabel(names: Map<string, string>, riderId: string): string {
  * Rider handoff reminders for Operations and Super Admin
  * (`GET /ops/delivery-reminders`, gridgo-rider#157). Riders tick "I reminded
  * the client" at the door; this shows, per rider and per Manila week, how
- * many door deliveries carried the reminder and how many of those clients
+ * many door deliveries carried the reminder and on how many of those orders the client
  * then did the survey and tapped Share. Read-only, and nothing here changes
  * rider pay. The week and rider live in the URL (`?week=2026-10-26&rider=`).
  */
@@ -277,7 +277,12 @@ export function HandoffReminders({ tree }: { tree: "ops" | "admin" }) {
     );
   }
 
-  const stale = loading && shownWindow !== windowKey;
+  // The rows on hand belong to another six weeks: shown while the next read
+  // is on its way (as skeletons), never as this window's figures. A read of
+  // these weeks that failed leaves nothing true to show but the error.
+  const otherWindow = shownWindow !== windowKey;
+  const waiting = pending || (loading && otherWindow);
+  const windowFailed = !loading && error !== null && otherWindow;
   const totals = totalsByWeek.get(selected) ?? sumReminderWeeks([]);
   const riderName = riderFilter ? riderLabel(names, riderFilter) : null;
 
@@ -286,8 +291,9 @@ export function HandoffReminders({ tree }: { tree: "ops" | "admin" }) {
       <p className="text-body text-text-secondary m-0 max-w-prose">
         At the door, riders tick &ldquo;I reminded the client&rdquo; after asking them to
         rate GRIDGO in the app and share it with a friend. This counts door deliveries by
-        rider and week in Philippine time, and how many of the reminded clients then did
-        the survey or tapped Share. Rider pay does not change.
+        rider and week in Philippine time, and on how many reminded orders the client then
+        did the survey or tapped Share. Each order counts once, so a client with three
+        orders counts three times. Rider pay does not change.
       </p>
 
       <section className="gg-card flex flex-col gap-4" aria-labelledby="reminder-week">
@@ -341,25 +347,44 @@ export function HandoffReminders({ tree }: { tree: "ops" | "admin" }) {
           </div>
         </div>
 
-        <WeekStrip
-          weeks={strip}
-          current={current}
-          selected={selected}
-          totals={totalsByWeek}
-          loading={pending || stale}
-          onSelect={(week) => go({ week })}
-        />
+        {windowFailed ? (
+          <ErrorState
+            title="Could not load these weeks"
+            body={error ?? ""}
+            action={
+              <Button variant="secondary" onClick={() => void load()}>
+                Retry
+              </Button>
+            }
+          />
+        ) : (
+          <>
+            <WeekStrip
+              weeks={strip}
+              current={current}
+              selected={selected}
+              totals={totalsByWeek}
+              loading={waiting}
+              onSelect={(week) => go({ week })}
+            />
 
-        <FollowThrough totals={totals} loading={pending || stale} />
+            <FollowThrough totals={totals} loading={waiting} />
+          </>
+        )}
       </section>
 
-      {error && rows ? (
-        <p className="text-body text-error m-0" role="alert">
-          {error}
-        </p>
+      {error && rows && !windowFailed ? (
+        <div className="flex flex-wrap items-center gap-3" role="alert">
+          <p className="text-body text-error m-0">
+            {error} These figures are from the last successful read.
+          </p>
+          <Button variant="secondary" onClick={() => void load()}>
+            Retry
+          </Button>
+        </div>
       ) : null}
 
-      {!pending && !stale && weekRows.length === 0 ? (
+      {windowFailed ? null : !waiting && weekRows.length === 0 ? (
         <EmptyState
           title={
             riderName ? `No door deliveries by ${riderName} this week` : "No door deliveries this week"
@@ -377,7 +402,7 @@ export function HandoffReminders({ tree }: { tree: "ops" | "admin" }) {
         <DataTable
           columns={columns}
           data={weekRows}
-          loading={pending || stale}
+          loading={waiting}
           getRowId={(row) => `${row.riderId}:${row.weekStart}`}
           caption={`Handoff reminders by rider, ${weekLabel(selected)}`}
           filterPlaceholder="Find a rider…"
@@ -406,9 +431,9 @@ export function RateCell({
   const words =
     percent === null
       ? of === "reminded"
-        ? "No reminded clients"
+        ? "No reminded orders"
         : "No deliveries"
-      : `${part} of ${whole} ${of === "reminded" ? "reminded clients" : "deliveries"}, ${percent}%`;
+      : `${part} of ${whole} ${of === "reminded" ? "reminded orders" : "deliveries"}, ${percent}%`;
   return (
     <span className="inline-flex min-w-0 flex-col gap-1" aria-label={words}>
       <span className="inline-flex items-baseline gap-2" aria-hidden>
@@ -452,7 +477,13 @@ function WeekStrip({
   onSelect: (week: string) => void;
 }) {
   return (
-    <div role="group" aria-label="Weeks" className="grid grid-cols-6 gap-1 sm:gap-2">
+    // Six across from 352px; below that (a 320px phone) a week would be under
+    // the 44px floor, so the strip folds to two rows of three.
+    <div
+      role="group"
+      aria-label="Weeks"
+      className="grid grid-cols-3 gap-1 min-[352px]:grid-cols-6 sm:gap-2"
+    >
       {weeks.map((week) => {
         const total = totals.get(week);
         const deliveries = total?.deliveries ?? 0;
@@ -475,7 +506,7 @@ function WeekStrip({
             aria-label={label}
             onClick={() => onSelect(week)}
             className={cn(
-              "flex min-h-11 min-w-0 flex-col items-stretch gap-1.5 rounded-field border px-1 py-2 text-center",
+              "flex min-h-11 min-w-11 flex-col items-stretch gap-1.5 rounded-field border px-1 py-2 text-center",
               "hover:bg-overlay-hover disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent",
               isSelected ? "border-text-primary bg-surface-variant" : "border-transparent",
             )}
@@ -540,7 +571,7 @@ function FollowThrough({ totals, loading }: { totals: ReminderTotals; loading: b
       value: totals.surveySubmittedDeliveries,
       note:
         totals.remindedDeliveries > 0
-          ? `${formatRate(totals.surveySubmittedDeliveries, totals.remindedDeliveries)} of reminded`
+          ? `${formatRate(totals.surveySubmittedDeliveries, totals.remindedDeliveries)} of reminded orders`
           : null,
     },
     {
@@ -549,7 +580,7 @@ function FollowThrough({ totals, loading }: { totals: ReminderTotals; loading: b
       value: totals.shareTappedDeliveries,
       note:
         totals.remindedDeliveries > 0
-          ? `${formatRate(totals.shareTappedDeliveries, totals.remindedDeliveries)} of reminded`
+          ? `${formatRate(totals.shareTappedDeliveries, totals.remindedDeliveries)} of reminded orders`
           : null,
     },
   ];
@@ -598,7 +629,7 @@ function FollowThrough({ totals, loading }: { totals: ReminderTotals; loading: b
       {!loading && (totals.surveyAndShareDeliveries > 0 || totals.legacyDeliveries > 0) ? (
         <p className="text-caption text-text-muted m-0">
           {totals.surveyAndShareDeliveries > 0
-            ? `${totals.surveyAndShareDeliveries} reminded ${totals.surveyAndShareDeliveries === 1 ? "client" : "clients"} did both. `
+            ? `On ${totals.surveyAndShareDeliveries} reminded ${totals.surveyAndShareDeliveries === 1 ? "order" : "orders"} the client did both. `
             : ""}
           {totals.legacyDeliveries > 0
             ? `${totals.legacyDeliveries} ${totals.legacyDeliveries === 1 ? "delivery was" : "deliveries were"} from an older rider app with no reminder step; ${totals.legacyDeliveries === 1 ? "it counts" : "they count"} as a delivery, never as reminded.`
