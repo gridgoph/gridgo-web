@@ -274,6 +274,79 @@ describe("during a visit", () => {
   });
 });
 
+describe("a read that started before a write", () => {
+  /** A Refresh whose GET waits until the test answers it. */
+  async function refreshHeld() {
+    let answer!: (value: ReturnType<typeof fresh>) => void;
+    getAdminPromotions.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await screen.findByRole("button", { name: "Refreshing…" });
+    return (value: ReturnType<typeof fresh>) => act(async () => answer(value));
+  }
+
+  it("cannot take the form back after the save it overlapped", async () => {
+    getAdminPromotions.mockResolvedValueOnce(fresh());
+    updateAdminPromotions.mockResolvedValueOnce(at(4, 25000));
+    render(<PromotionsDesk tree="admin" />);
+    fireEvent.change((await loaded()).getByLabelText("Amount (pesos)"), { target: { value: "250" } });
+    const late = await refreshHeld();
+    fireEvent.click(saveButton()!);
+    expect(await screen.findByText(/Saved 1 change/)).toBeInTheDocument();
+
+    await late(at(3, 20000));
+    expect(founding().getByLabelText("Amount (pesos)")).toHaveValue("250");
+    expect(screen.getByText(/Saved 1 change/)).toBeInTheDocument();
+    expect(screen.queryByText(/Someone else saved these promotions/)).toBeNull();
+
+    updateAdminPromotions.mockResolvedValueOnce(at(5, 30000));
+    fireEvent.change(founding().getByLabelText("Amount (pesos)"), { target: { value: "300" } });
+    fireEvent.click(saveButton()!);
+    await waitFor(() => expect(updateAdminPromotions).toHaveBeenCalledTimes(2));
+    expect(updateAdminPromotions.mock.calls[1]?.[1]).toBe(4);
+  });
+
+  it("cannot undo a conflict reload", async () => {
+    getAdminPromotions.mockResolvedValueOnce(fresh());
+    updateAdminPromotions.mockRejectedValueOnce(new ApiError(409, { error: "settings_version_conflict" }));
+    render(<PromotionsDesk tree="admin" />);
+    fireEvent.change((await loaded()).getByLabelText("Amount (pesos)"), { target: { value: "250" } });
+    const late = await refreshHeld();
+    fireEvent.click(saveButton()!);
+    await screen.findByText(/Someone else changed these promotions/);
+
+    getAdminPromotions.mockResolvedValueOnce(at(5, 30000));
+    fireEvent.click(screen.getByRole("button", { name: "Reload promotions" }));
+    await waitFor(() => expect(founding().getByLabelText("Amount (pesos)")).toHaveValue("300"));
+
+    await late(fresh());
+    expect(founding().getByLabelText("Amount (pesos)")).toHaveValue("300");
+    expect(founding().getByLabelText("Amount (pesos)")).toBeEnabled();
+    expect(screen.queryByText(/Someone else changed these promotions/)).toBeNull();
+
+    updateAdminPromotions.mockResolvedValueOnce(at(6, 35000));
+    fireEvent.change(founding().getByLabelText("Amount (pesos)"), { target: { value: "350" } });
+    fireEvent.click(saveButton()!);
+    await waitFor(() => expect(updateAdminPromotions).toHaveBeenCalledTimes(2));
+    expect(updateAdminPromotions.mock.calls[1]?.[1]).toBe(5);
+  });
+
+  it("never installs an older settings version", async () => {
+    getAdminPromotions.mockResolvedValueOnce(at(4, 25000)).mockResolvedValueOnce(at(3, 20000));
+    render(<PromotionsDesk tree="admin" />);
+    expect((await loaded()).getByLabelText("Amount (pesos)")).toHaveValue("250");
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(getAdminPromotions).toHaveBeenCalledTimes(2));
+    await screen.findByRole("button", { name: "Refresh" });
+    expect(founding().getByLabelText("Amount (pesos)")).toHaveValue("250");
+
+    updateAdminPromotions.mockResolvedValueOnce(at(5, 30000));
+    fireEvent.change(founding().getByLabelText("Amount (pesos)"), { target: { value: "300" } });
+    fireEvent.click(saveButton()!);
+    await waitFor(() => expect(updateAdminPromotions).toHaveBeenCalledTimes(1));
+    expect(updateAdminPromotions.mock.calls[0]?.[1]).toBe(4);
+  });
+});
+
 describe("the Friend Pass follows the Founding 30", () => {
   it("shows the Friend Pass off, and why, when the Founding 30 is off", async () => {
     const raw = rawPromotions();

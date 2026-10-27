@@ -94,8 +94,18 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
   const [saved, setSaved] = useState<string | null>(null);
   const [tick, setTick] = useState(() => Date.now());
   const hasData = useRef(false);
+  /** The installed settings version; a read never takes the screen back past it. */
+  const installedVersion = useRef(-1);
+  /**
+   * Moves when a save or a conflict reload starts and when it ends. A
+   * background read that began under another value may have been answered
+   * before that write, so its result is dropped rather than installed.
+   */
+  const epoch = useRef(0);
 
   const install = useCallback((next: AdminPromotions) => {
+    if (next.version < installedVersion.current) return;
+    installedVersion.current = next.version;
     hasData.current = true;
     setData(next);
     setReadAt(Date.now());
@@ -105,10 +115,13 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
   }, []);
 
   const readOnce = useCallback(async () => {
+    const started = epoch.current;
     setRefreshing(true);
     try {
-      install(await getAdminPromotions());
+      const next = await getAdminPromotions();
+      if (epoch.current === started) install(next);
     } catch (err) {
+      if (epoch.current !== started) return;
       // A failed background read keeps the last figures and says how old they are.
       if (hasData.current) setRefreshError(promotionsErrorText(err, "Could not refresh."));
       else setLoadError(err);
@@ -211,6 +224,7 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
   async function save() {
     if (!data || !check || !dirty || blocking || saving || conflict) return;
     const version = origin?.version ?? data.version;
+    epoch.current += 1;
     setSaving(true);
     setSaveError(null);
     setSaved(null);
@@ -226,6 +240,7 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
       if (isVersionConflict(err)) setConflict(true);
       else setSaveError(promotionsErrorText(err, "Could not save. Try again."));
     } finally {
+      epoch.current += 1;
       setSaving(false);
     }
   }
@@ -233,6 +248,7 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
   /** The lock and the stale edit stay until a read succeeds. */
   async function reloadAfterConflict() {
     if (reloading) return;
+    epoch.current += 1;
     setReloading(true);
     setReloadError(null);
     try {
@@ -243,6 +259,7 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
     } catch (err) {
       setReloadError(promotionsErrorText(err, "Could not reload. Try again."));
     } finally {
+      epoch.current += 1;
       setReloading(false);
     }
   }
