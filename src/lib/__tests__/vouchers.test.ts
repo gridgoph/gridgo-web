@@ -270,7 +270,39 @@ describe("money", () => {
         },
         voucherDiscountMinor: 1500,
       }),
-    ).toEqual({ amountMinor: 1500, serviceFeeMinor: 1000, deliveryMinor: 500 });
+    ).toEqual({
+      amountMinor: 1500,
+      serviceFeeMinor: 1000,
+      deliveryMinor: 500,
+      supplierMinor: 0,
+      gridgoTopups: null,
+    });
+  });
+
+  it("keeps a whole-order voucher's shop share and GRIDGO's top-ups, from the order or the staff line", () => {
+    const voucher = {
+      id: "vch_1",
+      campaignId: "launch_founding_v4",
+      label: "GRIDGO-funded voucher",
+      fundedBy: "GRIDGO" as const,
+      amountMinor: 10350,
+      serviceFeeMinor: 450,
+      deliveryMinor: 8900,
+    };
+    expect(
+      orderVoucher({
+        voucher,
+        voucherFunding: { ...voucher, supplierMinor: 1000, gridgoSupplierTopupMinor: 1000, gridgoRiderTopupMinor: 7565 },
+      }),
+    ).toMatchObject({ supplierMinor: 1000, gridgoTopups: { supplierMinor: 1000, riderMinor: 7565 } });
+    expect(
+      orderVoucher({
+        voucher,
+        voucherSupplierMinor: 1000,
+        gridgoSupplierTopupMinor: 1000,
+        gridgoRiderTopupMinor: 7565,
+      }),
+    ).toMatchObject({ supplierMinor: 1000, gridgoTopups: { supplierMinor: 1000, riderMinor: 7565 } });
   });
 
   it("lists every order a log row names", () => {

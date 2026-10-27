@@ -634,16 +634,32 @@ export type OrderVoucherMoney = {
   serviceFeeMinor: number;
   /** Taken off delivery once the fee is used up. */
   deliveryMinor: number;
+  /** Taken off the shop price once fee and delivery are used up (whole-order vouchers). */
+  supplierMinor: number;
+  /**
+   * What GRIDGO pays the shop and the rider on top of the client's cash, on a
+   * whole-order voucher; null on any other order. Staff only.
+   */
+  gridgoTopups: { supplierMinor: number; riderMinor: number } | null;
 };
 
 /** The voucher on an order, or null. Never on a shop or rider projection. */
 export function orderVoucher(
   order: Pick<
     ApiOrder,
-    "voucher" | "voucherFunding" | "voucherDiscountMinor" | "voucherServiceFeeMinor" | "voucherDeliveryMinor"
+    | "voucher"
+    | "voucherFunding"
+    | "voucherDiscountMinor"
+    | "voucherServiceFeeMinor"
+    | "voucherDeliveryMinor"
+    | "coversOrderTotal"
+    | "voucherSupplierMinor"
+    | "gridgoSupplierTopupMinor"
+    | "gridgoRiderTopupMinor"
   >,
 ): OrderVoucherMoney | null {
   const line = order.voucher ?? order.voucherFunding ?? null;
+  const funding = order.voucherFunding ?? order.voucher ?? null;
   const amountMinor = order.voucherDiscountMinor ?? line?.amountMinor ?? 0;
   if (!line && !amountMinor) return null;
   if (amountMinor <= 0) return null;
@@ -651,7 +667,19 @@ export function orderVoucher(
     amountMinor,
     serviceFeeMinor: order.voucherServiceFeeMinor ?? line?.serviceFeeMinor ?? 0,
     deliveryMinor: order.voucherDeliveryMinor ?? line?.deliveryMinor ?? 0,
+    supplierMinor: order.voucherSupplierMinor ?? funding?.supplierMinor ?? 0,
+    gridgoTopups: gridgoTopups(order, funding),
   };
+}
+
+function gridgoTopups(
+  order: Pick<ApiOrder, "coversOrderTotal" | "gridgoSupplierTopupMinor" | "gridgoRiderTopupMinor">,
+  funding: ApiOrder["voucherFunding"] | null,
+): OrderVoucherMoney["gridgoTopups"] {
+  const supplierMinor = order.gridgoSupplierTopupMinor ?? funding?.gridgoSupplierTopupMinor;
+  const riderMinor = order.gridgoRiderTopupMinor ?? funding?.gridgoRiderTopupMinor;
+  if (supplierMinor === undefined && riderMinor === undefined) return null;
+  return { supplierMinor: supplierMinor ?? 0, riderMinor: riderMinor ?? 0 };
 }
 
 export const VOUCHER_LINE_LABEL = "Voucher (GRIDGO-funded)";

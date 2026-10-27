@@ -39,9 +39,12 @@ type Props = {
  * older order, the one flat rate it was priced at, named as such.
  *
  * A GRIDGO-funded voucher (gridgo-api#204) sits last, just above the total it
- * was taken off, with where it came from: GRIDGO's fee first, then delivery.
- * The shop price, the rider payout and the delivery split stay at their gross
- * figures above it, because the voucher never moves them.
+ * was taken off, with where it came from: GRIDGO's fee first, then delivery,
+ * then (a whole-order launch voucher, gridgo-api#315) the shop price, so the
+ * parts add up to the voucher. The shop price, the rider payout and the
+ * delivery split stay at their gross figures above it, because the voucher
+ * never moves them. On a whole-order voucher, what GRIDGO pays the shop and
+ * the rider to keep them whole follows the total, apart from both.
  *
  * A saved delivery-pin change (DELIVERY_PIN_API.md) leaves the checkout fee
  * and total as they were and adds its signed difference beside them: delivery
@@ -150,6 +153,14 @@ export function OrderMoneyLines({ order, totalLabel = "Client total" }: Props) {
               indent
             />
           ) : null}
+          {voucher.supplierMinor > 0 ? (
+            <Line
+              label="Off the shop price, paid by GRIDGO"
+              value={formatPhp(voucher.supplierMinor)}
+              indent
+              testId="voucher-supplier"
+            />
+          ) : null}
         </>
       ) : null}
       <Line
@@ -164,6 +175,20 @@ export function OrderMoneyLines({ order, totalLabel = "Client total" }: Props) {
           strong
           testId="total-now"
         />
+      ) : null}
+      {voucher?.gridgoTopups ? (
+        <>
+          <Line
+            label="GRIDGO's top-up to the shop"
+            value={formatPhp(voucher.gridgoTopups.supplierMinor)}
+            testId="gridgo-supplier-topup"
+          />
+          <Line
+            label="GRIDGO's top-up to the rider"
+            value={formatPhp(voucher.gridgoTopups.riderMinor)}
+            testId="gridgo-rider-topup"
+          />
+        </>
       ) : null}
     </>
   );

@@ -109,7 +109,10 @@ export function MoneyBreakdown({ order, headingId }: Props) {
     clientRows.push({
       label: VOUCHER_LINE_LABEL,
       value: asDeduction(formatPhp(voucher.amountMinor)),
-      hint: "Paid by GRIDGO out of its fee, then delivery. The supplier price and rider pay do not change.",
+      hint:
+        voucher.supplierMinor > 0
+          ? "Paid by GRIDGO out of its fee, then delivery, then the supplier price. GRIDGO pays the supplier and rider the rest, so their pay does not change."
+          : "Paid by GRIDGO out of its fee, then delivery. The supplier price and rider pay do not change.",
     });
   }
   clientRows.push({
