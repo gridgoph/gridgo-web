@@ -95,7 +95,7 @@ export function BudgetMeter({ budget }: { budget: AdminPromotions["budget"] }) {
     },
     {
       key: "waiting",
-      label: "Committed, not taken off orders",
+      label: "Committed, unspent",
       value: waitingMinor,
       swatch: "gg-invoice-hatch text-text-primary border border-text-primary",
     },
