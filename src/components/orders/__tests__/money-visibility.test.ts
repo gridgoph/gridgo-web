@@ -51,6 +51,15 @@ describe("supplier route tree", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("never reads GRIDGO's voucher funding of the shop or rider", () => {
+    const offenders = files.filter((file) =>
+      /voucherSupplierMinor|gridgoSupplierTopupMinor|gridgoRiderTopupMinor|gridgoTopups|voucherFunding/.test(
+        readFileSync(file, "utf8"),
+      ),
+    );
+    expect(offenders).toEqual([]);
+  });
+
   it("offers no cash-on-delivery path", () => {
     const offenders = files.filter((file) => {
       const src = readFileSync(file, "utf8");
