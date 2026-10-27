@@ -3493,6 +3493,10 @@ export type IssueReportListFilters = {
   triageCategory?: (IssueReportTriageCategory | "none")[];
   label?: string;
   aiReviewed?: boolean;
+  /** Pinned reports only, across statuses. */
+  priority?: boolean;
+  /** ISO time; reports received at or after it. */
+  since?: string;
 };
 
 /** `tracked` is missing from an API that predates the tracker link. */

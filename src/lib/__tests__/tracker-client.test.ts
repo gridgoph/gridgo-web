@@ -8,6 +8,7 @@ import {
   setTokenProvider,
   setTrackerStatus,
   setTrackerPriority,
+  getIssueReport,
   listIssueReports,
   updateIssueReport,
   uploadTrackerAttachment,
@@ -108,4 +109,20 @@ it("priority writes contain only a boolean and report priority paging uses the s
   await updateIssueReport("report-1", { priority: false });
   expect(call(fetchMock).url).toBe("/ops/issue-reports/report-1");
   expect(JSON.parse(String(call(fetchMock).init.body))).toEqual({ priority: false });
+});
+
+it("lists issue reports across every status with the desk's filters, and reads one report", async () => {
+  let fetchMock = respondWith({ reports: [], counts: { new: 0 } });
+  await listIssueReports(
+    null,
+    { limit: 25 },
+    { validity: ["unreviewed"], label: "checkout", priority: true, since: "2026-10-20T00:00:00.000Z" },
+  );
+  expect(call(fetchMock).url).toBe(
+    "/ops/issue-reports?priority=true&since=2026-10-20T00%3A00%3A00.000Z&limit=25&validity=unreviewed&label=checkout",
+  );
+  fetchMock = respondWith({ id: "report-1" });
+  await getIssueReport("report-1");
+  expect(call(fetchMock).url).toBe("/ops/issue-reports/report-1");
+  expect(call(fetchMock).init.method ?? "GET").toBe("GET");
 });

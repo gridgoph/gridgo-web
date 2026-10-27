@@ -3,6 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -12,20 +13,36 @@ import { LiveContext, type LiveContextValue } from "@/lib/live/LiveProvider";
 
 vi.stubGlobal("React", React);
 
-const { listIssueReports, updateIssueReport } = vi.hoisted(() => ({
+// Base UI's switch and checkbox dispatch a PointerEvent on click. jsdom does not implement it.
+class FakePointerEvent extends MouseEvent {
+  constructor(type: string, params: MouseEventInit = {}) {
+    super(type, params);
+  }
+}
+vi.stubGlobal("PointerEvent", FakePointerEvent);
+
+const { listIssueReports, updateIssueReport, getIssueReport, search } = vi.hoisted(() => ({
   listIssueReports: vi.fn(),
   updateIssueReport: vi.fn(),
+  getIssueReport: vi.fn(),
+  search: { params: new URLSearchParams() },
 }));
 
 vi.mock("@/lib/api/client", () => ({
   listIssueReports,
   updateIssueReport,
+  getIssueReport,
   isApiError: (err: unknown) => err instanceof Error && "kind" in err,
 }));
 
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => search.params,
+  usePathname: () => "/ops/issue-reports",
+}));
+
 const TRACKER_URL = "https://github.com/gridgoph/gridgo-web/issues/62";
-/** The desk starts with spam hidden. */
-const NOT_SPAM = { validity: ["unreviewed", "valid", "duplicate"] };
+/** The desk opens on Needs review, every status. */
+const REVIEW = { validity: ["unreviewed"] };
 
 const report = {
   id: "50d4f603-c50a-4e95-93f8-107a1cd8cf91",
@@ -50,8 +67,11 @@ const report = {
 afterEach(() => cleanup());
 
 beforeEach(() => {
+  search.params = new URLSearchParams();
+  window.history.replaceState(null, "", "/ops/issue-reports");
   listIssueReports.mockReset();
   updateIssueReport.mockReset();
+  getIssueReport.mockReset();
   listIssueReports.mockResolvedValue({ reports: [report], counts: { new: 1, tracked: 4, published: 2, dismissed: 0 } });
   updateIssueReport.mockResolvedValue({ ...report, status: "published" });
 });
@@ -64,8 +84,8 @@ describe("IssueReportsDesk", () => {
     expect(screen.getByText(/It happens every morning/)).toBeInTheDocument();
     expect(screen.getByText(/Bug, issue or concern/, { selector: "p" })).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /Screenshot 1/ })).toHaveAttribute("src", report.screenshots[0].url);
-    expect(screen.getByRole("button", { name: "New · 1" })).toBeInTheDocument();
-    expect(listIssueReports).toHaveBeenCalledWith("new", { limit: 25 }, NOT_SPAM);
+    expect(screen.getByRole("tab", { name: "Needs review" })).toHaveAttribute("aria-selected", "true");
+    expect(listIssueReports).toHaveBeenCalledWith(null, { limit: 25 }, REVIEW);
   });
 
   it("marks a report published with the reports page date, then reloads", async () => {
@@ -79,7 +99,7 @@ describe("IssueReportsDesk", () => {
     await waitFor(() =>
       expect(updateIssueReport).toHaveBeenCalledWith(report.id, { status: "published", publishedIn: "09-25-2026" }),
     );
-    expect(await screen.findByText("No new reports")).toBeInTheDocument();
+    expect(await screen.findByText("Nothing needs review")).toBeInTheDocument();
   });
 
   it("dismisses without a date", async () => {
@@ -97,31 +117,28 @@ describe("IssueReportsDesk", () => {
     expect(await screen.findByText(/Could not load issue reports/)).toBeInTheDocument();
   });
 
-  it("puts a Tracked tab with its count between New and Published", async () => {
+  it("narrows by status from the toolbar, with each status's total", async () => {
+    const user = userEvent.setup();
     render(<IssueReportsDesk />);
     await screen.findByRole("heading", { name: /Report 50D4F603/ });
-    const group = screen.getByRole("group", { name: "Filter reports by status" });
-    const tabs = within(group)
-      .getAllByRole("button")
-      .map((tab) => tab.textContent);
-    expect(tabs).toEqual([
-      "Priorities · 0",
-      "New · 1",
-      "Tracked · 4",
-      "Published · 2",
-      "Dismissed · 0",
-    ]);
+    await user.click(screen.getByRole("combobox", { name: "Status" }));
+    const options = (await screen.findAllByRole("option")).map((option) => option.textContent);
+    expect(options).toEqual(["Any status", "New (1)", "Tracked (4)", "Published (2)", "Dismissed (0)"]);
 
     listIssueReports.mockResolvedValue({ reports: [], counts: { new: 1, tracked: 0, published: 2, dismissed: 0 } });
-    fireEvent.click(screen.getByRole("button", { name: "Tracked · 4" }));
-    await waitFor(() => expect(listIssueReports).toHaveBeenLastCalledWith("tracked", { limit: 25 }, NOT_SPAM));
-    expect(await screen.findByText("No tracked reports")).toBeInTheDocument();
+    await user.click(screen.getByRole("option", { name: "Tracked (4)" }));
+    await waitFor(() => expect(listIssueReports).toHaveBeenLastCalledWith("tracked", { limit: 25 }, REVIEW));
+    expect(await screen.findByText("Nothing matches")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Filters in use" })).toHaveTextContent("Status: Tracked");
   });
 
-  it("counts Tracked as zero against an API that does not send it yet", async () => {
+  it("names Tracked without a total against an API that does not send it yet", async () => {
+    const user = userEvent.setup();
     listIssueReports.mockResolvedValue({ reports: [report], counts: { new: 1, published: 2, dismissed: 0 } });
     render(<IssueReportsDesk />);
-    expect(await screen.findByRole("button", { name: "Tracked · 0" })).toBeInTheDocument();
+    await screen.findByRole("heading", { name: /Report 50D4F603/ });
+    await user.click(screen.getByRole("combobox", { name: "Status" }));
+    expect(await screen.findByRole("option", { name: "Tracked" })).toBeInTheDocument();
   });
 
   it("links a tracked row to its GitHub issue in a new tab", async () => {
@@ -289,11 +306,12 @@ describe("IssueReportsDesk", () => {
       expect(container.innerHTML).not.toMatch(/github/i);
     });
 
-    it("says the tracked tab is empty without naming GitHub", async () => {
+    it("says no tracked report matches without naming GitHub", async () => {
+      search.params = new URLSearchParams("status=tracked");
       listIssueReports.mockResolvedValue({ reports: [], counts: { new: 0, tracked: 0, published: 0, dismissed: 0 } });
       render(<IssueReportsDesk />);
-      fireEvent.click(await screen.findByRole("button", { name: "Tracked · 0" }));
-      expect(await screen.findByText("No tracked reports")).toBeInTheDocument();
+      expect(await screen.findByText("Nothing matches")).toBeInTheDocument();
+      expect(listIssueReports).toHaveBeenCalledWith("tracked", { limit: 25 }, REVIEW);
       expect(document.body.innerHTML).not.toMatch(/github/i);
     });
   });
@@ -370,76 +388,77 @@ describe("IssueReportsDesk", () => {
         screenshots: [],
       }));
     const COUNTS = { new: 30, tracked: 0, published: 0, dismissed: 0 };
+    const TRIAGE = { validity: { unreviewed: 30, valid: 40, spam: 0, duplicate: 0 }, aiReviewed: 0, aiAwaitingHuman: 0, labels: [] };
+    const page = (reports: ReturnType<typeof many>) => ({ reports, counts: COUNTS, triageCounts: TRIAGE });
 
     it("loads the first page, then the next one after the last report shown", async () => {
       const first = many(25);
-      listIssueReports.mockResolvedValueOnce({ reports: first, counts: COUNTS });
+      listIssueReports.mockResolvedValueOnce(page(first));
       render(<IssueReportsDesk />);
       expect(await screen.findByText("Showing 25 of 30")).toBeInTheDocument();
-      expect(listIssueReports).toHaveBeenCalledWith("new", { limit: 25 }, NOT_SPAM);
+      expect(listIssueReports).toHaveBeenCalledWith(null, { limit: 25 }, REVIEW);
 
-      listIssueReports.mockResolvedValueOnce({ reports: many(5, 25), counts: COUNTS });
+      listIssueReports.mockResolvedValueOnce(page(many(5, 25)));
       fireEvent.click(screen.getByRole("button", { name: "Load more" }));
       expect(await screen.findByText("30 reports")).toBeInTheDocument();
-      expect(listIssueReports).toHaveBeenLastCalledWith("new", { limit: 25, before: first[24].id }, NOT_SPAM);
+      expect(listIssueReports).toHaveBeenLastCalledWith(null, { limit: 25, before: first[24].id }, REVIEW);
       expect(within(screen.getByRole("list", { name: "Issue reports" })).getAllByRole("listitem")).toHaveLength(30);
       expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
       // The tab counts stay the API's totals.
-      expect(screen.getByRole("button", { name: "New · 30" })).toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "Needs review, 30" })).toBeInTheDocument();
     });
 
     it("keeps every loaded page on a refresh", async () => {
-      listIssueReports.mockResolvedValueOnce({ reports: many(25), counts: COUNTS });
+      listIssueReports.mockResolvedValueOnce(page(many(25)));
       render(<IssueReportsDesk />);
       await screen.findByText("Showing 25 of 30");
-      listIssueReports.mockResolvedValueOnce({ reports: many(5, 25), counts: COUNTS });
+      listIssueReports.mockResolvedValueOnce(page(many(5, 25)));
       fireEvent.click(screen.getByRole("button", { name: "Load more" }));
       await screen.findByText("30 reports");
 
-      listIssueReports.mockResolvedValueOnce({ reports: many(30), counts: COUNTS });
-      fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-      await waitFor(() => expect(listIssueReports).toHaveBeenLastCalledWith("new", { limit: 50 }, NOT_SPAM));
+      listIssueReports.mockResolvedValueOnce(page(many(30)));
+      fireEvent.click(screen.getByRole("button", { name: "Refresh reports" }));
+      await waitFor(() => expect(listIssueReports).toHaveBeenLastCalledWith(null, { limit: 50 }, REVIEW));
       expect(await screen.findByText("30 reports")).toBeInTheDocument();
     });
 
     it("grows the first page against an API that ignores before", async () => {
       const first = many(25);
-      listIssueReports.mockResolvedValueOnce({ reports: first, counts: COUNTS });
+      listIssueReports.mockResolvedValueOnce(page(first));
       render(<IssueReportsDesk />);
       await screen.findByText("Showing 25 of 30");
       listIssueReports
-        .mockResolvedValueOnce({ reports: first, counts: COUNTS })
-        .mockResolvedValueOnce({ reports: many(30), counts: COUNTS });
+        .mockResolvedValueOnce(page(first))
+        .mockResolvedValueOnce(page(many(30)));
       fireEvent.click(screen.getByRole("button", { name: "Load more" }));
       expect(await screen.findByText("30 reports")).toBeInTheDocument();
-      expect(listIssueReports).toHaveBeenLastCalledWith("new", { limit: 50 }, NOT_SPAM);
+      expect(listIssueReports).toHaveBeenLastCalledWith(null, { limit: 50 }, REVIEW);
     });
 
     it("says when the next page fails and offers to try again", async () => {
-      listIssueReports.mockResolvedValueOnce({ reports: many(25), counts: COUNTS });
+      listIssueReports.mockResolvedValueOnce(page(many(25)));
       render(<IssueReportsDesk />);
       await screen.findByText("Showing 25 of 30");
       listIssueReports.mockRejectedValueOnce(new Error("offline"));
       fireEvent.click(screen.getByRole("button", { name: "Load more" }));
       expect(await screen.findByText("Could not load more reports.")).toBeInTheDocument();
-      listIssueReports.mockResolvedValueOnce({ reports: many(5, 25), counts: COUNTS });
+      listIssueReports.mockResolvedValueOnce(page(many(5, 25)));
       fireEvent.click(screen.getByRole("button", { name: "Try again" }));
       expect(await screen.findByText("30 reports")).toBeInTheDocument();
     });
 
     it("starts the new tab from its first page", async () => {
-      listIssueReports.mockResolvedValueOnce({ reports: many(25), counts: { ...COUNTS, tracked: 40 } });
+      listIssueReports.mockResolvedValueOnce(page(many(25)));
       render(<IssueReportsDesk />);
       await screen.findByText("Showing 25 of 30");
-      listIssueReports.mockResolvedValueOnce({ reports: many(5, 25), counts: { ...COUNTS, tracked: 40 } });
+      listIssueReports.mockResolvedValueOnce(page(many(5, 25)));
       fireEvent.click(screen.getByRole("button", { name: "Load more" }));
       await screen.findByText("30 reports");
-      listIssueReports.mockResolvedValueOnce({
-        reports: many(25, 100).map((entry) => ({ ...entry, status: "tracked" as const, trackerIssueUrl: TRACKER_URL })),
-        counts: { ...COUNTS, tracked: 40 },
-      });
-      fireEvent.click(screen.getByRole("button", { name: "Tracked · 40" }));
-      await waitFor(() => expect(listIssueReports).toHaveBeenLastCalledWith("tracked", { limit: 25 }, NOT_SPAM));
+      listIssueReports.mockResolvedValueOnce(page(many(25, 100)));
+      fireEvent.click(screen.getByRole("tab", { name: "Valid, 40" }));
+      await waitFor(() =>
+        expect(listIssueReports).toHaveBeenLastCalledWith(null, { limit: 25 }, { validity: ["valid"] }),
+      );
       expect(await screen.findByText("Showing 25 of 40")).toBeInTheDocument();
     });
   });
@@ -459,10 +478,12 @@ describe("IssueReportsDesk", () => {
     expect(await screen.findByRole("heading", { name: /Report 50D4F603/ })).toBeInTheDocument();
   });
 
-  it("opens the report below once the open one leaves the tab", async () => {
+  it("opens the report below once the open one leaves the view", async () => {
+    search.params = new URLSearchParams("status=new");
     const second = { ...report, id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", issue: "Second report" };
     const third = { ...report, id: "bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee", issue: "Third report" };
     listIssueReports.mockResolvedValue({ reports: [report, second, third], counts: { new: 3, tracked: 0, published: 0, dismissed: 0 } });
+    updateIssueReport.mockResolvedValue({ ...second, status: "dismissed" });
     render(<IssueReportsDesk />);
     await screen.findByRole("heading", { name: /Report 50D4F603/ });
     fireEvent.click(screen.getByRole("button", { name: /Second report/ }));
@@ -474,6 +495,7 @@ describe("IssueReportsDesk", () => {
 
   describe("on a phone-sized screen", () => {
     beforeEach(() => {
+      vi.stubGlobal("PointerEvent", FakePointerEvent);
       vi.stubGlobal("matchMedia", (query: string) => ({
         matches: false,
         media: query,
@@ -484,6 +506,7 @@ describe("IssueReportsDesk", () => {
     afterEach(() => {
       vi.unstubAllGlobals();
       vi.stubGlobal("React", React);
+      vi.stubGlobal("PointerEvent", FakePointerEvent);
     });
 
     it("shows the list, opens a report full width, and goes back", async () => {
@@ -499,16 +522,41 @@ describe("IssueReportsDesk", () => {
       expect(reportPane).not.toHaveClass("hidden");
       expect(screen.getByRole("heading", { name: /Report 50D4F603/ })).toHaveFocus();
 
+      // Full screen: the tabs and toolbar step aside too.
+      expect(screen.getByRole("tablist", { name: "Reports by verdict" }).parentElement?.parentElement).toHaveClass("hidden");
+
       fireEvent.click(screen.getByRole("button", { name: "All reports" }));
       await waitFor(() => expect(reportPane).toHaveClass("hidden"));
       expect(listPane).not.toHaveClass("hidden");
       expect(screen.getByRole("button", { name: /Orders in Operations/ })).toHaveFocus();
     });
+
+    it("puts the filters in a sheet behind one button", async () => {
+      const user = userEvent.setup();
+      render(<IssueReportsDesk />);
+      await screen.findByRole("heading", { name: /Report 50D4F603/ });
+      await user.click(screen.getByRole("button", { name: "Filters" }));
+      const sheet = await screen.findByRole("dialog", { name: "Filter reports" });
+      await user.click(within(sheet).getByRole("switch", { name: /Priority only/ }));
+      await waitFor(() =>
+        expect(listIssueReports).toHaveBeenLastCalledWith(null, { limit: 25 }, { ...REVIEW, priority: true }),
+      );
+      await user.click(within(screen.getByRole("dialog", { name: "Filter reports" })).getByRole("button", { name: "Show reports" }));
+      expect(await screen.findByRole("button", { name: "Filters (1)" })).toBeInTheDocument();
+    });
+
+    it("opens a shared link's report on its own", async () => {
+      search.params = new URLSearchParams(`report=${report.id}`);
+      render(<IssueReportsDesk />);
+      const reportPane = await screen.findByRole("region", { name: "Open report" });
+      await waitFor(() => expect(reportPane).not.toHaveClass("hidden"));
+      expect(screen.getByRole("heading", { name: /Report 50D4F603/ })).toBeInTheDocument();
+    });
   });
 });
 
 describe("Report priorities", () => {
-  it("pins without changing status, then loads a dedicated priorities tab", async () => {
+  it("pins without changing status, then narrows the list to priorities", async () => {
     updateIssueReport.mockResolvedValue({ ...report, priority: true });
     render(<IssueReportsDesk />);
     await screen.findByRole("heading", { name: /Report 50D4F603/ });
@@ -521,16 +569,15 @@ describe("Report priorities", () => {
     expect(
       await screen.findByRole("button", { name: "Unpin report 50D4F603" }),
     ).toBeVisible();
-    expect(screen.getByRole("button", { name: "New · 1" })).toBeVisible();
     listIssueReports.mockResolvedValue({
       reports: [{ ...report, priority: true }],
       counts: { new: 1, priorities: 1 },
     });
-    fireEvent.click(screen.getByRole("button", { name: /^Priorities/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Priority only, 1 pinned" }));
     await waitFor(() =>
-      expect(listIssueReports).toHaveBeenLastCalledWith("priorities", { limit: 25 }, NOT_SPAM),
+      expect(listIssueReports).toHaveBeenLastCalledWith(null, { limit: 25 }, { ...REVIEW, priority: true }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Unpin report 50D4F603" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Unpin report 50D4F603" }));
     await waitFor(() =>
       expect(updateIssueReport).toHaveBeenLastCalledWith(report.id, { priority: false }),
     );
@@ -552,17 +599,12 @@ describe("Report priorities", () => {
 });
 
 it("refills priorities after unpinning the last loaded report when another page remains", async () => {
-  listIssueReports.mockResolvedValueOnce({
-    reports: [report],
-    counts: { new: 1, priorities: 2 },
-  });
-  render(<IssueReportsDesk />);
-  await screen.findByRole("heading", { name: /Report 50D4F603/ });
+  search.params = new URLSearchParams("priority=1");
   listIssueReports.mockResolvedValueOnce({
     reports: [{ ...report, priority: true }],
     counts: { new: 1, priorities: 2 },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Priorities · 2" }));
+  render(<IssueReportsDesk />);
   await screen.findByRole("button", { name: "Unpin report 50D4F603" });
   const older = {
     ...report,
