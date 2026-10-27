@@ -83,6 +83,8 @@ export function FoundingSeats({ founding }: { founding: AdminPromotions["foundin
  */
 export function BudgetMeter({ budget }: { budget: AdminPromotions["budget"] }) {
   const bar = budgetBar(budget);
+  // Committed is face value and keeps a used voucher's unspent part; redeemed
+  // is only what orders took. The difference is not all still to come.
   const waitingMinor = Math.max(0, budget.committedMinor - budget.redeemedMinor);
   const rows = [
     {
@@ -93,7 +95,7 @@ export function BudgetMeter({ budget }: { budget: AdminPromotions["budget"] }) {
     },
     {
       key: "waiting",
-      label: "Claimed, not used yet",
+      label: "Committed, not taken off orders",
       value: waitingMinor,
       swatch: "gg-invoice-hatch text-text-primary border border-text-primary",
     },
@@ -142,9 +144,8 @@ export function BudgetMeter({ budget }: { budget: AdminPromotions["budget"] }) {
       </dl>
       {bar.over ? (
         <p className="text-caption text-text-secondary m-0">
-          Vouchers already out are worth more than the cap, because the cap was lowered after they
-          were claimed. They keep their value; nothing new is given until the total is under the
-          cap.
+          Vouchers already out are worth more than the cap. They keep their value; nothing new is
+          given until the total is under the cap.
         </p>
       ) : null}
     </div>

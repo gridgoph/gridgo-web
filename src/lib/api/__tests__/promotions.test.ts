@@ -44,7 +44,7 @@ it("reads the counts again when the save answers with settings alone", async () 
 
 it("passes a stale version through as an ApiError", async () => {
   setTokenProvider(() => "test-token");
-  stubFetch([409, { error: "settings_version_conflict" }]);
+  stubFetch([409, { error: "settings_version_conflict", version: 4 }]);
   await expect(updateAdminPromotions({ budgetCapMinor: 1 }, 1, "r")).rejects.toMatchObject({
     status: 409,
     code: "settings_version_conflict",

@@ -148,6 +148,13 @@ describe("checkDraft", () => {
     );
   });
 
+  it("refuses a cap below what claimed vouchers already hold", () => {
+    const { errors, patch } = checkDraft({ ...base, budgetCap: "400" }, settings, 50000);
+    expect(errors.budgetCap).toBe("At least ₱500.00, what claimed vouchers already hold.");
+    expect(patch).toEqual({});
+    expect(checkDraft({ ...base, budgetCap: "500" }, settings, 50000).errors).toEqual({});
+  });
+
   it("sends a moved end date as an ISO instant", () => {
     const { patch, errors } = checkDraft({ ...base, foundingEnds: "2026-11-10T23:59" }, settings);
     expect(errors).toEqual({});
@@ -238,6 +245,17 @@ describe("reading the API", () => {
     });
   });
 
+  it("reads a claim whose account is gone, and an offer that expired unclaimed", () => {
+    const raw = rawPromotions();
+    const read = readAdminPromotions({
+      ...raw,
+      founding: { ...raw.founding, claims: [{ ...raw.founding.claims[1], id: "usr_gone", name: undefined, email: undefined }] },
+      friendPass: { ...raw.friendPass, invites: [{ ...raw.friendPass.invites[1], status: "expired" }] },
+    });
+    expect(read.founding.claims[0]).toMatchObject({ name: null, email: null, clientId: "usr_ana" });
+    expect(read.friendPass.invites[0]?.status).toBe("expired");
+  });
+
   it("refuses a response without settings or a version", () => {
     expect(() => readAdminPromotions({})).toThrow(PromotionsShapeError);
     expect(() => readAdminPromotions(rawPromotions({ settings: {} }))).toThrow(PromotionsShapeError);
@@ -250,6 +268,12 @@ describe("errors", () => {
     expect(isVersionConflict(stale)).toBe(true);
     expect(promotionsErrorText(stale, "x")).toBe(CONFLICT_COPY);
     expect(isVersionConflict(new ApiError(409, { error: "promotion_sold_out" }))).toBe(false);
+  });
+
+  it("explains a cap refused for being under the commitment", () => {
+    expect(promotionsErrorText(new ApiError(409, { error: "promotion_budget_reached" }), "x")).toMatch(
+      /cannot go below what claimed vouchers already hold/,
+    );
   });
 
   it("says who may change promotions", () => {

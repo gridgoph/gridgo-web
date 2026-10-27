@@ -166,7 +166,12 @@ export type DraftCheck = { errors: DraftErrors; patch: PromotionSettingsPatch; c
  * to the minute never rewrites stored seconds. `changes` lists each one in
  * words, for the save bar and the audit reason.
  */
-export function checkDraft(draft: PromotionDraft, stored: PromotionSettings): DraftCheck {
+export function checkDraft(
+  draft: PromotionDraft,
+  stored: PromotionSettings,
+  /** Live vouchers' face value: the API refuses a cap below it. */
+  committedMinor = 0,
+): DraftCheck {
   const errors: DraftErrors = {};
   const base = draftFromSettings(stored);
   const money: Partial<Record<(typeof MONEY_FIELDS)[number], number>> = {};
@@ -182,6 +187,9 @@ export function checkDraft(draft: PromotionDraft, stored: PromotionSettings): Dr
     if ("problem" in parsed) errors[field] = parsed.problem;
     else counts[field] = parsed.value;
   }
+
+  if (money.budgetCap !== undefined && money.budgetCap < committedMinor)
+    errors.budgetCap = `At least ${formatPhp(committedMinor)}, what claimed vouchers already hold.`;
 
   // A date nobody touched keeps its stored instant to the second.
   const time = (field: "foundingStarts" | "foundingEnds" | "friendUpgrade", storedIso: string, closing: boolean) => {
@@ -232,7 +240,7 @@ export function checkDraft(draft: PromotionDraft, stored: PromotionSettings): Dr
   ];
   for (const [field, was, label, apply] of moneyRows) {
     const next = money[field];
-    if (next === undefined || next === was) continue;
+    if (next === undefined || next === was || errors[field]) continue;
     apply(next);
     changes.push(`${label} ${peso(was)} to ${peso(next)}`);
   }
@@ -492,6 +500,8 @@ export function promotionsErrorText(err: unknown, fallback: string): string {
     if (err.code === "invalid_promotion_settings")
       return "The service refused these values. Check the amounts, counts and dates, then save again.";
     if (err.status === 403) return "Only Super Admin can change promotions.";
+    if (err.code === "promotion_budget_reached")
+      return "The cap cannot go below what claimed vouchers already hold. Refresh to see the current figure, then save again.";
     if (err.status === 404) return "Promotions are not available on this service yet.";
     if (err.kind === "unauthorized") return "Your session expired. Sign in again to carry on.";
     if (err.kind === "server") return "The service had a problem. Try again in a moment.";

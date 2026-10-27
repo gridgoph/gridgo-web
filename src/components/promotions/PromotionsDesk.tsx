@@ -164,8 +164,9 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
   );
   const draft = useMemo(() => (base ? { ...base, ...edits } : null), [base, edits]);
   const check = useMemo(
-    () => (startSettings && draft ? checkDraft(draft, startSettings) : null),
-    [startSettings, draft],
+    () =>
+      startSettings && draft ? checkDraft(draft, startSettings, data?.budget.committedMinor) : null,
+    [startSettings, draft, data?.budget.committedMinor],
   );
 
   const edited = useCallback(
@@ -510,7 +511,7 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
               field: "budgetCap",
               label: "Cap (pesos)",
               read: formatPhp(data.settings.budgetCapMinor),
-              help: "A hard stop. Every claimed Founding and Friend Pass voucher counts at face value, upgrades included, used or not. Nothing new is given past the cap.",
+              help: "A hard stop. Every live Founding and Friend Pass voucher counts at face value, upgrades included; used ones stay counted. Nothing new is given past the cap, and it cannot go below what is committed.",
             })}
           </FieldGroup>
         </section>
