@@ -14,11 +14,13 @@ import {
   foundingState,
   friendPassState,
   isVersionConflict,
+  nextBoundary,
   parseCount,
   parseManilaTime,
   parsePesos,
   pesosInput,
   promotionsErrorText,
+  serverNow,
 } from "@/lib/promotions";
 import { rawPromotions } from "@/test/promotions";
 
@@ -271,5 +273,21 @@ describe("claims CSV", () => {
     expect(lines[1]).toContain('"200.00","Used","ord_1","No"');
     expect(lines[3]).toContain(`"'=HYPERLINK(1)"`);
     expect(lines[3]).toContain('"Yes"');
+  });
+});
+
+describe("the clock", () => {
+  it("moves the server's time on by what passed here", () => {
+    expect(serverNow("2026-11-08T15:59:58.000Z", 1_000, 61_000)).toBe(
+      Date.parse("2026-11-08T16:00:58.000Z"),
+    );
+    expect(serverNow(null, 1_000, 61_000)).toBe(61_000);
+  });
+
+  it("finds the next start, upgrade or end still ahead", () => {
+    expect(nextBoundary(settings, Date.parse("2026-10-20T00:00:00Z"))).toBe(Date.parse(settings.founding.startsAt));
+    expect(nextBoundary(settings, NOW)).toBe(Date.parse(settings.friendPass.upgradeAt));
+    expect(nextBoundary(settings, Date.parse("2026-11-05T00:00:00Z"))).toBe(Date.parse(settings.founding.endsAt));
+    expect(nextBoundary(settings, Date.parse("2026-11-09T00:00:00Z"))).toBeNull();
   });
 });

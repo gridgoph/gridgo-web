@@ -368,6 +368,23 @@ export function budgetBar(budget: AdminPromotions["budget"]): BudgetBar {
   };
 }
 
+/**
+ * The server's clock now: its `serverTime` at the read, moved on by the time
+ * that passed here since. Without `serverTime`, this browser's clock.
+ */
+export function serverNow(serverTime: string | null, readAt: number, now: number): number {
+  const server = serverTime ? Date.parse(serverTime) : NaN;
+  return Number.isFinite(server) ? server + Math.max(0, now - readAt) : now;
+}
+
+/** The next start, upgrade or end still ahead, when the status words can change. */
+export function nextBoundary(settings: PromotionSettings, now: number): number | null {
+  const ahead = [settings.founding.startsAt, settings.friendPass.upgradeAt, settings.founding.endsAt]
+    .map((iso) => Date.parse(iso))
+    .filter((at) => Number.isFinite(at) && at > now);
+  return ahead.length ? Math.min(...ahead) : null;
+}
+
 // ---------------------------------------------------------------------------
 // Rows
 // ---------------------------------------------------------------------------

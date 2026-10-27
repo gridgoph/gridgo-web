@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { RefreshCw } from "lucide-react";
 
 import { BudgetMeter, FoundingSeats } from "@/components/promotions/PromotionGauges";
 import { ClaimsTable, InvitesTable } from "@/components/promotions/PromotionTables";
@@ -31,11 +32,15 @@ import {
   foundingState,
   friendPassState,
   isVersionConflict,
+  nextBoundary,
   presentPromotionState,
   promotionsErrorText,
+  serverNow,
   type DraftField,
   type PromotionDraft,
 } from "@/lib/promotions";
+import { useLiveReload } from "@/lib/live/useLiveReload";
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import { formatManila } from "@/lib/vouchers";
 
 type DeskTab = "claims" | "invites";
@@ -45,6 +50,14 @@ function deskTab(value: string | null): DeskTab {
 }
 
 const DATE_FIELDS: DraftField[] = ["foundingStarts", "foundingEnds", "friendUpgrade"];
+
+/** Claims carry no live ping of their own, so a visible desk re-reads this often. */
+const REFRESH_POLL_MS = 60_000;
+const CLOCK_TICK_MS = 60_000;
+/** setTimeout's ceiling; a boundary further out is re-armed on the next tick. */
+const MAX_TIMER_MS = 2_147_483_647;
+
+const TIME_ONLY = new Intl.DateTimeFormat("en-PH", { timeStyle: "short", timeZone: "Asia/Manila" });
 
 /**
  * The launch promotions (27 Oct sprint): the Founding 30, the Friend Pass,
@@ -59,36 +72,100 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
   const search = useSearchParams();
   const tab = deskTab(search.get("tab"));
 
+  /** The latest read: counts, tables and status always come from here. */
   const [data, setData] = useState<AdminPromotions | null>(null);
+  /** This browser's clock when `data` arrived, to move `serverTime` on. */
+  const [readAt, setReadAt] = useState(0);
   const [loadError, setLoadError] = useState<unknown>(null);
-  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  /**
+   * The settings and version an edit started from. A refresh never rebases an
+   * edit onto someone else's values: it keeps this, and the save is refused.
+   */
+  const [origin, setOrigin] = useState<Pick<AdminPromotions, "settings" | "version"> | null>(null);
   const [edits, setEdits] = useState<Partial<PromotionDraft>>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
+  const [reloading, setReloading] = useState(false);
+  const [reloadError, setReloadError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  const [tick, setTick] = useState(() => Date.now());
+  const hasData = useRef(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const install = useCallback((next: AdminPromotions) => {
+    hasData.current = true;
+    setData(next);
+    setReadAt(Date.now());
+    setTick(Date.now());
     setLoadError(null);
-    try {
-      setData(await getAdminPromotions());
-    } catch (err) {
-      setLoadError(err);
-    } finally {
-      setLoading(false);
-    }
+    setRefreshError(null);
   }, []);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const readOnce = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      install(await getAdminPromotions());
+    } catch (err) {
+      // A failed background read keeps the last figures and says how old they are.
+      if (hasData.current) setRefreshError(promotionsErrorText(err, "Could not refresh."));
+      else setLoadError(err);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [install]);
+  const refresh = useSerializedLoad(readOnce);
 
-  const base = useMemo(() => (data ? draftFromSettings(data.settings) : null), [data]);
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+  // Claims, uses and the budget move with orders; settings with another admin.
+  useLiveReload(["orders", "settings"], refresh);
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    const onFocus = () => void refresh();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onFocus);
+    const poll = setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, REFRESH_POLL_MS);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onFocus);
+      clearInterval(poll);
+    };
+  }, [refresh]);
+
+  const now = data ? serverNow(data.serverTime, readAt, tick) : tick;
+  const boundary = data ? nextBoundary(data.settings, now) : null;
+  // The status words follow the clock: a minute tick, and a wake-up at the
+  // next start, upgrade or end, which also re-reads the counts.
+  useEffect(() => {
+    const minute = setInterval(() => setTick(Date.now()), CLOCK_TICK_MS);
+    return () => clearInterval(minute);
+  }, []);
+  useEffect(() => {
+    if (boundary === null) return;
+    const wait = Math.min(boundary - now + 1000, MAX_TIMER_MS);
+    const timer = setTimeout(() => {
+      setTick(Date.now());
+      void refresh();
+    }, Math.max(0, wait));
+    return () => clearTimeout(timer);
+  }, [boundary, now, refresh]);
+
+  const startSettings = origin?.settings ?? data?.settings ?? null;
+  const base = useMemo(
+    () => (startSettings ? draftFromSettings(startSettings) : null),
+    [startSettings],
+  );
   const draft = useMemo(() => (base ? { ...base, ...edits } : null), [base, edits]);
   const check = useMemo(
-    () => (data && draft ? checkDraft(draft, data.settings) : null),
-    [data, draft],
+    () => (startSettings && draft ? checkDraft(draft, startSettings) : null),
+    [startSettings, draft],
   );
 
   const edited = useCallback(
@@ -106,24 +183,42 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
   const changes = check?.changes ?? [];
   const dirty = changes.length > 0;
   const pending = dirty || blocking;
+  /** Someone else saved after this edit began; saving will be refused. */
+  const overtaken = origin !== null && data !== null && data.version !== origin.version;
 
   function edit<K extends DraftField>(field: K, value: PromotionDraft[K]) {
-    setEdits((current) => ({ ...current, [field]: value }));
     setSaveError(null);
     setSaved(null);
+    const next = { ...edits, [field]: value };
+    // Typed back to where it started: the form follows the latest read again.
+    if (!base || !(Object.keys(next) as DraftField[]).some((key) => next[key] !== base[key])) {
+      setEdits({});
+      setOrigin(null);
+      return;
+    }
+    if (!origin && data) setOrigin({ settings: data.settings, version: data.version });
+    setEdits(next);
+  }
+
+  function clearEdit() {
+    setEdits({});
+    setOrigin(null);
+    setSaveError(null);
   }
 
   async function save() {
-    if (!data || !check || !dirty || blocking || saving) return;
+    if (!data || !check || !dirty || blocking || saving || conflict) return;
+    const version = origin?.version ?? data.version;
     setSaving(true);
     setSaveError(null);
     setSaved(null);
     try {
-      const next = await updateAdminPromotions(check.patch, data.version, auditReason(changes));
-      setData(next);
-      setEdits({});
+      install(await updateAdminPromotions(check.patch, version, auditReason(changes)));
+      clearEdit();
       setSaved(
-        changes.length === 1 ? "Saved 1 change. New claims use it from now on." : `Saved ${changes.length} changes. New claims use them from now on.`,
+        changes.length === 1
+          ? "Saved 1 change. New claims use it from now on."
+          : `Saved ${changes.length} changes. New claims use them from now on.`,
       );
     } catch (err) {
       if (isVersionConflict(err)) setConflict(true);
@@ -133,17 +228,25 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
     }
   }
 
+  /** The lock and the stale edit stay until a read succeeds. */
   async function reloadAfterConflict() {
-    setEdits({});
-    setConflict(false);
-    setSaveError(null);
-    setSaved(null);
-    await load();
+    if (reloading) return;
+    setReloading(true);
+    setReloadError(null);
+    try {
+      install(await getAdminPromotions());
+      clearEdit();
+      setConflict(false);
+      setSaved(null);
+    } catch (err) {
+      setReloadError(promotionsErrorText(err, "Could not reload. Try again."));
+    } finally {
+      setReloading(false);
+    }
   }
 
   function discard() {
-    setEdits({});
-    setSaveError(null);
+    clearEdit();
     setSaved(null);
   }
 
@@ -158,22 +261,21 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
   );
 
   if (!data || !draft) {
-    if (loading)
+    if (!loadError)
       return <SkeletonCards count={4} lines={3} label="Loading promotions" className="gap-3" />;
     return (
       <ErrorState
         title="Promotions could not be loaded"
         body={promotionsErrorText(loadError, "Try again in a moment.")}
         action={
-          <Button variant="outline" onClick={() => void load()}>
-            Try again
+          <Button variant="outline" disabled={refreshing} onClick={() => void refresh()}>
+            {refreshing ? "Trying again…" : "Try again"}
           </Button>
         }
       />
     );
   }
 
-  const now = data.serverTime ? Date.parse(data.serverTime) : Date.now();
   const founding = presentPromotionState(foundingState(data, now));
   const friend = presentPromotionState(friendPassState(data, now), "All passes given");
   const locked = saving || conflict;
@@ -240,11 +342,31 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
 
   return (
     <div className="flex flex-col gap-3 pb-2">
-      <p className="text-body text-text-secondary m-0 max-w-prose">
-        Launch vouchers GRIDGO pays for, taken off the whole order as one discount: the Founding 30
-        for the first clients to claim, and a Friend Pass for one friend of each Founder. One
-        discount per person, never both. Both stop at the budget cap.
-      </p>
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <p className="text-body text-text-secondary m-0 max-w-prose">
+          Launch vouchers GRIDGO pays for, taken off the whole order as one discount: the Founding
+          30 for the first clients to claim, and a Friend Pass for one friend of each Founder. One
+          discount per person, never both. Both stop at the budget cap.
+        </p>
+        <div className="flex shrink-0 items-center gap-2">
+          <p className="text-caption text-text-muted m-0" aria-live="polite">
+            {refreshError ? null : `Updated ${TIME_ONLY.format(readAt)}`}
+          </p>
+          <Button variant="outline" disabled={refreshing} onClick={() => void refresh()}>
+            <RefreshCw size={16} aria-hidden className={refreshing ? "animate-spin motion-reduce:animate-none" : undefined} />
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </Button>
+        </div>
+      </div>
+      {refreshError ? (
+        <Alert variant="destructive">
+          <AlertTitle>Could not refresh</AlertTitle>
+          <AlertDescription>
+            {refreshError} These figures are from {TIME_ONLY.format(readAt)}. Refresh to try
+            again.
+          </AlertDescription>
+        </Alert>
+      ) : null}
       {canEdit ? null : (
         <Alert role="note">
           <AlertTitle>Read only</AlertTitle>
@@ -454,9 +576,18 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
                   {CONFLICT_COPY}
                 </p>
                 <p className="text-caption text-text-muted m-0">Your edits were not saved.</p>
+                {reloadError ? (
+                  <p className="text-caption text-error m-0" role="alert">
+                    {reloadError}
+                  </p>
+                ) : null}
               </div>
-              <Button variant="primary" onClick={() => void reloadAfterConflict()}>
-                Reload promotions
+              <Button
+                variant="primary"
+                disabled={reloading}
+                onClick={() => void reloadAfterConflict()}
+              >
+                {reloading ? "Reloading…" : reloadError ? "Try reloading again" : "Reload promotions"}
               </Button>
             </>
           ) : pending ? (
@@ -472,6 +603,12 @@ export function PromotionsDesk({ tree }: { tree: "ops" | "admin" }) {
                   {changes.length > 4 ? <li>and {changes.length - 4} more</li> : null}
                 </ul>
                 <p className="text-caption text-text-muted m-0">{NEW_CLAIMS_ONLY}</p>
+                {overtaken ? (
+                  <p className="text-caption text-warning m-0">
+                    Someone else saved these promotions while you were editing. Saving will be
+                    refused; discard to see their values.
+                  </p>
+                ) : null}
                 {saveError ? (
                   <p className="text-caption text-error m-0" role="alert">
                     {saveError}

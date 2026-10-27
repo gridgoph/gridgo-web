@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -34,7 +34,27 @@ const saveButton = () => screen.queryByRole("button", { name: "Save changes" });
 afterEach(() => {
   cleanup();
   vi.resetAllMocks();
+  vi.useRealTimers();
 });
+
+const at = (version: number, amountMinor: number, extra: Record<string, unknown> = {}) => {
+  const raw = rawPromotions();
+  return readAdminPromotions({
+    ...raw,
+    version,
+    settings: { ...raw.settings, founding: { ...raw.settings.founding, amountMinor } },
+    ...extra,
+  });
+};
+
+async function conflictAt250() {
+  getAdminPromotions.mockResolvedValueOnce(fresh());
+  updateAdminPromotions.mockRejectedValueOnce(new ApiError(409, { error: "settings_version_conflict" }));
+  render(<PromotionsDesk tree="admin" />);
+  fireEvent.change((await loaded()).getByLabelText("Amount (pesos)"), { target: { value: "250" } });
+  fireEvent.click(saveButton()!);
+  await screen.findByText(/Someone else changed these promotions/);
+}
 
 describe("Super Admin", () => {
   it("shows the seats, the budget and both tables' counts", async () => {
@@ -138,6 +158,119 @@ describe("Super Admin", () => {
     getAdminPromotions.mockResolvedValueOnce(fresh());
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByRole("region", { name: "Founding 30" })).toBeInTheDocument();
+  });
+});
+
+describe("after a save conflict", () => {
+  it("keeps the lock and the stale edit when the reload fails, and retries", async () => {
+    await conflictAt250();
+    getAdminPromotions.mockRejectedValueOnce(new ApiError(500, { error: "internal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reload promotions" }));
+    expect(await screen.findByText("The service had a problem. Try again in a moment.")).toBeInTheDocument();
+    expect(screen.getByText(/Someone else changed these promotions/)).toBeInTheDocument();
+    expect(founding().getByLabelText("Amount (pesos)")).toBeDisabled();
+    expect(founding().getByLabelText("Amount (pesos)")).toHaveValue("250");
+    expect(saveButton()).toBeNull();
+
+    getAdminPromotions.mockResolvedValueOnce(at(5, 30000));
+    fireEvent.click(screen.getByRole("button", { name: "Try reloading again" }));
+    await waitFor(() => expect(founding().getByLabelText("Amount (pesos)")).toHaveValue("300"));
+    expect(founding().getByLabelText("Amount (pesos)")).toBeEnabled();
+
+    updateAdminPromotions.mockResolvedValueOnce(at(6, 35000));
+    fireEvent.change(founding().getByLabelText("Amount (pesos)"), { target: { value: "350" } });
+    fireEvent.click(saveButton()!);
+    await waitFor(() => expect(updateAdminPromotions).toHaveBeenCalledTimes(2));
+    expect(updateAdminPromotions.mock.calls[1]?.[1]).toBe(5);
+  });
+
+  it("stays locked while the reload is still on its way", async () => {
+    await conflictAt250();
+    let answer!: (value: ReturnType<typeof fresh>) => void;
+    getAdminPromotions.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    fireEvent.click(screen.getByRole("button", { name: "Reload promotions" }));
+    expect(await screen.findByRole("button", { name: "Reloading…" })).toBeDisabled();
+    expect(founding().getByLabelText("Amount (pesos)")).toBeDisabled();
+    expect(screen.getByText(/Someone else changed these promotions/)).toBeInTheDocument();
+
+    await act(async () => answer(at(5, 30000)));
+    await waitFor(() => expect(founding().getByLabelText("Amount (pesos)")).toBeEnabled());
+    expect(founding().getByLabelText("Amount (pesos)")).toHaveValue("300");
+    expect(screen.queryByText(/Someone else changed these promotions/)).toBeNull();
+  });
+});
+
+describe("during a visit", () => {
+  const withClaims = (available: number, remainingMinor: number) => {
+    const raw = rawPromotions();
+    return readAdminPromotions({
+      ...raw,
+      founding: { ...raw.founding, available, claimed: 30 - available },
+      budget: { ...raw.budget, remainingMinor },
+    });
+  };
+
+  it("re-reads on Refresh and shows the new counts", async () => {
+    getAdminPromotions.mockResolvedValueOnce(fresh()).mockResolvedValueOnce(withClaims(0, 850000));
+    render(<PromotionsDesk tree="ops" />);
+    expect((await loaded()).getByText("Open to claim")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(await founding().findByText("All slots taken")).toBeInTheDocument();
+    expect(getAdminPromotions).toHaveBeenCalledTimes(2);
+  });
+
+  it("re-reads when the window regains focus or the tab becomes visible", async () => {
+    getAdminPromotions
+      .mockResolvedValueOnce(fresh())
+      .mockResolvedValueOnce(withClaims(0, 850000))
+      .mockResolvedValueOnce(withClaims(0, 0));
+    render(<PromotionsDesk tree="ops" />);
+    await loaded();
+    await act(async () => void window.dispatchEvent(new Event("focus")));
+    expect(await founding().findByText("All slots taken")).toBeInTheDocument();
+    await act(async () => void document.dispatchEvent(new Event("visibilitychange")));
+    await waitFor(() => expect(getAdminPromotions).toHaveBeenCalledTimes(3));
+    expect(await screen.findByText("Cap reached")).toBeInTheDocument();
+  });
+
+  it("keeps the last figures when a refresh fails, and says so", async () => {
+    getAdminPromotions
+      .mockResolvedValueOnce(fresh())
+      .mockRejectedValueOnce(new ApiError(503, { error: "unavailable" }));
+    render(<PromotionsDesk tree="ops" />);
+    await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(await screen.findByText("Could not refresh")).toBeInTheDocument();
+    expect(founding().getByText("Open to claim")).toBeInTheDocument();
+  });
+
+  it("keeps an edit on the version it started from when someone else saves", async () => {
+    getAdminPromotions.mockResolvedValueOnce(fresh()).mockResolvedValueOnce(at(4, 30000));
+    updateAdminPromotions.mockRejectedValueOnce(new ApiError(409, { error: "settings_version_conflict" }));
+    render(<PromotionsDesk tree="admin" />);
+    fireEvent.change((await loaded()).getByLabelText("Amount (pesos)"), { target: { value: "250" } });
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    expect(await screen.findByText(/Someone else saved these promotions while you were editing/)).toBeInTheDocument();
+    expect(founding().getByLabelText("Amount (pesos)")).toHaveValue("250");
+    expect(screen.getByText("Founding amount ₱200.00 to ₱250.00")).toBeInTheDocument();
+    fireEvent.click(saveButton()!);
+    await waitFor(() => expect(updateAdminPromotions).toHaveBeenCalledTimes(1));
+    expect(updateAdminPromotions.mock.calls[0]?.[1]).toBe(3);
+  });
+
+  it("moves the clock on, so the status changes at the end time", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, now: Date.parse("2026-11-08T15:59:58.000Z") });
+    getAdminPromotions
+      .mockImplementationOnce(async () =>
+        readAdminPromotions(rawPromotions({ serverTime: new Date(Date.now()).toISOString() })),
+      )
+      .mockRejectedValue(new ApiError(503, { error: "unavailable" }));
+    render(<PromotionsDesk tree="ops" />);
+    expect((await loaded()).getByText("Open to claim")).toBeInTheDocument();
+    await act(async () => void vi.advanceTimersByTime(5_000));
+    expect(founding().getByText("Ended")).toBeInTheDocument();
+    // The wake-up at the end time re-read the counts too.
+    expect(getAdminPromotions.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 });
 
