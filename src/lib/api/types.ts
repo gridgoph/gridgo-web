@@ -1256,6 +1256,13 @@ export type Order = {
   /** What the rider counts at the counter; `null` when the order has no usable quantity. */
   pickupCountItems?: PickupCountItem[] | null;
   deliveryEvidence?: DeliveryEvidence | null;
+  /**
+   * The rider's handoff reminder, for staff, the rider and the client only.
+   * Read it through `deliveryReminderOf` in `src/lib/api/sharing-reminders.ts`.
+   */
+  deliveryReminder?: Record<string, unknown> | null;
+  /** The optional package-only photo; never sent to a shop. */
+  deliveryPackagePhotoFileIds?: string[];
   issueWindowOpenedAt?: string | null;
   issueWindowExpiresAt?: string | null;
 

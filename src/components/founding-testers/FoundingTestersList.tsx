@@ -19,6 +19,7 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { StatCard } from "@/components/ui/StatCard";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { isApiError, listFoundingTesters, listUsers } from "@/lib/api/client";
+import { readAllShareTaps, type ShareTapCounts } from "@/lib/api/sharing-reminders";
 import type { FoundingTesterRow, TesterBudget } from "@/lib/api/types";
 import {
   FOUNDING_TESTERS_PAGE_SIZE,
@@ -51,6 +52,7 @@ export function FoundingTestersList({ tree }: { tree: "ops" | "admin" }) {
   const [shownOffset, setShownOffset] = useState<number | null>(null);
   const [earned, setEarned] = useState<number | null>(null);
   const [budget, setBudget] = useState<TesterBudget | null>(null);
+  const [shares, setShares] = useState<Map<string, ShareTapCounts> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -59,16 +61,19 @@ export function FoundingTestersList({ tree }: { tree: "ops" | "admin" }) {
       setLoading(true);
       setError(null);
       try {
-        const [page, testers] = await Promise.all([
+        const [page, testers, taps] = await Promise.all([
           listFoundingTesters({ offset, limit: FOUNDING_TESTERS_PAGE_SIZE }),
           // The headline count only; the page still reads without it.
           listUsers("client", { foundingTester: true }).catch(() => null),
+          // Share taps are a column, not the page: without them it reads "—".
+          readAllShareTaps().catch(() => null),
         ]);
         setRows(page.clients);
         setTotal(page.total);
         setShownOffset(offset);
         setBudget(page.budget ?? null);
         setEarned(testers ? testers.length : null);
+        setShares(taps);
       } catch (err) {
         setRows(null);
         setError(
@@ -149,6 +154,33 @@ export function FoundingTestersList({ tree }: { tree: "ops" | "admin" }) {
           ),
       },
       {
+        id: "shares",
+        header: "Share taps",
+        sortValue: (row) => {
+          const taps = shares?.get(row.clientId);
+          return taps ? taps.shareTaps + taps.sendToFriendTaps : -1;
+        },
+        cell: (row) => {
+          const taps = shares?.get(row.clientId);
+          if (!taps) {
+            return (
+              <span className="text-caption text-text-muted" aria-label="Share taps not available">
+                —
+              </span>
+            );
+          }
+          return (
+            <span
+              className="text-body text-text-primary flex flex-col tabular-nums whitespace-nowrap"
+              aria-label={`${taps.shareTaps} Share, ${taps.sendToFriendTaps} Send to a friend`}
+            >
+              <span>{taps.shareTaps} Share</span>
+              <span>{taps.sendToFriendTaps} Send to a friend</span>
+            </span>
+          );
+        },
+      },
+      {
         id: "reward",
         header: "Reward",
         sortValue: (row) => presentTesterReward(row.foundingTester).label,
@@ -165,7 +197,7 @@ export function FoundingTestersList({ tree }: { tree: "ops" | "admin" }) {
         },
       },
     ],
-    [],
+    [shares],
   );
 
   const pending = loading && !rows;
