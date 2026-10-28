@@ -8,6 +8,7 @@ import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { User } from "@/lib/api/types";
+import { ROLE_NAV } from "@/lib/nav";
 
 const { listUsers, listApprovalCases, updateUserAccount } = vi.hoisted(() => ({
   listUsers: vi.fn(),
@@ -26,6 +27,12 @@ class FakePointerEvent extends MouseEvent {
   }
 }
 vi.stubGlobal("PointerEvent", FakePointerEvent);
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: () => {} }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => "/admin/roles",
+}));
 
 vi.mock("@/lib/api/client", async () => {
   const actual = await vi.importActual<typeof import("@/lib/api/client")>(
@@ -123,4 +130,99 @@ describe("Admin roles account actions", () => {
     await user.type(screen.getByLabelText(/Reason \(required/), "Payment landed");
     await waitFor(() => expect(confirmRestore).toBeEnabled());
   }, 20000);
+});
+
+const LATER = "2026-10-28T10:00:00.000Z";
+const EARLIER = "2026-10-01T01:00:00.000Z";
+const CREATED = "2020-01-15T00:00:00.000Z";
+
+function manila(iso: string) {
+  return new Intl.DateTimeFormat("en-PH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Manila",
+  }).format(new Date(iso));
+}
+
+function namesIn(table: HTMLElement) {
+  return within(table)
+    .getAllByRole("row")
+    .slice(1)
+    .map((row) => within(row).getByText(/Ana Client|North Press|Ben Rider/).textContent);
+}
+
+describe("Admin roles sign-ins", () => {
+  it("sorts latest and oldest, filters recorded and empty sign-ins, and does not use the created date", async () => {
+    const user = userEvent.setup();
+    listUsers.mockResolvedValue([
+      person({
+        id: "user_north",
+        name: "North Press",
+        role: "supplier",
+        lastAuthenticatedAt: EARLIER,
+        createdAt: CREATED,
+      }),
+      person({
+        id: "user_ben",
+        name: "Ben Rider",
+        role: "rider",
+        createdAt: CREATED,
+      }),
+      person({
+        id: "user_ana",
+        name: "Ana Client",
+        role: "client",
+        lastAuthenticatedAt: LATER,
+        createdAt: CREATED,
+      }),
+    ]);
+    listApprovalCases.mockResolvedValue({ approvalCases: [], nextCursor: null });
+
+    render(<AdminRolesPage />);
+
+    const directory = await screen.findByRole("table");
+    expect(await within(directory).findByText("Ana Client")).toBeVisible();
+    for (const header of ["Person", "Platform role", "Account", "Standing", "Last signed in"]) {
+      expect(within(directory).getByRole("columnheader", { name: new RegExp(header) })).toBeVisible();
+    }
+    expect(within(directory).getAllByRole("button", { name: "Change role" }).length).toBeGreaterThan(0);
+    expect(within(directory).getAllByRole("button", { name: "Suspend account" }).length).toBeGreaterThan(0);
+    expect(within(directory).getAllByRole("button", { name: "Remove account" }).length).toBeGreaterThan(0);
+    expect(within(directory).getByText(manila(LATER))).toBeVisible();
+    expect(within(directory).getByText("No sign-in recorded")).toBeVisible();
+    expect(within(directory).queryByText(manila(CREATED))).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Sign-ins" }));
+    const table = screen.getByRole("table");
+    expect(namesIn(table)).toEqual(["Ana Client", "North Press", "Ben Rider"]);
+    expect(within(table).getByText(manila(EARLIER))).toBeVisible();
+    expect(within(table).getByText("No sign-in recorded")).toBeVisible();
+    expect(within(table).queryByText(manila(CREATED))).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Oldest" }));
+    expect(namesIn(screen.getByRole("table"))).toEqual(["North Press", "Ana Client", "Ben Rider"]);
+
+    await user.click(screen.getByRole("button", { name: "Signed in" }));
+    expect(namesIn(screen.getByRole("table"))).toEqual(["North Press", "Ana Client"]);
+    expect(screen.getByRole("table")).not.toHaveTextContent("No sign-in recorded");
+    expect(screen.getByRole("table")).not.toHaveTextContent("Ben Rider");
+
+    await user.click(screen.getByRole("button", { name: "No sign-in recorded" }));
+    expect(namesIn(screen.getByRole("table"))).toEqual(["Ben Rider"]);
+    expect(screen.getByRole("table")).not.toHaveTextContent("Ana Client");
+    expect(screen.getByRole("table")).not.toHaveTextContent(manila(CREATED));
+
+    await user.click(screen.getByRole("button", { name: "All" }));
+    await user.type(screen.getByPlaceholderText("Filter people…"), "north");
+    expect(namesIn(screen.getByRole("table"))).toEqual(["North Press"]);
+  }, 20000);
+
+  it("keeps Roles on Super Admin and off Operations", () => {
+    expect(ROLE_NAV.super_admin.some((item) => item.href === "/admin/roles" && item.label === "Roles")).toBe(
+      true,
+    );
+    expect(ROLE_NAV.ops_admin.some((item) => item.label === "Roles" || item.href.includes("roles"))).toBe(
+      false,
+    );
+  });
 });

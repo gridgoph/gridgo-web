@@ -222,6 +222,11 @@ export type User = {
   verifiedBy?: string | null;
   createdAt?: string;
   /**
+   * `GET /users` only. The last time GRIDGO accepted this account.
+   * Null when no authentication has been recorded. Not `createdAt`.
+   */
+  lastAuthenticatedAt?: string | null;
+  /**
    * Client rows of `GET /users` only: whether the account has earned the
    * Founding Tester label. Never present on a shop or rider row.
    */

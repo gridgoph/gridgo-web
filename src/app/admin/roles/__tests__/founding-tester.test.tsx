@@ -20,6 +20,12 @@ const { listUsers, listApprovalCases } = vi.hoisted(() => ({
   listApprovalCases: vi.fn(),
 }));
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: () => {} }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => "/admin/roles",
+}));
+
 vi.stubGlobal("React", React);
 vi.stubGlobal("PointerEvent", MouseEvent);
 vi.mock("@/lib/live/useLiveReload", () => ({ useLiveReload: () => {} }));
