@@ -15,6 +15,12 @@ import type { ApprovalCaseQueue, User } from "@/lib/api/types";
  * nothing; these tests click the facets rather than read the cells.
  */
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: () => {} }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => "/admin/roles",
+}));
+
 vi.stubGlobal("React", React);
 
 class FakePointerEvent extends MouseEvent {

@@ -4,8 +4,9 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { useLiveReload } from "@/lib/live/useLiveReload";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Ban, Eye, RotateCcw, ShieldAlert, TriangleAlert, UserCog, UserX } from "lucide-react";
 
 import { adminErrorMessage } from "@/app/admin/_lib/errors";
@@ -51,6 +52,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   listApprovalCases,
@@ -84,6 +86,30 @@ function standingLabel(user: User): string {
   return STANDING_ACTIVE;
 }
 
+const NO_SIGN_IN = "No sign-in recorded";
+
+type RolesTab = "directory" | "sign-ins";
+type SignInSort = "latest" | "oldest";
+type SignInFilter = "all" | "signed-in" | "none";
+
+/** Manila date and time. Account creation is not a sign-in. */
+function formatLastSignedIn(iso: string | null | undefined): string {
+  if (!iso) return NO_SIGN_IN;
+  const parsed = new Date(iso);
+  if (!Number.isFinite(parsed.getTime())) return NO_SIGN_IN;
+  return new Intl.DateTimeFormat("en-PH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Manila",
+  }).format(parsed);
+}
+
+function signedInMillis(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const value = Date.parse(iso);
+  return Number.isFinite(value) ? value : null;
+}
+
 function accountConsequence(action: AccountAction): string {
   if (action === "suspend") {
     return "This suspends the account. They stay in this directory and their sign-in stays valid. The app replaces their workspace with this reason until you restore the account. Accreditation is unchanged.";
@@ -94,8 +120,16 @@ function accountConsequence(action: AccountAction): string {
   return "They can use GRIDGO again. The reason stored on the account is cleared. This note stays on the audit log.";
 }
 
-export default function AdminRolesPage() {
+function AdminRolesPage() {
+  const search = useSearchParams();
+  const router = useRouter();
+  const requested: RolesTab = search.get("tab") === "sign-ins" ? "sign-ins" : "directory";
+  const [tab, setTab] = useState<RolesTab>(requested);
+  const [signInSort, setSignInSort] = useState<SignInSort>("latest");
+  const [signInFilter, setSignInFilter] = useState<SignInFilter>("all");
   const [users, setUsers] = useState<User[] | null>(null);
+  // Sign-ins always lists every account; the Founding Tester filter is Directory's.
+  const [signInUsers, setSignInUsers] = useState<User[] | null>(null);
   const [suspensions, setSuspensions] = useState<Map<string, UserSuspension>>(
     () => new Map(),
   );
@@ -123,13 +157,15 @@ export default function AdminRolesPage() {
       setError(null);
       const query = testerFilterQuery(testerFilter);
       try {
-        const [directory, suspendedCases] = await Promise.all([
+        const [everyone, directory, suspendedCases] = await Promise.all([
+          testerFilter === "all" ? null : listUsers(),
           listUsers(query.role, { foundingTester: query.foundingTester }),
           // A suspension without this list still shows from the person's own
           // status; the case adds business clients and the reason.
           listApprovalCases({ status: "suspended" }).catch(() => null),
         ]);
         setUsers(directory);
+        setSignInUsers(everyone ?? directory);
         setShownFilter(testerFilter);
         setSuspensions(
           suspensionsByUser({
@@ -140,6 +176,7 @@ export default function AdminRolesPage() {
         );
       } catch (err) {
         setUsers(null);
+        setSignInUsers(null);
         setError(
           adminErrorMessage(
             err,
@@ -157,6 +194,20 @@ export default function AdminRolesPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    setTab(requested);
+  }, [requested]);
+
+  function selectTab(value: string) {
+    if (value !== "directory" && value !== "sign-ins") return;
+    setTab(value);
+    const next = new URLSearchParams(search.toString());
+    if (value === "directory") next.delete("tab");
+    else next.set("tab", "sign-ins");
+    const query = next.toString();
+    router.replace(query ? `/admin/roles?${query}` : "/admin/roles", { scroll: false });
+  }
 
   const columns = useMemo<DataTableColumn<User>[]>(
     () => [
@@ -253,9 +304,76 @@ export default function AdminRolesPage() {
           </span>
         ),
       },
+      {
+        id: "signedIn",
+        header: "Last signed in",
+        cell: (u) => (
+          <span className="text-body text-text-secondary">
+            {formatLastSignedIn(u.lastAuthenticatedAt)}
+          </span>
+        ),
+      },
     ],
     [suspensions],
   );
+
+  const signInColumns = useMemo<DataTableColumn<User>[]>(
+    () => [
+      {
+        id: "name",
+        header: "Person",
+        primary: true,
+        filterValue: (u) => `${u.name} ${u.email}`,
+        cell: (u) => (
+          <div>
+            <p
+              className="text-body text-text-primary m-0"
+              style={{ fontFamily: "var(--font-medium)" }}
+            >
+              {u.name}
+            </p>
+            <p className="text-caption text-text-muted m-0 mt-0.5">{u.email}</p>
+          </div>
+        ),
+      },
+      {
+        id: "role",
+        header: "Platform role",
+        filterValue: (u) => presentRole(u.role),
+        cell: (u) => (
+          <span className="text-body text-text-primary">{presentRole(u.role)}</span>
+        ),
+      },
+      {
+        id: "signedIn",
+        header: "Last signed in",
+        cell: (u) => (
+          <span className="text-body text-text-secondary">
+            {formatLastSignedIn(u.lastAuthenticatedAt)}
+          </span>
+        ),
+      },
+    ],
+    [],
+  );
+
+  const signInRows = useMemo(() => {
+    const rows = (signInUsers ?? []).filter((user) => {
+      const recorded = signedInMillis(user.lastAuthenticatedAt) != null;
+      if (signInFilter === "signed-in") return recorded;
+      if (signInFilter === "none") return !recorded;
+      return true;
+    });
+    rows.sort((left, right) => {
+      const leftAt = signedInMillis(left.lastAuthenticatedAt);
+      const rightAt = signedInMillis(right.lastAuthenticatedAt);
+      if (leftAt == null && rightAt == null) return left.name.localeCompare(right.name);
+      if (leftAt == null) return 1;
+      if (rightAt == null) return -1;
+      return signInSort === "latest" ? rightAt - leftAt : leftAt - rightAt;
+    });
+    return rows;
+  }, [signInUsers, signInFilter, signInSort]);
 
   const facets = useMemo<DataTableFacet[]>(
     () => [
@@ -431,6 +549,15 @@ export default function AdminRolesPage() {
         </p>
       ) : null}
 
+      <Tabs value={tab} onValueChange={selectTab}>
+        <TabsList>
+          <TabsTrigger value="directory">Directory</TabsTrigger>
+          <TabsTrigger value="sign-ins">Sign-ins</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="directory" className="mt-4 flex flex-col gap-3">
+      {tab === "directory" ? (
+      <>
       {suspendedCount ? (
         <div
           className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-error px-4 py-3"
@@ -575,6 +702,61 @@ export default function AdminRolesPage() {
           }}
         />
       )}
+      </>
+      ) : null}
+        </TabsContent>
+
+        <TabsContent value="sign-ins" className="mt-4 flex flex-col gap-3">
+          {tab === "sign-ins" ? (
+          <>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <span className="text-caption text-text-muted" id="sign-in-sort-label">
+              Sort
+            </span>
+            <ToggleGroup
+              value={[signInSort]}
+              onValueChange={(values) => {
+                const next = values[0] as SignInSort | undefined;
+                if (next) setSignInSort(next);
+              }}
+              variant="outline"
+              spacing={0}
+              aria-labelledby="sign-in-sort-label"
+            >
+              <ToggleGroupItem value="latest">Latest</ToggleGroupItem>
+              <ToggleGroupItem value="oldest">Oldest</ToggleGroupItem>
+            </ToggleGroup>
+            <span className="text-caption text-text-muted" id="sign-in-filter-label">
+              Sign-in
+            </span>
+            <ToggleGroup
+              value={[signInFilter]}
+              onValueChange={(values) => {
+                const next = values[0] as SignInFilter | undefined;
+                if (next) setSignInFilter(next);
+              }}
+              variant="outline"
+              spacing={0}
+              aria-labelledby="sign-in-filter-label"
+            >
+              <ToggleGroupItem value="all">All</ToggleGroupItem>
+              <ToggleGroupItem value="signed-in">Signed in</ToggleGroupItem>
+              <ToggleGroupItem value="none">No sign-in recorded</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+          <DataTable
+            columns={signInColumns}
+            data={signInRows}
+            loading={pending}
+            getRowId={(u) => u.id}
+            caption="Last sign-in"
+            filterPlaceholder="Filter people…"
+            itemLabel="people"
+          />
+          </>
+          ) : null}
+        </TabsContent>
+      </Tabs>
 
       <AlertDialog
         open={!!target}
@@ -777,5 +959,13 @@ export default function AdminRolesPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+  );
+}
+
+export default function AdminRolesRoute() {
+  return (
+    <Suspense>
+      <AdminRolesPage />
+    </Suspense>
   );
 }

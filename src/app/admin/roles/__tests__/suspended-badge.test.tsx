@@ -8,6 +8,12 @@ import AdminRolesPage from "@/app/admin/roles/page";
 import type { ApprovalCaseQueue, User } from "@/lib/api/types";
 import { formatDate } from "@/lib/format";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: () => {} }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => "/admin/roles",
+}));
+
 vi.stubGlobal("React", React);
 
 const SEP_18 = "2026-09-18T02:00:00.000Z";
