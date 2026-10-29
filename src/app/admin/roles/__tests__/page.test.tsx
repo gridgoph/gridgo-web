@@ -217,6 +217,52 @@ describe("Admin roles sign-ins", () => {
     expect(namesIn(screen.getByRole("table"))).toEqual(["North Press"]);
   }, 20000);
 
+  it("lists every account on Sign-ins whatever the Directory's Founding Tester filter", async () => {
+    const user = userEvent.setup();
+    const ana = person({
+      id: "user_ana",
+      name: "Ana Client",
+      role: "client",
+      foundingTester: true,
+      lastAuthenticatedAt: LATER,
+    });
+    const north = person({
+      id: "user_north",
+      name: "North Press",
+      role: "supplier",
+      lastAuthenticatedAt: EARLIER,
+    });
+    listUsers.mockImplementation(
+      async (role?: string, filter?: { foundingTester?: boolean }) =>
+        role === "client" && filter?.foundingTester === true ? [ana] : [ana, north],
+    );
+    listApprovalCases.mockResolvedValue({ approvalCases: [], nextCursor: null });
+
+    render(<AdminRolesPage />);
+    expect(await within(await screen.findByRole("table")).findByText("North Press")).toBeVisible();
+
+    const testerFilter = screen.getByRole("group", { name: "Founding Tester" });
+    await user.click(within(testerFilter).getByRole("button", { name: "Founding Testers" }));
+    await waitFor(() => expect(screen.queryByText("North Press")).toBeNull());
+    expect(within(screen.getByRole("table")).getByText("Ana Client")).toBeVisible();
+
+    await user.click(screen.getByRole("tab", { name: "Sign-ins" }));
+    expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+    expect(namesIn(screen.getByRole("table"))).toEqual(["Ana Client", "North Press"]);
+
+    await user.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Refresh" })).toBeEnabled());
+    expect(namesIn(screen.getByRole("table"))).toEqual(["Ana Client", "North Press"]);
+
+    await user.click(screen.getByRole("tab", { name: "Directory" }));
+    expect(await within(screen.getByRole("table")).findByText("Ana Client")).toBeVisible();
+    expect(screen.queryByText("North Press")).toBeNull();
+    expect(screen.getByText("Client accounts only.")).toBeVisible();
+
+    await user.click(screen.getByRole("tab", { name: "Sign-ins" }));
+    expect(namesIn(screen.getByRole("table"))).toEqual(["Ana Client", "North Press"]);
+  }, 20000);
+
   it("keeps Roles on Super Admin and off Operations", () => {
     expect(ROLE_NAV.super_admin.some((item) => item.href === "/admin/roles" && item.label === "Roles")).toBe(
       true,

@@ -128,6 +128,8 @@ function AdminRolesPage() {
   const [signInSort, setSignInSort] = useState<SignInSort>("latest");
   const [signInFilter, setSignInFilter] = useState<SignInFilter>("all");
   const [users, setUsers] = useState<User[] | null>(null);
+  // Sign-ins always lists every account; the Founding Tester filter is Directory's.
+  const [signInUsers, setSignInUsers] = useState<User[] | null>(null);
   const [suspensions, setSuspensions] = useState<Map<string, UserSuspension>>(
     () => new Map(),
   );
@@ -155,13 +157,15 @@ function AdminRolesPage() {
       setError(null);
       const query = testerFilterQuery(testerFilter);
       try {
-        const [directory, suspendedCases] = await Promise.all([
+        const [everyone, directory, suspendedCases] = await Promise.all([
+          testerFilter === "all" ? null : listUsers(),
           listUsers(query.role, { foundingTester: query.foundingTester }),
           // A suspension without this list still shows from the person's own
           // status; the case adds business clients and the reason.
           listApprovalCases({ status: "suspended" }).catch(() => null),
         ]);
         setUsers(directory);
+        setSignInUsers(everyone ?? directory);
         setShownFilter(testerFilter);
         setSuspensions(
           suspensionsByUser({
@@ -172,6 +176,7 @@ function AdminRolesPage() {
         );
       } catch (err) {
         setUsers(null);
+        setSignInUsers(null);
         setError(
           adminErrorMessage(
             err,
@@ -353,7 +358,7 @@ function AdminRolesPage() {
   );
 
   const signInRows = useMemo(() => {
-    const rows = (users ?? []).filter((user) => {
+    const rows = (signInUsers ?? []).filter((user) => {
       const recorded = signedInMillis(user.lastAuthenticatedAt) != null;
       if (signInFilter === "signed-in") return recorded;
       if (signInFilter === "none") return !recorded;
@@ -368,7 +373,7 @@ function AdminRolesPage() {
       return signInSort === "latest" ? rightAt - leftAt : leftAt - rightAt;
     });
     return rows;
-  }, [users, signInFilter, signInSort]);
+  }, [signInUsers, signInFilter, signInSort]);
 
   const facets = useMemo<DataTableFacet[]>(
     () => [
