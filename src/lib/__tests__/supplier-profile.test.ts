@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { SupplierProfile } from "@/lib/api/client";
-import { draftFromProfile, shopDetailPatch, shopDetailProblems } from "@/lib/supplier-profile";
+import {
+  draftFromProfile,
+  shopDetailPatch,
+  shopDetailProblems,
+  supplierContactName,
+} from "@/lib/supplier-profile";
 
 const profile: SupplierProfile = {
   userId: "shop",
@@ -55,5 +60,17 @@ describe("shop detail draft", () => {
     const draft = { ...draftFromProfile(profile), lat: "0", lng: "0" };
     expect(shopDetailProblems(draft)).toEqual({});
     expect(shopDetailPatch(profile, draft).shop).toEqual({ lat: 0, lng: 0, label: "Counter" });
+  });
+});
+
+describe("supplierContactName", () => {
+  it("names the contact person from the shop details, not the sign-up name", () => {
+    expect(supplierContactName({ name: "Ana Cruz", contactName: "Bea Lim" })).toBe("Bea Lim");
+  });
+
+  it("falls back to the account holder when no contact person is saved", () => {
+    expect(supplierContactName({ name: "Ana Cruz" })).toBe("Ana Cruz");
+    expect(supplierContactName({ name: "Ana Cruz", contactName: null })).toBe("Ana Cruz");
+    expect(supplierContactName({ name: "Ana Cruz", contactName: "  " })).toBe("Ana Cruz");
   });
 });

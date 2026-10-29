@@ -291,6 +291,20 @@ describe("filter matching", () => {
     expect(none).toEqual([]);
   });
 
+  it("names the shop's contact person, and searches by it", () => {
+    const changed = shops.map((shop) =>
+      shop.id === "user_alpha" ? { ...shop, contactName: "Bea Lim" } : shop,
+    );
+    const blocks = groupServiceLinesByShop(lines, changed);
+    const alpha = blocks.find((block) => block.supplierId === "user_alpha");
+    expect(alpha?.contactName).toBe("Bea Lim");
+    const beta = blocks.find((block) => block.supplierId === "user_beta");
+    expect(beta?.contactName).toBe("Ben Santos");
+    expect(
+      filterShopBlocks(blocks, "bea lim", names).map((block) => block.supplierId),
+    ).toEqual(["user_alpha"]);
+  });
+
   it("reassigns a shop's section after filtering hides its waiting lines", () => {
     const sections = presentServiceLineSections(lines, shops, "calling cards", names);
     expect(sections.waiting.map((block) => block.supplierId)).toEqual([]);
