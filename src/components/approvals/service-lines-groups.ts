@@ -8,6 +8,7 @@ import { readServiceLineTime } from "@/lib/production-time";
 import type { SupplierService, Taxonomy, User } from "@/lib/api/types";
 import { formatPhp } from "@/lib/format";
 import { presentZone } from "@/lib/order-state";
+import { supplierContactName } from "@/lib/supplier-profile";
 
 export type TaxonomyNames = {
   categories: Record<string, string>;
@@ -109,7 +110,7 @@ function toBlock(
     supplierId,
     supplier,
     shopName: supplier ? supplier.supplierName || supplier.name : supplierId,
-    contactName: supplier?.name ?? "",
+    contactName: supplier ? supplierContactName(supplier) : "",
     phone: supplier?.phone ?? "",
     shopAddress: supplier?.shop?.label ?? "",
     detailsUnavailable: supplier == null,

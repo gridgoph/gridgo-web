@@ -66,6 +66,7 @@ import {
   setUserVerification,
 } from "@/lib/api/client";
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
+import { supplierContactName } from "@/lib/supplier-profile";
 import { isAwaitingSignupReview } from "@/components/approvals/signup-queue";
 import type {
   ApprovalCaseDetail,
@@ -608,7 +609,7 @@ function ApplicantCard({
         title={person.supplierName || person.name}
         caption={[
           person.role === "supplier" ? "Supplier" : "Rider",
-          person.supplierName ? person.name : null,
+          person.supplierName ? supplierContactName(person) : null,
           person.email,
         ]
           .filter(Boolean)
