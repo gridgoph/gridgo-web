@@ -1,4 +1,5 @@
 import type { SupplierProfile, SupplierProfilePatch, SupplierShopPin } from "@/lib/api/client";
+import type { User } from "@/lib/api/types";
 
 export const SHOP_DETAILS_NOT_OPEN_YET =
   "GRIDGO has not opened your shop details here yet. Nothing here is lost — check again shortly, and ask Operations to correct anything that cannot wait.";
@@ -88,4 +89,13 @@ export function shopDetailProblems(draft: ShopDetailDraft): Partial<Record<keyof
   if (lat == null || lat < -90 || lat > 90) problems.lat = "Enter a latitude between -90 and 90.";
   if (lng == null || lng < -180 || lng > 180) problems.lng = "Enter a longitude between -180 and 180.";
   return problems;
+}
+
+/**
+ * The person Operations talks to at a shop: the contact person in its shop
+ * details, else the sign-in account holder. The Roles directory keeps the
+ * account holder by design and does not read this.
+ */
+export function supplierContactName(user: Pick<User, "name" | "contactName">): string {
+  return user.contactName?.trim() || user.name;
 }

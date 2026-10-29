@@ -93,6 +93,23 @@ describe("collectSuspendedAccounts", () => {
     });
   });
 
+  it("names the shop's contact person, else the account holder", () => {
+    const [changed] = collectSuspendedAccounts({
+      cases: [daraCase],
+      people: [{ ...dara, contactName: "Bea Lim" }],
+      business: [],
+      directory,
+    });
+    expect(changed!.caption).toBe("Supplier · Bea Lim · dara@blueprint.ph");
+    const [unchanged] = collectSuspendedAccounts({
+      cases: [daraCase],
+      people: [dara],
+      business: [],
+      directory,
+    });
+    expect(unchanged!.caption).toBe("Supplier · Dara Cruz · dara@blueprint.ph");
+  });
+
   it("still lists a legacy suspension that has no case behind it", () => {
     const accounts = collectSuspendedAccounts({
       cases: [],

@@ -15,6 +15,7 @@ import type {
   User,
 } from "@/lib/api/types";
 import { formatDate } from "@/lib/format";
+import { supplierContactName } from "@/lib/supplier-profile";
 
 export type SuspendedKind = "supplier" | "rider" | "business_client";
 
@@ -120,7 +121,7 @@ function personCaption(
 ): string {
   return [
     KIND_LABEL[kind],
-    user?.supplierName ? user.name : null,
+    user?.supplierName ? supplierContactName(user) : null,
     user?.email ?? fallback,
   ]
     .filter(Boolean)

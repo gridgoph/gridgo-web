@@ -210,6 +210,13 @@ export type User = {
   accountType?: AccountType;
   orgName?: string;
   supplierName?: string;
+  /**
+   * Supplier rows of `GET /users` only: the shop's contact person from its
+   * shop details, which the shop can change after sign-up. Null or absent
+   * when none is saved (or the API predates it); `name` stays the sign-in
+   * account holder. Read through `supplierContactName`.
+   */
+  contactName?: string | null;
   shop?: MapPoint;
   /** Supplier sign-up: what they say they do best, best first. */
   categoryRanks?: CategoryRank[];
