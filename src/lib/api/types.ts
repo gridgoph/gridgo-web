@@ -1083,6 +1083,8 @@ export type Order = {
    * the shop's own date. The supplier projection withholds `promiseBy`.
    */
   readyBy?: string | null;
+  /** Immutable client promise including review, wait and delivery allowance; withheld from shops. */
+  promiseBy?: string | null;
   /**
    * Checkout promised this order under Express: the shop's listing was on
    * Express, so the client's deadline stood even where ordinary production
@@ -2475,6 +2477,7 @@ export type TransitionReadiness = {
 export type JobDetails = {
   material: string;
   zone: string;
+  /** Legacy name: the shop's internal ready-by, not the client promise. */
   promisedDate: string;
   missing: Array<"material" | "zone" | "promisedDate" | (string & {})>;
 };

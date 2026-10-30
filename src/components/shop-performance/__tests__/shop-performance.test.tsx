@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React from "react";
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -177,4 +177,23 @@ it("lets Super Admin mark a late finish no-fault with a reason", async () => {
     }),
   );
   expect(await screen.findByText("Exempt: Verified outage in the area.")).toBeVisible();
+});
+
+
+it("discards a late list result and queued refresh after unmount", async () => {
+  search = "order=ord_late";
+  let resolve!: (response: Response) => void;
+  const response = new Promise<Response>((done) => { resolve = done; });
+  const originalFetch = fetch;
+  vi.mocked(fetch).mockImplementation((input, init) =>
+    String(input).endsWith("/ops/shops/performance") ? response : originalFetch(input, init),
+  );
+  const { rerender, unmount } = render(<ShopPerformanceList tree="ops" />);
+  await waitFor(() => expect(fetch).toHaveBeenCalled());
+  // A dependency change queues another load behind the in-flight request.
+  rerender(<ShopPerformanceList tree="admin" />);
+  unmount();
+  await act(async () => { resolve(json({ shops })); });
+  expect(replace).not.toHaveBeenCalled();
+  expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input).endsWith("/ops/shops/performance"))).toHaveLength(1);
 });

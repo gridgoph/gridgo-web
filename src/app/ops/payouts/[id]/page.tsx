@@ -349,9 +349,15 @@ export default function OpsPayoutReviewPage() {
                   </div>
                 ))}
             </dl>
+            {order.promiseBy ? (
+              <p className="text-caption text-text-muted m-0 mt-2">
+                Client was promised {formatDateTime(order.promiseBy)}
+              </p>
+            ) : null}
+            {/* Older orders retain readyBy as a shop deadline, never a client promise. */}
             {order.readyBy ? (
               <p className="text-caption text-text-muted m-0 mt-2">
-                Client was promised {formatDateTime(order.readyBy)}
+                Shop ready by {formatDateTime(order.readyBy)}
               </p>
             ) : null}
             <Link
