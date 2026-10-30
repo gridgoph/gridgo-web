@@ -375,11 +375,18 @@ export default function OpsDispatchPage() {
       },
       {
         id: "promised",
-        header: "Promised",
-        sortValue: (o) => o.promisedDate || "",
+        header: "Client promise / shop deadline",
+        sortValue: (o) => o.promiseBy || o.readyBy || o.promisedDate || "",
         cell: (o) => (
           <span className="text-body text-text-secondary whitespace-nowrap">
-            {formatDateTime(o.promisedDate)}
+            {/* Legacy dates remain visible with an honest label when promiseBy is absent. */}
+            {o.promiseBy
+              ? "Client was promised"
+              : o.readyBy
+                ? "Shop ready by"
+                : "Scheduled date (legacy)"}
+            {" · "}
+            {formatDateTime(o.promiseBy || o.readyBy || o.promisedDate)}
           </span>
         ),
       },

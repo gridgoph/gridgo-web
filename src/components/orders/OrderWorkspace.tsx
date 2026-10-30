@@ -2635,9 +2635,15 @@ function SpecRail({
             </span>
           </div>
         ) : null}
+        {order.promiseBy ? (
+          <p className="text-caption text-text-muted m-0 mt-2">
+            Client was promised {formatDateTime(order.promiseBy)}
+          </p>
+        ) : null}
+        {/* Older orders without promiseBy retain readyBy as a shop deadline only. */}
         {order.readyBy ? (
           <p className="text-caption text-text-muted m-0 mt-2">
-            Client was promised {formatDateTime(order.readyBy)}
+            Shop ready by {formatDateTime(order.readyBy)}
           </p>
         ) : null}
       </section>

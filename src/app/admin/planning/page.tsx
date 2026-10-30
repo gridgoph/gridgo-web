@@ -100,9 +100,10 @@ export default function AdminPlanningPage() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Week view of promised deliveries composed from live orders, plus verified
-          capacity signals from supplier service lines. Rider shift calendars and zone
-          blackouts are not on the demo API — those rows stay explicitly unavailable.
+          Week view of client promises (legacy scheduled dates for orders without a client
+          promise), plus verified capacity signals from supplier service lines. Rider
+          shift calendars and zone blackouts are not on the demo API — those rows stay
+          explicitly unavailable.
         </p>
         <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
@@ -293,8 +294,8 @@ export default function AdminPlanningPage() {
             <SkeletonCards count={3} lines={1} chip label="Loading this week’s agenda" />
           ) : !snapshot?.agenda.length ? (
             <EmptyState
-              title="No promised deliveries this week"
-              body="Orders with a promised date in this week appear here. Use Previous / Next to move weeks, or Today to jump back."
+              title="No scheduled deliveries this week"
+              body="Orders with a client promise or legacy scheduled date in this week appear here. Use Previous / Next to move weeks, or Today to jump back."
             />
           ) : (
             <ul className="m-0 flex list-none flex-col gap-2 p-0">
@@ -338,7 +339,7 @@ export default function AdminPlanningPage() {
         {/* Desktop empty note when week has no deliveries */}
         {!pending && snapshot?.agenda.length === 0 ? (
           <p className="text-body text-text-muted m-0 mt-4 hidden md:block">
-            No promised deliveries in this week. Adjacent weeks may still have volume —
+            No scheduled deliveries in this week. Adjacent weeks may still have volume —
             use Previous or Next.
           </p>
         ) : null}
@@ -348,7 +349,7 @@ export default function AdminPlanningPage() {
       {!pending && snapshot && snapshot.agenda.length > 0 ? (
         <section className="gg-card hidden md:block" aria-labelledby="detail-heading">
           <h2 id="detail-heading" className="text-h3 text-text-primary m-0 mb-3">
-            This week’s promised deliveries
+            This week’s scheduled deliveries
           </h2>
           <ul className="m-0 flex list-none flex-col gap-3 p-0">
             {snapshot.agenda.map((item) => {

@@ -1,0 +1,12 @@
+{
+  "id": "ord_85170002308f",
+  "state": "needs_qa",
+  "promiseBy": "2026-11-02T02:00:00.000Z",
+  "readyBy": "2026-10-31T01:00:00.000Z",
+  "jobDetails": {
+    "material": "Not specified",
+    "zone": "Nearby",
+    "promisedDate": "2026-10-31T01:00:00.000Z",
+    "missing": ["material"]
+  }
+}

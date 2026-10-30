@@ -10,7 +10,7 @@ export type CalendarDay = {
   key: string;
   date: Date;
   isToday: boolean;
-  /** Orders with promisedDate falling on this day. */
+  /** Orders with a client promise (or legacy scheduled date) falling on this day. */
   deliveries: Order[];
   deliveryCount: number;
 };
@@ -112,7 +112,7 @@ export function buildPlanningSnapshot(input: {
   }
 
   for (const order of input.orders) {
-    const key = promisedDateKey(order.promisedDate);
+    const key = promisedDateKey(order.promiseBy || order.promisedDate);
     if (!key) continue;
     const bucket = byDay.get(key);
     if (bucket) bucket.push(order);
@@ -149,7 +149,8 @@ export function buildPlanningSnapshot(input: {
     day.deliveries.map((o) => ({
       id: o.id,
       dateKey: day.key,
-      at: o.promisedDate,
+      // Older orders retain the legacy scheduled date; the page names this fallback.
+      at: o.promiseBy || o.promisedDate,
       title: o.title,
       zone: o.zone,
       kind: "delivery" as const,
