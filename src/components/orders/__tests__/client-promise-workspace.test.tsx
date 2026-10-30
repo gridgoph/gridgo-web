@@ -3,6 +3,7 @@ import React from "react";
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import OpsPayoutReviewPage from "@/app/ops/payouts/[id]/page";
 import { OrderMeta } from "@/components/orders/OrderMeta";
 import capturedTiming from "./fixtures/client-promise-ord_85170002308f.json";
 import { OrderWorkspace } from "@/components/orders/OrderWorkspace";
@@ -63,8 +64,8 @@ beforeEach(() => {
   vi.stubGlobal(
     "fetch",
     vi.fn(
-      async () =>
-        new Response(JSON.stringify({ order }), {
+      async (input: RequestInfo | URL) =>
+        new Response(JSON.stringify(String(input).endsWith("/claims") ? { claims: [] } : { order }), {
           headers: { "Content-Type": "application/json" },
         }),
     ),
@@ -139,5 +140,20 @@ it("retains an honestly named legacy metadata date without promiseBy or readyBy"
   expect(screen.getByText("Scheduled date (legacy)").parentElement).toHaveTextContent(
     "Oct 31, 2026, 9:00 AM",
   );
+  expect(screen.queryByText(/Client was promised/)).not.toBeInTheDocument();
+});
+
+
+it("shows the captured client promise and separate shop deadline on payout detail", async () => {
+  render(<OpsPayoutReviewPage />);
+  const promise = await screen.findByText("Client was promised Nov 2, 2026, 10:00 AM");
+  expect(within(promise.closest("section")!).getByText("Shop ready by Oct 31, 2026, 9:00 AM")).toBeInTheDocument();
+  expect(screen.queryByText("Client was promised Oct 31, 2026, 9:00 AM")).not.toBeInTheDocument();
+});
+
+it.each([undefined, null])("labels only the shop deadline on payout detail when promiseBy is %s", async (promiseBy) => {
+  order = { ...order, promiseBy };
+  render(<OpsPayoutReviewPage />);
+  await screen.findByText("Shop ready by Oct 31, 2026, 9:00 AM");
   expect(screen.queryByText(/Client was promised/)).not.toBeInTheDocument();
 });
