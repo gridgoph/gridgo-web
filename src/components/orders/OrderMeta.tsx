@@ -38,7 +38,7 @@ type Props = {
    */
   showMoney?: boolean;
   /**
-   * Read Material, Zone and Promised from the API's `jobDetails` (the shop's
+   * Read Material, Zone and the shop deadline from the API's `jobDetails` (the shop's
    * job, report 6C695C15): filled from the order's own snapshots, with
    * "Not specified" for what it could not fill. The shop's surfaces set this;
    * Operations keeps reading the order's own fields.
@@ -71,14 +71,27 @@ export function OrderMeta({ order, showMoney = true, fromJobDetails = false }: P
     { label: "Finish", value: order.finish || "—", icon: Sparkles },
     { label: "Zone", value: details ? details.zone : presentZone(order.zone), icon: MapPin },
     { label: "Deadline", value: formatDateTime(order.deadline), icon: CalendarClock },
+    ...(order.promiseBy && !fromJobDetails
+      ? [
+          {
+            label: "Client was promised",
+            value: formatDateTime(order.promiseBy),
+            icon: CalendarCheck,
+          },
+        ]
+      : []),
     {
-      label: "Promised",
-      value: details
-        ? details.promisedDate
-          ? formatDateTime(details.promisedDate)
-          : NOT_SPECIFIED
-        : formatDateTime(order.promisedDate),
-      icon: CalendarCheck,
+      // jobDetails.promisedDate aliases the shop deadline. Older orders keep
+      // their previous date source, labelled as a shop/legacy date, never a promise.
+      label: order.readyBy || details ? "Shop ready by" : "Scheduled date (legacy)",
+      value: order.readyBy
+        ? formatDateTime(order.readyBy)
+        : details
+          ? details.promisedDate
+            ? formatDateTime(details.promisedDate)
+            : NOT_SPECIFIED
+          : formatDateTime(order.promisedDate),
+      icon: CalendarClock,
     },
   ];
 

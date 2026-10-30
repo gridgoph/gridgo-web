@@ -15,7 +15,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
@@ -70,8 +70,18 @@ export function ShopPerformanceList({ tree }: { tree: PerformanceTree }) {
   const [loading, setLoading] = useState(true);
   const [missingOrder, setMissingOrder] = useState(false);
 
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   const load = useSerializedLoad(
     useCallback(async () => {
+      // A serialized refresh may still be queued when this page unmounts.
+      if (!mounted.current) return;
       setLoading(true);
       setError(null);
       try {
@@ -80,6 +90,7 @@ export function ShopPerformanceList({ tree }: { tree: PerformanceTree }) {
           // Names only; without them the list still shows, unnamed.
           getShopRankings().catch(() => null),
         ]);
+        if (!mounted.current) return;
         if (orderParam) {
           const supplierId = shopForOrder(shops, orderParam);
           if (supplierId) {
@@ -97,6 +108,7 @@ export function ShopPerformanceList({ tree }: { tree: PerformanceTree }) {
           ),
         );
       } catch (err) {
+        if (!mounted.current) return;
         setRows(null);
         setError(
           opsErrorMessage(
@@ -105,7 +117,7 @@ export function ShopPerformanceList({ tree }: { tree: PerformanceTree }) {
           ),
         );
       } finally {
-        setLoading(false);
+        if (mounted.current) setLoading(false);
       }
     }, [orderParam, router, tree]),
   );

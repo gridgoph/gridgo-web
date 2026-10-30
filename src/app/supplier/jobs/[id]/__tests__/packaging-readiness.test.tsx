@@ -218,7 +218,7 @@ describe("before it can be packaged (report 6C695C15)", () => {
 });
 
 describe("job details and updates", () => {
-  it("reads Material, Zone and Promised from jobDetails, with Not specified for a gap", async () => {
+  it("reads Material, Zone and the shop deadline from jobDetails, with Not specified for a gap", async () => {
     mocks.getOrder.mockResolvedValue(
       job([], {
         material: "",
@@ -236,7 +236,7 @@ describe("job details and updates", () => {
     expect(within(spec).getByText("Coated paper")).toBeVisible();
     expect(within(spec).getByText("Not specified")).toHaveClass("text-text-muted");
     expect(
-      within(spec).queryByText("Promised")?.nextElementSibling,
+      within(spec).getByText("Shop ready by").nextElementSibling,
     ).not.toHaveTextContent("Not specified");
   });
 
