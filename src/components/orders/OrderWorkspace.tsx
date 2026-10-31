@@ -71,7 +71,7 @@ import { BasketPanel } from "@/components/orders/BasketPanel";
 import { ShopHeading } from "@/components/orders/ShopHeading";
 import { BasketPayment } from "@/components/orders/BasketPayment";
 import { OrderMoneyLines } from "@/components/orders/OrderMoneyLines";
-import { PaymentSummary } from "@/components/orders/PaymentSummary";
+import { PaymentDecision } from "@/components/orders/PaymentDecision";
 import { ApprovalProofPanel } from "@/components/orders/ApprovalProof";
 import { OrderChatThread } from "@/components/client-shop-chat/OrderChatThread";
 import {
@@ -195,7 +195,7 @@ import {
 import { milestoneName, presentOrderState } from "@/lib/order-state";
 import { shopProofStages } from "@/lib/payout-plan";
 import { proofCountLabel, shopProofFileIds, stageProofIds } from "@/lib/payout-proofs";
-import { paymentOf, paymentPlanLabel, paymentProgress } from "@/lib/payments";
+import { paymentPlanLabel, paymentProgress } from "@/lib/payments";
 import {
   payoutProgress,
   payoutSummary,
@@ -1673,7 +1673,7 @@ function StepRow({
             onReject={onRejectBasket}
           />
         ) : (
-          <PaymentStep
+          <PaymentDecision
             order={order}
             busy={busy}
             onConfirm={onConfirmPayment}
@@ -1954,56 +1954,6 @@ function PhysicalInvoicePanel({
         </Button>
       </div>
     </div>
-  );
-}
-
-function PaymentStep({
-  order,
-  busy,
-  onConfirm,
-  onReject,
-}: {
-  order: Order;
-  busy: boolean;
-  onConfirm: (installment: PaymentInstallment) => void;
-  onReject: (installment: PaymentInstallment, reason: string) => void;
-}) {
-  return (
-    <PaymentSummary
-      order={order}
-      renderActions={(installment) =>
-        paymentOf(order, installment)?.status === "pending_confirmation" ? (
-          <div className="mt-3 flex flex-col gap-2">
-            <p className="text-caption text-text-secondary m-0">
-              Check the transfer against the amount and receipt before confirming.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="primary"
-                onClick={() => onConfirm(installment)}
-                disabled={busy}
-              >
-                {installment === "balance"
-                  ? "Confirm balance payment"
-                  : "Confirm this payment"}
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={busy}
-                onClick={() =>
-                  onReject(
-                    installment,
-                    "The transfer could not be matched to this order.",
-                  )
-                }
-              >
-                {installment === "balance" ? "Reject balance" : "Reject"}
-              </Button>
-            </div>
-          </div>
-        ) : null
-      }
-    />
   );
 }
 
