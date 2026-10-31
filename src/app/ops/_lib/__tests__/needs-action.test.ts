@@ -9,6 +9,7 @@ import {
   needsActionOf,
   needsActionSortKey,
 } from "../needs-action";
+import { isSlaBreached } from "../overview";
 
 const NOW = Date.parse("2026-10-31T06:00:00Z");
 
@@ -178,13 +179,23 @@ describe("the needs-action queue", () => {
     ]) {
       expect(needsActionOf(order(state, state), NOW), state).toBeNull();
     }
-    // A finished or delivered order past its date is not late any more.
-    for (const state of ["cancelled", "completed", "delivered", "issue_window_open"]) {
+    // A finished, cancelled or delivered order past its date is not late any more.
+    for (const state of ["cancelled", "completed", "delivered"]) {
       expect(
         needsActionOf(order(state, state, { deadline: "2026-10-01T00:00:00Z" }), NOW),
         state,
       ).toBeNull();
     }
+  });
+
+  it("keeps the overview's late rule: an overdue order on the counter is still late", () => {
+    const counter = order("counter", "awaiting_collection", {
+      deadline: "2026-10-30T06:00:00Z",
+    });
+    expect(isSlaBreached(counter, NOW)).toBe(true);
+    expect(buildNeedsActionQueue([counter], NOW).map((row) => row.action)).toEqual([
+      "late",
+    ]);
   });
 
   it("falls back to when the order entered its state, and puts an unknown wait last", () => {

@@ -63,7 +63,8 @@ const LABELS = Object.fromEntries(
 /** How often the waits tick while the page is open. */
 const TICK_MS = 30_000;
 
-function useNow(intervalMs: number): number {
+/** The queue's clock. The page reads it once, so the tab total and the rows agree. */
+export function useNeedsActionClock(intervalMs: number = TICK_MS): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), intervalMs);
@@ -81,11 +82,12 @@ function waitLabel(row: NeedsActionRow, nowMs: number): string {
 
 type Props = {
   orders: Order[];
+  /** From `useNeedsActionClock`, shared with the tab total. */
+  now: number;
   onRefresh: () => void;
 };
 
-export function NeedsActionQueue({ orders, onRefresh }: Props) {
-  const now = useNow(TICK_MS);
+export function NeedsActionQueue({ orders, now, onRefresh }: Props) {
   const [paying, setPaying] = useState<Order | null>(null);
   const [dispatching, setDispatching] = useState<Order | null>(null);
   const rows = useMemo(() => buildNeedsActionQueue(orders, now), [orders, now]);
@@ -212,7 +214,12 @@ export function NeedsActionQueue({ orders, onRefresh }: Props) {
           rowActionsDensity="labeled"
           rowActions={(row) => (
             <>
-              {row.action === "payment" && (row.installment || row.order.basketId) ? (
+              {/*
+                Only the order's own installment (or a basket's checkout, which
+                mirrors it) is decided in the sheet. A pin or change top-up has
+                its own decision on the order, so it keeps Open.
+              */}
+              {row.action === "payment" && row.installment ? (
                 <DataTableRowAction
                   label="Confirm payment"
                   icon={Wallet}

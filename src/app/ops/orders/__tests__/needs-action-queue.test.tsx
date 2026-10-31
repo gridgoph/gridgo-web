@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
@@ -145,4 +145,31 @@ it("still opens a stage when the link names one", async () => {
   expect(
     screen.queryByRole("table", { name: "Orders waiting on you" }),
   ).not.toBeInTheDocument();
+});
+
+it("keeps the tab total, the counts and the rows on one clock as a deadline passes", async () => {
+  vi.useRealTimers();
+  vi.useFakeTimers({
+    toFake: ["Date", "setInterval", "clearInterval"],
+    now: new Date("2026-10-31T06:00:00Z"),
+  });
+  listOrders.mockResolvedValue([
+    order("ord_soon", "Posters", "production", { deadline: "2026-10-31T06:00:10Z" }),
+  ]);
+  render(<OpsOrdersPage />);
+  const tab = await screen.findByRole("button", { name: /Needs action/ });
+  expect(tab).toHaveTextContent("0");
+
+  await act(async () => {
+    vi.advanceTimersByTime(30_000);
+  });
+
+  const counts = within(screen.getByRole("region", { name: "Waiting on you" }));
+  expect(
+    counts.getByText("Late").parentElement?.querySelector("[data-slot=stat-value]")
+      ?.textContent,
+  ).toBe("1");
+  const table = screen.getByRole("table", { name: "Orders waiting on you" });
+  expect(within(table).getByText("Posters")).toBeInTheDocument();
+  expect(tab).toHaveTextContent("1");
 });

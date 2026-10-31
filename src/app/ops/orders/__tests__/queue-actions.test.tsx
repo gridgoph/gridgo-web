@@ -231,6 +231,52 @@ describe("Confirm payment from the queue", { timeout: 20_000 }, () => {
   });
 });
 
+describe("A top-up on a paid grouped order", { timeout: 20_000 }, () => {
+  it("leaves the pin payment on the order instead of opening the paid checkout", async () => {
+    const paidDownpayment = {
+      ...initial("confirmed"),
+      amountMinor: 46500,
+      reference: "1098765432101",
+      proofFileId: null,
+    };
+    const shop = groupOrder({
+      id: "ord_a",
+      groupLabel: "Shop A",
+      title: "Stickers",
+      state: "ready_for_dispatch",
+      payments: { downpayment: paidDownpayment },
+      deliveryPin: {
+        change: {
+          id: "pin_1",
+          status: "pending_confirmation",
+          payment: {
+            proofFileId: "pin-proof",
+            reference: "PIN-REF",
+            submittedAt: "2026-10-31T03:00:00Z",
+          },
+        },
+      },
+    } as unknown as Partial<Order> & Pick<Order, "id">);
+    basket = basketOf([shop, groupOrder({ id: "ord_b", groupLabel: "Shop B" })], {
+      payment: { ...basketOf([shop]).payment, status: "confirmed" },
+    });
+    orders = [shop];
+    render(<OpsOrdersPage />);
+
+    const row = await rowFor("Stickers");
+    expect(row.getByText("Confirm payment")).toBeInTheDocument();
+    expect(
+      row.queryByRole("button", { name: "Confirm payment" }),
+    ).not.toBeInTheDocument();
+    expect(row.getByLabelText("Open").closest("a")).toHaveAttribute(
+      "href",
+      "/ops/orders/ord_a",
+    );
+    // The pin payment comes first: no rider until it is decided on the order.
+    expect(row.queryByRole("button", { name: "Assign rider" })).not.toBeInTheDocument();
+  });
+});
+
 describe("Assign rider from the queue", { timeout: 20_000 }, () => {
   it("lists only the riders the API accepts and sends the dispatch board's request", async () => {
     render(<OpsOrdersPage />);

@@ -74,12 +74,12 @@ export type NeedsActionRow = {
   installment: PaymentInstallment | null;
 };
 
-/** Delivered, at the counter, or waiting out the issue window: not late any more. */
-const ARRIVED_STATES = new Set(["delivered", "awaiting_collection", "issue_window_open"]);
-
-/** The overview's breached deadline, for an order still on its way to the client. */
+/**
+ * The overview's breached deadline, unchanged (`isSlaBreached`). An order on
+ * the office counter is still late until the client has it. Finished and
+ * cancelled orders never reach this: `needsActionOf` drops them first.
+ */
 export function isLate(order: Order, nowMs: number = Date.now()): boolean {
-  if (stageOf(order) === "done" || ARRIVED_STATES.has(order.state)) return false;
   return isSlaBreached(order, nowMs);
 }
 

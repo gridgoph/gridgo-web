@@ -17,7 +17,10 @@ import {
 } from "@/app/ops/_lib/pipeline";
 import { buildNeedsActionQueue } from "@/app/ops/_lib/needs-action";
 import { FileCheckQueue } from "@/components/orders/FileCheckQueue";
-import { NeedsActionQueue } from "@/components/orders/NeedsActionQueue";
+import {
+  NeedsActionQueue,
+  useNeedsActionClock,
+} from "@/components/orders/NeedsActionQueue";
 import {
   QueueOrderCell,
   queueOrderFilterValue,
@@ -119,9 +122,11 @@ export default function OpsOrdersPage() {
       ) as Record<Stage, number>,
     [orders],
   );
+  // One clock for the tab total and the rows, so they never disagree.
+  const now = useNeedsActionClock();
   const needsActionTotal = useMemo(
-    () => buildNeedsActionQueue(orders ?? []).length,
-    [orders],
+    () => buildNeedsActionQueue(orders ?? [], now).length,
+    [orders, now],
   );
   const rows = useMemo(() => {
     if (stage === NEEDS_ACTION) return [];
@@ -306,7 +311,11 @@ export default function OpsOrdersPage() {
       </div>
 
       {stage === NEEDS_ACTION ? (
-        <NeedsActionQueue orders={orders ?? []} onRefresh={() => void load()} />
+        <NeedsActionQueue
+          orders={orders ?? []}
+          now={now}
+          onRefresh={() => void load()}
+        />
       ) : stage === "qa" ? (
         // The file check is its own queue: oldest first, a live wait, and Pass
         // or Send back from the row. Orders still in payment review show their
