@@ -8,6 +8,11 @@
  * table holds the groups in flow order, each row labelled with its action. A
  * late order that also owes a step keeps that step and carries a Late chip, so
  * nothing ranks lateness against money here.
+ *
+ * A payment and a rider are decided from the row (gridgo-web#272): Confirm
+ * payment opens the workspace's own payment decision in a sheet, proof and
+ * all, and Assign rider lists the riders the API accepts. Both send exactly
+ * the request the order workspace and the dispatch board send.
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -21,6 +26,8 @@ import {
   type NeedsActionId,
   type NeedsActionRow,
 } from "@/app/ops/_lib/needs-action";
+import { AssignRiderDialog } from "@/components/orders/AssignRiderDialog";
+import { ConfirmPaymentSheet } from "@/components/orders/ConfirmPaymentSheet";
 import {
   QueueOrderCell,
   queueOrderFilterValue,
@@ -37,6 +44,7 @@ import { StatCard } from "@/components/ui/StatCard";
 import { StatusChip } from "@/components/ui/StatusChip";
 import type { Order } from "@/lib/api/types";
 import { basketShopCounts } from "@/lib/baskets";
+import { pinDispatchBlocker } from "@/lib/delivery-pin";
 import { isExpressOrder } from "@/lib/express";
 import { formatWait } from "@/lib/file-check";
 import { formatPhp } from "@/lib/format";
@@ -78,6 +86,8 @@ type Props = {
 
 export function NeedsActionQueue({ orders, onRefresh }: Props) {
   const now = useNow(TICK_MS);
+  const [paying, setPaying] = useState<Order | null>(null);
+  const [dispatching, setDispatching] = useState<Order | null>(null);
   const rows = useMemo(() => buildNeedsActionQueue(orders, now), [orders, now]);
   const counts = useMemo(() => needsActionCounts(rows), [rows]);
   // Counted across every order: a basket's groups move independently.
@@ -199,15 +209,44 @@ export function NeedsActionQueue({ orders, onRefresh }: Props) {
           defaultSortId="action"
           pageSize={25}
           itemLabel="orders"
+          rowActionsDensity="labeled"
           rowActions={(row) => (
-            <DataTableRowAction
-              label="Open"
-              icon={Eye}
-              href={`/ops/orders/${row.order.id}`}
-            />
+            <>
+              {row.action === "payment" && (row.installment || row.order.basketId) ? (
+                <DataTableRowAction
+                  label="Confirm payment"
+                  icon={Wallet}
+                  onClick={() => setPaying(row.order)}
+                />
+              ) : null}
+              {row.action === "rider" ? (
+                <DataTableRowAction
+                  label="Assign rider"
+                  icon={Bike}
+                  disabled={pinDispatchBlocker(row.order) !== null}
+                  onClick={() => setDispatching(row.order)}
+                />
+              ) : null}
+              <DataTableRowAction
+                label={row.action === "artwork" ? "Check artwork" : "Open"}
+                icon={row.action === "artwork" ? FileSearch : Eye}
+                href={`/ops/orders/${row.order.id}`}
+              />
+            </>
           )}
         />
       )}
+
+      <ConfirmPaymentSheet
+        order={paying}
+        onClose={() => setPaying(null)}
+        onDecided={onRefresh}
+      />
+      <AssignRiderDialog
+        order={dispatching}
+        onClose={() => setDispatching(null)}
+        onAssigned={onRefresh}
+      />
     </div>
   );
 }

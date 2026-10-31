@@ -9,6 +9,7 @@ import { Bike, Eye, MapPin, PackageCheck, RefreshCw } from "lucide-react";
 
 import { filterDispatchOrders, presentRouteAction } from "@/app/ops/_lib/dispatch";
 import { presentZone } from "@/app/ops/_lib/present";
+import { AssignRiderDialog } from "@/components/orders/AssignRiderDialog";
 import { StaleRiders } from "@/components/riders/StaleRiders";
 import { VehicleGlyph } from "@/components/riders/VehicleGlyph";
 import { useRiderLocations } from "@/components/riders/useRiderLocations";
@@ -40,7 +41,6 @@ import {
   listOrders,
   listUsers,
   recordCollection,
-  transitionOrder,
 } from "@/lib/api/client";
 import type { Order, RiderLocation, User } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
@@ -66,9 +66,6 @@ import {
   pinReceiverLine,
   presentPinForDispatch,
 } from "@/lib/delivery-pin";
-
-/** Demo rider when order has none — same honesty as QA workspace. */
-const DEMO_RIDER_ID = "user_rider";
 
 /** The Location cell for one order: the rider's freshness, or why there is none. */
 type LocationCell = {
@@ -145,6 +142,8 @@ export default function OpsDispatchPage() {
   const [releasing, setReleasing] = useState<Order | null>(null);
   const [collector, setCollector] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
+  /** The order whose rider is being chosen, from the approved riders. */
+  const [assigning, setAssigning] = useState<Order | null>(null);
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -219,30 +218,6 @@ export default function OpsDispatchPage() {
         );
       } else {
         setActionError("Network error while releasing the order.");
-      }
-    } finally {
-      setActing(null);
-    }
-  }
-
-  async function assignRider(order: Order) {
-    setActing(order.id);
-    setActionError(null);
-    try {
-      await transitionOrder(order.id, "rider_assigned", {
-        riderId: order.riderId || DEMO_RIDER_ID,
-        note: "Rider assigned for pickup",
-      });
-      await load();
-    } catch (err) {
-      if (err instanceof ApiError) {
-        setActionError(
-          err.code === "delivery_pin_payment_pending"
-            ? "The client's delivery-pin payment is waiting on Operations. Verify or reject it on the order, then assign a rider."
-            : `Could not assign rider (${err.code}).`,
-        );
-      } else {
-        setActionError("Network error while assigning rider.");
       }
     } finally {
       setActing(null);
@@ -517,7 +492,10 @@ export default function OpsDispatchPage() {
                   }
                   icon={Bike}
                   disabled={acting !== null || pinDispatchBlocker(o) !== null}
-                  onClick={() => void assignRider(o)}
+                  onClick={() => {
+                    setActionError(null);
+                    setAssigning(o);
+                  }}
                 />
               ) : null}
               {o.state === "awaiting_collection" ? (
@@ -581,12 +559,18 @@ export default function OpsDispatchPage() {
         </DialogContent>
       </Dialog>
 
+      <AssignRiderDialog
+        order={assigning}
+        onClose={() => setAssigning(null)}
+        onAssigned={() => void load()}
+      />
+
       <p className="text-caption text-text-muted m-0 flex items-start gap-2">
         <MapPin size={14} className="mt-0.5 shrink-0" aria-hidden />
         <span>
-          Assign rider uses the demo rider when no directory endpoint exists. The vehicle
-          shown is the one on the rider&apos;s profile. Tracking runs from the moment a
-          rider accepts the job until delivery.
+          Assign rider lists the approved riders to choose from. The vehicle shown is the
+          one on the rider&apos;s profile. Tracking runs from the moment a rider accepts
+          the job until delivery.
         </span>
       </p>
     </div>
