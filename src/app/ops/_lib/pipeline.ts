@@ -24,9 +24,17 @@ import {
   productionProgressOf,
   progressPhotoCount,
 } from "@/lib/production-progress";
-import { finishedReviewStatus } from "@/lib/shop-handover";
-import { pinPaymentAwaitingOperations } from "@/lib/delivery-pin";
-import { changePaymentAwaitingStaff } from "@/lib/order-changes";
+import {
+  awaitingFinishedReview,
+  finishedReviewQueue,
+  finishedReviewStatus,
+} from "@/lib/shop-handover";
+import {
+  pinChangeOf,
+  pinDispatchBlocker,
+  pinPaymentAwaitingOperations,
+} from "@/lib/delivery-pin";
+import { changePaymentAwaitingStaff, changeRequestsOf } from "@/lib/order-changes";
 
 export type Stage = "payment" | "qa" | "production" | "delivery" | "done";
 
@@ -123,6 +131,97 @@ export function stageNeedsOperations(order: Order): boolean {
   return false;
 }
 
+/**
+ * The next thing Operations can do with this order, or null when the next
+ * move belongs to someone else.
+ *
+ * An order is in at most one group. The groups are the kinds of work this
+ * queue already knows how to name. They are not a ranking: a late job is not
+ * in any of them, and lateness stays on the late-production desk.
+ */
+export type OperationsAction =
+  | "confirm_payment"
+  | "check_artwork"
+  | "review_finished"
+  | "assign_rider";
+
+export const OPERATIONS_ACTIONS: readonly OperationsAction[] = [
+  "confirm_payment",
+  "check_artwork",
+  "review_finished",
+  "assign_rider",
+];
+
+export const OPERATIONS_ACTION_LABEL: Record<OperationsAction, string> = {
+  confirm_payment: "Confirm payment",
+  check_artwork: "Check the artwork",
+  review_finished: "Review finished work",
+  assign_rider: "Assign rider",
+};
+
+/** A downpayment, pin payment, or change payment is waiting to be confirmed. */
+export function paymentAwaitingConfirmation(order: Order): boolean {
+  if (pinPaymentAwaitingOperations(order)) return true;
+  if (changePaymentAwaitingStaff(order)) return true;
+  if (stageOf(order) === "payment") {
+    return paymentOf(order, "downpayment")?.status === "pending_confirmation";
+  }
+  return false;
+}
+
+export function operationsAction(order: Order): OperationsAction | null {
+  // Artwork is this order's group even when a payment is also open, so the
+  // file check is not listed twice.
+  if (order.state === "needs_qa") return "check_artwork";
+  if (paymentAwaitingConfirmation(order)) return "confirm_payment";
+  if (awaitingFinishedReview(order)) return "review_finished";
+  // A pending pin payment is a confirmation, above. The API refuses assignment
+  // while that payment waits (`409 delivery_pin_payment_pending`).
+  if (order.state === "ready_for_dispatch" && pinDispatchBlocker(order) === null) {
+    return "assign_rider";
+  }
+  return null;
+}
+
+/** Earliest submitted proof, or when the order last moved if no proof time exists. */
+export function confirmPaymentWaitAt(order: Order): string {
+  const times: string[] = [];
+  const down = paymentOf(order, "downpayment");
+  if (down?.status === "pending_confirmation" && down.submittedAt) {
+    times.push(down.submittedAt);
+  }
+  const pinPayment = pinChangeOf(order)?.payment;
+  if (pinPaymentAwaitingOperations(order) && pinPayment?.submittedAt) {
+    times.push(pinPayment.submittedAt);
+  }
+  for (const request of changeRequestsOf(order)) {
+    if (request.status === "pending_confirmation" && request.payment?.submittedAt) {
+      times.push(request.payment.submittedAt);
+    }
+  }
+  times.sort();
+  return times[0] || order.updatedAt || "";
+}
+
+/** One action's orders, oldest wait first. Artwork keeps the file check's own order. */
+export function ordersForAction(orders: readonly Order[], action: OperationsAction): Order[] {
+  const matched = orders.filter((order) => operationsAction(order) === action);
+  if (action === "confirm_payment") {
+    return [...matched].sort(
+      (a, b) =>
+        confirmPaymentWaitAt(a).localeCompare(confirmPaymentWaitAt(b)) ||
+        a.id.localeCompare(b.id),
+    );
+  }
+  if (action === "review_finished") return finishedReviewQueue(matched);
+  if (action === "assign_rider") {
+    return [...matched].sort(
+      (a, b) => (a.updatedAt || "").localeCompare(b.updatedAt || "") || a.id.localeCompare(b.id),
+    );
+  }
+  return matched;
+}
+
 export function ordersInStage(orders: readonly Order[], stage: Stage): Order[] {
   return orders.filter((order) => stageOf(order) === stage);
 }
@@ -139,22 +238,26 @@ export function stageCounts(orders: readonly Order[]): Record<Stage, number> {
   return counts;
 }
 
-/** How many orders in this stage are actually waiting on Operations. */
+/**
+ * How many orders in this stage are waiting on Operations.
+ *
+ * A stage total counts every order at that step. This counts only the ones in
+ * an action group, including a rider to assign and finished work to review.
+ */
 export function actionableCount(orders: readonly Order[], stage: Stage): number {
-  return orders.filter((order) => stageOf(order) === stage && stageNeedsOperations(order))
+  return orders.filter((order) => stageOf(order) === stage && operationsAction(order) !== null)
     .length;
 }
 
 /**
  * How many orders, across every stage, are waiting on Operations right now.
  *
- * This is the number on the rail's Orders pill. It is the same test the queue
- * emphasises per stage, summed, so the pill and the page never disagree about
- * what "waiting on you" means: a transfer to confirm or artwork to check, never
- * a job that is with a shop, a rider or a clock.
+ * This is the number on the rail's Orders pill. It counts the same orders as
+ * the action groups, so the pill and the page agree. A job that is only with
+ * the shop, only with a rider, or only late is not one of them.
  */
 export function waitingOnOperationsCount(orders: readonly Order[]): number {
-  return orders.filter((order) => stageNeedsOperations(order)).length;
+  return orders.filter((order) => operationsAction(order) !== null).length;
 }
 
 export type StepStatus = "done" | "current" | "locked";
