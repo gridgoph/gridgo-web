@@ -12,6 +12,7 @@ import { formatPhp } from "@/lib/format";
 import { asDeduction, discountLabel, orderFeeSplit } from "@/lib/organization-discount";
 import { orderVoucher, VOUCHER_LINE_LABEL } from "@/lib/vouchers";
 import { appliedPinChange, signedPhp } from "@/lib/delivery-pin";
+import { deliveryPositionLabel } from "@/lib/baskets";
 import { shopMoveMoney } from "@/lib/shop-move";
 
 type Props = {
@@ -111,7 +112,11 @@ export function OrderMoneyLines({ order, totalLabel = "Client total" }: Props) {
           />
         </>
       ) : order.deliveryFeeMinor != null ? (
-        <Line label="Delivery" value={formatPhp(order.deliveryFeeMinor)} />
+        // One of a shop's separate deliveries names itself: "Delivery 1 of 2".
+        <Line
+          label={deliveryPositionLabel(order) ?? "Delivery"}
+          value={formatPhp(order.deliveryFeeMinor)}
+        />
       ) : null}
       {/*
         Who the delivery fee belongs to, at the rate snapshotted on this

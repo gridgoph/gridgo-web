@@ -4,7 +4,10 @@ import {
   basketShopCounts,
   cancelledShare,
   cancelledShares,
+  deliveryPositionLabel,
+  groupDeliveryPosition,
   groupMoney,
+  groupName,
   groupPositionLabel,
   groupRefundState,
   reconcileBasket,
@@ -121,5 +124,56 @@ describe("cancelledShare", () => {
     expect(cancelledShares(basket)).toEqual([]);
     const refunding = basketOf([shopA, { ...cancelledB, refundHold: true }]);
     expect(cancelledShares(refunding)).toEqual([]);
+  });
+});
+
+describe("separate deliveries from one shop", () => {
+  const first = { ...shopA, deliveryNumber: 1, shopDeliveryCount: 2 };
+
+  it("names one of a shop's deliveries", () => {
+    expect(deliveryPositionLabel(first)).toBe("Delivery 1 of 2");
+    expect(groupName("Shop A", { deliveryNumber: 2, shopDeliveryCount: 2 })).toBe(
+      "Shop A, delivery 2 of 2",
+    );
+    expect(groupPositionLabel(first, basketShopCounts([first, shopB]))).toBe(
+      "Shop A · Delivery 1 of 2 · 2 groups",
+    );
+  });
+
+  it("says nothing for a single delivery, an older API or a nonsense position", () => {
+    expect(deliveryPositionLabel(shopA)).toBeNull();
+    expect(deliveryPositionLabel({ deliveryNumber: 1, shopDeliveryCount: 1 })).toBeNull();
+    expect(deliveryPositionLabel({ deliveryNumber: 3, shopDeliveryCount: 2 })).toBeNull();
+    expect(deliveryPositionLabel({ deliveryNumber: 0, shopDeliveryCount: 2 })).toBeNull();
+    expect(deliveryPositionLabel(null)).toBeNull();
+    expect(groupName("Shop A", shopA)).toBe("Shop A");
+    expect(groupPositionLabel(shopA, basketShopCounts([shopA, shopB]))).toBe(
+      "Shop A · 2 groups",
+    );
+  });
+
+  it("reads a basket group's position from the group, else its order", () => {
+    const basket = basketOf([
+      first,
+      { ...shopA, id: "ord_2", deliveryNumber: 2, shopDeliveryCount: 2 },
+    ]);
+    expect(deliveryPositionLabel(groupDeliveryPosition(basket.groups[1]))).toBe(
+      "Delivery 2 of 2",
+    );
+    basket.groups[0].deliveryNumber = 1;
+    basket.groups[0].shopDeliveryCount = 2;
+    expect(deliveryPositionLabel(groupDeliveryPosition(basket.groups[0]))).toBe(
+      "Delivery 1 of 2",
+    );
+  });
+
+  it("adds each delivery up by name against the one payment", () => {
+    const second = { ...shopA, id: "ord_2", deliveryNumber: 2, shopDeliveryCount: 2 };
+    const basket = basketOf([first, second]);
+    basket.groups.forEach((group) => (group.label = "Shop A"));
+    expect(reconcileBasket(basket).parts.map((part) => part.label)).toEqual([
+      "Shop A, delivery 1 of 2",
+      "Shop A, delivery 2 of 2",
+    ]);
   });
 });

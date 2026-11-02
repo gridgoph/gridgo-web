@@ -66,6 +66,7 @@ import {
   pinReceiverLine,
   presentPinForDispatch,
 } from "@/lib/delivery-pin";
+import { deliveryPositionLabel } from "@/lib/baskets";
 
 /** The Location cell for one order: the rider's freshness, or why there is none. */
 type LocationCell = {
@@ -244,7 +245,10 @@ export default function OpsDispatchPage() {
               {isExpressOrder(o) ? <ExpressChip /> : null}
               <TestOrderChip order={o} />
             </div>
-            <p className="text-caption text-text-muted m-0 mt-0.5">Order {o.id}</p>
+            <p className="text-caption text-text-muted m-0 mt-0.5">
+              {deliveryPositionLabel(o) ? `${deliveryPositionLabel(o)} · ` : ""}
+              Order {o.id}
+            </p>
             <p className="text-caption text-text-muted m-0 mt-0.5">
               {presentZone(o.zone)}
               {focusOrder === o.id ? " · focused" : ""}
@@ -444,7 +448,10 @@ export default function OpsDispatchPage() {
               >
                 <span className="min-w-0">
                   <span className="text-body text-text-primary block">{o.title}</span>
-                  <span className="text-caption text-text-muted">Order {o.id}</span>
+                  <span className="text-caption text-text-muted">
+                    {deliveryPositionLabel(o) ? `${deliveryPositionLabel(o)} · ` : ""}
+                    Order {o.id}
+                  </span>
                 </span>
                 {isExpressOrder(o) ? (
                   <span className="ml-auto">

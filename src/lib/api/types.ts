@@ -1182,6 +1182,13 @@ export type Order = {
   basketId?: string | null;
   /** "Shop A", "Shop B", … — never the shop's trading name. */
   groupLabel?: string | null;
+  /**
+   * A shop split into separate deliveries (gridgo-api#275, SHOP_DELIVERIES_API.md):
+   * this order's place among that shop's deliveries, 1-based. Sent only when
+   * `shopDeliveryCount > 1`. Read through `deliveryPositionLabel`.
+   */
+  deliveryNumber?: number | null;
+  shopDeliveryCount?: number | null;
   basketDeadline?: string | null;
   invoiceNumber?: string | null;
   /**
@@ -4032,6 +4039,9 @@ export type BasketGroup = {
   deadline?: string | null;
   orderId: string;
   label: string;
+  /** Separate deliveries from one shop: "Delivery 1 of 2". Absent for a single delivery. */
+  deliveryNumber?: number | null;
+  shopDeliveryCount?: number | null;
   state: string;
   /** Printing as the client sees it: shop price plus the gross service fee. */
   clientItemSubtotalMinor: number;
@@ -4077,6 +4087,9 @@ export type BasketInvoiceGroup = {
   deadline?: string | null;
   orderId: string;
   label: string;
+  /** Separate deliveries from one shop: "Delivery 1 of 2". Absent for a single delivery. */
+  deliveryNumber?: number | null;
+  shopDeliveryCount?: number | null;
   lines: InvoiceLine[];
   clientItemSubtotalMinor: number;
   itemSubtotalMinor?: number;
