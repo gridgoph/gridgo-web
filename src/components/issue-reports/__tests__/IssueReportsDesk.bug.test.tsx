@@ -122,7 +122,7 @@ describe("Confirm real bug", () => {
     await waitFor(() => expect(confirmIssueReportBug).toHaveBeenCalledWith(report.id));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
     const after = screen.getByRole("region", { name: /Report 50D4F603 text/ });
-    expect(within(after).getByText("Confirmed real bug")).toBeInTheDocument();
+    expect(screen.getByText("Confirmed bug")).toBeInTheDocument();
     expect(within(after).getByText("₱15.00 voucher sent")).toBeInTheDocument();
     expect(within(after).getByText(/^Confirmed by Lea on /)).toBeInTheDocument();
     expect(within(after).queryByRole("button", { name: /Confirm real bug/ })).not.toBeInTheDocument();

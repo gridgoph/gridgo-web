@@ -89,8 +89,8 @@ function ConfirmedResult({ report }: { report: IssueReport }) {
   const result = voucherResult(confirmation);
   return (
     <div className="flex flex-col gap-2">
+      {/* "Confirmed bug" sits in the report's header; here is what it did for the reporter. */}
       <div className="flex flex-wrap items-center gap-2">
-        <StatusChip tone="success" icon="circle-check" label="Confirmed real bug" />
         <StatusChip tone={result.tone} icon={result.icon} label={result.label} />
       </div>
       {result.detail ? <p className="text-caption text-text-secondary m-0">{result.detail}</p> : null}
