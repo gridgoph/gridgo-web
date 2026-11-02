@@ -1320,6 +1320,12 @@ export type Order = {
   shopHandover?: ShopHandover | null;
   /** Every staff-forced production step, with its reason. Staff and assigned parties. */
   forcedSteps?: ForcedStep[];
+  /**
+   * The assigned shop's receipt scans (`gridgo-api/docs/SHOP_RECEIPT_SCAN_API.md`).
+   * Operations and Super Admin only; absent on an older API. Read it through
+   * `src/lib/receipt-scan.ts`.
+   */
+  receiptScan?: OrderReceiptScan | null;
   /** True once any step was forced: every app shows "Forced by GRIDGO". */
   forcedByGridgo?: boolean;
   /** Staff only: the reason codes a forced step may carry. */
@@ -2107,6 +2113,13 @@ export type PlatformSettings = {
   /** Super Admin handover codes gate; issued codes survive disabling it. */
   handoverOtpEnabled?: boolean;
   /**
+   * Finance switch (`gridgo-api/docs/SHOP_RECEIPT_SCAN_API.md`): while on, a
+   * shop cannot mark a job ready for rider pickup until its receipt scan is
+   * attached. Every reader sees it; only Super Admin writes it, with a reason.
+   * Absent on an older API; read through `src/lib/receipt-scan.ts`.
+   */
+  shopReceiptScanRequired?: boolean;
+  /**
    * Super Admin: checkout refuses a hardbound line without its cover and
    * spine while on. Off by default; absent on an older API.
    */
@@ -2185,6 +2198,8 @@ export type UpdateSettingsInput = {
   hubPickupEnabled?: boolean;
   /** Super Admin handover codes gate; issued codes survive disabling it. */
   handoverOtpEnabled?: boolean;
+  /** Super Admin only, with a `reason` (`400 settings_reason_required`). */
+  shopReceiptScanRequired?: boolean;
   /**
    * Super Admin: checkout refuses a hardbound line without its cover and
    * spine while on. Off by default; absent on an older API.
@@ -2467,10 +2482,23 @@ export type ForcedStep = {
   skippedChecks: string[];
 };
 
+/** The assigned shop's attached receipt scans on one order, as staff read them. */
+export type OrderReceiptScan = {
+  attached: boolean;
+  /** Oldest first. Each opens with the signed read `GET /files/:fileId`. */
+  fileIds: string[];
+  latestFileId: string | null;
+  latestUploadedAt: string | null;
+};
+
 export type TransitionReadiness = {
   allowed: boolean;
   missing: TransitionRequirement[];
-  /** A supplier invoice scan. Optional: it never holds a step. */
+  /**
+   * The shop's receipt scan. `required` follows the Finance switch for
+   * `ready_for_dispatch` (always false for `supplier_self_qc`); while it is
+   * true and nothing is attached, `missing` names `receipt_scan_required`.
+   */
   receiptScan?: { required: boolean; attached: boolean } | null;
 };
 

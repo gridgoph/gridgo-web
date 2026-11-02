@@ -107,10 +107,30 @@ describe("audited production corrections", () => {
         from: "production",
         to: "ready_for_dispatch",
         photoMissing: true,
+        receiptScanMissing: false,
         reasonCode: null,
         skippedChecks: [],
       },
     ]);
+  });
+
+  it("reads a receipt scan the Finance switch required and the force went past", () => {
+    const [correction] = productionCorrections(
+      [
+        entry({
+          detail: {
+            from: "production",
+            to: "ready_for_dispatch",
+            reasonCode: "technical_issue",
+            receiptScanMissing: true,
+            skippedChecks: ["receipt_scan_required"],
+          },
+        }),
+      ],
+      "ord_1",
+    );
+    expect(correction.receiptScanMissing).toBe(true);
+    expect(correction.skippedChecks).toEqual(["receipt_scan_required"]);
   });
 
   it("reads the reason code and skipped checks a coded correction carries", () => {

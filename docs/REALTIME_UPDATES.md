@@ -198,6 +198,15 @@ Supplier invoice notices (`supplier_invoice_scanned|expected|submitted|corrected
 counts in and opens it. An open desk, and the Finance page's invoice summary, re-read on the
 same notices (`useLegalInboxReload`).
 
+Receipt scans before dispatch (`gridgo-api/docs/SHOP_RECEIPT_SCAN_API.md`, gridgo-supplier#64):
+the Operations order queue, Super Admin Finance's order table and an open order workspace
+re-read on `supplier_invoice_scanned` as well as on the order's own invalidation, so the
+list's Receipt scan marker and the workspace's Receipt scan row show a new scan at once.
+The Finance switch "Require receipt scan before calling a rider"
+(`settings.shopReceiptScanRequired`, off by default) re-reads on the `settings` ping:
+Super Admin changes it on `/admin/finance` with a reason; Operations reads it on
+`/ops/supplier-invoices` and `/ops/settings`. Rules and copy: `src/lib/receipt-scan.ts`.
+
 Sign-up links open Super Admin verification only; Operations has no sign-up destination.
 Operations service-review links open `/ops/service-lines`; legacy `/ops/approvals?tab=services`
 links still work. Other `/ops/approvals` links show the Super Admin only notice. Super Admin
