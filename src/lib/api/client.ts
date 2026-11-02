@@ -149,6 +149,7 @@ import type {
   ShopHours,
   ShopHoursPatch,
   ShopRecovery,
+  ShopRecoveryCause,
   SupplierProductionLapses,
   SupplierInvoiceEnvelope,
   SupplierInvoiceMonth,
@@ -1459,6 +1460,22 @@ export async function listShopFailures(
 export async function getShopRecovery(orderId: string): Promise<ShopRecovery | null> {
   const result = await request<{ recovery: ShopRecovery | null }>(
     `/orders/${encodeURIComponent(orderId)}/shop-recovery`,
+  );
+  return result.recovery ?? null;
+}
+
+/**
+ * Ops / Super Admin. Opens a recovery for a late shop, a GRIDGO-caused move or
+ * a client-caused move (gridgo-api#225). It never moves the order: the client
+ * chooses. The reason (1–2,000 characters) is audited.
+ */
+export async function startShopRecovery(
+  orderId: string,
+  body: { cause: ShopRecoveryCause; reason: string },
+): Promise<ShopRecovery | null> {
+  const result = await request<{ recovery: ShopRecovery | null }>(
+    `/orders/${encodeURIComponent(orderId)}/shop-recovery/start`,
+    { method: "POST", body: JSON.stringify(body) },
   );
   return result.recovery ?? null;
 }

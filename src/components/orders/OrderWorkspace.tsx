@@ -254,6 +254,7 @@ import {
   recoveryNeedsOperations,
   rescheduleNeedsOperations,
 } from "@/lib/shop-changes";
+import { startedByOperations } from "@/lib/shop-move";
 import { cn } from "@/lib/utils";
 import {
   OrderAuditPanel,
@@ -517,6 +518,13 @@ export function OrderWorkspace({
       ids.add(order.shopRecovery.originalSupplierId);
     if (order?.shopRecovery?.proposal?.supplierId)
       ids.add(order.shopRecovery.proposal.supplierId);
+    for (const option of order?.shopRecovery?.proposal?.alternatives ?? []) {
+      if (option.supplierId) ids.add(option.supplierId);
+    }
+    for (const move of order?.shopMoves ?? []) {
+      if (move.fromSupplierId) ids.add(move.fromSupplierId);
+      if (move.toSupplierId) ids.add(move.toSupplierId);
+    }
     if (order?.rescheduleRequest?.supplierId) ids.add(order.rescheduleRequest.supplierId);
     for (const event of failures ?? []) if (event.supplierId) ids.add(event.supplierId);
     // Who verified a delivery-pin payment.
@@ -954,6 +962,7 @@ export function OrderWorkspace({
                       failuresError={failuresError}
                       names={names}
                       tree={tree}
+                      onChanged={load}
                     />
                   </SectionRow>
                 ) : null}
@@ -1321,6 +1330,7 @@ export function defaultOpenSections(order: Order): SectionId[] {
   }
   if (releasableMilestones(order).length > 0) ids.add("payout");
   if (recoveryNeedsOperations(order.shopRecovery)) ids.add("shop");
+  if (order.shopRecovery?.status === "awaiting_payment") ids.add("shop");
   if (rescheduleNeedsOperations(order.rescheduleRequest)) ids.add("deadline");
   if (pinPaymentAwaitingOperations(order)) ids.add("delivery-pin");
   if (changePaymentAwaitingStaff(order)) ids.add("instructions");
@@ -1879,8 +1889,13 @@ function stepSummary(order: Order, step: WorkspaceStep): string {
   // A dropout or a declined deadline request stops the shop's work, whatever
   // state the order still carries.
   if (stage === "production" && step.status === "current") {
+    if (order.shopRecovery?.status === "awaiting_payment") {
+      return "Paused: the client's payment for the new shop needs verifying. The rows below say where.";
+    }
     if (recoveryHoldsWork(order.shopRecovery)) {
-      return "Paused: the shop dropped out. The rows below say what happens next.";
+      return startedByOperations(order.shopRecovery?.kind)
+        ? "Paused: the order is moving to another shop. The rows below say what happens next."
+        : "Paused: the shop dropped out. The rows below say what happens next.";
     }
     if (order.rescheduleRequest?.workHeld) {
       return "Paused while the shop's deadline request is settled.";

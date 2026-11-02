@@ -408,6 +408,20 @@ export function presentChangeForStaff(
 
 /** One sentence under the chip: what is happening and what still applies. */
 export function staffChangeLine(request: OrderChangeRequest): string {
+  if (request.shopMoveTopUp) {
+    switch (request.status) {
+      case "pending_payment":
+        return request.rejectionReason
+          ? "The client's last transfer was rejected. They can send a new screenshot; the new shop waits meanwhile."
+          : "The client still has to pay it. The new shop starts only once the transfer is verified.";
+      case "pending_confirmation":
+        return "The client sent the transfer. Verify the exact amount or reject it; the new shop starts only once it is verified.";
+      case "applied":
+        return "Received. The new shop gets it with its final payout stage.";
+      default:
+        break;
+    }
+  }
   switch (request.status) {
     case "pending":
       return "The client approves or declines it. The shop makes the job as ordered meanwhile.";
