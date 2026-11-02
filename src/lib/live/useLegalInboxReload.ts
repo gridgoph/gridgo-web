@@ -19,6 +19,8 @@ import { useLiveOptional } from "@/lib/live/LiveProvider";
  * `supplier_invoice_scanned` alone: a shop attached a receipt scan.
  * Quote requests too: the API sends staff an `ops_quote_*` notice when a
  * client asks, accepts or cancels, and when options publish or expire.
+ * Sample batches too: a client's decision, cancellation or batch order sends
+ * staff a `sample_*` notice (SAMPLE_FIRST_API.md).
  */
 export function useLegalInboxReload(
   prefix:
@@ -29,6 +31,7 @@ export function useLegalInboxReload(
     | "supplier_invoice_scanned"
     | "colour_price_check"
     | "ops_quote_"
+    | "sample_"
     | null,
   load: () => unknown,
 ): void {

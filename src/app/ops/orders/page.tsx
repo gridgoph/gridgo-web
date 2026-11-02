@@ -68,7 +68,9 @@ import { awaitingFinishedReview, finishedReviewWaitingCount } from "@/lib/shop-h
 export default function OpsOrdersPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const requested = params.get("stage") as View | null;
+  // A stage the queue does not know (an old or mistyped link) opens Needs action.
+  const raw = params.get("stage");
+  const requested = VIEWS.some((view) => view.id === raw) ? (raw as View) : null;
 
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);

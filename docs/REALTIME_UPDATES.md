@@ -194,6 +194,15 @@ of these notices arrives (`useLegalInboxReload`), and keep their Refresh button.
 changing a shop reply sends no notice: another person's reply shows on the next read, and a
 stale write is refused by the request's version and re-read.
 
+Sample First notices (`sample_approved`, `sample_rejected`, `sample_batch_cancelled`,
+`sample_batch_ordered`; `gridgo-api/docs/SAMPLE_FIRST_API.md`) reach Operations and Super
+Admin with an `orderId` and open that order in the caller's own tree: the sample for a
+decision or a cancellation, the new batch order for `sample_batch_ordered`. The inbox words
+them plainly (`SAMPLE_INBOX_HEADLINES` in `src/lib/sample-first.ts`), and the shop's own
+`shop_sample_*` copies open its job. The Sample batches page (`/ops/sample-batches`,
+`/admin/sample-batches`) and an open batch re-read when one arrives (`useLegalInboxReload`)
+and on an `orders` ping, since a sample's delivery starts its price hold.
+
 Post-order survey notices (`order_survey_available`, `order_survey_dismissed`,
 `order_survey_submitted`; `gridgo-api/docs/SURVEY_API.md`) reach Operations and Super Admin
 without any answer. Only Super Admin can read responses, so its `order_survey_submitted`

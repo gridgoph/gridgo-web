@@ -88,6 +88,7 @@ import { QaChecklistFields } from "./QaChecklist";
 import { ProhibitedItemDialog } from "./ProhibitedItem";
 import { PROHIBITED_HOLD_STATE } from "@/lib/prohibited-item";
 import { ShopModeChip } from "@/components/orders/ShopModeChip";
+import { SampleTagChip } from "@/components/orders/SampleFirst";
 import { TestOrderChip } from "@/components/orders/TestOrders";
 import { ExpressChip } from "@/components/ui/ExpressChip";
 import { isExpressOrder } from "@/lib/express";
@@ -193,6 +194,7 @@ export function FileCheckQueue({
             <div className="mt-1 flex flex-wrap items-center gap-2">
               <ShopModeChip mode={shopModeOf(row.order, shopCounts)} />
               {isExpressOrder(row.order) ? <ExpressChip /> : null}
+              <SampleTagChip order={row.order} />
               <TestOrderChip order={row.order} />
             </div>
             <p className="text-caption text-text-secondary m-0 mt-0.5 truncate">

@@ -170,6 +170,15 @@ export type Listing = {
   colourPricing: ListingColourPricing | null;
   /** False on an API that predates colour pricing: nothing is shown or sent. */
   colourSupported: boolean;
+  /**
+   * Sample First (gridgo-api#222, SAMPLE_FIRST_API.md): the shop offers one
+   * paid sample before the batch, at its own `samplePriceMinor`. Both apply at
+   * once, without listing review. `null` on an API that predates samples:
+   * nothing is shown or sent.
+   */
+  sampleAvailable: boolean | null;
+  /** Kept while the offer is off. */
+  samplePriceMinor: number | null;
   minimumHeightMilli: number | null;
   minimumLengthMilli: number | null;
   minimumOrderQuantity: number | null;
@@ -462,6 +471,11 @@ export function normalizeListing(body: unknown, index = 0): Listing | null {
     oneColour: pick(raw, "oneColour", "one_colour") === true,
     colourPricing: readColourPricing(pick(raw, "colourPricing", "colour_pricing")),
     colourSupported: typeof pick(raw, "pricedByColour", "priced_by_colour") === "boolean",
+    sampleAvailable:
+      typeof pick(raw, "sampleAvailable", "sample_available") === "boolean"
+        ? (pick(raw, "sampleAvailable", "sample_available") as boolean)
+        : null,
+    samplePriceMinor: num(pick(raw, "samplePriceMinor", "sample_price_minor")),
     minimumHeightMilli: num(pick(raw, "minimumHeightMilli", "minimum_height_milli")),
     minimumLengthMilli: num(pick(raw, "minimumLengthMilli", "minimum_length_milli")),
     minimumOrderQuantity: num(pick(raw, "minimumOrderQuantity", "minimum_order_quantity")),
