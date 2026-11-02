@@ -161,7 +161,7 @@ export function QuoteReplyDialog({
               >
                 <SelectTrigger
                   id="quote-reply-shop"
-                  className="w-full"
+                  className="min-h-11 w-full"
                   aria-invalid={errors.supplierId ? true : undefined}
                 >
                   <SelectValue>
