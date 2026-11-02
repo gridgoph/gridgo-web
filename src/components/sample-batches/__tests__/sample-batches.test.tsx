@@ -230,7 +230,7 @@ describe("One sample batch", () => {
     expect(list).toHaveTextContent("Paper: Glossy");
     expect(list).toHaveTextContent("+₱2.00");
     expect(list).toHaveTextContent("From 1,000");
-    expect(list).toHaveTextContent("₱3.50 each");
+    expect(list).toHaveTextContent("₱3.50 per piece");
 
     const decision = screen.getByRole("region", { name: "Client's decision" });
     expect(decision).toHaveTextContent("Approved with a tick");

@@ -108,6 +108,9 @@ export function SampleBatchDetail({ tree }: { tree: Tree }) {
   const status = presentSampleBatchStatus(row.status);
   const clock = holdClock(row);
   const title = row.itemName || "Sampled listing";
+  const unit = row.heldPricing
+    ? heldUnitLabel(row.heldPricing.pricingUnit, row.heldPricing.packageQty)
+    : "each";
   const typed = quantityText.trim();
   const typedQuantity = /^\d+$/.test(typed) && Number(typed) >= 1 ? Number(typed) : null;
 
@@ -245,8 +248,8 @@ export function SampleBatchDetail({ tree }: { tree: Tree }) {
 
           <Card id="sample-prices" title="Batch price">
             <Facts>
-              <PriceFact label="Held price" price={row.heldPrice} />
-              <PriceFact label="Today's price" price={row.currentPrice} />
+              <PriceFact label="Held price" price={row.heldPrice} unit={unit} />
+              <PriceFact label="Today's price" price={row.currentPrice} unit={unit} />
             </Facts>
             <p className="text-caption text-text-muted m-0 mt-2">
               Client prices before GRIDGO&rsquo;s service fee and delivery. The checkout quote
@@ -257,26 +260,32 @@ export function SampleBatchDetail({ tree }: { tree: Tree }) {
                 {heldPriceBlockerLine(row.heldPriceBlocker)}
               </p>
             ) : null}
-            <form className="mt-3 flex flex-wrap items-end gap-2" onSubmit={preview}>
-              <Field className="max-w-48" data-invalid={(typed !== "" && !typedQuantity) || undefined}>
+            <form className="mt-3" onSubmit={preview}>
+              <Field data-invalid={(typed !== "" && !typedQuantity) || undefined}>
                 <FieldLabel htmlFor="sample-preview-quantity">Try another quantity</FieldLabel>
-                <Input
-                  id="sample-preview-quantity"
-                  inputMode="numeric"
-                  value={quantityText}
-                  placeholder={String(row.batch.quantity)}
-                  aria-invalid={(typed !== "" && !typedQuantity) || undefined}
-                  onChange={(event) => setQuantityText(event.target.value)}
-                />
-                <FieldDescription>A whole number. Leave blank for the batch quantity.</FieldDescription>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    id="sample-preview-quantity"
+                    inputMode="numeric"
+                    className="max-w-40"
+                    value={quantityText}
+                    placeholder={String(row.batch.quantity)}
+                    aria-invalid={(typed !== "" && !typedQuantity) || undefined}
+                    aria-describedby="sample-preview-help"
+                    onChange={(event) => setQuantityText(event.target.value)}
+                  />
+                  <Button
+                    type="submit"
+                    variant="secondary"
+                    disabled={loading || (typed !== "" && !typedQuantity)}
+                  >
+                    Show prices
+                  </Button>
+                </div>
+                <FieldDescription id="sample-preview-help">
+                  A whole number. Leave it blank for the batch quantity.
+                </FieldDescription>
               </Field>
-              <Button
-                type="submit"
-                variant="secondary"
-                disabled={loading || (typed !== "" && !typedQuantity)}
-              >
-                Show prices
-              </Button>
             </form>
           </Card>
 
@@ -313,7 +322,15 @@ function Fact({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function PriceFact({ label, price }: { label: string; price: SampleBatchPrice | null }) {
+function PriceFact({
+  label,
+  price,
+  unit,
+}: {
+  label: string;
+  price: SampleBatchPrice | null;
+  unit: string;
+}) {
   return (
     <Fact label={label}>
       <span className="tabular-nums" style={medium}>
@@ -322,7 +339,7 @@ function PriceFact({ label, price }: { label: string; price: SampleBatchPrice | 
       {price?.lineSubtotalMinor != null ? (
         <span className="text-caption text-text-muted block">
           Shop&rsquo;s price {formatPhp(price.lineSubtotalMinor)}
-          {price.unitRateMinor != null ? ` (${formatPhp(price.unitRateMinor)} each)` : ""}
+          {price.unitRateMinor != null ? ` (${formatPhp(price.unitRateMinor)} ${unit})` : ""}
           {price.volumeTierApplied
             ? `, bulk price from ${price.volumeTierApplied.minQuantity.toLocaleString("en-PH")}`
             : ""}
@@ -460,7 +477,7 @@ function HeldPriceList({ pricing }: { pricing: SampleHeldPricing }) {
                 From {tier.minQuantity.toLocaleString("en-PH")}
               </span>
               <span className="text-text-secondary tabular-nums">
-                {formatPhp(tier.unitPriceMinor)} each
+                {formatPhp(tier.unitPriceMinor)} {unit}
               </span>
             </li>
           ))}
