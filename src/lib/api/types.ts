@@ -1183,6 +1183,22 @@ export type Order = {
   /** "Shop A", "Shop B", … — never the shop's trading name. */
   groupLabel?: string | null;
   /**
+   * Sample First (gridgo-api#222, SAMPLE_FIRST_API.md): `["sample"]` on a paid
+   * sample, `["batch_from_sample"]` on the batch ordered from it. Absent on
+   * every other order. Read through `src/lib/sample-first.ts`.
+   */
+  orderTags?: string[] | null;
+  /** The batch draft linked to a sample or a batch order. */
+  sampleBatchDraftId?: string | null;
+  /** On a sample: its batch order, once the client ordered it. */
+  batchOrderId?: string | null;
+  /** On a batch: the sample order it was held to. */
+  sampleOrderId?: string | null;
+  /** On a batch: which price it was ordered at. */
+  sampleBatchPricing?: SampleBatchPricing | null;
+  /** The client's decision on the sample: the batch standard in a dispute. */
+  sampleDecision?: SampleDecision | null;
+  /**
    * A shop split into separate deliveries (gridgo-api#275, SHOP_DELIVERIES_API.md):
    * this order's place among that shop's deliveries, 1-based. Sent only when
    * `shopDeliveryCount > 1`. Read through `deliveryPositionLabel`.
@@ -2212,6 +2228,12 @@ export type PlatformSettings = {
    * predates quote requests.
    */
   quoteValidityDays?: number;
+  /**
+   * How many days a sampled batch price is held after the sample reaches the
+   * client (gridgo-api#222, SAMPLE_FIRST_API.md), whole days 1–90, default
+   * 14. Super Admin writes it. Absent on an API that predates Sample First.
+   */
+  sampleBatchHoldDays?: number;
   deliveryFeeBands: DeliveryFeeBand[];
   /**
    * Late-production penalties: the three tier rates and the real-deductions
@@ -2305,6 +2327,8 @@ export type UpdateSettingsInput = {
   shopMoveCoverBps?: number;
   /** Super Admin only; whole days 1–90. */
   quoteValidityDays?: number;
+  /** Super Admin only; whole days 1–90. Never moves a hold already running. */
+  sampleBatchHoldDays?: number;
   deliveryFeeBands?: DeliveryFeeBand[];
   productionNudge?: ProductionNudge;
   /** Super Admin only, always the complete object (`403` for anyone else). */
@@ -4850,4 +4874,129 @@ export type ApprovalProofRead = {
   approvalProofs: ApprovalProofRecord[];
   /** The current review candidate: not signed evidence. */
   review: { snapshot: ApprovalSnapshot; snapshotSha256: string };
+};
+
+/**
+ * Sample First (gridgo-api#222, contract `gridgo-api/docs/SAMPLE_FIRST_API.md`).
+ * The client's decision on a sample, copied onto the sample and the batch
+ * orders. An unknown `method` (a signed approval, later) still reads as
+ * approved with evidence.
+ */
+export type SampleDecision =
+  | {
+      draftId: string;
+      decision: "approved";
+      method: string;
+      at: string;
+      samplePhotoFileId: string | null;
+      note?: string | null;
+    }
+  | {
+      draftId: string;
+      decision: "rejected";
+      at: string;
+      reason: string;
+      next: "resample" | "cancel" | string;
+    };
+
+export type SampleBatchPricing = {
+  pricing: "held" | "current" | string;
+  heldUntil: string | null;
+  heldPricingCapturedAt: string | null;
+};
+
+export type SampleBatchStatus =
+  | "awaiting_sample"
+  | "approved"
+  | "ordered"
+  | "rejected"
+  | "cancelled";
+
+/** A batch price for one quantity; staff also get the engine detail. */
+export type SampleBatchPrice = {
+  quantity: number;
+  clientItemMinor: number;
+  lineSubtotalMinor?: number;
+  unitRateMinor?: number;
+  volumeTierApplied?: { minQuantity: number; unitPriceMinor: number } | null;
+};
+
+/** The shop's batch price list copied at sample checkout. Staff only. */
+export type SampleHeldPricing = {
+  version: number;
+  capturedAt: string;
+  catalogItemId: string;
+  catalogItemVersion?: number | null;
+  pricingUnit: string;
+  packageQty: number | null;
+  basePriceMinor: number;
+  minimumOrderQuantity: number | null;
+  minimumMeasurement?: {
+    width: number | null;
+    height: number | null;
+    length: number | null;
+  } | null;
+  options: {
+    optionId: string;
+    optionGroupId?: string | null;
+    groupName: string | null;
+    label: string;
+    priceModifierMinor: number;
+    priceMultiplierBps: number | null;
+  }[];
+  volumeTiers: { minQuantity: number; unitPriceMinor: number }[];
+  speedTier: { id?: string; label?: string; priceMinor?: number | null; surchargeMinor?: number | null } | null;
+};
+
+export type SampleBatch = {
+  id: string;
+  status: SampleBatchStatus | string;
+  tags?: string[];
+  catalogItemId: string;
+  itemName: string | null;
+  sampleOrderId: string;
+  sampleOrderState: string | null;
+  batchOrderId: string | null;
+  previousDraftId: string | null;
+  replacedByDraftId: string | null;
+  batch: {
+    quantity: number;
+    optionIds?: string[];
+    speedTierId?: string | null;
+    specialInstructions?: string | null;
+    [key: string]: unknown;
+  };
+  holdDays: number;
+  sampleDeliveredAt: string | null;
+  heldUntil: string | null;
+  holdActive: boolean;
+  holdExpired: boolean;
+  heldPrice: SampleBatchPrice | null;
+  currentPrice: SampleBatchPrice | null;
+  canOrderAtHeldPrice: boolean;
+  heldPriceBlocker: string | null;
+  canOrderAtCurrentPrice: boolean;
+  approval: {
+    version: number;
+    method: string;
+    accepted: boolean;
+    samplePhotoFileId: string | null;
+    note?: string | null;
+    at: string;
+    by: string;
+  } | null;
+  rejection: {
+    version: number;
+    reason: string;
+    next: "resample" | "cancel" | string;
+    at: string;
+    by: string;
+  } | null;
+  /** Staff only. */
+  clientId?: string;
+  supplierId?: string;
+  heldPricing?: SampleHeldPricing;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
 };

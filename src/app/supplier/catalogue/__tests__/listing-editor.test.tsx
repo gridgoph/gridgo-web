@@ -2535,3 +2535,53 @@ describe("listing editor colour pricing (report 0BE07331)", { timeout: 30_000 },
     expect(screen.queryByRole("switch", { name: "Prints in one colour" })).not.toBeInTheDocument();
   });
 });
+
+describe("listing editor: Sample available (gridgo-api#222)", () => {
+  it("offers a sample at the shop's price, saved at once with only the sample fields", async () => {
+    stubLoad(catalogItem({ sampleAvailable: false, samplePriceMinor: null }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Price");
+    const toggle = await screen.findByRole("switch", { name: "Sample available" });
+    expect(screen.queryByLabelText("Sample price")).toBeNull();
+    fireEvent.click(toggle);
+    // On without a price is held, never sent.
+    expect(
+      await screen.findByText(
+        "Not saved yet — enter a sample price before offering a sample.",
+        {},
+        AUTOSAVE_WAIT,
+      ),
+    ).toBeVisible();
+    expect(mocks.updateCatalogItem).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Sample price"), { target: { value: "150" } });
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalled(), AUTOSAVE_WAIT);
+    const body = mocks.updateCatalogItem.mock.calls[0][2];
+    expect(body.sampleAvailable).toBe(true);
+    expect(body.samplePriceMinor).toBe(15000);
+    expect(body).not.toHaveProperty("priceTiers");
+  });
+
+  it("keeps the price when the offer is turned off and leaves untouched sample fields out", async () => {
+    stubLoad(catalogItem({ sampleAvailable: true, samplePriceMinor: 15000 }));
+    render(<ListingEditorPage />);
+    await openEditorStep("Price");
+    expect(await screen.findByLabelText("Sample price")).toHaveValue("150.00");
+    fireEvent.change(screen.getByLabelText("Your price"), { target: { value: "410" } });
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalledTimes(1), AUTOSAVE_WAIT);
+    expect(mocks.updateCatalogItem.mock.calls[0][2]).not.toHaveProperty("sampleAvailable");
+    expect(mocks.updateCatalogItem.mock.calls[0][2]).not.toHaveProperty("samplePriceMinor");
+
+    fireEvent.click(screen.getByRole("switch", { name: "Sample available" }));
+    await waitFor(() => expect(mocks.updateCatalogItem).toHaveBeenCalledTimes(2), AUTOSAVE_WAIT);
+    expect(mocks.updateCatalogItem.mock.calls[1][2]).toMatchObject({ sampleAvailable: false });
+    expect(mocks.updateCatalogItem.mock.calls[1][2]).not.toHaveProperty("samplePriceMinor");
+  });
+
+  it("shows nothing on an API without samples", async () => {
+    stubLoad(catalogItem());
+    render(<ListingEditorPage />);
+    await openEditorStep("Price");
+    await screen.findByLabelText("Your price");
+    expect(screen.queryByRole("switch", { name: "Sample available" })).toBeNull();
+  });
+});

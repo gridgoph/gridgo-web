@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { SampleTagChip } from "@/components/orders/SampleFirst";
 import { TestOrderChip } from "@/components/orders/TestOrders";
 import { ExpressChip } from "@/components/ui/ExpressChip";
 import { StatusChip } from "@/components/ui/StatusChip";
@@ -243,6 +244,7 @@ export default function OpsDispatchPage() {
                 {o.title}
               </p>
               {isExpressOrder(o) ? <ExpressChip /> : null}
+              <SampleTagChip order={o} />
               <TestOrderChip order={o} />
             </div>
             <p className="text-caption text-text-muted m-0 mt-0.5">

@@ -43,6 +43,7 @@ import { DeliveryZones, DeliveryZonesSkeleton } from "@/components/settings/Deli
 import { HandoverCodeSettings } from "@/components/settings/HandoverCodeSettings";
 import { ShopMoveCover } from "@/components/settings/ShopMoveCover";
 import { QuoteValiditySettings } from "@/components/settings/QuoteValiditySettings";
+import { SampleBatchHoldSettings } from "@/components/settings/SampleBatchHoldSettings";
 import { CoverSpineSettings } from "@/components/settings/CoverSpineSettings";
 import { FoundingTesterLaunch } from "@/components/settings/FoundingTesterLaunch";
 import { TesterInviteSettings } from "@/components/settings/TesterInviteSettings";
@@ -830,6 +831,17 @@ export function OperationalSettings() {
       />
 
       <QuoteValiditySettings
+        settings={settings}
+        canEdit
+        disabled={busy}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={() => load(true)}
+      />
+
+      <SampleBatchHoldSettings
         settings={settings}
         canEdit
         disabled={busy}

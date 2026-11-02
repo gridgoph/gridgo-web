@@ -82,8 +82,17 @@ import {
 } from "@/lib/approval-proof";
 import { chatRowSummary, isFlagged } from "@/lib/client-shop-chat";
 import { ShopModeChip } from "@/components/orders/ShopModeChip";
+import {
+  BatchStandard,
+  SampleDecisionPanel,
+  SampleTagChip,
+  sampleRowSummary,
+  sampleRowTone,
+} from "@/components/orders/SampleFirst";
+import { sampleTagOf } from "@/lib/sample-first";
 import { groupName } from "@/lib/baskets";
 import { TestOrderChip } from "@/components/orders/TestOrders";
+import { isTestOrder } from "@/lib/review-data";
 import { ExpressChip } from "@/components/ui/ExpressChip";
 import { isExpressOrder } from "@/lib/express";
 import { ProgressGallery, WaitingForPhoto } from "@/components/orders/ProductionProgress";
@@ -273,6 +282,7 @@ type Props = {
 /** The workspace's sections, in the order the work happens. */
 type SectionId =
   | "approval"
+  | "sample"
   | "payment"
   | "qa"
   | "production"
@@ -756,7 +766,10 @@ export function OrderWorkspace({
               <ShopHeading order={order} names={names} tree={tree} />
             </div>
           ) : null}
-          {order.basketId || isExpressOrder(order) ? (
+          {order.basketId ||
+          isExpressOrder(order) ||
+          isTestOrder(order) ||
+          sampleTagOf(order) ? (
             <div className="mt-1 flex flex-wrap items-center gap-2">
               {order.basketId ? (
                 <ShopModeChip
@@ -764,6 +777,7 @@ export function OrderWorkspace({
                 />
               ) : null}
               {isExpressOrder(order) ? <ExpressChip /> : null}
+              <SampleTagChip order={order} />
               <TestOrderChip order={order} />
               {order.basketId && order.groupLabel ? (
                 <span className="text-caption text-text-secondary">
@@ -836,6 +850,16 @@ export function OrderWorkspace({
                 marker={APPROVAL_MARKER[approvalRowTone(order.approvalProof)]}
               >
                 <ApprovalProofPanel orderId={order.id} />
+              </SectionRow>
+            ) : null}
+            {sampleTagOf(order) ? (
+              <SectionRow
+                id="sample"
+                heading={sampleTagOf(order) === "batch" ? "Batch from sample" : "Sample"}
+                summary={sampleRowSummary(order)}
+                marker={APPROVAL_MARKER[sampleRowTone(order)]}
+              >
+                <SampleDecisionPanel order={order} tree={tree} />
               </SectionRow>
             ) : null}
             {steps.map((step) => (
@@ -1165,12 +1189,15 @@ export function OrderWorkspace({
                 summary={problemRowSummary(issues)}
                 marker={problemMarker(issues)}
               >
-                <ProblemReportPanel
-                  issues={issues}
-                  tree={tree}
-                  names={names}
-                  onChanged={load}
-                />
+                <div className="flex flex-col gap-3">
+                  <BatchStandard order={order} tree={tree} />
+                  <ProblemReportPanel
+                    issues={issues}
+                    tree={tree}
+                    names={names}
+                    onChanged={load}
+                  />
+                </div>
               </SectionRow>
             ) : null}
 

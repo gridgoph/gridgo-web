@@ -80,6 +80,7 @@ export type NavIconKey =
   | "finished-work"
   | "shop-hours"
   | "quotes"
+  | "sample-batches"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -418,6 +419,17 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "quotes-waiting",
+        },
+        {
+          // Sample First: a paid sample, then the batch at a held price
+          // (SAMPLE_FIRST_API.md in gridgo-api). Read-only; clients decide.
+          id: "ops-sample-batches",
+          href: "/ops/sample-batches",
+          label: "Sample batches",
+          title: "Sample batches",
+          icon: "sample-batches",
+          ready: true,
+          placeholderBody: "",
         },
         {
           // Rider-packs orders stop here until GRIDGO approves the shop's
@@ -907,6 +919,17 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           count: "quotes-waiting",
         },
         {
+          // Sample First: a paid sample, then the batch at a held price
+          // (SAMPLE_FIRST_API.md in gridgo-api). Read-only; clients decide.
+          id: "admin-sample-batches",
+          href: "/admin/sample-batches",
+          label: "Sample batches",
+          title: "Sample batches",
+          icon: "sample-batches",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "admin-featured-prints",
           href: "/admin/featured-prints",
           label: "Featured Prints",
@@ -1291,6 +1314,7 @@ export function contextTitleForPath(
   }
   if (/^\/(ops|admin)\/supplier-products\/[^/]+/.test(pathname)) return "Supplier product";
   if (/^\/(ops|admin)\/quotes\/[^/]+/.test(pathname)) return "Quote request";
+  if (/^\/(ops|admin)\/sample-batches\/[^/]+/.test(pathname)) return "Sample batch";
   if (pathname.startsWith("/admin/vouchers/")) return "Voucher campaign";
   if (/^\/(ops|admin)\/founding-testers\/[^/]+/.test(pathname)) return "Client account";
   if (/^\/(ops|admin)\/legal\/[^/]+/.test(pathname)) return "Legal document";

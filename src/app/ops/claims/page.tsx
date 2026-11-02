@@ -57,6 +57,7 @@ import {
 } from "@/lib/api/client";
 import { PLATFORM_CONSTRAINT_COPY } from "@/lib/api/constraints";
 import type { Claim, Order } from "@/lib/api/types";
+import { BatchStandard } from "@/components/orders/SampleFirst";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime } from "@/lib/format";
 import { presentTimelineActor } from "@/lib/order-state";
@@ -420,6 +421,11 @@ export default function OpsClaimsPage() {
               </dd>
             </div>
           </dl>
+
+          {(() => {
+            const claimOrder = orders.find((o) => o.id === detail.orderId);
+            return claimOrder ? <BatchStandard order={claimOrder} tree="ops" /> : null;
+          })()}
 
           <div>
             <h3
