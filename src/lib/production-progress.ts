@@ -114,6 +114,11 @@ export type ProductionCorrection = {
   reasonCode: string | null;
   /** The checks the API recorded as skipped; empty before it recorded them. */
   skippedChecks: string[];
+  /**
+   * The Finance switch required a receipt scan and none was attached
+   * (`detail.receiptScanMissing`); false on a forced step or older entry.
+   */
+  receiptScanMissing?: boolean;
 };
 
 function text(value: unknown): string | null {
@@ -145,6 +150,7 @@ export function productionCorrections(
       from: text(entry.detail?.from),
       to: text(entry.detail?.to),
       photoMissing: entry.detail?.photoMissing === true,
+      receiptScanMissing: entry.detail?.receiptScanMissing === true,
       reasonCode: text(entry.detail?.reasonCode),
       skippedChecks: Array.isArray(entry.detail?.skippedChecks)
         ? (entry.detail.skippedChecks as unknown[]).filter(
@@ -175,6 +181,7 @@ export function staffCorrections(
     from: step.from || null,
     to: step.to || null,
     photoMissing: (step.skippedChecks ?? []).includes("production_photo_required"),
+    receiptScanMissing: (step.skippedChecks ?? []).includes("receipt_scan_required"),
     reasonCode: step.reasonCode || null,
     skippedChecks: [...(step.skippedChecks ?? [])],
   }));

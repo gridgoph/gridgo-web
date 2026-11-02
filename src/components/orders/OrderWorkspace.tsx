@@ -1,6 +1,7 @@
 "use client";
 
 import { PackingPhotos } from "@/components/orders/PackingPhotos";
+import { ReceiptScanPanel } from "@/components/orders/ReceiptScan";
 import { SpecialInstructionsPanel } from "@/components/orders/SpecialInstructions";
 import {
   changePaymentAwaitingStaff,
@@ -183,6 +184,14 @@ import type {
   ShopFailureEvent,
 } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
+import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
+import {
+  receiptScanOf,
+  receiptScanRowState,
+  receiptScanRowVisible,
+  receiptScanSummary,
+  type ReceiptScanRowState,
+} from "@/lib/receipt-scan";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { issueIsOpen, problemRowSummary } from "@/lib/problem-reports";
 import {
@@ -269,6 +278,7 @@ type SectionId =
   | "shop"
   | "deadline"
   | "handover"
+  | "receipt-scan"
   | "delivery-pin"
   | "counter"
   | "delivery"
@@ -424,6 +434,9 @@ export function OrderWorkspace({
   );
 
   useLiveReload(["orders", "jobs", "payouts"], load, { matchId: orderId });
+  // A shop's new receipt scan also arrives as a staff notice; the order ping
+  // usually lands first, and the shared flight keeps it to one read.
+  useLegalInboxReload("supplier_invoice_scanned", load);
 
   // A file deleted early from any row: re-read the order, so a progress photo
   // leaves the gallery and every row reflects what the API now holds.
@@ -996,6 +1009,29 @@ export function OrderWorkspace({
                   </SectionRow>
                 ) : null}
                 {/*
+                  The shop's own receipt scan for the order, sent before it
+                  calls a rider; a gate on that call while Finance requires it.
+                */}
+                {step.id === "production" && receiptScanRowVisible(order, corrections) ? (
+                  <SectionRow
+                    id="receipt-scan"
+                    heading="Receipt scan"
+                    summary={receiptScanSummary(
+                      receiptScanRowState(order, corrections),
+                      receiptScanOf(order),
+                      formatDateTime,
+                    )}
+                    marker={RECEIPT_SCAN_MARKER[receiptScanRowState(order, corrections)]}
+                    trailing={
+                      receiptScanRowState(order, corrections) === "holding"
+                        ? "Shop's move"
+                        : undefined
+                    }
+                  >
+                    <ReceiptScanPanel order={order} corrections={corrections} tree={tree} />
+                  </SectionRow>
+                ) : null}
+                {/*
                   When the shop finishes a door delivery the client is asked
                   whether they will be at the pin: their answer, receiver and
                   notes, and their one change with its money.
@@ -1483,6 +1519,13 @@ function payoutTrailing(order: Order): string {
     ? "Your call"
     : `${progress.releasedCount} of ${progress.count} released`;
 }
+
+const RECEIPT_SCAN_MARKER: Record<ReceiptScanRowState, MarkerSpec> = {
+  attached: { icon: CircleCheck, tone: "success" },
+  holding: { icon: TriangleAlert, tone: "current" },
+  skipped: { icon: TriangleAlert, tone: "muted" },
+  missing: { icon: CircleDot, tone: "muted" },
+};
 
 const SHOP_MARKER: Record<ReturnType<typeof shopRowTone>, MarkerSpec> = {
   attention: { icon: TriangleAlert, tone: "current" },

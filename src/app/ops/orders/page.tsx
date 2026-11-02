@@ -17,6 +17,7 @@ import {
 } from "@/app/ops/_lib/pipeline";
 import { buildNeedsActionQueue } from "@/app/ops/_lib/needs-action";
 import { FileCheckQueue } from "@/components/orders/FileCheckQueue";
+import { ReceiptScanMark } from "@/components/orders/ReceiptScan";
 import {
   NeedsActionQueue,
   useNeedsActionClock,
@@ -41,6 +42,8 @@ import { SkeletonLines } from "@/components/ui/loading";
 import { ApiError, getSettings, listOrders } from "@/lib/api/client";
 import type { OperatingHours, Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
+import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
+import { receiptScanMarkValue } from "@/lib/receipt-scan";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { basketShopCounts } from "@/lib/baskets";
 import { isExpressOrder, ORDER_SPEED_OPTIONS, orderSpeed } from "@/lib/express";
@@ -94,6 +97,7 @@ export default function OpsOrdersPage() {
   );
 
   useLiveReload("orders", load);
+  useLegalInboxReload("supplier_invoice_scanned", load);
 
   useEffect(() => {
     void load();
@@ -203,6 +207,15 @@ export default function OpsOrdersPage() {
                 : waitingOn(order.state)}
           </span>
         ),
+      },
+      {
+        // The shop's receipt scan, sent before it calls a rider. Blank until a
+        // shop has the job; the order's Receipt scan row has the scans.
+        id: "receipt-scan",
+        header: "Receipt scan",
+        sortValue: receiptScanMarkValue,
+        filterValue: receiptScanMarkValue,
+        cell: (order) => <ReceiptScanMark order={order} />,
       },
       {
         id: "value",
