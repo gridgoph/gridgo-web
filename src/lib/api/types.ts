@@ -1945,6 +1945,8 @@ export type Notification = {
   announcementId?: string | null;
   /** Organization reminders and notices name the organization account. */
   organizationUserId?: string | null;
+  /** Quote notices (`ops_quote_*`, `quote_*`) name the quote request. */
+  quoteRequestId?: string | null;
   title: string;
   body: string;
   /** Broadcast picture. Public HTTPS link or `/public/announcement-images/<fileId>`. */
@@ -2204,6 +2206,12 @@ export type PlatformSettings = {
    * Super Admin writes it. Absent on an API that predates it.
    */
   shopMoveCoverBps?: number;
+  /**
+   * How many days published quote options stay open (gridgo-api#226), whole
+   * days 1–90, default 7. Super Admin writes it. Absent on an API that
+   * predates quote requests.
+   */
+  quoteValidityDays?: number;
   deliveryFeeBands: DeliveryFeeBand[];
   /**
    * Late-production penalties: the three tier rates and the real-deductions
@@ -2295,6 +2303,8 @@ export type UpdateSettingsInput = {
   downpaymentPercent?: number;
   /** Super Admin only; whole number 0–10,000. */
   shopMoveCoverBps?: number;
+  /** Super Admin only; whole days 1–90. */
+  quoteValidityDays?: number;
   deliveryFeeBands?: DeliveryFeeBand[];
   productionNudge?: ProductionNudge;
   /** Super Admin only, always the complete object (`403` for anyone else). */

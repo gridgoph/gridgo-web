@@ -42,6 +42,7 @@ import { CheckoutPayment, checkoutPaymentLabel } from "@/components/settings/Che
 import { DeliveryZones, DeliveryZonesSkeleton } from "@/components/settings/DeliveryZones";
 import { HandoverCodeSettings } from "@/components/settings/HandoverCodeSettings";
 import { ShopMoveCover } from "@/components/settings/ShopMoveCover";
+import { QuoteValiditySettings } from "@/components/settings/QuoteValiditySettings";
 import { CoverSpineSettings } from "@/components/settings/CoverSpineSettings";
 import { FoundingTesterLaunch } from "@/components/settings/FoundingTesterLaunch";
 import { TesterInviteSettings } from "@/components/settings/TesterInviteSettings";
@@ -818,6 +819,17 @@ export function OperationalSettings() {
       />
 
       <ShopMoveCover
+        settings={settings}
+        canEdit
+        disabled={busy}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={() => load(true)}
+      />
+
+      <QuoteValiditySettings
         settings={settings}
         canEdit
         disabled={busy}

@@ -185,6 +185,15 @@ carry, so those screens re-read when one of these inbox notices arrives
 (`useLegalInboxReload`), and keep their Refresh button. The rail's open privacy
 request count re-reads on the same `privacy.*` notices.
 
+Quote request notices (`ops_quote_requested|published|accepted|cancelled|expired`;
+`gridgo-api/docs/QUOTE_REQUESTS_API.md`) reach Operations and Super Admin with the
+`quoteRequestId` and open that request at `/ops/quotes/:id` or `/admin/quotes/:id`, or the
+Quotes desk when a notice names none. The API sends no live resource ping for quote requests,
+so the desk, an open request and the rail's "waiting for shop prices" count re-read when one
+of these notices arrives (`useLegalInboxReload`), and keep their Refresh button. Adding or
+changing a shop reply sends no notice: another person's reply shows on the next read, and a
+stale write is refused by the request's version and re-read.
+
 Post-order survey notices (`order_survey_available`, `order_survey_dismissed`,
 `order_survey_submitted`; `gridgo-api/docs/SURVEY_API.md`) reach Operations and Super Admin
 without any answer. Only Super Admin can read responses, so its `order_survey_submitted`

@@ -17,6 +17,8 @@ import { useLiveOptional } from "@/lib/live/LiveProvider";
  * Supplier invoices too: every scan, entry, correction and collection sends
  * staff a `supplier_invoice_*` notice. Order views listen for
  * `supplier_invoice_scanned` alone: a shop attached a receipt scan.
+ * Quote requests too: the API sends staff an `ops_quote_*` notice when a
+ * client asks, accepts or cancels, and when options publish or expire.
  */
 export function useLegalInboxReload(
   prefix:
@@ -26,6 +28,7 @@ export function useLegalInboxReload(
     | "supplier_invoice_"
     | "supplier_invoice_scanned"
     | "colour_price_check"
+    | "ops_quote_"
     | null,
   load: () => unknown,
 ): void {
