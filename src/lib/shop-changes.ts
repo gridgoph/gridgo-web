@@ -38,6 +38,12 @@ export function presentFailureKind(kind: ShopFailureKind | string): string {
       return "Declined the order";
     case "cancelled":
       return "Cancelled after accepting";
+    case "late":
+      return "Moved for lateness";
+    case "gridgo":
+      return "Moved by GRIDGO";
+    case "client":
+      return "Moved at the client's request";
     default:
       return "Could not fulfil";
   }
@@ -82,6 +88,12 @@ export function presentRecoveryStatus(
       return { label: "Refund requested", tone: "info", icon: "clock" };
     case "refunded":
       return { label: "Refunded", tone: "neutral", icon: "circle-check" };
+    case "awaiting_payment":
+      return {
+        label: "Moved, waiting for the client's payment",
+        tone: "warning",
+        icon: "clock",
+      };
     case "accepted":
       return {
         label: "Replacement shop accepted",

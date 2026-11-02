@@ -7,6 +7,11 @@ import type { StatusIconName, StatusTone } from "@/lib/order-state";
  * The order keeps its old state until the client chooses, so the state alone
  * would still offer the next step. A recovery the client already accepted
  * belongs to the replacement shop, which sees an ordinary job of its own.
+ *
+ * Operations can also move a job (gridgo-api#225): for lateness, for a reason
+ * on GRIDGO's side, or because the client asked. Those never read as the
+ * shop's own decline. A replacement shop whose client still owes a price
+ * difference (`awaiting_payment`) sees a job that starts once it is paid.
  */
 
 export type ShopRelease = {
@@ -16,7 +21,14 @@ export type ShopRelease = {
   body: string;
 };
 
-const KINDS: readonly ShopFailureKind[] = ["timed_out", "declined", "cancelled"];
+const KINDS: readonly ShopFailureKind[] = [
+  "timed_out",
+  "declined",
+  "cancelled",
+  "late",
+  "gridgo",
+  "client",
+];
 
 type ReleaseOrder = {
   state: string;
@@ -35,12 +47,18 @@ const CHIPS: Record<ShopFailureKind, string> = {
   timed_out: "Not answered in time",
   declined: "Passed on",
   cancelled: "Cancelled by you",
+  late: "Moved for lateness",
+  gridgo: "Moved by GRIDGO",
+  client: "Moved for the client",
 };
 
 const TITLES: Record<ShopFailureKind, string> = {
   timed_out: "The hour to answer ran out",
   declined: "You passed on this job",
   cancelled: "You cancelled this job",
+  late: "GRIDGO is moving this late job",
+  gridgo: "GRIDGO is moving this job",
+  client: "The client asked to move this job",
 };
 
 /** Where a job this shop let go stands, or null while the job is still the shop's. */
@@ -48,6 +66,14 @@ export function shopRelease(order: ReleaseOrder): ShopRelease | null {
   const recovery = order.shopRecovery;
   if (!recovery || recovery.status === "accepted") return null;
   const kind = kindOf(order);
+  if (recovery.status === "awaiting_payment") {
+    return {
+      kind,
+      chip: { label: "Starts after payment", tone: "info", icon: "clock" },
+      title: "This job starts once the client pays",
+      body: "GRIDGO moved this order to your shop. The client is paying a price difference; once GRIDGO confirms it, you get the usual hour to accept.",
+    };
+  }
   const body =
     recovery.status === "refund_requested" || recovery.status === "refunded"
       ? "The client chose a full refund. Nothing more is needed from your shop."
