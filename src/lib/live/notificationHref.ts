@@ -68,7 +68,17 @@ export function notificationHref(role: Role, notification: Notification): string
     return null;
   }
 
-  // Someone saved the client Home row; staff land on the setting.
+  // Quote requests (gridgo-api#226): staff open the request the notice names,
+  // or the Quotes desk when it names none.
+  if (type.startsWith("ops_quote_")) {
+    const tree = role === "super_admin" ? "admin" : role === "ops_admin" ? "ops" : null;
+    if (!tree) return null;
+    return notification.quoteRequestId
+      ? `/${tree}/quotes/${encodeURIComponent(notification.quoteRequestId)}`
+      : `/${tree}/quotes`;
+  }
+
+    // Someone saved the client Home row; staff land on the setting.
   if (type === "featured_prints_updated") {
     if (role === "super_admin") return "/admin/featured-prints";
     if (role === "ops_admin") return "/ops/featured-prints";

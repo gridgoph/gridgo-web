@@ -1,5 +1,5 @@
 "use client";
-import { Award, Gift, SwatchBook, TicketPercent, UserRoundMinus } from "lucide-react";
+import { Award, Calculator, Gift, SwatchBook, TicketPercent, UserRoundMinus } from "lucide-react";
 
 import {
   useCallback,
@@ -242,6 +242,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   invoices: ReceiptText,
   "finished-work": PackageCheck,
   "shop-hours": Clock3,
+  quotes: Calculator,
   "group-shop": Store,
   "group-money": HandCoins,
   "group-queue": Inbox,

@@ -79,6 +79,7 @@ export type NavIconKey =
   | "invoices"
   | "finished-work"
   | "shop-hours"
+  | "quotes"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -132,7 +133,8 @@ export type NavCountKey =
   | "listing-reviews-waiting"
   | "colour-price-checks-waiting"
   | "privacy-requests-open"
-  | "finished-work-waiting";
+  | "finished-work-waiting"
+  | "quotes-waiting";
 
 /**
  * One rail section. A missing `label` is a top-level cluster (Overview / Jobs)
@@ -403,6 +405,19 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "orders-waiting",
+        },
+        {
+          // Custom signage and 3D printing briefs: Operations gathers shop
+          // prices and publishes up to three anonymous options
+          // (QUOTE_REQUESTS_API.md in gridgo-api).
+          id: "ops-quotes",
+          href: "/ops/quotes",
+          label: "Quotes",
+          title: "Quotes",
+          icon: "quotes",
+          ready: true,
+          placeholderBody: "",
+          count: "quotes-waiting",
         },
         {
           // Rider-packs orders stop here until GRIDGO approves the shop's
@@ -882,6 +897,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           count: "colour-price-checks-waiting",
         },
         {
+          id: "admin-quotes",
+          href: "/admin/quotes",
+          label: "Quotes",
+          title: "Quotes",
+          icon: "quotes",
+          ready: true,
+          placeholderBody: "",
+          count: "quotes-waiting",
+        },
+        {
           id: "admin-featured-prints",
           href: "/admin/featured-prints",
           label: "Featured Prints",
@@ -1265,6 +1290,7 @@ export function contextTitleForPath(
     return "Refund case";
   }
   if (/^\/(ops|admin)\/supplier-products\/[^/]+/.test(pathname)) return "Supplier product";
+  if (/^\/(ops|admin)\/quotes\/[^/]+/.test(pathname)) return "Quote request";
   if (pathname.startsWith("/admin/vouchers/")) return "Voucher campaign";
   if (/^\/(ops|admin)\/founding-testers\/[^/]+/.test(pathname)) return "Client account";
   if (/^\/(ops|admin)\/legal\/[^/]+/.test(pathname)) return "Legal document";
