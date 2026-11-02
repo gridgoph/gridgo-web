@@ -185,7 +185,14 @@ describe("where the shop gets paid, from the portal", () => {
     expect(screen.getByLabelText("Account name")).toHaveValue("Ben edited");
     expect(getMyPayoutAccount).toHaveBeenCalledTimes(2);
 
-    fireEvent.click(screen.getByRole("button", { name: "Load the latest" }));
+    // The refused save is still settling after the request goes out, and
+    // "Load the latest" stays disabled while it does. Wait for the save to
+    // finish before clicking, or the click lands on a disabled button.
+    const loadLatest = screen.getByRole("button", { name: "Load the latest" });
+    await waitFor(() => expect(loadLatest).toBeEnabled());
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+
+    fireEvent.click(loadLatest);
     await waitFor(() =>
       expect(screen.getByLabelText("Account name")).toHaveValue("From the phone"),
     );
