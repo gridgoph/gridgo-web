@@ -194,7 +194,10 @@ export function QuoteRequestDetail({ tree }: { tree: Tree }) {
   }
 
   const status = presentQuoteStatus(request.status);
-  const replies = request.replies ?? [];
+  // Active replies first, so the ones that can still be published lead.
+  const replies = [...(request.replies ?? [])].sort(
+    (a, b) => Number(a.status !== "active") - Number(b.status !== "active"),
+  );
   const editable = repliesEditable(request.status);
   const publishable = canPublish(request.status);
   const warning = eventDateWarningCopy(request.eventDateWarning);

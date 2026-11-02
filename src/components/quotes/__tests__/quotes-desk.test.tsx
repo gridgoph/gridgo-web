@@ -285,6 +285,17 @@ describe("one quote request", () => {
     expect(await screen.findByText("Reply saved.")).toBeInTheDocument();
   });
 
+  it("lists active replies before withdrawn ones", async () => {
+    detail = quote("qreq_1", {
+      status: "quoting",
+      replies: [reply("w1", "s1", { status: "withdrawn" }), reply("a1", "s2")],
+    });
+    render(<QuoteRequestDetail tree="ops" />);
+    await screen.findByRole("heading", { name: /Shop replies/ });
+    const names = screen.getAllByText(/^Shop S[12]$/).map((el) => el.textContent);
+    expect(names).toEqual(["Shop S2", "Shop S1"]);
+  });
+
   it("links an ordered request to its order", async () => {
     detail = quote("qreq_1", {
       status: "ordered",
