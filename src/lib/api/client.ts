@@ -3333,6 +3333,19 @@ export async function updateIssueReport(
   });
 }
 
+/**
+ * Staff confirm a real bug (Operations and Super Admin). Idempotent; the
+ * first call marks it valid and a bug and decides the reporter's one-time
+ * voucher. `409 issue_report_not_confirmable` (spam or duplicate),
+ * `403 issue_report_self_confirmation` (the confirmer sent it).
+ */
+export async function confirmIssueReportBug(id: string): Promise<IssueReport> {
+  return request<IssueReport>(`/ops/issue-reports/${encodeURIComponent(id)}/confirm-bug`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Super Admin Tracker — the captain's sheet, read from GitHub issues by the
 // API. Super Admin only; `503 tracker_not_configured` until the server has
