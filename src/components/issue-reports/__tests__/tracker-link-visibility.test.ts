@@ -31,6 +31,6 @@ describe("issue report tracker links", () => {
 
   it("are turned on for Super Admin", () => {
     const page = readFileSync(join(process.cwd(), "src/app/admin/issue-reports/page.tsx"), "utf8");
-    expect(page).toMatch(/<IssueReportsDesk trackerLinks \/>/);
+    expect(page).toMatch(/<IssueReportsDesk trackerLinks[ />]/);
   });
 });

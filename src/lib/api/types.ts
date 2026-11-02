@@ -361,8 +361,8 @@ export type TesterRewardCheck = {
 
 export type TesterReward = {
   id: string;
-  kind: "mission" | "referral";
-  /** The mission owner, or the invited friend. */
+  kind: "mission" | "referral" | "bug_report";
+  /** The mission owner, the invited friend, or the bug reporter. */
   clientId: string;
   inviterId: string | null;
   inviteId: string | null;
@@ -3467,6 +3467,40 @@ export type IssueReport = {
   triage?: IssueReportTriage;
   /** Firstmate's suggestion, `null` until it reviews the report. */
   aiReview?: IssueReportAiReview | null;
+  /**
+   * Who sent it from the signed-in app; `null` when anonymous, absent from an
+   * API before the bug-report voucher (gridgo-api docs/CLIENT_HOME_API.md).
+   */
+  reporter?: IssueReportReporter | null;
+  /** `null` until staff confirm a real bug; absent from an older API. */
+  bugConfirmation?: IssueReportBugConfirmation | null;
+};
+
+export type IssueReportReporter = {
+  id: string;
+  name: string | null;
+  /** Founding Tester eligible. */
+  tester: boolean;
+  /** Confirming a report of theirs now would earn the one-time voucher. */
+  bugRewardAvailable: boolean;
+};
+
+/** The decision at confirmation time; it never changes afterwards. */
+export type IssueReportVoucherOutcome = "granted" | "paused" | "already_rewarded" | "not_tester" | "no_reporter";
+
+export type IssueReportBugConfirmation = {
+  confirmedAt: string;
+  confirmedBy: { id: string; name: string | null } | null;
+  voucherOutcome: IssueReportVoucherOutcome;
+  /** A voucher was actually issued for this report (stays true after a void). */
+  voucherGranted: boolean;
+  /** Only for `granted` or `paused`; `status` is the live entitlement state. */
+  reward: {
+    id: string;
+    status: "issued" | "paused" | "voided";
+    amountMinor: number;
+    voucherId: string | null;
+  } | null;
 };
 
 /** Whether a person judged the report real. Independent of `status`. */
