@@ -82,6 +82,7 @@ import {
 } from "@/lib/approval-proof";
 import { chatRowSummary, isFlagged } from "@/lib/client-shop-chat";
 import { ShopModeChip } from "@/components/orders/ShopModeChip";
+import { groupName } from "@/lib/baskets";
 import { TestOrderChip } from "@/components/orders/TestOrders";
 import { ExpressChip } from "@/components/ui/ExpressChip";
 import { isExpressOrder } from "@/lib/express";
@@ -758,7 +759,7 @@ export function OrderWorkspace({
               <TestOrderChip order={order} />
               {order.basketId && order.groupLabel ? (
                 <span className="text-caption text-text-secondary">
-                  This is {order.groupLabel}
+                  This is {groupName(order.groupLabel, order)}
                 </span>
               ) : null}
             </div>
@@ -2560,7 +2561,7 @@ function SpecRail({
             order={order}
             totalLabel={
               order.basketId && order.groupLabel
-                ? `${order.groupLabel} total`
+                ? `${groupName(order.groupLabel, order)} total`
                 : "Client total"
             }
           />

@@ -190,6 +190,9 @@ const ACTION_LABELS: Record<string, string> = {
   "order.shop_recovery_refund": "Client chose a refund over a new shop",
   "order_match.checkout": "Checked out",
   "basket.checkout": "Checked out a multi-shop basket",
+  // A shop's products split into separate deliveries (gridgo-api#275).
+  "cart.deliveries_set": "Changed a shop's deliveries",
+  "basket.separate_deliveries": "Checked out separate deliveries from one shop",
   "basket.payment_confirm": "Confirmed the basket payment",
   "basket.payment_reject": "Rejected the basket payment",
   "dispatch.milestone": "Recorded a delivery step",
@@ -437,6 +440,7 @@ export const AUDIT_ACTION_GROUPS: readonly { label: string; actions: readonly st
 const ITEM_TYPE_LABELS: Record<string, string> = {
   order: "Order",
   basket: "Multi-shop basket",
+  cart: "Cart",
   user: "Account",
   settings: "Operational settings",
   credits: "Pilot Credits",
@@ -679,6 +683,10 @@ const FIELD_LABELS: Record<string, string> = {
   releasedAt: "Released",
   releasedBy: "Released by",
   sharePercent: "Share",
+  split: "Deliveries chosen",
+  deliveryCount: "Deliveries",
+  deliveryNumber: "Delivery",
+  lineIds: "Products",
 };
 
 /** Keys that name an array element better than its position does. */
@@ -806,6 +814,13 @@ function minuteOfDay(minutes: number): string {
   return `${String(hours).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
 }
 
+/** `cart.deliveries_set` records how the client chose a shop's deliveries. */
+const SPLIT_LABELS: Record<string, string> = {
+  by_deadline: "One delivery per date",
+  none: "All in one delivery",
+  custom: "Chosen by the client",
+};
+
 /** Names the screen already knows, by GRIDGO ID (shops, riders, clients). */
 export type AuditNames = Readonly<Record<string, string>>;
 
@@ -819,6 +834,7 @@ export function presentAuditValue(key: string, value: unknown, names: AuditNames
   // The last service fee bracket has no upper limit.
   if (key === "upToMinor" && value === null) return "No limit";
   if (value === null || value === undefined || value === "") return "None";
+  if (key === "split" && typeof value === "string" && SPLIT_LABELS[value]) return SPLIT_LABELS[value];
   if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "number") {
     if (/Minor$/.test(key)) return formatPhp(value);

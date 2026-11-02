@@ -47,6 +47,7 @@ import { presentOrderState } from "@/lib/order-state";
 import { windowStageOf } from "@/lib/payout-plan";
 import { activeHolds, payoutProgress, payoutSummary, sharesHeading } from "@/lib/payouts";
 import { describeQuantity } from "@/lib/quantity";
+import { deliveryPositionLabel } from "@/lib/baskets";
 
 type Loaded = {
   order: Order;
@@ -207,6 +208,11 @@ export default function OpsPayoutReviewPage() {
           <h1 className="text-h2 text-text-primary m-0 mt-1 truncate">
             {order.title || "Untitled order"}
           </h1>
+          {deliveryPositionLabel(order) ? (
+            <p className="text-caption text-text-muted m-0 mt-1">
+              {deliveryPositionLabel(order)}
+            </p>
+          ) : null}
           <p className="text-body text-text-secondary m-0 mt-1">
             {payoutSummary(order, holds)}
           </p>
