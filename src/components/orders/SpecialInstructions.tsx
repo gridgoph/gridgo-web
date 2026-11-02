@@ -167,6 +167,8 @@ function ChangeRequestRecord({
   const fee = request.feeMinor;
   const total = request.totalMinor;
   const shop = (request.supplierId && names[request.supplierId]) || "The shop";
+  // The client's "pay the rest" for a dearer substitute shop rides on a change request.
+  const topUp = Boolean(request.shopMoveTopUp);
 
   return (
     <section
@@ -175,12 +177,14 @@ function ChangeRequestRecord({
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-body text-text-primary m-0" style={medium}>
-          Change request{item ? ` on ${item}` : ""}
+          {topUp ? "Price difference for the new shop" : `Change request${item ? ` on ${item}` : ""}`}
         </h3>
         <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
       </div>
       <p className="text-body text-text-secondary m-0">
-        {shop} asked {formatDateTime(request.createdAt)}
+        {topUp
+          ? `The client chose to pay the rest for the new shop ${formatDateTime(request.createdAt)}`
+          : `${shop} asked ${formatDateTime(request.createdAt)}`}
         {request.answeredAt && request.status !== "pending"
           ? `; the client answered ${formatDateTime(request.answeredAt)}`
           : ""}
@@ -220,19 +224,23 @@ function ChangeRequestRecord({
           </Term>
         ) : null}
         {request.reason ? (
-          <Term label="The shop's reason, as the client read it">
+          <Term label={topUp ? "Why" : "The shop's reason, as the client read it"}>
             <span className="text-text-secondary">{request.reason}</span>
           </Term>
         ) : null}
       </dl>
 
       <dl className="m-0 grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-1">
-        <MoneyLine term="Extra for the shop" value={formatPhp(extra)} />
+        <MoneyLine term={topUp ? "Extra for the new shop" : "Extra for the shop"} value={formatPhp(extra)} />
         {typeof fee === "number" ? (
           <MoneyLine term="GRIDGO's fee on it" value={formatPhp(fee)} />
         ) : null}
         {typeof total === "number" ? (
-          <MoneyLine term="The client pays for the change" value={formatPhp(total)} strong />
+          <MoneyLine
+            term={topUp ? "The client pays" : "The client pays for the change"}
+            value={formatPhp(total)}
+            strong
+          />
         ) : null}
       </dl>
       {total ? (
@@ -397,8 +405,9 @@ function PaymentDecision({
   return (
     <div className="flex flex-col gap-3">
       <p className="text-body text-text-primary m-0">
-        The client sent {amount} for this change. Verify it or reject it; the job is made as
-        ordered until it is verified.
+        {request.shopMoveTopUp
+          ? `The client sent ${amount} for the new shop's price. Verify it or reject it; the new shop starts only once it is verified.`
+          : `The client sent ${amount} for this change. Verify it or reject it; the job is made as ordered until it is verified.`}
       </p>
       {payment ? (
         <dl className="m-0 flex flex-col gap-1">
@@ -446,7 +455,9 @@ function PaymentDecision({
         amount={amount}
         reference={payment?.reference ?? ""}
         change={
-          request.proposedSpec || (request.colourCorrection ? "the corrected colour prices" : "the new dates")
+          request.shopMoveTopUp
+            ? "the price difference for the new shop"
+            : request.proposedSpec || (request.colourCorrection ? "the corrected colour prices" : "the new dates")
         }
         busy={busy}
         error={error}
@@ -455,7 +466,9 @@ function PaymentDecision({
           const body = { expectedVersion: request.version, amountMinor: totalMinor, reason };
           void decide(
             () => confirmChangePayment(order.id, request.id, body, keys.keyFor({ confirm: body })),
-            "Payment verified. The change is agreed, and the shop and the client have been told.",
+            request.shopMoveTopUp
+              ? "Payment verified. The new shop now has its hour to accept, and the shop and the client have been told."
+              : "Payment verified. The change is agreed, and the shop and the client have been told.",
           );
         }}
       />

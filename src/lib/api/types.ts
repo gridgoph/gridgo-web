@@ -601,6 +601,8 @@ export type SupplierSettlement = {
   totalSupplierEarningsMinor?: number;
   supplierReleasedMinor?: number;
   supplierOutstandingMinor?: number;
+  /** Present once the order moved shop: signed, what the substitute's price changed the stages by. */
+  shopMovePriceAdjustmentMinor?: number;
   [key: string]: number | undefined;
 };
 
@@ -1375,6 +1377,8 @@ export type Order = {
   shopAcceptance?: ShopAcceptance | null;
   /** The open (or last) recovery after a shop could not take or keep the order. */
   shopRecovery?: ShopRecovery | null;
+  /** Ops / Super Admin (full record). Every accepted substitute-shop move. */
+  shopMoves?: ShopMove[];
   /** The shop's one production-deadline request (ORDER_RESCHEDULE_API.md). */
   rescheduleRequest?: RescheduleRequest | null;
   /** Delivery or hub pick-up, chosen before matching (gridgo-client#158). */
@@ -1531,6 +1535,8 @@ export type OrderChangeRequest = {
   payout?: OrderChangePayout | null;
   /** A shop's corrected colour pages (`@/lib/colour-pricing`), when the change is one. */
   colourCorrection?: ColourCorrection | null;
+  /** Set when this is the client's "pay the rest" for a dearer substitute shop. */
+  shopMoveTopUp?: { recoveryId: string; moveId: string } | null;
 };
 
 // ---- Delivery pin (gridgo-api docs/DELIVERY_PIN_API.md) ----
@@ -1619,8 +1625,8 @@ export type FileCheck = {
 
 // ---- Shop acceptance and recovery (gridgo-api SHOP_RECOVERY_API.md) ----
 
-export type ShopAcceptanceStatus =
-  "pending" | "accepted" | "timed_out" | "declined" | "cancelled";
+/** A recovery writes its cause here, including the three Operations opens. */
+export type ShopAcceptanceStatus = "pending" | "accepted" | ShopFailureKind;
 
 export type ShopAcceptance = {
   supplierId: string;
@@ -1632,10 +1638,55 @@ export type ShopAcceptance = {
   acceptedAt?: string | null;
 };
 
-export type ShopFailureKind = "timed_out" | "declined" | "cancelled";
+/**
+ * How a recovery started. The shop's own failures (`timed_out`, `declined`,
+ * `cancelled`) plus the three Operations opens with `POST …/shop-recovery/start`
+ * (gridgo-api#225): `late` (still the shop's fault), `gridgo` and `client`.
+ */
+export type ShopFailureKind =
+  "timed_out" | "declined" | "cancelled" | "late" | "gridgo" | "client";
+
+/** What Operations may send to `POST /orders/:id/shop-recovery/start`. */
+export type ShopRecoveryCause = "late" | "gridgo" | "client";
+
+/** Who caused the move. The price rule applies to `shop` and `gridgo` only. */
+export type ShopRecoveryFault = "shop" | "gridgo" | "client";
 
 export type ShopRecoveryStatus =
-  "awaiting_client" | "ops_review" | "refund_requested" | "refunded" | "accepted";
+  | "awaiting_client"
+  | "ops_review"
+  | "refund_requested"
+  | "refunded"
+  | "accepted"
+  /** The client chose to pay the rest; the order moved but waits on that transfer. */
+  | "awaiting_payment";
+
+/**
+ * The substitute-shop price rule on one offer or move (gridgo-api#225,
+ * SHOP_RECOVERY_API.md "Substitute-shop price rule"). `O` is the committed
+ * shop price, `S` the substitute's. The cap fields are staff only.
+ */
+export type ShopMovePricing = {
+  /** False on a client-caused move: no refund, no cover, original price paid. */
+  ruleApplies: boolean;
+  fault?: ShopRecoveryFault;
+  rule: "cheaper" | "same" | "covered" | "above_cap" | "not_applicable" | (string & {});
+  originalPriceMinor: number;
+  newPriceMinor: number;
+  listedPriceMinor?: number;
+  /** `S − O`; negative for a cheaper shop. */
+  differenceMinor: number;
+  gridgoCoverMinor: number;
+  clientPaysMinor: number;
+  refundMinor: number;
+  capBps?: number;
+  serviceFeeMinor?: number;
+  capByRateMinor?: number;
+  serviceFeeCollectedMinor?: number;
+  capMinor?: number;
+  /** The cap is lower than the rate gives because less fee was collected. */
+  capLimitedByCollection?: boolean;
+};
 
 /** The replacement GRIDGO found. Ops / Super Admin see who and when. */
 export type ShopRecoveryProposal = {
@@ -1646,11 +1697,19 @@ export type ShopRecoveryProposal = {
   /** What the client is told. */
   promiseBy: string;
   expiresAt: string;
+  /** `option_1` for the primary offer; alternatives carry their own. */
+  optionId?: string | null;
+  pricing?: ShopMovePricing | null;
+  /** Up to three more compatible shops the client may pick instead, in rank order. */
+  alternatives?: ShopRecoveryProposal[];
 };
 
 export type ShopRecovery = {
   id: string;
   status: ShopRecoveryStatus;
+  /** How it started; absent on recoveries from before gridgo-api#225. */
+  kind?: ShopFailureKind;
+  fault?: ShopRecoveryFault;
   originalSupplierId?: string;
   /** The order state when the shop failed. */
   stage?: string;
@@ -1663,6 +1722,36 @@ export type ShopRecovery = {
   proposal?: ShopRecoveryProposal | null;
   refundRequestId?: string | null;
   acceptedAt?: string | null;
+  /** The "pay the rest" change request while the client owes it. */
+  topUp?: { changeRequestId: string; amountMinor: number } | null;
+};
+
+/**
+ * One accepted substitute-shop move (`order.shopMoves`), staff projection.
+ * Committed order money never changes; the substitute is paid on its own price.
+ */
+export type ShopMove = {
+  id: string;
+  recoveryId: string;
+  at: string;
+  kind?: ShopFailureKind | null;
+  fault: ShopRecoveryFault;
+  fromSupplierId?: string | null;
+  toSupplierId?: string | null;
+  optionId?: string | null;
+  /** The primary offer, or one of the alternatives. */
+  choice: "replacement" | "alternative" | (string & {});
+  paysDifference?: boolean;
+  status: "applied" | "awaiting_payment" | "refund_requested" | (string & {});
+  pricing?: ShopMovePricing | null;
+  gridgoCoverMinor?: number;
+  refundMinor?: number;
+  clientPaysMinor?: number;
+  refundRequestId?: string | null;
+  /** `reserved`, or `reconciliation_required` when the difference could not be reserved. */
+  refundStatus?: "reserved" | "reconciliation_required" | (string & {}) | null;
+  topUpChangeRequestId?: string | null;
+  topUpPaidAt?: string | null;
 };
 
 /** One timeout, decline or cancellation, from `GET /ops/shop-failures`. */
@@ -1671,6 +1760,7 @@ export type ShopFailureEvent = {
   orderId: string;
   supplierId: string;
   kind: ShopFailureKind;
+  fault?: ShopRecoveryFault;
   stage: string;
   reason: string;
   at: string;
@@ -2095,6 +2185,12 @@ export type PlatformSettings = {
    * it; the settings screen then leaves the control out.
    */
   downpaymentPercent?: number;
+  /**
+   * GRIDGO's cover for a dearer substitute shop, in basis points of the
+   * order's original service fee (default 5,000 = 50%; gridgo-api#225).
+   * Super Admin writes it. Absent on an API that predates it.
+   */
+  shopMoveCoverBps?: number;
   deliveryFeeBands: DeliveryFeeBand[];
   /**
    * Late-production penalties: the three tier rates and the real-deductions
@@ -2177,6 +2273,8 @@ export type UpdateSettingsInput = {
   /** Super Admin only; whole seconds 30–600. */
   riderLocationStaleAfterSeconds?: number;
   downpaymentPercent?: number;
+  /** Super Admin only; whole number 0–10,000. */
+  shopMoveCoverBps?: number;
   deliveryFeeBands?: DeliveryFeeBand[];
   productionNudge?: ProductionNudge;
   /** Super Admin only, always the complete object (`403` for anyone else). */
@@ -3877,6 +3975,10 @@ export type PlatformRevenue = {
   recognizedMinor?: number;
   adjustedMinor?: number;
   refundedMinor?: number;
+  /** Present once the order moved shop. `netServiceFeeMinor` is already after the cover. */
+  shopMoveCoverMinor?: number;
+  shopMoveClientRefundMinor?: number;
+  shopMoveClientTopUpMinor?: number;
 };
 
 // ---- Multi-shop baskets (gridgo-api MULTI_SHOP_CHECKOUT_API.md) ----

@@ -12,6 +12,7 @@ import { formatPhp } from "@/lib/format";
 import { asDeduction, discountLabel, orderFeeSplit } from "@/lib/organization-discount";
 import { orderVoucher, VOUCHER_LINE_LABEL } from "@/lib/vouchers";
 import { appliedPinChange, signedPhp } from "@/lib/delivery-pin";
+import { shopMoveMoney } from "@/lib/shop-move";
 
 type Props = {
   order: Order;
@@ -50,8 +51,15 @@ type Props = {
  * and total as they were and adds its signed difference beside them: delivery
  * at checkout, the pin change, delivery now. The rider and GRIDGO lines are
  * the API's, which already carry the change, so they add up to delivery now.
+ *
+ * An order that moved shop (gridgo-api#225) keeps its committed money and
+ * adds, after the total, what the move did: the change to the shop's pay at
+ * the new shop's own price, GRIDGO's cover out of its fee, the difference
+ * returned to the client or the rest the client paid, and the fee GRIDGO
+ * keeps after the cover. An order that never moved gets none of these lines.
  */
 export function OrderMoneyLines({ order, totalLabel = "Client total" }: Props) {
+  const moveMoney = shopMoveMoney(order);
   const deliverySplit = orderDeliverySplit(order);
   const fee = orderFeeSplit(order);
   const voucher = orderVoucher(order);
@@ -188,6 +196,49 @@ export function OrderMoneyLines({ order, totalLabel = "Client total" }: Props) {
             value={formatPhp(voucher.gridgoTopups.riderMinor)}
             testId="gridgo-rider-topup"
           />
+        </>
+      ) : null}
+      {moveMoney ? (
+        <>
+          {moveMoney.priceAdjustmentMinor !== null ? (
+            <Line
+              label="Shop move: change to the shop's pay"
+              value={signedPhp(moveMoney.priceAdjustmentMinor)}
+              testId="shop-move-price-adjustment"
+            />
+          ) : null}
+          {moveMoney.coverMinor !== null ? (
+            <Line
+              label="GRIDGO's cover, from its fee"
+              value={formatPhp(moveMoney.coverMinor)}
+              indent
+              testId="shop-move-cover"
+            />
+          ) : null}
+          {moveMoney.clientRefundMinor ? (
+            <Line
+              label="Back to the client"
+              value={formatPhp(moveMoney.clientRefundMinor)}
+              indent
+              testId="shop-move-client-refund"
+            />
+          ) : null}
+          {moveMoney.clientTopUpMinor ? (
+            <Line
+              label="Client paid the rest"
+              value={formatPhp(moveMoney.clientTopUpMinor)}
+              indent
+              testId="shop-move-client-top-up"
+            />
+          ) : null}
+          {moveMoney.netServiceFeeMinor !== null ? (
+            <Line
+              label="Fee GRIDGO keeps, after the cover"
+              value={formatPhp(moveMoney.netServiceFeeMinor)}
+              indent
+              testId="shop-move-net-fee"
+            />
+          ) : null}
         </>
       ) : null}
     </>
