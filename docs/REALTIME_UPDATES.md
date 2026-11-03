@@ -185,6 +185,24 @@ carry, so those screens re-read when one of these inbox notices arrives
 (`useLegalInboxReload`), and keep their Refresh button. The rail's open privacy
 request count re-reads on the same `privacy.*` notices.
 
+Quote request notices (`ops_quote_requested|published|accepted|cancelled|expired`;
+`gridgo-api/docs/QUOTE_REQUESTS_API.md`) reach Operations and Super Admin with the
+`quoteRequestId` and open that request at `/ops/quotes/:id` or `/admin/quotes/:id`, or the
+Quotes desk when a notice names none. The API sends no live resource ping for quote requests,
+so the desk, an open request and the rail's "waiting for shop prices" count re-read when one
+of these notices arrives (`useLegalInboxReload`), and keep their Refresh button. Adding or
+changing a shop reply sends no notice: another person's reply shows on the next read, and a
+stale write is refused by the request's version and re-read.
+
+Sample First notices (`sample_approved`, `sample_rejected`, `sample_batch_cancelled`,
+`sample_batch_ordered`; `gridgo-api/docs/SAMPLE_FIRST_API.md`) reach Operations and Super
+Admin with an `orderId` and open that order in the caller's own tree: the sample for a
+decision or a cancellation, the new batch order for `sample_batch_ordered`. The inbox words
+them plainly (`SAMPLE_INBOX_HEADLINES` in `src/lib/sample-first.ts`), and the shop's own
+`shop_sample_*` copies open its job. The Sample batches page (`/ops/sample-batches`,
+`/admin/sample-batches`) and an open batch re-read when one arrives (`useLegalInboxReload`)
+and on an `orders` ping, since a sample's delivery starts its price hold.
+
 Post-order survey notices (`order_survey_available`, `order_survey_dismissed`,
 `order_survey_submitted`; `gridgo-api/docs/SURVEY_API.md`) reach Operations and Super Admin
 without any answer. Only Super Admin can read responses, so its `order_survey_submitted`
@@ -197,6 +215,15 @@ Supplier invoice notices (`supplier_invoice_scanned|expected|submitted|corrected
 `/{ops,admin}/supplier-invoices?order=:orderId`, which finds the Manila month the invoice
 counts in and opens it. An open desk, and the Finance page's invoice summary, re-read on the
 same notices (`useLegalInboxReload`).
+
+Receipt scans before dispatch (`gridgo-api/docs/SHOP_RECEIPT_SCAN_API.md`, gridgo-supplier#64):
+the Operations order queue, Super Admin Finance's order table and an open order workspace
+re-read on `supplier_invoice_scanned` as well as on the order's own invalidation, so the
+list's Receipt scan marker and the workspace's Receipt scan row show a new scan at once.
+The Finance switch "Require receipt scan before calling a rider"
+(`settings.shopReceiptScanRequired`, off by default) re-reads on the `settings` ping:
+Super Admin changes it on `/admin/finance` with a reason; Operations reads it on
+`/ops/supplier-invoices` and `/ops/settings`. Rules and copy: `src/lib/receipt-scan.ts`.
 
 Sign-up links open Super Admin verification only; Operations has no sign-up destination.
 Operations service-review links open `/ops/service-lines`; legacy `/ops/approvals?tab=services`

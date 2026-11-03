@@ -100,6 +100,7 @@ export function rewardFilterOf(value: string | null): TesterRewardStatus | "all"
 }
 
 export function rewardKindText(reward: Pick<TesterReward, "kind">): string {
+  if (reward.kind === "bug_report") return "Bug report";
   return reward.kind === "referral" ? INVITE_A_FRIEND : "Five steps";
 }
 

@@ -26,6 +26,7 @@ import {
   type PayoutQueueGroup,
 } from "@/lib/payouts";
 import { cn } from "@/lib/utils";
+import { deliveryPositionLabel } from "@/lib/baskets";
 
 type Loaded = {
   orders: Order[];
@@ -250,6 +251,11 @@ function PayoutRow({ order, holds }: { order: Order; holds: Claim[] }) {
             </p>
             <StatusChip tone={status.tone} label={status.label} icon={status.icon} />
           </div>
+          {deliveryPositionLabel(order) ? (
+            <p className="text-caption text-text-muted m-0">
+              {deliveryPositionLabel(order)}
+            </p>
+          ) : null}
           <p className="text-body text-text-secondary m-0">
             {payoutSummary(order, holds)}
           </p>

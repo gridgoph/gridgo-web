@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import type { Notification } from "@/lib/api/types";
+import { SAMPLE_INBOX_HEADLINES } from "@/lib/sample-first";
 
 /**
  * How one inbox row reads: which family of event it is, the icon that family
@@ -144,8 +145,11 @@ export function presentSlip(notification: Notification): {
   reference: string | null;
 } {
   const match = TITLE_WITH_ID.exec(notification.title);
+  const type = notification.type ?? "";
   const headline =
-    CHANGE_HEADLINES[notification.type ?? ""] ?? (match ? match[1] : notification.title);
+    CHANGE_HEADLINES[type] ??
+    SAMPLE_INBOX_HEADLINES[type] ??
+    (match ? match[1] : notification.title);
   const orderTitle = notification.orderTitle?.trim();
   if (orderTitle) return { headline, reference: orderTitle };
   if (notification.orderId) {

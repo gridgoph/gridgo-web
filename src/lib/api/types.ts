@@ -361,8 +361,8 @@ export type TesterRewardCheck = {
 
 export type TesterReward = {
   id: string;
-  kind: "mission" | "referral";
-  /** The mission owner, or the invited friend. */
+  kind: "mission" | "referral" | "bug_report";
+  /** The mission owner, the invited friend, or the bug reporter. */
   clientId: string;
   inviterId: string | null;
   inviteId: string | null;
@@ -601,6 +601,8 @@ export type SupplierSettlement = {
   totalSupplierEarningsMinor?: number;
   supplierReleasedMinor?: number;
   supplierOutstandingMinor?: number;
+  /** Present once the order moved shop: signed, what the substitute's price changed the stages by. */
+  shopMovePriceAdjustmentMinor?: number;
   [key: string]: number | undefined;
 };
 
@@ -1180,6 +1182,29 @@ export type Order = {
   basketId?: string | null;
   /** "Shop A", "Shop B", … — never the shop's trading name. */
   groupLabel?: string | null;
+  /**
+   * Sample First (gridgo-api#222, SAMPLE_FIRST_API.md): `["sample"]` on a paid
+   * sample, `["batch_from_sample"]` on the batch ordered from it. Absent on
+   * every other order. Read through `src/lib/sample-first.ts`.
+   */
+  orderTags?: string[] | null;
+  /** The batch draft linked to a sample or a batch order. */
+  sampleBatchDraftId?: string | null;
+  /** On a sample: its batch order, once the client ordered it. */
+  batchOrderId?: string | null;
+  /** On a batch: the sample order it was held to. */
+  sampleOrderId?: string | null;
+  /** On a batch: which price it was ordered at. */
+  sampleBatchPricing?: SampleBatchPricing | null;
+  /** The client's decision on the sample: the batch standard in a dispute. */
+  sampleDecision?: SampleDecision | null;
+  /**
+   * A shop split into separate deliveries (gridgo-api#275, SHOP_DELIVERIES_API.md):
+   * this order's place among that shop's deliveries, 1-based. Sent only when
+   * `shopDeliveryCount > 1`. Read through `deliveryPositionLabel`.
+   */
+  deliveryNumber?: number | null;
+  shopDeliveryCount?: number | null;
   basketDeadline?: string | null;
   invoiceNumber?: string | null;
   /**
@@ -1320,6 +1345,12 @@ export type Order = {
   shopHandover?: ShopHandover | null;
   /** Every staff-forced production step, with its reason. Staff and assigned parties. */
   forcedSteps?: ForcedStep[];
+  /**
+   * The assigned shop's receipt scans (`gridgo-api/docs/SHOP_RECEIPT_SCAN_API.md`).
+   * Operations and Super Admin only; absent on an older API. Read it through
+   * `src/lib/receipt-scan.ts`.
+   */
+  receiptScan?: OrderReceiptScan | null;
   /** True once any step was forced: every app shows "Forced by GRIDGO". */
   forcedByGridgo?: boolean;
   /** Staff only: the reason codes a forced step may carry. */
@@ -1375,6 +1406,8 @@ export type Order = {
   shopAcceptance?: ShopAcceptance | null;
   /** The open (or last) recovery after a shop could not take or keep the order. */
   shopRecovery?: ShopRecovery | null;
+  /** Ops / Super Admin (full record). Every accepted substitute-shop move. */
+  shopMoves?: ShopMove[];
   /** The shop's one production-deadline request (ORDER_RESCHEDULE_API.md). */
   rescheduleRequest?: RescheduleRequest | null;
   /** Delivery or hub pick-up, chosen before matching (gridgo-client#158). */
@@ -1531,6 +1564,8 @@ export type OrderChangeRequest = {
   payout?: OrderChangePayout | null;
   /** A shop's corrected colour pages (`@/lib/colour-pricing`), when the change is one. */
   colourCorrection?: ColourCorrection | null;
+  /** Set when this is the client's "pay the rest" for a dearer substitute shop. */
+  shopMoveTopUp?: { recoveryId: string; moveId: string } | null;
 };
 
 // ---- Delivery pin (gridgo-api docs/DELIVERY_PIN_API.md) ----
@@ -1619,8 +1654,8 @@ export type FileCheck = {
 
 // ---- Shop acceptance and recovery (gridgo-api SHOP_RECOVERY_API.md) ----
 
-export type ShopAcceptanceStatus =
-  "pending" | "accepted" | "timed_out" | "declined" | "cancelled";
+/** A recovery writes its cause here, including the three Operations opens. */
+export type ShopAcceptanceStatus = "pending" | "accepted" | ShopFailureKind;
 
 export type ShopAcceptance = {
   supplierId: string;
@@ -1632,10 +1667,55 @@ export type ShopAcceptance = {
   acceptedAt?: string | null;
 };
 
-export type ShopFailureKind = "timed_out" | "declined" | "cancelled";
+/**
+ * How a recovery started. The shop's own failures (`timed_out`, `declined`,
+ * `cancelled`) plus the three Operations opens with `POST …/shop-recovery/start`
+ * (gridgo-api#225): `late` (still the shop's fault), `gridgo` and `client`.
+ */
+export type ShopFailureKind =
+  "timed_out" | "declined" | "cancelled" | "late" | "gridgo" | "client";
+
+/** What Operations may send to `POST /orders/:id/shop-recovery/start`. */
+export type ShopRecoveryCause = "late" | "gridgo" | "client";
+
+/** Who caused the move. The price rule applies to `shop` and `gridgo` only. */
+export type ShopRecoveryFault = "shop" | "gridgo" | "client";
 
 export type ShopRecoveryStatus =
-  "awaiting_client" | "ops_review" | "refund_requested" | "refunded" | "accepted";
+  | "awaiting_client"
+  | "ops_review"
+  | "refund_requested"
+  | "refunded"
+  | "accepted"
+  /** The client chose to pay the rest; the order moved but waits on that transfer. */
+  | "awaiting_payment";
+
+/**
+ * The substitute-shop price rule on one offer or move (gridgo-api#225,
+ * SHOP_RECOVERY_API.md "Substitute-shop price rule"). `O` is the committed
+ * shop price, `S` the substitute's. The cap fields are staff only.
+ */
+export type ShopMovePricing = {
+  /** False on a client-caused move: no refund, no cover, original price paid. */
+  ruleApplies: boolean;
+  fault?: ShopRecoveryFault;
+  rule: "cheaper" | "same" | "covered" | "above_cap" | "not_applicable" | (string & {});
+  originalPriceMinor: number;
+  newPriceMinor: number;
+  listedPriceMinor?: number;
+  /** `S − O`; negative for a cheaper shop. */
+  differenceMinor: number;
+  gridgoCoverMinor: number;
+  clientPaysMinor: number;
+  refundMinor: number;
+  capBps?: number;
+  serviceFeeMinor?: number;
+  capByRateMinor?: number;
+  serviceFeeCollectedMinor?: number;
+  capMinor?: number;
+  /** The cap is lower than the rate gives because less fee was collected. */
+  capLimitedByCollection?: boolean;
+};
 
 /** The replacement GRIDGO found. Ops / Super Admin see who and when. */
 export type ShopRecoveryProposal = {
@@ -1646,11 +1726,19 @@ export type ShopRecoveryProposal = {
   /** What the client is told. */
   promiseBy: string;
   expiresAt: string;
+  /** `option_1` for the primary offer; alternatives carry their own. */
+  optionId?: string | null;
+  pricing?: ShopMovePricing | null;
+  /** Up to three more compatible shops the client may pick instead, in rank order. */
+  alternatives?: ShopRecoveryProposal[];
 };
 
 export type ShopRecovery = {
   id: string;
   status: ShopRecoveryStatus;
+  /** How it started; absent on recoveries from before gridgo-api#225. */
+  kind?: ShopFailureKind;
+  fault?: ShopRecoveryFault;
   originalSupplierId?: string;
   /** The order state when the shop failed. */
   stage?: string;
@@ -1663,6 +1751,36 @@ export type ShopRecovery = {
   proposal?: ShopRecoveryProposal | null;
   refundRequestId?: string | null;
   acceptedAt?: string | null;
+  /** The "pay the rest" change request while the client owes it. */
+  topUp?: { changeRequestId: string; amountMinor: number } | null;
+};
+
+/**
+ * One accepted substitute-shop move (`order.shopMoves`), staff projection.
+ * Committed order money never changes; the substitute is paid on its own price.
+ */
+export type ShopMove = {
+  id: string;
+  recoveryId: string;
+  at: string;
+  kind?: ShopFailureKind | null;
+  fault: ShopRecoveryFault;
+  fromSupplierId?: string | null;
+  toSupplierId?: string | null;
+  optionId?: string | null;
+  /** The primary offer, or one of the alternatives. */
+  choice: "replacement" | "alternative" | (string & {});
+  paysDifference?: boolean;
+  status: "applied" | "awaiting_payment" | "refund_requested" | (string & {});
+  pricing?: ShopMovePricing | null;
+  gridgoCoverMinor?: number;
+  refundMinor?: number;
+  clientPaysMinor?: number;
+  refundRequestId?: string | null;
+  /** `reserved`, or `reconciliation_required` when the difference could not be reserved. */
+  refundStatus?: "reserved" | "reconciliation_required" | (string & {}) | null;
+  topUpChangeRequestId?: string | null;
+  topUpPaidAt?: string | null;
 };
 
 /** One timeout, decline or cancellation, from `GET /ops/shop-failures`. */
@@ -1671,6 +1789,7 @@ export type ShopFailureEvent = {
   orderId: string;
   supplierId: string;
   kind: ShopFailureKind;
+  fault?: ShopRecoveryFault;
   stage: string;
   reason: string;
   at: string;
@@ -1842,6 +1961,8 @@ export type Notification = {
   announcementId?: string | null;
   /** Organization reminders and notices name the organization account. */
   organizationUserId?: string | null;
+  /** Quote notices (`ops_quote_*`, `quote_*`) name the quote request. */
+  quoteRequestId?: string | null;
   title: string;
   body: string;
   /** Broadcast picture. Public HTTPS link or `/public/announcement-images/<fileId>`. */
@@ -2095,6 +2216,24 @@ export type PlatformSettings = {
    * it; the settings screen then leaves the control out.
    */
   downpaymentPercent?: number;
+  /**
+   * GRIDGO's cover for a dearer substitute shop, in basis points of the
+   * order's original service fee (default 5,000 = 50%; gridgo-api#225).
+   * Super Admin writes it. Absent on an API that predates it.
+   */
+  shopMoveCoverBps?: number;
+  /**
+   * How many days published quote options stay open (gridgo-api#226), whole
+   * days 1–90, default 7. Super Admin writes it. Absent on an API that
+   * predates quote requests.
+   */
+  quoteValidityDays?: number;
+  /**
+   * How many days a sampled batch price is held after the sample reaches the
+   * client (gridgo-api#222, SAMPLE_FIRST_API.md), whole days 1–90, default
+   * 14. Super Admin writes it. Absent on an API that predates Sample First.
+   */
+  sampleBatchHoldDays?: number;
   deliveryFeeBands: DeliveryFeeBand[];
   /**
    * Late-production penalties: the three tier rates and the real-deductions
@@ -2106,6 +2245,13 @@ export type PlatformSettings = {
   hubPickupEnabled?: boolean;
   /** Super Admin handover codes gate; issued codes survive disabling it. */
   handoverOtpEnabled?: boolean;
+  /**
+   * Finance switch (`gridgo-api/docs/SHOP_RECEIPT_SCAN_API.md`): while on, a
+   * shop cannot mark a job ready for rider pickup until its receipt scan is
+   * attached. Every reader sees it; only Super Admin writes it, with a reason.
+   * Absent on an older API; read through `src/lib/receipt-scan.ts`.
+   */
+  shopReceiptScanRequired?: boolean;
   /**
    * Super Admin: checkout refuses a hardbound line without its cover and
    * spine while on. Off by default; absent on an older API.
@@ -2177,6 +2323,12 @@ export type UpdateSettingsInput = {
   /** Super Admin only; whole seconds 30–600. */
   riderLocationStaleAfterSeconds?: number;
   downpaymentPercent?: number;
+  /** Super Admin only; whole number 0–10,000. */
+  shopMoveCoverBps?: number;
+  /** Super Admin only; whole days 1–90. */
+  quoteValidityDays?: number;
+  /** Super Admin only; whole days 1–90. Never moves a hold already running. */
+  sampleBatchHoldDays?: number;
   deliveryFeeBands?: DeliveryFeeBand[];
   productionNudge?: ProductionNudge;
   /** Super Admin only, always the complete object (`403` for anyone else). */
@@ -2185,6 +2337,8 @@ export type UpdateSettingsInput = {
   hubPickupEnabled?: boolean;
   /** Super Admin handover codes gate; issued codes survive disabling it. */
   handoverOtpEnabled?: boolean;
+  /** Super Admin only, with a `reason` (`400 settings_reason_required`). */
+  shopReceiptScanRequired?: boolean;
   /**
    * Super Admin: checkout refuses a hardbound line without its cover and
    * spine while on. Off by default; absent on an older API.
@@ -2467,10 +2621,23 @@ export type ForcedStep = {
   skippedChecks: string[];
 };
 
+/** The assigned shop's attached receipt scans on one order, as staff read them. */
+export type OrderReceiptScan = {
+  attached: boolean;
+  /** Oldest first. Each opens with the signed read `GET /files/:fileId`. */
+  fileIds: string[];
+  latestFileId: string | null;
+  latestUploadedAt: string | null;
+};
+
 export type TransitionReadiness = {
   allowed: boolean;
   missing: TransitionRequirement[];
-  /** A supplier invoice scan. Optional: it never holds a step. */
+  /**
+   * The shop's receipt scan. `required` follows the Finance switch for
+   * `ready_for_dispatch` (always false for `supplier_self_qc`); while it is
+   * true and nothing is attached, `missing` names `receipt_scan_required`.
+   */
   receiptScan?: { required: boolean; attached: boolean } | null;
 };
 
@@ -3467,6 +3634,40 @@ export type IssueReport = {
   triage?: IssueReportTriage;
   /** Firstmate's suggestion, `null` until it reviews the report. */
   aiReview?: IssueReportAiReview | null;
+  /**
+   * Who sent it from the signed-in app; `null` when anonymous, absent from an
+   * API before the bug-report voucher (gridgo-api docs/CLIENT_HOME_API.md).
+   */
+  reporter?: IssueReportReporter | null;
+  /** `null` until staff confirm a real bug; absent from an older API. */
+  bugConfirmation?: IssueReportBugConfirmation | null;
+};
+
+export type IssueReportReporter = {
+  id: string;
+  name: string | null;
+  /** Founding Tester eligible. */
+  tester: boolean;
+  /** Confirming a report of theirs now would earn the one-time voucher. */
+  bugRewardAvailable: boolean;
+};
+
+/** The decision at confirmation time; it never changes afterwards. */
+export type IssueReportVoucherOutcome = "granted" | "paused" | "already_rewarded" | "not_tester" | "no_reporter";
+
+export type IssueReportBugConfirmation = {
+  confirmedAt: string;
+  confirmedBy: { id: string; name: string | null } | null;
+  voucherOutcome: IssueReportVoucherOutcome;
+  /** A voucher was actually issued for this report (stays true after a void). */
+  voucherGranted: boolean;
+  /** Only for `granted` or `paused`; `status` is the live entitlement state. */
+  reward: {
+    id: string;
+    status: "issued" | "paused" | "voided";
+    amountMinor: number;
+    voucherId: string | null;
+  } | null;
 };
 
 /** Whether a person judged the report real. Independent of `status`. */
@@ -3843,6 +4044,10 @@ export type PlatformRevenue = {
   recognizedMinor?: number;
   adjustedMinor?: number;
   refundedMinor?: number;
+  /** Present once the order moved shop. `netServiceFeeMinor` is already after the cover. */
+  shopMoveCoverMinor?: number;
+  shopMoveClientRefundMinor?: number;
+  shopMoveClientTopUpMinor?: number;
 };
 
 // ---- Multi-shop baskets (gridgo-api MULTI_SHOP_CHECKOUT_API.md) ----
@@ -3868,6 +4073,9 @@ export type BasketGroup = {
   deadline?: string | null;
   orderId: string;
   label: string;
+  /** Separate deliveries from one shop: "Delivery 1 of 2". Absent for a single delivery. */
+  deliveryNumber?: number | null;
+  shopDeliveryCount?: number | null;
   state: string;
   /** Printing as the client sees it: shop price plus the gross service fee. */
   clientItemSubtotalMinor: number;
@@ -3913,6 +4121,9 @@ export type BasketInvoiceGroup = {
   deadline?: string | null;
   orderId: string;
   label: string;
+  /** Separate deliveries from one shop: "Delivery 1 of 2". Absent for a single delivery. */
+  deliveryNumber?: number | null;
+  shopDeliveryCount?: number | null;
   lines: InvoiceLine[];
   clientItemSubtotalMinor: number;
   itemSubtotalMinor?: number;
@@ -4663,4 +4874,129 @@ export type ApprovalProofRead = {
   approvalProofs: ApprovalProofRecord[];
   /** The current review candidate: not signed evidence. */
   review: { snapshot: ApprovalSnapshot; snapshotSha256: string };
+};
+
+/**
+ * Sample First (gridgo-api#222, contract `gridgo-api/docs/SAMPLE_FIRST_API.md`).
+ * The client's decision on a sample, copied onto the sample and the batch
+ * orders. An unknown `method` (a signed approval, later) still reads as
+ * approved with evidence.
+ */
+export type SampleDecision =
+  | {
+      draftId: string;
+      decision: "approved";
+      method: string;
+      at: string;
+      samplePhotoFileId: string | null;
+      note?: string | null;
+    }
+  | {
+      draftId: string;
+      decision: "rejected";
+      at: string;
+      reason: string;
+      next: "resample" | "cancel" | string;
+    };
+
+export type SampleBatchPricing = {
+  pricing: "held" | "current" | string;
+  heldUntil: string | null;
+  heldPricingCapturedAt: string | null;
+};
+
+export type SampleBatchStatus =
+  | "awaiting_sample"
+  | "approved"
+  | "ordered"
+  | "rejected"
+  | "cancelled";
+
+/** A batch price for one quantity; staff also get the engine detail. */
+export type SampleBatchPrice = {
+  quantity: number;
+  clientItemMinor: number;
+  lineSubtotalMinor?: number;
+  unitRateMinor?: number;
+  volumeTierApplied?: { minQuantity: number; unitPriceMinor: number } | null;
+};
+
+/** The shop's batch price list copied at sample checkout. Staff only. */
+export type SampleHeldPricing = {
+  version: number;
+  capturedAt: string;
+  catalogItemId: string;
+  catalogItemVersion?: number | null;
+  pricingUnit: string;
+  packageQty: number | null;
+  basePriceMinor: number;
+  minimumOrderQuantity: number | null;
+  minimumMeasurement?: {
+    width: number | null;
+    height: number | null;
+    length: number | null;
+  } | null;
+  options: {
+    optionId: string;
+    optionGroupId?: string | null;
+    groupName: string | null;
+    label: string;
+    priceModifierMinor: number;
+    priceMultiplierBps: number | null;
+  }[];
+  volumeTiers: { minQuantity: number; unitPriceMinor: number }[];
+  speedTier: { id?: string; label?: string; priceMinor?: number | null; surchargeMinor?: number | null } | null;
+};
+
+export type SampleBatch = {
+  id: string;
+  status: SampleBatchStatus | string;
+  tags?: string[];
+  catalogItemId: string;
+  itemName: string | null;
+  sampleOrderId: string;
+  sampleOrderState: string | null;
+  batchOrderId: string | null;
+  previousDraftId: string | null;
+  replacedByDraftId: string | null;
+  batch: {
+    quantity: number;
+    optionIds?: string[];
+    speedTierId?: string | null;
+    specialInstructions?: string | null;
+    [key: string]: unknown;
+  };
+  holdDays: number;
+  sampleDeliveredAt: string | null;
+  heldUntil: string | null;
+  holdActive: boolean;
+  holdExpired: boolean;
+  heldPrice: SampleBatchPrice | null;
+  currentPrice: SampleBatchPrice | null;
+  canOrderAtHeldPrice: boolean;
+  heldPriceBlocker: string | null;
+  canOrderAtCurrentPrice: boolean;
+  approval: {
+    version: number;
+    method: string;
+    accepted: boolean;
+    samplePhotoFileId: string | null;
+    note?: string | null;
+    at: string;
+    by: string;
+  } | null;
+  rejection: {
+    version: number;
+    reason: string;
+    next: "resample" | "cancel" | string;
+    at: string;
+    by: string;
+  } | null;
+  /** Staff only. */
+  clientId?: string;
+  supplierId?: string;
+  heldPricing?: SampleHeldPricing;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
 };

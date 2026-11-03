@@ -3,7 +3,9 @@
  * Rider location freshness lives in `src/lib/rider-tracking.ts`.
  */
 
-import type { Order } from "@/lib/api/types";
+import { opsErrorMessage } from "@/app/ops/_lib/errors";
+import { isApiError } from "@/lib/api/client";
+import type { Order, User } from "@/lib/api/types";
 
 /**
  * Delivery-related states Operations monitors on the dispatch board.
@@ -68,9 +70,41 @@ export function presentRouteAction(
   if (riderId && view?.hasPosition) {
     return {
       href: `/ops/riders?rider=${encodeURIComponent(riderId)}`,
-      label: view.freshness === "live" ? "Show route on map" : "Show last position on map",
+      label:
+        view.freshness === "live" ? "Show route on map" : "Show last position on map",
       reason: null,
     };
   }
   return { href: null, label: "Show route on map", reason: locationLabel };
+}
+
+/**
+ * The riders Operations can assign: the same test the API applies to the
+ * `rider_assigned` transition (gridgo-api `approvedRole`), read off the rider
+ * list the portal already loads. An approved rider whose account is active;
+ * a pending, suspended or rejected rider, or one on an account hold, is left
+ * out rather than offered and refused.
+ */
+export function assignableRiders(riders: readonly User[]): User[] {
+  return riders
+    .filter(
+      (rider) =>
+        rider.verificationStatus === "approved" &&
+        (rider.accountStatus ?? "active") === "active",
+    )
+    .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id));
+}
+
+/** Why assigning a rider did not go through, in Operations' words. */
+export function assignRiderErrorMessage(err: unknown): string {
+  if (isApiError(err)) {
+    if (err.code === "delivery_pin_payment_pending") {
+      return "The client's delivery-pin payment is waiting on Operations. Verify or reject it on the order, then assign a rider.";
+    }
+    if (err.code === "rider_not_found") {
+      return "That rider account no longer exists. Refresh and choose another rider.";
+    }
+    return opsErrorMessage(err, `Could not assign rider (${err.code}).`);
+  }
+  return "Network error while assigning rider.";
 }

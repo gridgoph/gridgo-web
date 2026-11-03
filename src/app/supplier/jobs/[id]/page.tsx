@@ -112,6 +112,7 @@ import {
 } from "@/lib/supplier-actions";
 import { useAcceptClock } from "@/lib/use-accept-clock";
 import { jobActivity, relativeTime } from "@/app/supplier/_lib/job-activity";
+import { deliveryPositionLabel } from "@/lib/baskets";
 
 /** The two shop photos a job takes before packing, each with its own words. */
 type PhotoKind = "progress" | "packing";
@@ -473,7 +474,10 @@ export default function SupplierJobDetailPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-h2 text-text-primary m-0">{job.title}</h2>
-            <p className="text-caption text-text-muted m-0 mt-1">Order {job.id}</p>
+            <p className="text-caption text-text-muted m-0 mt-1">
+              {deliveryPositionLabel(job) ? `${deliveryPositionLabel(job)} · ` : ""}
+              Order {job.id}
+            </p>
             {isExpressOrder(job) ? (
               <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
                 <ExpressChip />

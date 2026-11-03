@@ -422,6 +422,7 @@ const SKIPPED_CHECK_LABELS: Record<string, string> = {
   production_review_required: "GRIDGO's review of the finished work",
   production_photo_required: "A progress photo from the shop",
   packing_photo_required: "The shop's packing photo",
+  receipt_scan_required: "The shop's receipt scan",
 };
 
 /** A skipped check in words. A code this portal does not know yet still reads as a sentence. */

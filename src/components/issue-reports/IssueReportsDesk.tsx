@@ -11,7 +11,9 @@ import {
   useState,
 } from "react";
 
+import { BugConfirmation, ConfirmBugDialog } from "@/components/issue-reports/BugConfirmation";
 import { BulkBar } from "@/components/issue-reports/BulkBar";
+import { confirmBugErrorCopy, confirmBugNeedsReload } from "@/components/issue-reports/bug-confirmation";
 import { type BulkOutcome, type BulkWrite } from "@/components/issue-reports/bulk";
 import { DeskToolbar } from "@/components/issue-reports/DeskToolbar";
 import {
@@ -60,7 +62,13 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { STATUS_ICONS, StatusChip, StatusChipLink } from "@/components/ui/StatusChip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getIssueReport, isApiError, listIssueReports, updateIssueReport } from "@/lib/api/client";
+import {
+  confirmIssueReportBug,
+  getIssueReport,
+  isApiError,
+  listIssueReports,
+  updateIssueReport,
+} from "@/lib/api/client";
 import type {
   IssueReport,
   IssueReportCategory,
@@ -253,7 +261,14 @@ type Undo = { id: string; validity: IssueReportValidity; previous: IssueReportTr
  * step pinned at the bottom of its panel. Below 1024px it is one pane at a
  * time (the list, then the report on its own with a way back).
  */
-export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: boolean } = {}) {
+export function IssueReportsDesk({
+  trackerLinks = false,
+  viewerId = null,
+}: {
+  trackerLinks?: boolean;
+  /** The signed-in staff member; their own report cannot be confirmed as a bug. */
+  viewerId?: string | null;
+} = {}) {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const [view, setView] = useState<DeskView>(() => viewFromSearch(searchParams));
@@ -280,9 +295,12 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
   const [saving, setSaving] = useState(false);
   const [bulkRunning, setBulkRunning] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<"publish" | "track" | null>(null);
+  const [dialog, setDialog] = useState<"publish" | "track" | "confirm-bug" | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [undo, setUndo] = useState<Undo | null>(null);
+  // A report just confirmed as a bug stays open to show its result, even
+  // when Valid and Bug move it out of this view.
+  const [keptOpen, setKeptOpen] = useState<string | null>(null);
 
   const listRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -795,6 +813,37 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
     void load(selected?.id ?? null).catch(() => setError("Saved, but the list could not refresh. Press Refresh."));
   }
 
+  async function confirmBug() {
+    if (!selected || saving || bulkRunning) return;
+    const target = selected;
+    setSaving(true);
+    setDialogError(null);
+    setUndo(null);
+    try {
+      const updated = await confirmIssueReportBug(target.id);
+      setDialog(null);
+      if (!outsideView && !matchesView(updated, view)) {
+        peekRef.current = updated;
+        setPeek(updated);
+        setKeptOpen(updated.id);
+      }
+      replaceReport(updated);
+      // The button that opened the dialog is gone; put focus on the result.
+      requestAnimationFrame(() => document.getElementById("bug-confirmation-heading")?.focus());
+      try {
+        await load(target.id);
+      } catch {
+        setError("Confirmed, but the list could not refresh. Press Refresh.");
+      }
+    } catch (err) {
+      setDialogError(confirmBugErrorCopy(err));
+      // Someone changed the report meanwhile; show its current state behind the dialog.
+      if (confirmBugNeedsReload(err)) void reload().catch(() => undefined);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const bulkWrite = useCallback((id: string, write: BulkWrite) => updateIssueReport(id, write), []);
 
   // V, S and D give the open report its verdict, A accepts its suggestion and
@@ -1072,6 +1121,9 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <ValidityBadge report={selected} />
+                    {selected.bugConfirmation ? (
+                      <StatusChip tone="success" icon="circle-check" label="Confirmed bug" />
+                    ) : null}
                     {statusChips(selected, trackerLinks)}
                     <PriorityButton
                       priority={!!selected.priority}
@@ -1083,7 +1135,8 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
                 </div>
                 {outsideView ? (
                   <p role="note" className="text-caption text-text-secondary m-0">
-                    Opened from a link. This report is not in this view: it is{" "}
+                    {keptOpen === selected.id ? "Kept open after confirming." : "Opened from a link."} This report is
+                    not in this view: it is{" "}
                     {VALIDITY[triageOf(selected).validity].label.toLowerCase()} and {statusLabel(selected.status).toLowerCase()}.
                   </p>
                 ) : null}
@@ -1142,6 +1195,15 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
                 </div>
 
                 <div className="flex min-w-0 flex-col gap-6 border-t border-outline pt-4 xl:border-t-0 xl:border-l xl:pt-0 xl:pl-4">
+                  <BugConfirmation
+                    report={selected}
+                    viewerId={viewerId}
+                    disabled={busy}
+                    onConfirm={() => {
+                      setDialogError(null);
+                      setDialog("confirm-bug");
+                    }}
+                  />
                   <TriageDetails
                     key={selected.id}
                     report={selected}
@@ -1239,6 +1301,15 @@ export function IssueReportsDesk({ trackerLinks = false }: { trackerLinks?: bool
                   trackerLinks={trackerLinks}
                   storedUrl={storedTrackerUrl}
                   onPublish={(input) => void mark("published", input)}
+                />
+              ) : null}
+              {dialog === "confirm-bug" ? (
+                <ConfirmBugDialog
+                  report={selected}
+                  busy={saving}
+                  error={dialogError}
+                  onCancel={() => setDialog(null)}
+                  onConfirm={() => void confirmBug()}
                 />
               ) : null}
               {dialog === "track" ? (

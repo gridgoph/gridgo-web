@@ -12,7 +12,9 @@
  *
  * It is a snapshot, not a promise: the step is checked again when pressed. A
  * job read from an older API has no list, and the screens keep their older
- * photo gates. A receipt scan is optional and never in the list.
+ * photo gates. A receipt scan is optional unless Finance requires it
+ * (`gridgo-api/docs/SHOP_RECEIPT_SCAN_API.md`): then a missing scan is in the
+ * list as `receipt_scan_required`, and the shop sends it from the shop app.
  *
  * The shop's own steps depend on the order's handover (`handoverFlow`,
  * `src/lib/shop-handover.ts`). A legacy job owes a production photo and a
@@ -37,6 +39,8 @@ export type RequirementKind =
   /** Rider-packs: GRIDGO's review of those photos. */
   | "review"
   | "claim"
+  /** Finance requires the shop's receipt scan before a rider is called. */
+  | "receipt_scan"
   | "job_stopped"
   | "moved_on"
   | "other";
@@ -50,6 +54,7 @@ const REQUIREMENT_KINDS: Record<string, RequirementKind> = {
   finished_product_photo_required: "finished_photos",
   production_review_required: "review",
   claim_hold_active: "claim",
+  receipt_scan_required: "receipt_scan",
   refund_fulfillment_stopped: "job_stopped",
   reschedule_fulfillment_stopped: "job_stopped",
   shop_recovery_pending: "job_stopped",
@@ -68,6 +73,8 @@ const FALLBACK_SENTENCES: Record<string, string> = {
     "A photo GRIDGO reviewed is no longer on the job. Ask the GRIDGO Team what to send.",
   production_review_required:
     "Wait for GRIDGO to approve the finished-work photos before calling a rider. Do not pack yet.",
+  receipt_scan_required:
+    "Send your receipt scan for this order before calling a rider. Scan or upload it in the shop app.",
   claim_hold_active:
     "A claim is holding payouts on this order. Operations must clear the claim before you package it for pickup.",
   refund_fulfillment_stopped:
@@ -136,8 +143,10 @@ export type PackagingCheck = {
    * GRIDGO's review on a rider-packs job.
    */
   steps: { kind: PackagingStepKind; done: boolean }[];
-  /** True once a receipt scan is on the job. It never holds the step. */
+  /** True once a receipt scan is on the job. */
   receiptAttached: boolean;
+  /** True while Finance requires the scan before a rider is called. */
+  receiptRequired: boolean;
 };
 
 type ReadinessOrder = Pick<Order, "state"> &
@@ -164,6 +173,7 @@ export function packagingCheck(order: ReadinessOrder): PackagingCheck | null {
     flow,
     steps: STEP_KINDS[flow].map((kind) => ({ kind, done: !owes(kind) })),
     receiptAttached: raw.receiptScan?.attached === true,
+    receiptRequired: raw.receiptScan?.required === true,
   };
 }
 
@@ -217,6 +227,8 @@ export function requirementTitle(kind: RequirementKind): string {
       return "GRIDGO's review";
     case "claim":
       return "Client claim open";
+    case "receipt_scan":
+      return "Receipt scan";
     case "job_stopped":
       return "Job paused";
     case "moved_on":

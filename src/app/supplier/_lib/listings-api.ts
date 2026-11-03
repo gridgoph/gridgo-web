@@ -43,6 +43,10 @@ export function listingErrorMessage(err: unknown, fallback: string): string {
         return "Pricing by colour works per page only. Set the pricing unit to per page first.";
       case "colour_pricing_requires_print_layout":
         return "Pricing by colour needs at least one print layout, so GRIDGO knows how each page sits on the paper. Mark one on the Artwork step.";
+      case "sample_price_required":
+        return "Enter a sample price before offering a sample.";
+      case "sample_not_supported":
+        return "A listing priced by colour cannot offer a sample. Turn Sample available off first.";
       case "item_in_use":
         return "Kept for a job already ordered — it is off the board and no client can see it.";
       default:

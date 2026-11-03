@@ -245,3 +245,19 @@ describe("who, where and what", () => {
     expect(isCreation("artwork.download_authorized")).toBe(false);
   });
 });
+
+describe("separate deliveries from one shop (gridgo-api#275)", () => {
+  it("names the two new records in plain words", () => {
+    expect(presentAuditAction("cart.deliveries_set")).toBe("Changed a shop's deliveries");
+    expect(presentAuditAction("basket.separate_deliveries")).toBe(
+      "Checked out separate deliveries from one shop",
+    );
+  });
+
+  it("reads how the client chose the deliveries", () => {
+    expect(presentAuditValue("split", "by_deadline")).toBe("One delivery per date");
+    expect(presentAuditValue("split", "none")).toBe("All in one delivery");
+    expect(presentAuditValue("split", "custom")).toBe("Chosen by the client");
+    expect(presentAuditValue("deliveryFeeMinor", 8900)).toBe("₱89.00");
+  });
+});

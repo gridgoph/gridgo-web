@@ -9,10 +9,18 @@ import { ShopHeading } from "@/components/orders/ShopHeading";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { getBasketInvoice } from "@/lib/api/client";
-import type { Basket, BasketGroup, BasketInvoice } from "@/lib/api/types";
+import type {
+  Basket,
+  BasketGroup,
+  BasketInvoice,
+  BasketInvoiceGroup,
+} from "@/lib/api/types";
 import {
   cancelledShare,
+  deliveryPositionLabel,
   groupAwaitsDispatch,
+  groupDeliveryPosition,
+  groupName,
   groupRefundState,
   reconcileBasket,
 } from "@/lib/baskets";
@@ -130,6 +138,9 @@ function GroupBlock({
   fulfillmentMode: string;
 }) {
   const order = group.order;
+  const position = groupDeliveryPosition(group);
+  const name = groupName(group.label, position);
+  const delivery = deliveryPositionLabel(position);
   const deadline = group.deadline ?? order.deadline;
   const state = presentOrderState(order.state ?? group.state, order);
   const payout = payoutProgress(order);
@@ -152,7 +163,7 @@ function GroupBlock({
         current ? "border-text-primary bg-surface" : "border-outline bg-surface-variant",
       )}
       aria-current={current ? "page" : undefined}
-      data-testid={`group-${group.label}`}
+      data-testid={`group-${name}`}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-body-lg text-text-primary m-0 min-w-0" style={medium}>
@@ -169,6 +180,9 @@ function GroupBlock({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        {delivery ? (
+          <span className="text-caption text-text-secondary">{delivery}</span>
+        ) : null}
         <StatusChip tone={state.tone} label={state.label} icon={state.icon} />
       </div>
 
@@ -190,7 +204,7 @@ function GroupBlock({
       </dl>
 
       <dl className="border-outline m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 border-t pt-3">
-        <OrderMoneyLines order={order} totalLabel={`${group.label} total`} />
+        <OrderMoneyLines order={order} totalLabel={`${name} total`} />
       </dl>
 
       <dl className="border-outline m-0 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-2 border-t pt-3">
@@ -209,10 +223,7 @@ function GroupBlock({
       </dl>
 
       {owed ? (
-        <p
-          className="text-body text-text-primary m-0"
-          data-testid={`group-owed-${group.label}`}
-        >
+        <p className="text-body text-text-primary m-0" data-testid={`group-owed-${name}`}>
           {owed.sentence}
           {current && owed.paid ? " Use Client refund on this order." : null}
         </p>
@@ -224,7 +235,7 @@ function GroupBlock({
             href={href}
             className={buttonVariants({ variant: "secondary", size: "sm" })}
           >
-            {owed ? `Open ${group.label}'s order to refund` : `Open ${group.label}`}
+            {owed ? `Open ${name}'s order to refund` : `Open ${name}`}
           </Link>
           {tree === "ops" && groupAwaitsDispatch(order) ? (
             <Link
@@ -354,49 +365,7 @@ function ReceiptBody({ invoice }: { invoice: BasketInvoice }) {
         fee, and shops are named only by letter.
       </p>
       {(invoice.groups ?? []).map((group) => (
-        <section key={group.orderId} aria-label={`${group.label} on the receipt`}>
-          <h4 className="text-body text-text-primary m-0 mb-1" style={medium}>
-            {group.label}
-          </h4>
-          {group.deadline ? (
-            <p className="text-caption text-text-secondary m-0 mb-2">
-              Needed by {formatDateTime(group.deadline)}
-            </p>
-          ) : null}
-          <dl className="m-0 grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1">
-            {group.lines.map((line) => (
-              <div key={line.id} className="contents">
-                <dt className="text-body text-text-secondary min-w-0">
-                  {line.itemName} &times; {line.quantity}
-                </dt>
-                <dd className="text-body text-text-secondary m-0 tabular-nums text-right">
-                  {formatPhp(line.clientAmountMinor ?? line.amountMinor ?? 0)}
-                </dd>
-              </div>
-            ))}
-            {(group.organizationDiscountMinor ?? 0) > 0 ? (
-              <>
-                <dt className="text-body text-text-secondary">Organization discount</dt>
-                <dd className="text-body text-text-secondary m-0 tabular-nums text-right">
-                  {asDeduction(formatPhp(group.organizationDiscountMinor ?? 0))}
-                </dd>
-              </>
-            ) : null}
-            <dt className="text-body text-text-secondary">Delivery</dt>
-            <dd className="text-body text-text-secondary m-0 tabular-nums text-right">
-              {formatPhp(group.deliveryFeeMinor)}
-            </dd>
-            <dt className="text-body text-text-primary" style={medium}>
-              {group.label} total
-            </dt>
-            <dd
-              className="text-body text-text-primary m-0 tabular-nums text-right"
-              style={medium}
-            >
-              {formatPhp(group.totalMinor)}
-            </dd>
-          </dl>
-        </section>
+        <ReceiptGroup key={group.orderId} group={group} />
       ))}
       <dl className="border-outline m-0 grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1 border-t pt-2">
         {discount > 0 ? (
@@ -423,5 +392,60 @@ function ReceiptBody({ invoice }: { invoice: BasketInvoice }) {
         </dd>
       </dl>
     </>
+  );
+}
+
+/**
+ * One delivery on the combined receipt. A shop split into separate deliveries
+ * shows each as its own section, "Shop A · Delivery 1 of 2", with its own
+ * delivery fee line.
+ */
+function ReceiptGroup({ group }: { group: BasketInvoiceGroup }) {
+  const delivery = deliveryPositionLabel(group);
+  const name = groupName(group.label, group);
+  return (
+    <section aria-label={`${name} on the receipt`}>
+      <h4 className="text-body text-text-primary m-0 mb-1" style={medium}>
+        {delivery ? `${group.label} · ${delivery}` : group.label}
+      </h4>
+      {group.deadline ? (
+        <p className="text-caption text-text-secondary m-0 mb-2">
+          Needed by {formatDateTime(group.deadline)}
+        </p>
+      ) : null}
+      <dl className="m-0 grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1">
+        {group.lines.map((line) => (
+          <div key={line.id} className="contents">
+            <dt className="text-body text-text-secondary min-w-0">
+              {line.itemName} &times; {line.quantity}
+            </dt>
+            <dd className="text-body text-text-secondary m-0 tabular-nums text-right">
+              {formatPhp(line.clientAmountMinor ?? line.amountMinor ?? 0)}
+            </dd>
+          </div>
+        ))}
+        {(group.organizationDiscountMinor ?? 0) > 0 ? (
+          <>
+            <dt className="text-body text-text-secondary">Organization discount</dt>
+            <dd className="text-body text-text-secondary m-0 tabular-nums text-right">
+              {asDeduction(formatPhp(group.organizationDiscountMinor ?? 0))}
+            </dd>
+          </>
+        ) : null}
+        <dt className="text-body text-text-secondary">{delivery ?? "Delivery"}</dt>
+        <dd className="text-body text-text-secondary m-0 tabular-nums text-right">
+          {formatPhp(group.deliveryFeeMinor)}
+        </dd>
+        <dt className="text-body text-text-primary" style={medium}>
+          {name} total
+        </dt>
+        <dd
+          className="text-body text-text-primary m-0 tabular-nums text-right"
+          style={medium}
+        >
+          {formatPhp(group.totalMinor)}
+        </dd>
+      </dl>
+    </section>
   );
 }

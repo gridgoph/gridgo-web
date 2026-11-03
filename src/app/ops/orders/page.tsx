@@ -15,13 +15,18 @@ import {
   stageNeedsOperations,
   type Stage,
 } from "@/app/ops/_lib/pipeline";
+import { buildNeedsActionQueue } from "@/app/ops/_lib/needs-action";
 import { FileCheckQueue } from "@/components/orders/FileCheckQueue";
-import { ShopModeChip } from "@/components/orders/ShopModeChip";
+import { ReceiptScanMark } from "@/components/orders/ReceiptScan";
 import {
-  ShowTestOrdersSwitch,
-  TestOrderChip,
-  useShowTestOrders,
-} from "@/components/orders/TestOrders";
+  NeedsActionQueue,
+  useNeedsActionClock,
+} from "@/components/orders/NeedsActionQueue";
+import {
+  QueueOrderCell,
+  queueOrderFilterValue,
+} from "@/components/orders/QueueOrderCell";
+import { ShowTestOrdersSwitch, useShowTestOrders } from "@/components/orders/TestOrders";
 import { ExpressChip } from "@/components/ui/ExpressChip";
 import { Button } from "@/components/ui/button";
 import {
@@ -35,19 +40,14 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { SkeletonLines } from "@/components/ui/loading";
 import { ApiError, getSettings, listOrders } from "@/lib/api/client";
-import { clientLabel } from "@/lib/client-name";
 import type { OperatingHours, Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
+import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
+import { receiptScanMarkValue } from "@/lib/receipt-scan";
 import { formatDateTime, formatPhp } from "@/lib/format";
-import {
-  basketShopCounts,
-  groupPositionLabel,
-  shopModeLabel,
-  shopModeOf,
-} from "@/lib/baskets";
+import { basketShopCounts } from "@/lib/baskets";
 import { isExpressOrder, ORDER_SPEED_OPTIONS, orderSpeed } from "@/lib/express";
 import { presentOrderState } from "@/lib/order-state";
-import { describeQuantity } from "@/lib/quantity";
 import { awaitingFinishedReview, finishedReviewWaitingCount } from "@/lib/shop-handover";
 
 /**
@@ -61,16 +61,21 @@ import { awaitingFinishedReview, finishedReviewWaitingCount } from "@/lib/shop-h
  * how many orders are sitting there, and how many are waiting on Operations.
  * Only the second one is worth walking across the room for, so only the second
  * one is emphasised.
+ *
+ * It opens on Needs action, ahead of the stages: every order waiting on
+ * Operations, grouped by what is owed and oldest first.
  */
 export default function OpsOrdersPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const requested = params.get("stage") as Stage | null;
+  // A stage the queue does not know (an old or mistyped link) opens Needs action.
+  const raw = params.get("stage");
+  const requested = VIEWS.some((view) => view.id === raw) ? (raw as View) : null;
 
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [stage, setStage] = useState<Stage>(requested ?? "payment");
+  const [stage, setStage] = useState<View>(requested ?? NEEDS_ACTION);
   const testOrders = useShowTestOrders();
   const includeReviewData = testOrders.include;
 
@@ -94,6 +99,7 @@ export default function OpsOrdersPage() {
   );
 
   useLiveReload("orders", load);
+  useLegalInboxReload("supplier_invoice_scanned", load);
 
   useEffect(() => {
     void load();
@@ -122,7 +128,14 @@ export default function OpsOrdersPage() {
       ) as Record<Stage, number>,
     [orders],
   );
+  // One clock for the tab total and the rows, so they never disagree.
+  const now = useNeedsActionClock();
+  const needsActionTotal = useMemo(
+    () => buildNeedsActionQueue(orders ?? [], now).length,
+    [orders, now],
+  );
   const rows = useMemo(() => {
+    if (stage === NEEDS_ACTION) return [];
     const inStage = ordersInStage(orders ?? [], stage);
     // Longest wait first: the order that has been sitting there most is the one
     // somebody is wondering about.
@@ -147,35 +160,8 @@ export default function OpsOrdersPage() {
         header: "Order",
         primary: true,
         sortValue: (order) => order.title ?? "",
-        filterValue: (order) =>
-          `${order.title ?? ""} ${order.id} ${order.material ?? ""} ${shopModeLabel(shopModeOf(order, shopCounts))} ${order.groupLabel ?? ""} ${clientLabel(order)}`,
-        cell: (order) => {
-          const position = groupPositionLabel(order, shopCounts);
-          return (
-            <div className="min-w-0">
-              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-                <p
-                  className="text-body text-text-primary m-0 min-w-0 truncate"
-                  style={{ fontFamily: "var(--font-medium)" }}
-                >
-                  {order.title || "Untitled order"}
-                </p>
-                <ShopModeChip mode={shopModeOf(order, shopCounts)} />
-                <TestOrderChip order={order} />
-              </div>
-              <p className="text-caption text-text-secondary m-0 mt-0.5 truncate">
-                {clientLabel(order)}
-              </p>
-              <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
-                {position ? `${position} · ` : ""}Order {order.id}
-              </p>
-              <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
-                {describeQuantity(order.quantity, order.unit)}
-                {order.material ? ` · ${order.material}` : ""}
-              </p>
-            </div>
-          );
-        },
+        filterValue: (order) => queueOrderFilterValue(order, shopCounts),
+        cell: (order) => <QueueOrderCell order={order} shopCounts={shopCounts} />,
       },
       {
         id: "status",
@@ -223,6 +209,15 @@ export default function OpsOrdersPage() {
                 : waitingOn(order.state)}
           </span>
         ),
+      },
+      {
+        // The shop's receipt scan, sent before it calls a rider. Blank until a
+        // shop has the job; the order's Receipt scan row has the scans.
+        id: "receipt-scan",
+        header: "Receipt scan",
+        sortValue: receiptScanMarkValue,
+        filterValue: receiptScanMarkValue,
+        cell: (order) => <ReceiptScanMark order={order} />,
       },
       {
         id: "value",
@@ -273,9 +268,9 @@ export default function OpsOrdersPage() {
       */}
       <div className="flex flex-wrap items-center gap-2">
         <nav aria-label="Order stages" className="flex flex-wrap gap-2">
-          {STAGES.map((entry) => {
+          {VIEWS.map((entry) => {
             const selected = entry.id === stage;
-            const needsYou = waiting[entry.id];
+            const needsYou = entry.id === NEEDS_ACTION ? 0 : waiting[entry.id];
             return (
               <button
                 key={entry.id}
@@ -302,7 +297,7 @@ export default function OpsOrdersPage() {
                   className="text-caption tabular-nums"
                   style={{ opacity: selected ? 0.75 : 0.6 }}
                 >
-                  {counts[entry.id]}
+                  {entry.id === NEEDS_ACTION ? needsActionTotal : counts[entry.id]}
                 </span>
                 {needsYou > 0 ? (
                   <span
@@ -330,7 +325,13 @@ export default function OpsOrdersPage() {
         ) : null}
       </div>
 
-      {stage === "qa" ? (
+      {stage === NEEDS_ACTION ? (
+        <NeedsActionQueue
+          orders={orders ?? []}
+          now={now}
+          onRefresh={() => void load()}
+        />
+      ) : stage === "qa" ? (
         // The file check is its own queue: oldest first, a live wait, and Pass
         // or Send back from the row. Orders still in payment review show their
         // wait beneath it.
@@ -388,6 +389,14 @@ export default function OpsOrdersPage() {
     </div>
   );
 }
+
+/** The queue's first view, ahead of the stages. */
+const NEEDS_ACTION = "action";
+type View = Stage | typeof NEEDS_ACTION;
+const VIEWS: readonly { id: View; label: string }[] = [
+  { id: NEEDS_ACTION, label: "Needs action" },
+  ...STAGES,
+];
 
 const SPEED_FACETS: DataTableFacet[] = [
   {

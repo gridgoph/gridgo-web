@@ -60,7 +60,10 @@ export type StatusIconName =
   | "award"
   // Issue report triage: a duplicate, and an AI suggestion (docs/ISSUE_REPORTS_API.md).
   | "copy"
-  | "sparkles";
+  | "sparkles"
+  // Sample First: a paid sample, and the batch ordered from it (docs/SAMPLE_FIRST_API.md).
+  | "test-tube-diagonal"
+  | "layers";
 
 export type StatePresentation = {
   label: string;

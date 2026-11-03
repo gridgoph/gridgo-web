@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { Claim, Issue, Order } from "@/lib/api/types";
+import type { Claim, Issue, Order, User } from "@/lib/api/types";
 
-import { filterDispatchOrders, presentRouteAction } from "../dispatch";
+import { assignableRiders, filterDispatchOrders, presentRouteAction } from "../dispatch";
 import {
   buildOverviewBuckets,
   isSlaAtRisk,
@@ -301,4 +301,20 @@ it("keeps sign-up approvals out of Operations overview destinations", () => {
   const buckets = buildOverviewBuckets([]);
   expect(buckets.some((bucket) => bucket.href.includes("approvals"))).toBe(false);
   expect(buckets.some((bucket) => bucket.label.includes("Sign-up"))).toBe(false);
+});
+
+describe("assignableRiders", () => {
+  it("offers only approved riders on an active account, by name", () => {
+    const rider = (id: string, extra: Partial<User>) =>
+      ({ id, name: id, role: "rider", ...extra }) as User;
+    const list = assignableRiders([
+      rider("Zed", { verificationStatus: "approved" }),
+      rider("Ana", { verificationStatus: "approved", accountStatus: "active" }),
+      rider("Ben", { verificationStatus: "pending" }),
+      rider("Cy", { verificationStatus: "approved", accountStatus: "suspended" }),
+      rider("Di", { verificationStatus: "rejected" }),
+      rider("Ed", {}),
+    ]);
+    expect(list.map((entry) => entry.id)).toEqual(["Ana", "Zed"]);
+  });
 });
