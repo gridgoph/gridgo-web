@@ -3611,6 +3611,8 @@ export type IssueReportScreenshot = {
   /** Presigned and short-lived; reload the list for fresh links. */
   url: string;
   expiresAt: string;
+  /** Set when the picture lives in the reporter's support chat rather than on the report. */
+  source?: "support_chat";
 };
 
 export type IssueReport = {
@@ -3630,6 +3632,11 @@ export type IssueReport = {
   createdAt: string;
   updatedAt: string;
   screenshots: IssueReportScreenshot[];
+  /**
+   * The reporter's own support chat thread for an in-app report; `null` when
+   * none resolves, absent from an API before gridgo-api#347.
+   */
+  supportThreadId?: string | null;
   /** Staff triage beside the workflow status; absent on an API before triage. */
   triage?: IssueReportTriage;
   /** Firstmate's suggestion, `null` until it reviews the report. */
