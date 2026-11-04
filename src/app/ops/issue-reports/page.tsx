@@ -7,8 +7,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/lib/auth/AuthProvider";
 
 /**
- * Operations: issues filed from the website's Report an issue page. GitHub
- * tracker links are Super Admin's, so this desk never shows one.
+ * Operations: issues filed from the website's Report an issue page or the
+ * app's Report a problem screen. GitHub tracker links are Super Admin's, so
+ * this desk never shows one.
  */
 export default function OpsIssueReportsPage() {
   const { user } = useAuth();

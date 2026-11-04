@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronLeft, RefreshCw, Undo2 } from "lucide-react";
+import { ChevronLeft, MessageSquare, RefreshCw, Undo2 } from "lucide-react";
+import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   type KeyboardEvent,
@@ -11,6 +12,7 @@ import {
   useState,
 } from "react";
 
+import { supportThreadHref } from "@/components/chat/conversations";
 import { BugConfirmation, ConfirmBugDialog } from "@/components/issue-reports/BugConfirmation";
 import { BulkBar } from "@/components/issue-reports/BulkBar";
 import { confirmBugErrorCopy, confirmBugNeedsReload } from "@/components/issue-reports/bug-confirmation";
@@ -24,7 +26,9 @@ import {
   reloadLimit,
   showingLabel,
 } from "@/components/issue-reports/paging";
+import { reportBodyText } from "@/components/issue-reports/report-text";
 import { ReportRow, ValidityBadge } from "@/components/issue-reports/ReportRow";
+import { ReportScreenshots } from "@/components/issue-reports/ReportScreenshots";
 import {
   parseTrackerIssueUrl,
   trackerIssueLabel,
@@ -55,7 +59,7 @@ import {
 import { AiSuggestion, TONE_COLOR, TriageDetails, VerdictBar } from "@/components/issue-reports/TriagePanel";
 import { PublishDialog, TrackDialog } from "@/components/issue-reports/WorkflowDialogs";
 import { PriorityButton } from "@/components/ui/PriorityButton";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -95,14 +99,14 @@ export function categoryLabel(category: IssueReportCategory | null): string {
 const EMPTY: Record<ValidityTab, { title: string; body: string }> = {
   review: {
     title: "Nothing needs review",
-    body: "Every report has a verdict. A new report from the website lands here first.",
+    body: "Every report has a verdict. A new report from the website or the app lands here first.",
   },
   valid: { title: "No valid reports", body: "Reports you mark valid land here." },
   duplicate: { title: "No duplicates", body: "Reports you mark as repeating an earlier one land here." },
   spam: { title: "No spam", body: "Reports you mark spam land here, out of the way." },
   all: {
     title: "No reports yet",
-    body: "A report appears here as soon as someone sends one from the website's Report an issue page.",
+    body: "A report appears here as soon as someone sends one from the website's Report an issue page or the app's Report a problem screen.",
   },
 };
 
@@ -847,8 +851,10 @@ export function IssueReportsDesk({
   const bulkWrite = useCallback((id: string, write: BulkWrite) => updateIssueReport(id, write), []);
 
   // V, S and D give the open report its verdict, A accepts its suggestion and
-  // X selects it, unless someone is typing.
+  // X selects it, unless someone is typing. React bubbles a key press out of a
+  // portal too, so a press inside the screenshot view is not the desk's.
   function onDeskKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (!event.currentTarget.contains(event.target as Node)) return;
     if (!selected || busy || opening || dialog || event.altKey || event.ctrlKey || event.metaKey || typingIn(event.target)) {
       return;
     }
@@ -1131,6 +1137,15 @@ export function IssueReportsDesk({
                       disabled={busy}
                       onClick={() => void pinSelected()}
                     />
+                    {selected.supportThreadId ? (
+                      <Link
+                        href={supportThreadHref(pathname, selected.supportThreadId)}
+                        className={cn(buttonVariants({ size: "sm" }))}
+                      >
+                        <MessageSquare aria-hidden="true" />
+                        Open chat
+                      </Link>
+                    ) : null}
                   </div>
                 </div>
                 {outsideView ? (
@@ -1158,40 +1173,14 @@ export function IssueReportsDesk({
                     onOpenReport={openReport}
                   />
                   <p className="text-body text-text-primary m-0 max-w-[72ch] whitespace-pre-wrap break-words">
-                    {trackerLinks ? selected.issue : withoutGithubLinks(selected.issue)}
+                    {trackerLinks ? reportBodyText(selected) : withoutGithubLinks(reportBodyText(selected))}
                   </p>
 
-                  {selected.screenshots.length > 0 ? (
-                    <div className="flex flex-col gap-2">
-                      <h3 className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
-                        Screenshots
-                      </h3>
-                      <ul className="m-0 grid list-none grid-cols-2 gap-3 p-0 md:grid-cols-3">
-                        {selected.screenshots.map((shot) => (
-                          <li key={shot.position}>
-                            <a
-                              href={shot.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="block overflow-hidden rounded-[var(--radius-field)] border border-border bg-muted"
-                            >
-                              {/* Presigned MinIO links, so next/image cannot optimise them. */}
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img
-                                src={shot.url}
-                                alt={`Screenshot ${shot.position + 1} for report ${reportReference(selected.id)}`}
-                                className="aspect-[4/3] w-full object-cover"
-                              />
-                            </a>
-                          </li>
-                        ))}
-                      </ul>
-                      <p className="text-caption text-text-muted m-0">
-                        Open a screenshot to see it full size. Links expire after a few minutes; press Refresh for new
-                        ones.
-                      </p>
-                    </div>
-                  ) : null}
+                  <ReportScreenshots
+                    screenshots={selected.screenshots}
+                    reference={reportReference(selected.id)}
+                    onRefresh={reload}
+                  />
                 </div>
 
                 <div className="flex min-w-0 flex-col gap-6 border-t border-outline pt-4 xl:border-t-0 xl:border-l xl:pt-0 xl:pl-4">
