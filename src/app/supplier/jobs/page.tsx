@@ -26,6 +26,7 @@ import { formatDateTime, formatPhp } from "@/lib/format";
 import { needsSupplierAction, presentSupplierJobStatus, primaryAction } from "@/lib/supplier-actions";
 import { useAcceptDeadlines } from "@/lib/use-accept-clock";
 import { activitySortValue, jobActivity, relativeTime } from "../_lib/job-activity";
+import { deliveryPositionLabel } from "@/lib/baskets";
 
 /** The label the queue shows — and therefore facets on — for a job with nothing owed. */
 const NO_ACTION = "No action needed";
@@ -139,6 +140,7 @@ export default function SupplierJobsPage() {
               {job.title}
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
+              {deliveryPositionLabel(job) ? `${deliveryPositionLabel(job)} · ` : ""}
               Order {job.id}
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5 truncate">

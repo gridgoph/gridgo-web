@@ -55,6 +55,9 @@ const COPY: Record<
 function body(action: RewardAction, reward: TesterReward, who: string): string {
   const what = `${rewardKindText(reward)} reward for ${who}: ${rewardAmountText(reward)}.`;
   if (action === "resume") {
+    if (reward.kind === "bug_report") {
+      return `${what} GRIDGO checks tester eligibility and the monthly budget again before issuing. With no room in the budget it stays paused. A voucher issued now is valid 30 days from today.`;
+    }
     return `${what} GRIDGO checks eligibility, the five steps, the monthly budget${reward.kind === "referral" ? " and the invite checks" : ""} again before issuing. With no room in the budget it stays paused${reward.kind === "referral" ? "; a new match blocks it for good" : ""}. A voucher issued now is valid 30 days from today.`;
   }
   if (reward.status === "paused") {

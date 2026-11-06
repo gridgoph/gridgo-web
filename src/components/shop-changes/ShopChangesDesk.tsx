@@ -21,6 +21,7 @@ import { Eye, NotebookPen } from "lucide-react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { ResolveDeadlineDialog } from "@/components/orders/ShopChanges";
+import { ShopMoveCover } from "@/components/settings/ShopMoveCover";
 import { Button } from "@/components/ui/button";
 import {
   DataTable,
@@ -34,13 +35,19 @@ import { SkeletonLines } from "@/components/ui/loading";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  getSettings,
   getUser,
   isApiError,
   listOrders,
   listRescheduleRequests,
   listShopFailures,
 } from "@/lib/api/client";
-import type { Order, RescheduleRequest, ShopFailureEvent } from "@/lib/api/types";
+import type {
+  Order,
+  PlatformSettings,
+  RescheduleRequest,
+  ShopFailureEvent,
+} from "@/lib/api/types";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
@@ -74,6 +81,8 @@ export function ShopChangesDesk({ tree }: { tree: Tree }) {
   const [names, setNames] = useState<Record<string, string>>({});
   const [resolving, setResolving] = useState<RescheduleRequest | null>(null);
   const [tab, setTab] = useState("dropouts");
+  // GRIDGO's cover for a dearer replacement, shown read-only. Best effort.
+  const [settings, setSettings] = useState<PlatformSettings | null>(null);
 
   const orderHref = useCallback(
     (orderId: string) => `/${tree}/orders/${encodeURIComponent(orderId)}`,
@@ -85,6 +94,7 @@ export function ShopChangesDesk({ tree }: { tree: Tree }) {
       setLoading(true);
       setError(null);
       try {
+        void getSettings().then(setSettings, () => setSettings(null));
         const [events, requests, orders] = await Promise.all([
           listShopFailures(),
           listRescheduleRequests().then(
@@ -498,6 +508,16 @@ export function ShopChangesDesk({ tree }: { tree: Tree }) {
           )}
         </TabsContent>
       </Tabs>
+
+      {settings?.shopMoveCoverBps !== undefined ? (
+        <ShopMoveCover
+          settings={settings}
+          canEdit={false}
+          onSaved={() => undefined}
+          onConflict={() => undefined}
+          editHref={tree === "admin" ? "/admin/settings" : undefined}
+        />
+      ) : null}
 
       <ResolveDeadlineDialog
         open={resolving !== null}

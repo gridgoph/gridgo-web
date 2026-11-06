@@ -175,3 +175,37 @@ describe("supplier updates", () => {
     );
   });
 });
+
+describe("a receipt scan Finance requires (gridgo-supplier#64)", () => {
+  it("holds the step with its own sentence while the switch is on and nothing is attached", () => {
+    const check = packagingCheck(
+      order({
+        transitionReadiness: {
+          ready_for_dispatch: {
+            allowed: false,
+            missing: [{ code: "receipt_scan_required", message: "receipt_scan_required" }],
+            receiptScan: { required: true, attached: false },
+          },
+        },
+      }),
+    )!;
+    expect(check.receiptRequired).toBe(true);
+    expect(check.receiptAttached).toBe(false);
+    expect(packagingHold(check)).toMatchObject({
+      kind: "receipt_scan",
+      message: expect.stringMatching(/^Send your receipt scan for this order/),
+    });
+  });
+
+  it("stays optional while the switch is off", () => {
+    const check = packagingCheck(
+      order({
+        transitionReadiness: {
+          ready_for_dispatch: { allowed: true, missing: [], receiptScan: { required: false, attached: false } },
+        },
+      }),
+    )!;
+    expect(check.receiptRequired).toBe(false);
+    expect(packagingHold(check)).toBeNull();
+  });
+});

@@ -41,6 +41,9 @@ import {
 import { CheckoutPayment, checkoutPaymentLabel } from "@/components/settings/CheckoutPayment";
 import { DeliveryZones, DeliveryZonesSkeleton } from "@/components/settings/DeliveryZones";
 import { HandoverCodeSettings } from "@/components/settings/HandoverCodeSettings";
+import { ShopMoveCover } from "@/components/settings/ShopMoveCover";
+import { QuoteValiditySettings } from "@/components/settings/QuoteValiditySettings";
+import { SampleBatchHoldSettings } from "@/components/settings/SampleBatchHoldSettings";
 import { CoverSpineSettings } from "@/components/settings/CoverSpineSettings";
 import { FoundingTesterLaunch } from "@/components/settings/FoundingTesterLaunch";
 import { TesterInviteSettings } from "@/components/settings/TesterInviteSettings";
@@ -814,6 +817,39 @@ export function OperationalSettings() {
         onChange={setCheckoutPercent}
         inForce={settings.downpaymentPercent}
         disabled={busy}
+      />
+
+      <ShopMoveCover
+        settings={settings}
+        canEdit
+        disabled={busy}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={() => load(true)}
+      />
+
+      <QuoteValiditySettings
+        settings={settings}
+        canEdit
+        disabled={busy}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={() => load(true)}
+      />
+
+      <SampleBatchHoldSettings
+        settings={settings}
+        canEdit
+        disabled={busy}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={() => load(true)}
       />
 
       <section className="gg-card p-3" aria-labelledby="window-heading">

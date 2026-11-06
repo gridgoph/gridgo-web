@@ -43,7 +43,8 @@ const STATE_CHIP: Record<
  * one thing left rather than a list of faults. Each open row is the API's own
  * sentence. A photo is added from the job's action bar, so its row carries no
  * button; a claim is Operations' to clear, so its row is where to message
- * them from. The receipt scan is listed as optional and never holds the step.
+ * them from. The receipt scan is optional, unless Finance requires it before a
+ * rider is called: a missing one is then a row of its own, sent from the shop app.
  * Nothing here is yellow: the one yellow on the job is the step itself.
  *
  * A rider-packs job is not packed at the shop, so its list is the two steps
@@ -117,17 +118,22 @@ export function PackagingChecklist({
             detailId={index === 0 ? "packaging-hold-reason" : undefined}
           />
         ))}
-        <Row
-          state="optional"
-          title="Receipt scan"
-          detail={
-            check.receiptAttached
-              ? "On the job."
-              : riderPacks
-                ? "Not needed. It never holds up pickup."
-                : "Not needed. It never holds up packing."
-          }
-        />
+        {/* A required, missing scan is already listed above with the API's sentence. */}
+        {others.some((item) => item.kind === "receipt_scan") ? null : (
+          <Row
+            state={check.receiptRequired ? (check.receiptAttached ? "done" : "needed") : "optional"}
+            title="Receipt scan"
+            detail={
+              check.receiptAttached
+                ? "On the job."
+                : check.receiptRequired
+                  ? "Needed before a rider is called. Send it from the shop app."
+                  : riderPacks
+                    ? "Not needed. It never holds up pickup."
+                    : "Not needed. It never holds up packing."
+            }
+          />
+        )}
       </ul>
     </section>
   );

@@ -12,10 +12,12 @@ import {
   FlaskConical,
   GitMerge,
   GitPullRequest,
+  Layers,
   Sparkles,
   Split,
   Store,
   SquarePen,
+  TestTubeDiagonal,
   TriangleAlert,
   Zap,
   type LucideIcon,
@@ -43,6 +45,8 @@ export const STATUS_ICONS: Record<StatusIconName, LucideIcon> = {
   award: Award,
   copy: Copy,
   sparkles: Sparkles,
+  "test-tube-diagonal": TestTubeDiagonal,
+  layers: Layers,
 };
 
 const TONE: Record<

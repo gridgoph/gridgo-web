@@ -15,7 +15,12 @@ import { useLiveOptional } from "@/lib/live/LiveProvider";
  * Survey responses use it the same way: a submission sends Super Admin an
  * `order_survey_submitted` notice and no resource ping the desk could use.
  * Supplier invoices too: every scan, entry, correction and collection sends
- * staff a `supplier_invoice_*` notice.
+ * staff a `supplier_invoice_*` notice. Order views listen for
+ * `supplier_invoice_scanned` alone: a shop attached a receipt scan.
+ * Quote requests too: the API sends staff an `ops_quote_*` notice when a
+ * client asks, accepts or cancels, and when options publish or expire.
+ * Sample batches too: a client's decision, cancellation or batch order sends
+ * staff a `sample_*` notice (SAMPLE_FIRST_API.md).
  */
 export function useLegalInboxReload(
   prefix:
@@ -23,7 +28,10 @@ export function useLegalInboxReload(
     | "privacy."
     | "order_survey_submitted"
     | "supplier_invoice_"
+    | "supplier_invoice_scanned"
     | "colour_price_check"
+    | "ops_quote_"
+    | "sample_"
     | null,
   load: () => unknown,
 ): void {

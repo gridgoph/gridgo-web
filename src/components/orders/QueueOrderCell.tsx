@@ -1,9 +1,11 @@
 import { ShopModeChip } from "@/components/orders/ShopModeChip";
+import { SampleTagChip } from "@/components/orders/SampleFirst";
 import { TestOrderChip } from "@/components/orders/TestOrders";
 import type { Order } from "@/lib/api/types";
 import { groupPositionLabel, shopModeLabel, shopModeOf } from "@/lib/baskets";
 import { clientLabel } from "@/lib/client-name";
 import { describeQuantity } from "@/lib/quantity";
+import { sampleTagFilterText } from "@/lib/sample-first";
 
 /** The Order column of an Operations queue: title, shop mode, client, id, quantity. */
 export function QueueOrderCell({
@@ -24,6 +26,7 @@ export function QueueOrderCell({
           {order.title || "Untitled order"}
         </p>
         <ShopModeChip mode={shopModeOf(order, shopCounts)} />
+        <SampleTagChip order={order} />
         <TestOrderChip order={order} />
       </div>
       <p className="text-caption text-text-secondary m-0 mt-0.5 truncate">
@@ -45,5 +48,5 @@ export function queueOrderFilterValue(
   order: Order,
   shopCounts: ReadonlyMap<string, number>,
 ): string {
-  return `${order.title ?? ""} ${order.id} ${order.material ?? ""} ${shopModeLabel(shopModeOf(order, shopCounts))} ${order.groupLabel ?? ""} ${clientLabel(order)}`;
+  return `${order.title ?? ""} ${order.id} ${order.material ?? ""} ${shopModeLabel(shopModeOf(order, shopCounts))} ${order.groupLabel ?? ""} ${clientLabel(order)} ${sampleTagFilterText(order)}`;
 }

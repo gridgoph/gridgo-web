@@ -9,6 +9,8 @@ import {
   basketPaymentPending,
   cancelledShares,
   currentGroup,
+  groupDeliveryPosition,
+  groupName,
   type CancelledShare,
 } from "@/lib/baskets";
 import { formatDateTime, formatPhp } from "@/lib/format";
@@ -49,8 +51,9 @@ export function BasketPayment({
         className="text-body text-text-secondary m-0"
         role={basketError ? "alert" : "status"}
       >
-        {order.groupLabel ?? "This shop"} is part of a grouped order, paid with one
-        transfer for every group. {basketError ?? "Loading that payment…"}
+        {order.groupLabel ? groupName(order.groupLabel, order) : "This shop"} is part of a
+        grouped order, paid with one transfer for every group.{" "}
+        {basketError ?? "Loading that payment…"}
       </p>
     );
   }
@@ -80,10 +83,13 @@ export function BasketPayment({
       </div>
       <p className="text-caption text-text-secondary m-0 mt-2">
         {basket.groups
-          .map((entry) => `${entry.label} ${formatPhp(entry.totalMinor)}`)
+          .map(
+            (entry) =>
+              `${groupName(entry.label, groupDeliveryPosition(entry))} ${formatPhp(entry.totalMinor)}`,
+          )
           .join(" + ")}
         {group
-          ? `. ${group.label}, this order, is ${formatPhp(group.totalMinor)} of it.`
+          ? `. ${groupName(group.label, groupDeliveryPosition(group))}, this order, is ${formatPhp(group.totalMinor)} of it.`
           : "."}
       </p>
 

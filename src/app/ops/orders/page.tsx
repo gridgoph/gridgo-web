@@ -22,6 +22,7 @@ import {
 } from "@/app/ops/_lib/pipeline";
 import { FileCheckQueue } from "@/components/orders/FileCheckQueue";
 import { NeedsActionQueue } from "@/components/orders/NeedsActionQueue";
+import { ReceiptScanMark } from "@/components/orders/ReceiptScan";
 import {
   QueueOrderCell,
   queueOrderFilterValue,
@@ -42,6 +43,8 @@ import { SkeletonLines } from "@/components/ui/loading";
 import { ApiError, getSettings, listOrders } from "@/lib/api/client";
 import type { OperatingHours, Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
+import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
+import { receiptScanMarkValue } from "@/lib/receipt-scan";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { basketShopCounts } from "@/lib/baskets";
 import { isExpressOrder, ORDER_SPEED_OPTIONS, orderSpeed } from "@/lib/express";
@@ -67,7 +70,9 @@ import { finishedReviewWaitingCount } from "@/lib/shop-handover";
 export default function OpsOrdersPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const requested = params.get("stage") as View | null;
+  // A stage the queue does not know (an old or mistyped link) opens Needs action.
+  const raw = params.get("stage");
+  const requested = VIEWS.some((view) => view.id === raw) ? (raw as View) : null;
 
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -96,6 +101,7 @@ export default function OpsOrdersPage() {
   );
 
   useLiveReload("orders", load);
+  useLegalInboxReload("supplier_invoice_scanned", load);
 
   useEffect(() => {
     void load();
@@ -200,6 +206,15 @@ export default function OpsOrdersPage() {
             </span>
           );
         },
+      },
+      {
+        // The shop's receipt scan, sent before it calls a rider. Blank until a
+        // shop has the job; the order's Receipt scan row has the scans.
+        id: "receipt-scan",
+        header: "Receipt scan",
+        sortValue: receiptScanMarkValue,
+        filterValue: receiptScanMarkValue,
+        cell: (order) => <ReceiptScanMark order={order} />,
       },
       {
         id: "value",

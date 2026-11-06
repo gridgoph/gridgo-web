@@ -29,6 +29,28 @@ describe("notificationHref", () => {
     }
   });
 
+  it("opens the order a Sample First notice names, in each tree", () => {
+    for (const type of [
+      "sample_approved",
+      "sample_rejected",
+      "sample_batch_cancelled",
+      "sample_batch_ordered",
+    ]) {
+      expect(notificationHref("ops_admin", note({ type, orderId: "ord_s" }))).toBe(
+        "/ops/orders/ord_s",
+      );
+      expect(notificationHref("super_admin", note({ type, orderId: "ord_s" }))).toBe(
+        "/admin/orders/ord_s",
+      );
+    }
+    // The shop's own copies open its job.
+    for (const type of ["shop_sample_approved", "shop_sample_rejected"]) {
+      expect(notificationHref("supplier", note({ type, orderId: "ord_s" }))).toBe(
+        "/supplier/jobs/ord_s",
+      );
+    }
+  });
+
   it("opens the taken-down listing for the shop", () => {
     expect(
       notificationHref(

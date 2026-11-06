@@ -94,6 +94,14 @@ const CODE_COPY: Record<string, string> = {
     "A share was already paid to the shop, so this order needs your decision before anything moves.",
   shop_acceptance_expired:
     "The shop's hour to accept has passed. GRIDGO is offering the client a replacement or a refund.",
+  shop_late_not_eligible:
+    "This order is not late enough to move for lateness: its ready-by has not passed and it is not marked for reassignment. Pick another cause or wait.",
+  invalid_shop_recovery_cause: "Pick why the order is moving: the shop is late, GRIDGO, or the client.",
+  shop_recovery_reason_required: "Write why the order is moving, in 1 to 2,000 characters.",
+  shop_recovery_not_available:
+    "This order has no shop to move it from, or it is past the point a shop can be changed. Refresh to see where it stands.",
+  invalid_shop_move_cover:
+    "Set GRIDGO's cover from 0% to 100% of the original service fee, in whole hundredths of a percent.",
   reschedule_resolution_unavailable:
     "This deadline request is no longer waiting on Operations. Refresh to see its outcome.",
   reschedule_fulfillment_stopped:

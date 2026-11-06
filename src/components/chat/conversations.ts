@@ -25,6 +25,25 @@ export function supportChatCounterpartUserId(thread: SupportChatThread): string 
 }
 
 /**
+ * The chat desk in the caller's own tree, opened on this thread's conversation.
+ * Operations and Super Admin each stay in theirs.
+ */
+export function supportThreadHref(pathname: string | null, threadId: string): string {
+  const tree = pathname?.startsWith("/admin") ? "admin" : "ops";
+  return `/${tree}/chat?thread=${encodeURIComponent(threadId)}`;
+}
+
+/** The thread list with this thread's latest copy; a thread not listed yet goes first. */
+export function upsertSupportChatThread(
+  threads: readonly SupportChatThread[],
+  thread: SupportChatThread,
+): SupportChatThread[] {
+  return threads.some((row) => row.id === thread.id)
+    ? threads.map((row) => (row.id === thread.id ? thread : row))
+    : [thread, ...threads];
+}
+
+/**
  * Groups threads by person. The list arrives newest activity first (the API's
  * order, and the desk puts a live or just-sent thread in front), so the first
  * thread seen for a person leads and conversations keep that order.

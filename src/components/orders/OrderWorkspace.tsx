@@ -1,6 +1,7 @@
 "use client";
 
 import { PackingPhotos } from "@/components/orders/PackingPhotos";
+import { ReceiptScanPanel } from "@/components/orders/ReceiptScan";
 import { SpecialInstructionsPanel } from "@/components/orders/SpecialInstructions";
 import {
   changePaymentAwaitingStaff,
@@ -81,7 +82,17 @@ import {
 } from "@/lib/approval-proof";
 import { chatRowSummary, isFlagged } from "@/lib/client-shop-chat";
 import { ShopModeChip } from "@/components/orders/ShopModeChip";
+import {
+  BatchStandard,
+  SampleDecisionPanel,
+  SampleTagChip,
+  sampleRowSummary,
+  sampleRowTone,
+} from "@/components/orders/SampleFirst";
+import { sampleTagOf } from "@/lib/sample-first";
+import { groupName } from "@/lib/baskets";
 import { TestOrderChip } from "@/components/orders/TestOrders";
+import { isTestOrder } from "@/lib/review-data";
 import { ExpressChip } from "@/components/ui/ExpressChip";
 import { isExpressOrder } from "@/lib/express";
 import { ProgressGallery, WaitingForPhoto } from "@/components/orders/ProductionProgress";
@@ -183,6 +194,14 @@ import type {
   ShopFailureEvent,
 } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
+import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
+import {
+  receiptScanOf,
+  receiptScanRowState,
+  receiptScanRowVisible,
+  receiptScanSummary,
+  type ReceiptScanRowState,
+} from "@/lib/receipt-scan";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { issueIsOpen, problemRowSummary } from "@/lib/problem-reports";
 import {
@@ -244,6 +263,7 @@ import {
   recoveryNeedsOperations,
   rescheduleNeedsOperations,
 } from "@/lib/shop-changes";
+import { startedByOperations } from "@/lib/shop-move";
 import { cn } from "@/lib/utils";
 import {
   OrderAuditPanel,
@@ -262,6 +282,7 @@ type Props = {
 /** The workspace's sections, in the order the work happens. */
 type SectionId =
   | "approval"
+  | "sample"
   | "payment"
   | "qa"
   | "production"
@@ -269,6 +290,7 @@ type SectionId =
   | "shop"
   | "deadline"
   | "handover"
+  | "receipt-scan"
   | "delivery-pin"
   | "counter"
   | "delivery"
@@ -424,6 +446,9 @@ export function OrderWorkspace({
   );
 
   useLiveReload(["orders", "jobs", "payouts"], load, { matchId: orderId });
+  // A shop's new receipt scan also arrives as a staff notice; the order ping
+  // usually lands first, and the shared flight keeps it to one read.
+  useLegalInboxReload("supplier_invoice_scanned", load);
 
   // A file deleted early from any row: re-read the order, so a progress photo
   // leaves the gallery and every row reflects what the API now holds.
@@ -503,6 +528,13 @@ export function OrderWorkspace({
       ids.add(order.shopRecovery.originalSupplierId);
     if (order?.shopRecovery?.proposal?.supplierId)
       ids.add(order.shopRecovery.proposal.supplierId);
+    for (const option of order?.shopRecovery?.proposal?.alternatives ?? []) {
+      if (option.supplierId) ids.add(option.supplierId);
+    }
+    for (const move of order?.shopMoves ?? []) {
+      if (move.fromSupplierId) ids.add(move.fromSupplierId);
+      if (move.toSupplierId) ids.add(move.toSupplierId);
+    }
     if (order?.rescheduleRequest?.supplierId) ids.add(order.rescheduleRequest.supplierId);
     for (const event of failures ?? []) if (event.supplierId) ids.add(event.supplierId);
     // Who verified a delivery-pin payment.
@@ -734,7 +766,10 @@ export function OrderWorkspace({
               <ShopHeading order={order} names={names} tree={tree} />
             </div>
           ) : null}
-          {order.basketId || isExpressOrder(order) ? (
+          {order.basketId ||
+          isExpressOrder(order) ||
+          isTestOrder(order) ||
+          sampleTagOf(order) ? (
             <div className="mt-1 flex flex-wrap items-center gap-2">
               {order.basketId ? (
                 <ShopModeChip
@@ -742,10 +777,11 @@ export function OrderWorkspace({
                 />
               ) : null}
               {isExpressOrder(order) ? <ExpressChip /> : null}
+              <SampleTagChip order={order} />
               <TestOrderChip order={order} />
               {order.basketId && order.groupLabel ? (
                 <span className="text-caption text-text-secondary">
-                  This is {order.groupLabel}
+                  This is {groupName(order.groupLabel, order)}
                 </span>
               ) : null}
             </div>
@@ -814,6 +850,16 @@ export function OrderWorkspace({
                 marker={APPROVAL_MARKER[approvalRowTone(order.approvalProof)]}
               >
                 <ApprovalProofPanel orderId={order.id} />
+              </SectionRow>
+            ) : null}
+            {sampleTagOf(order) ? (
+              <SectionRow
+                id="sample"
+                heading={sampleTagOf(order) === "batch" ? "Batch from sample" : "Sample"}
+                summary={sampleRowSummary(order)}
+                marker={APPROVAL_MARKER[sampleRowTone(order)]}
+              >
+                <SampleDecisionPanel order={order} tree={tree} />
               </SectionRow>
             ) : null}
             {steps.map((step) => (
@@ -940,6 +986,7 @@ export function OrderWorkspace({
                       failuresError={failuresError}
                       names={names}
                       tree={tree}
+                      onChanged={load}
                     />
                   </SectionRow>
                 ) : null}
@@ -993,6 +1040,29 @@ export function OrderWorkspace({
                       corrections={staffCorrections(order.forcedSteps, corrections)}
                       names={names}
                     />
+                  </SectionRow>
+                ) : null}
+                {/*
+                  The shop's own receipt scan for the order, sent before it
+                  calls a rider; a gate on that call while Finance requires it.
+                */}
+                {step.id === "production" && receiptScanRowVisible(order, corrections) ? (
+                  <SectionRow
+                    id="receipt-scan"
+                    heading="Receipt scan"
+                    summary={receiptScanSummary(
+                      receiptScanRowState(order, corrections),
+                      receiptScanOf(order),
+                      formatDateTime,
+                    )}
+                    marker={RECEIPT_SCAN_MARKER[receiptScanRowState(order, corrections)]}
+                    trailing={
+                      receiptScanRowState(order, corrections) === "holding"
+                        ? "Shop's move"
+                        : undefined
+                    }
+                  >
+                    <ReceiptScanPanel order={order} corrections={corrections} tree={tree} />
                   </SectionRow>
                 ) : null}
                 {/*
@@ -1119,12 +1189,15 @@ export function OrderWorkspace({
                 summary={problemRowSummary(issues)}
                 marker={problemMarker(issues)}
               >
-                <ProblemReportPanel
-                  issues={issues}
-                  tree={tree}
-                  names={names}
-                  onChanged={load}
-                />
+                <div className="flex flex-col gap-3">
+                  <BatchStandard order={order} tree={tree} />
+                  <ProblemReportPanel
+                    issues={issues}
+                    tree={tree}
+                    names={names}
+                    onChanged={load}
+                  />
+                </div>
               </SectionRow>
             ) : null}
 
@@ -1284,6 +1357,7 @@ export function defaultOpenSections(order: Order): SectionId[] {
   }
   if (releasableMilestones(order).length > 0) ids.add("payout");
   if (recoveryNeedsOperations(order.shopRecovery)) ids.add("shop");
+  if (order.shopRecovery?.status === "awaiting_payment") ids.add("shop");
   if (rescheduleNeedsOperations(order.rescheduleRequest)) ids.add("deadline");
   if (pinPaymentAwaitingOperations(order)) ids.add("delivery-pin");
   if (changePaymentAwaitingStaff(order)) ids.add("instructions");
@@ -1483,6 +1557,13 @@ function payoutTrailing(order: Order): string {
     ? "Your call"
     : `${progress.releasedCount} of ${progress.count} released`;
 }
+
+const RECEIPT_SCAN_MARKER: Record<ReceiptScanRowState, MarkerSpec> = {
+  attached: { icon: CircleCheck, tone: "success" },
+  holding: { icon: TriangleAlert, tone: "current" },
+  skipped: { icon: TriangleAlert, tone: "muted" },
+  missing: { icon: CircleDot, tone: "muted" },
+};
 
 const SHOP_MARKER: Record<ReturnType<typeof shopRowTone>, MarkerSpec> = {
   attention: { icon: TriangleAlert, tone: "current" },
@@ -1835,8 +1916,13 @@ function stepSummary(order: Order, step: WorkspaceStep): string {
   // A dropout or a declined deadline request stops the shop's work, whatever
   // state the order still carries.
   if (stage === "production" && step.status === "current") {
+    if (order.shopRecovery?.status === "awaiting_payment") {
+      return "Paused: the client's payment for the new shop needs verifying. The rows below say where.";
+    }
     if (recoveryHoldsWork(order.shopRecovery)) {
-      return "Paused: the shop dropped out. The rows below say what happens next.";
+      return startedByOperations(order.shopRecovery?.kind)
+        ? "Paused: the order is moving to another shop. The rows below say what happens next."
+        : "Paused: the shop dropped out. The rows below say what happens next.";
     }
     if (order.rescheduleRequest?.workHeld) {
       return "Paused while the shop's deadline request is settled.";
@@ -2517,7 +2603,7 @@ function SpecRail({
             order={order}
             totalLabel={
               order.basketId && order.groupLabel
-                ? `${order.groupLabel} total`
+                ? `${groupName(order.groupLabel, order)} total`
                 : "Client total"
             }
           />

@@ -16,6 +16,7 @@ import {
   presentRewardState,
   rewardActions,
   rewardAmountText,
+  rewardKindText,
 } from "@/lib/tester-program";
 
 const budget = (overrides: Partial<TesterBudget> = {}): TesterBudget => ({
@@ -294,5 +295,12 @@ describe("invites", () => {
         }),
       ).label,
     ).toBe("Completed");
+  });
+});
+
+describe("rewardKindText", () => {
+  it("names a bug-report voucher apart from the five steps", () => {
+    expect(rewardKindText({ kind: "bug_report" })).toBe("Bug report");
+    expect(rewardKindText({ kind: "mission" })).toBe("Five steps");
   });
 });

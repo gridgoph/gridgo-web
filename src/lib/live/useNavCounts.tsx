@@ -48,6 +48,8 @@ import { buildNeedsOperations } from "@/lib/shop-changes";
 import { needsSupplierAction } from "@/lib/supplier-actions";
 import { useAcceptDeadlines } from "@/lib/use-accept-clock";
 import { readColourPriceChecks } from "@/lib/colour-pricing";
+import { listQuoteRequests } from "@/lib/api/quote-requests";
+import { quotesWaitingOnOperations } from "@/lib/quote-requests";
 
 type CountSource = {
   /** Live-stream resources that make this count stale. */
@@ -58,7 +60,7 @@ type CountSource = {
    */
   refreshOnNavigate?: boolean;
   /** Re-read when a staff inbox notice of this kind arrives. */
-  inboxPrefix?: "privacy." | "colour_price_check";
+  inboxPrefix?: "privacy." | "colour_price_check" | "ops_quote_";
   load: () => Promise<number>;
 };
 
@@ -195,7 +197,16 @@ const NAV_COUNT_SOURCES: Record<Exclude<NavCountKey, OrderCountKey>, CountSource
     inboxPrefix: "colour_price_check",
     load: async () => readColourPriceChecks(await listColourPriceChecks()).length,
   },
-  // New and in-progress privacy requests, one page of each (100): past that
+  // The Quotes desk's new briefs and ones with replies not yet published
+  // (newest 200 open requests). No stream resource covers quote requests, so
+  // it is re-read on each page move and when an `ops_quote_*` notice arrives.
+  "quotes-waiting": {
+    resources: [],
+    refreshOnNavigate: true,
+    inboxPrefix: "ops_quote_",
+    load: async () => quotesWaitingOnOperations(await listQuoteRequests("open")),
+  },
+    // New and in-progress privacy requests, one page of each (100): past that
   // the badge is a floor and the queue has the rest. The API's live stream
   // carries no privacy resource, so it is re-read on each page move and when
   // a privacy inbox notice arrives.

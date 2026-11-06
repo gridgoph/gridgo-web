@@ -384,3 +384,69 @@ it("shows no trading name on a client or shop payload", async () => {
   expect(screen.getByText("This is Shop A")).toBeInTheDocument();
   expect(screen.getByTestId("group-Shop B")).toHaveTextContent("Shop B");
 });
+
+it("tells a shop's separate deliveries apart, each with its own delivery fee", async () => {
+  const contact = { shopName: "North Press", contactName: "Ana" };
+  const first: Order = {
+    ...shopA,
+    deadline: "2026-11-10T08:00:00.000Z",
+    deliveryNumber: 1,
+    shopDeliveryCount: 2,
+    supplierContact: contact,
+  };
+  const second: Order = {
+    ...shopA,
+    id: "ord_b",
+    deadline: "2026-11-12T08:00:00.000Z",
+    deliveryNumber: 2,
+    shopDeliveryCount: 2,
+    deliveryFeeMinor: 17800,
+    totalMinor: shopA.totalMinor - shopA.deliveryFeeMinor + 17800,
+    supplierContact: contact,
+  };
+  order = first;
+  basket = basketOf([first, second], { deadline: null });
+  basket.groups.forEach((group) => {
+    group.label = "Shop A";
+    group.deliveryNumber = group.order.deliveryNumber;
+    group.shopDeliveryCount = group.order.shopDeliveryCount;
+  });
+  render(<OrderWorkspace queueHref="/ops/orders" />);
+  await screen.findByTestId("basket-total");
+
+  expect(screen.getByText("This is Shop A, delivery 1 of 2")).toBeInTheDocument();
+  const one = screen.getByTestId("group-Shop A, delivery 1 of 2");
+  const two = screen.getByTestId("group-Shop A, delivery 2 of 2");
+  expect(
+    within(one).getByText("Delivery 1 of 2", { selector: "span" }),
+  ).toBeInTheDocument();
+  expect(money(one, "Delivery 1 of 2")).toHaveTextContent(
+    `₱${(shopA.deliveryFeeMinor / 100).toFixed(2)}`,
+  );
+  expect(money(two, "Delivery 2 of 2")).toHaveTextContent("₱178.00");
+  expect(money(two, "Shop A, delivery 2 of 2 total")).toBeInTheDocument();
+  expect(screen.getByTestId("basket-reconciliation")).toHaveTextContent(
+    /Shop A, delivery 1 of 2 ₱[\d,.]+ \+ Shop A, delivery 2 of 2 ₱/,
+  );
+
+  await userEvent.click(
+    screen.getByRole("button", { name: "Show the combined receipt" }),
+  );
+  await screen.findByText("Receipt TEST-DATES");
+  const receiptTwo = screen.getByRole("region", {
+    name: "Shop A, delivery 2 of 2 on the receipt",
+  });
+  expect(within(receiptTwo).getByText("Shop A · Delivery 2 of 2")).toBeInTheDocument();
+  expect(money(receiptTwo, "Delivery 2 of 2")).toHaveTextContent("₱178.00");
+  expect(
+    screen.getByRole("region", { name: "Shop A, delivery 1 of 2 on the receipt" }),
+  ).toBeInTheDocument();
+});
+
+it("keeps a single delivery's words unchanged", async () => {
+  render(<OrderWorkspace queueHref="/ops/orders" />);
+  await screen.findByTestId("basket-total");
+  expect(screen.getByText("This is Shop A")).toBeInTheDocument();
+  expect(screen.queryByText(/Delivery \d of \d/)).toBeNull();
+  expect(money(screen.getByTestId("group-Shop A"), "Delivery")).toBeInTheDocument();
+});
