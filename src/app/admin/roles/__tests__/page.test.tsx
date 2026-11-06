@@ -130,6 +130,92 @@ describe("Admin roles account actions", () => {
     await user.type(screen.getByLabelText(/Reason \(required/), "Payment landed");
     await waitFor(() => expect(confirmRestore).toBeEnabled());
   }, 20000);
+
+  it("drops a removed account from both tabs and does not delete them", async () => {
+    const user = userEvent.setup();
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const ana = person({
+      id: "user_client",
+      name: "Ana Client",
+      role: "client",
+      accountStatus: "active",
+    });
+    const north = person({
+      id: "user_shop",
+      name: "North Press",
+      role: "supplier",
+      accountStatus: "suspended",
+      accountStatusReason: "Counter was closed",
+    });
+    let directory = [ana, north];
+    listUsers.mockImplementation(async () => directory);
+    listApprovalCases.mockResolvedValue({ approvalCases: [], nextCursor: null });
+    updateUserAccount.mockImplementation(async (id: string, input: { status: string; reason: string }) => {
+      directory = directory.map((row) =>
+        row.id === id
+          ? {
+              ...row,
+              accountStatus: input.status as User["accountStatus"],
+              accountStatusReason: input.reason,
+            }
+          : row,
+      );
+      return directory.find((row) => row.id === id);
+    });
+
+    try {
+      render(<AdminRolesPage />);
+      const table = await screen.findByRole("table");
+      expect(await within(table).findByText("Ana Client")).toBeVisible();
+
+      const clientRow = within(table).getByText("Ana Client").closest("tr");
+      if (!clientRow) throw new Error("missing client row");
+      await user.click(within(clientRow).getByRole("button", { name: "Remove account" }));
+      const confirmRemove = await screen.findByRole("button", { name: "Confirm removal" });
+      await user.type(screen.getByLabelText(/Reason \(required/), "Closed the account");
+      await user.type(screen.getByLabelText(/Type .* to confirm/), "user_client@gridgo.test");
+      await user.click(confirmRemove);
+
+      await waitFor(() =>
+        expect(updateUserAccount).toHaveBeenCalledWith("user_client", {
+          status: "removed",
+          reason: "Closed the account",
+        }),
+      );
+      await waitFor(() =>
+        expect(within(screen.getByRole("table")).queryByText("Ana Client")).not.toBeInTheDocument(),
+      );
+      const reloaded = await listUsers.mock.results.at(-1)?.value;
+      expect(reloaded).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: "user_client", accountStatus: "removed" }),
+          expect.objectContaining({ id: "user_shop", accountStatus: "suspended" }),
+        ]),
+      );
+      expect(within(screen.getByRole("table")).getByText("North Press")).toBeVisible();
+      expect(within(screen.getByRole("table")).getByText("Counter was closed")).toBeVisible();
+      expect(
+        within(screen.getByRole("table")).getByRole("button", { name: "Restore account" }),
+      ).toBeVisible();
+
+      await user.click(screen.getByRole("tab", { name: "Sign-ins" }));
+      expect(within(screen.getByRole("table")).queryByText("Ana Client")).not.toBeInTheDocument();
+      expect(within(screen.getByRole("table")).getByText("North Press")).toBeVisible();
+
+      const deleteCalls = fetchSpy.mock.calls.filter((call) => {
+        const init = call[1];
+        const method =
+          init && typeof init === "object" && "method" in init
+            ? String(init.method)
+            : "GET";
+        return method.toUpperCase() === "DELETE";
+      });
+      expect(deleteCalls).toEqual([]);
+      expect(updateUserAccount).toHaveBeenCalledTimes(1);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  }, 20000);
 });
 
 const LATER = "2026-10-28T10:00:00.000Z";
@@ -175,6 +261,22 @@ describe("Admin roles sign-ins", () => {
         lastAuthenticatedAt: LATER,
         createdAt: CREATED,
       }),
+      person({
+        id: "user_rico",
+        name: "Rico Santos",
+        role: "rider",
+        accountStatus: "removed",
+        accountStatusReason: "Left the fleet",
+        lastAuthenticatedAt: "2026-11-06T00:00:00.000Z",
+        createdAt: CREATED,
+      }),
+      person({
+        id: "user_gone",
+        name: "Gone Rider",
+        role: "rider",
+        accountStatus: "removed",
+        createdAt: CREATED,
+      }),
     ]);
     listApprovalCases.mockResolvedValue({ approvalCases: [], nextCursor: null });
 
@@ -191,9 +293,13 @@ describe("Admin roles sign-ins", () => {
     expect(within(directory).getByText(manila(LATER))).toBeVisible();
     expect(within(directory).getByText("No sign-in recorded")).toBeVisible();
     expect(within(directory).queryByText(manila(CREATED))).not.toBeInTheDocument();
+    expect(within(directory).queryByText("Rico Santos")).not.toBeInTheDocument();
+    expect(within(directory).queryByText("Gone Rider")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "Sign-ins" }));
     const table = screen.getByRole("table");
+    expect(within(table).queryByText("Rico Santos")).not.toBeInTheDocument();
+    expect(within(table).queryByText("Gone Rider")).not.toBeInTheDocument();
     expect(namesIn(table)).toEqual(["Ana Client", "North Press", "Ben Rider"]);
     expect(within(table).getByText(manila(EARLIER))).toBeVisible();
     expect(within(table).getByText("No sign-in recorded")).toBeVisible();
@@ -210,6 +316,7 @@ describe("Admin roles sign-ins", () => {
     await user.click(screen.getByRole("button", { name: "No sign-in recorded" }));
     expect(namesIn(screen.getByRole("table"))).toEqual(["Ben Rider"]);
     expect(screen.getByRole("table")).not.toHaveTextContent("Ana Client");
+    expect(screen.getByRole("table")).not.toHaveTextContent("Gone Rider");
     expect(screen.getByRole("table")).not.toHaveTextContent(manila(CREATED));
 
     await user.click(screen.getByRole("button", { name: "All" }));
@@ -232,14 +339,23 @@ describe("Admin roles sign-ins", () => {
       role: "supplier",
       lastAuthenticatedAt: EARLIER,
     });
+    const rico = person({
+      id: "user_rico",
+      name: "Rico Santos",
+      role: "rider",
+      accountStatus: "removed",
+      accountStatusReason: "Left the fleet",
+      lastAuthenticatedAt: "2026-11-06T00:00:00.000Z",
+    });
     listUsers.mockImplementation(
       async (role?: string, filter?: { foundingTester?: boolean }) =>
-        role === "client" && filter?.foundingTester === true ? [ana] : [ana, north],
+        role === "client" && filter?.foundingTester === true ? [ana] : [ana, north, rico],
     );
     listApprovalCases.mockResolvedValue({ approvalCases: [], nextCursor: null });
 
     render(<AdminRolesPage />);
     expect(await within(await screen.findByRole("table")).findByText("North Press")).toBeVisible();
+    expect(screen.queryByText("Rico Santos")).not.toBeInTheDocument();
 
     const testerFilter = screen.getByRole("group", { name: "Founding Tester" });
     await user.click(within(testerFilter).getByRole("button", { name: "Founding Testers" }));
@@ -248,6 +364,7 @@ describe("Admin roles sign-ins", () => {
 
     await user.click(screen.getByRole("tab", { name: "Sign-ins" }));
     expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText("Rico Santos")).not.toBeInTheDocument();
     expect(namesIn(screen.getByRole("table"))).toEqual(["Ana Client", "North Press"]);
 
     await user.click(screen.getByRole("button", { name: "Refresh" }));
