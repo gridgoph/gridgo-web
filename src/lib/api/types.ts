@@ -1036,6 +1036,11 @@ export type Order = {
    * and a rider.
    */
   clientName?: string | null;
+  /**
+   * Super Admin only: the client's exact email, the phrase typed back to
+   * remove the order. Absent for every other role.
+   */
+  clientEmail?: string | null;
   supplierId: string | null;
   riderId: string | null;
   /**

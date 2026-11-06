@@ -560,6 +560,21 @@ export async function transitionOrder(
   return normalizeOrder(result.order);
 }
 
+/**
+ * Super Admin only. Takes the order off every list and app; the record and the
+ * reason stay on the audit log and no money moves. `confirmEmail` is the
+ * client's exact email, which the API checks itself.
+ */
+export async function removeOrder(
+  orderId: string,
+  input: { reason: string; confirmEmail: string },
+): Promise<{ id: string; removedAt: string }> {
+  return request<{ id: string; removedAt: string }>(
+    `/ops/orders/${encodeURIComponent(orderId)}/remove`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
 /** One quality-check tick, written to the audit log as it is ticked. */
 export async function recordQaTick(
   orderId: string,
