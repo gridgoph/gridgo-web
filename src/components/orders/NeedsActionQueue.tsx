@@ -1,33 +1,32 @@
 "use client";
 
 /**
- * The order queue's first view: every order waiting on Operations, grouped by
- * the action owed and oldest first in each group (`needs-action.ts`).
+ * The order queue's first view: the orders Operations can act on, each group
+ * labelled and counted, oldest wait first inside the group.
  *
- * The counts sit at the top so the size of each pile reads before any row; the
- * table holds the groups in flow order, each row labelled with its action. A
- * late order that also owes a step keeps that step and carries a Late chip, so
- * nothing ranks lateness against money here.
+ * Membership is `operationsAction`. A job that is only late is not here.
+ * Lateness stays on the late-production desk. The artwork group is the file
+ * check, not a second list of the same orders. Finished work opens the
+ * existing review.
  *
- * A payment and a rider are decided from the row (gridgo-web#272): Confirm
- * payment opens the workspace's own payment decision in a sheet, proof and
- * all, and Assign rider lists the riders the API accepts. Both send exactly
- * the request the order workspace and the dispatch board send.
+ * Confirm payment and Assign rider still send the requests the order
+ * workspace and the dispatch board send.
  */
 
-import { useEffect, useMemo, useState } from "react";
-import { AlarmClock, Bike, Eye, FileSearch, Wallet, type LucideIcon } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Bike, Eye, Wallet } from "lucide-react";
 
 import {
-  NEEDS_ACTIONS,
-  buildNeedsActionQueue,
-  needsActionCounts,
-  needsActionSortKey,
-  type NeedsActionId,
-  type NeedsActionRow,
-} from "@/app/ops/_lib/needs-action";
+  OPERATIONS_ACTION_LABEL,
+  OPERATIONS_ACTIONS,
+  operationsAction,
+  ordersForAction,
+  stageOf,
+  type OperationsAction,
+} from "@/app/ops/_lib/pipeline";
 import { AssignRiderDialog } from "@/components/orders/AssignRiderDialog";
 import { ConfirmPaymentSheet } from "@/components/orders/ConfirmPaymentSheet";
+import { FileCheckQueue } from "@/components/orders/FileCheckQueue";
 import {
   QueueOrderCell,
   queueOrderFilterValue,
@@ -39,112 +38,73 @@ import {
   DataTableRowAction,
   type DataTableColumn,
 } from "@/components/ui/data-table";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { StatCard } from "@/components/ui/StatCard";
-import { StatusChip } from "@/components/ui/StatusChip";
-import type { Order } from "@/lib/api/types";
+import { isExpressOrder } from "@/lib/express";
+import { formatPhp } from "@/lib/format";
+import type { OperatingHours, Order } from "@/lib/api/types";
 import { basketShopCounts } from "@/lib/baskets";
 import { pinDispatchBlocker } from "@/lib/delivery-pin";
-import { isExpressOrder } from "@/lib/express";
-import { formatWait } from "@/lib/file-check";
-import { formatPhp } from "@/lib/format";
-
-const ACTION_ICONS: Record<NeedsActionId, LucideIcon> = {
-  payment: Wallet,
-  artwork: FileSearch,
-  rider: Bike,
-  late: AlarmClock,
-};
-
-const LABELS = Object.fromEntries(
-  NEEDS_ACTIONS.map((entry) => [entry.id, entry.label]),
-) as Record<NeedsActionId, string>;
-
-/** How often the waits tick while the page is open. */
-const TICK_MS = 30_000;
-
-/** The queue's clock. The page reads it once, so the tab total and the rows agree. */
-export function useNeedsActionClock(intervalMs: number = TICK_MS): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), intervalMs);
-    return () => window.clearInterval(timer);
-  }, [intervalMs]);
-  return now;
-}
-
-function waitLabel(row: NeedsActionRow, nowMs: number): string {
-  const since = row.since ? Date.parse(row.since) : NaN;
-  if (Number.isNaN(since)) return "Not recorded";
-  const wait = formatWait(Math.max(0, Math.floor((nowMs - since) / 1000)));
-  return row.action === "late" ? `${wait} past its date` : wait;
-}
+import { paymentOf } from "@/lib/payments";
 
 type Props = {
   orders: Order[];
-  /** From `useNeedsActionClock`, shared with the tab total. */
-  now: number;
+  hours: OperatingHours | null;
   onRefresh: () => void;
 };
 
-export function NeedsActionQueue({ orders, now, onRefresh }: Props) {
+/** The order's own downpayment, which the sheet can decide. A pin or change payment is not one. */
+function ownDownpayment(order: Order): boolean {
+  return (
+    stageOf(order) === "payment" &&
+    paymentOf(order, "downpayment")?.status === "pending_confirmation"
+  );
+}
+
+export function NeedsActionQueue({ orders, hours, onRefresh }: Props) {
   const [paying, setPaying] = useState<Order | null>(null);
   const [dispatching, setDispatching] = useState<Order | null>(null);
-  const rows = useMemo(() => buildNeedsActionQueue(orders, now), [orders, now]);
-  const counts = useMemo(() => needsActionCounts(rows), [rows]);
-  // Counted across every order: a basket's groups move independently.
   const shopCounts = useMemo(() => basketShopCounts(orders), [orders]);
+  const groups = useMemo(
+    () =>
+      Object.fromEntries(
+        OPERATIONS_ACTIONS.map((action) => [action, ordersForAction(orders, action)]),
+      ) as Record<OperationsAction, Order[]>,
+    [orders],
+  );
 
-  const columns = useMemo<DataTableColumn<NeedsActionRow>[]>(
+  const columns = useMemo<DataTableColumn<Order>[]>(
     () => [
       {
-        id: "action",
-        header: "Needs",
-        sortValue: needsActionSortKey,
-        cell: (row) => {
-          const Icon = ACTION_ICONS[row.action];
+        id: "order",
+        header: "Order",
+        primary: true,
+        filterValue: (order) => queueOrderFilterValue(order, shopCounts),
+        cell: (order) => <QueueOrderCell order={order} shopCounts={shopCounts} />,
+      },
+      {
+        id: "waiting",
+        header: "Waiting on",
+        filterValue: (order) => {
+          const action = operationsAction(order);
+          return action ? OPERATIONS_ACTION_LABEL[action] : "";
+        },
+        cell: (order) => {
+          const action = operationsAction(order);
           return (
             <span
-              className="text-body text-text-primary inline-flex items-center gap-2 whitespace-nowrap"
+              className="text-body text-text-primary whitespace-nowrap"
               style={{ fontFamily: "var(--font-medium)" }}
             >
-              <Icon size={16} strokeWidth={2} aria-hidden />
-              {LABELS[row.action]}
+              {action ? OPERATIONS_ACTION_LABEL[action] : "—"}
             </span>
           );
         },
       },
       {
-        id: "order",
-        header: "Order",
-        primary: true,
-        sortValue: (row) => row.order.title ?? "",
-        filterValue: (row) =>
-          `${LABELS[row.action]} ${queueOrderFilterValue(row.order, shopCounts)}`,
-        cell: (row) => <QueueOrderCell order={row.order} shopCounts={shopCounts} />,
-      },
-      {
-        id: "waiting",
-        header: "Waiting",
-        sortValue: (row) => (row.since ? Date.parse(row.since) || 0 : 0),
-        cell: (row) => (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-body text-text-secondary whitespace-nowrap tabular-nums">
-              {waitLabel(row, now)}
-            </span>
-            {row.late && row.action !== "late" ? (
-              <StatusChip tone="warning" icon="clock" label="Late" />
-            ) : null}
-          </div>
-        ),
-      },
-      {
         id: "speed",
         header: "Speed",
         hideOnMobile: true,
-        sortValue: (row) => (isExpressOrder(row.order) ? 0 : 1),
-        cell: (row) =>
-          isExpressOrder(row.order) ? (
+        cell: (order) =>
+          isExpressOrder(order) ? (
             <ExpressChip />
           ) : (
             <span className="text-body text-text-muted whitespace-nowrap">Standard</span>
@@ -154,95 +114,82 @@ export function NeedsActionQueue({ orders, now, onRefresh }: Props) {
         id: "value",
         header: "Value",
         hideOnMobile: true,
-        sortValue: (row) => row.order.totalMinor ?? -1,
-        cell: (row) => (
+        cell: (order) => (
           <span className="text-body text-text-secondary tabular-nums whitespace-nowrap">
-            {row.order.totalMinor != null ? formatPhp(row.order.totalMinor) : "—"}
+            {order.totalMinor != null ? formatPhp(order.totalMinor) : "—"}
           </span>
         ),
       },
     ],
-    [shopCounts, now],
+    [shopCounts],
   );
 
   return (
     <div className="flex flex-col gap-4">
-      <section
-        aria-label="Waiting on you"
-        className="grid grid-cols-2 gap-3 lg:grid-cols-4"
-      >
-        {NEEDS_ACTIONS.map((entry) => (
-          <StatCard
-            key={entry.id}
-            label={entry.label}
-            value={String(counts[entry.id])}
-            hint={entry.hint}
-            icon={ACTION_ICONS[entry.id]}
-          />
-        ))}
-      </section>
-
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <p className="text-body text-text-secondary m-0">
-          Oldest first in each group, in the order the work comes to you.
+          Oldest first in each group.
         </p>
         <Button variant="secondary" onClick={onRefresh}>
           Refresh
         </Button>
       </div>
 
-      {rows.length === 0 ? (
-        <EmptyState
-          title="Nothing is waiting on you"
-          body="Payments, artwork checks, riders to assign and late orders appear here as they come in."
-          action={
-            <Button variant="secondary" onClick={onRefresh}>
-              Refresh
-            </Button>
-          }
-        />
-      ) : (
-        <DataTable
-          columns={columns}
-          data={rows}
-          getRowId={(row) => row.order.id}
-          caption="Orders waiting on you"
-          filterPlaceholder="Filter orders…"
-          defaultSortId="action"
-          pageSize={25}
-          itemLabel="orders"
-          rowActionsDensity="labeled"
-          rowActions={(row) => (
-            <>
-              {/*
-                Only the order's own installment (or a basket's checkout, which
-                mirrors it) is decided in the sheet. A pin or change top-up has
-                its own decision on the order, so it keeps Open.
-              */}
-              {row.action === "payment" && row.installment ? (
-                <DataTableRowAction
-                  label="Confirm payment"
-                  icon={Wallet}
-                  onClick={() => setPaying(row.order)}
-                />
-              ) : null}
-              {row.action === "rider" ? (
-                <DataTableRowAction
-                  label="Assign rider"
-                  icon={Bike}
-                  disabled={pinDispatchBlocker(row.order) !== null}
-                  onClick={() => setDispatching(row.order)}
-                />
-              ) : null}
-              <DataTableRowAction
-                label={row.action === "artwork" ? "Check artwork" : "Open"}
-                icon={row.action === "artwork" ? FileSearch : Eye}
-                href={`/ops/orders/${row.order.id}`}
+      {OPERATIONS_ACTIONS.map((action) => {
+        const label = OPERATIONS_ACTION_LABEL[action];
+        const rows = groups[action];
+        return (
+          <section key={action} aria-label={label} className="flex flex-col gap-3">
+            <h2 className="text-h3 text-text-primary m-0">
+              {label}{" "}
+              <span className="tabular-nums">{rows.length}</span>
+            </h2>
+            {action === "check_artwork" ? (
+              rows.length > 0 ? (
+                <FileCheckQueue orders={rows} onChanged={onRefresh} hours={hours} />
+              ) : null
+            ) : rows.length > 0 ? (
+              <DataTable
+                columns={columns}
+                data={rows}
+                getRowId={(order) => order.id}
+                caption={label}
+                filterPlaceholder="Filter orders…"
+                itemLabel="orders"
+                rowActionsDensity="labeled"
+                rowActions={(order) => (
+                  <>
+                    {action === "confirm_payment" && ownDownpayment(order) ? (
+                      <DataTableRowAction
+                        label="Confirm payment"
+                        icon={Wallet}
+                        onClick={() => setPaying(order)}
+                      />
+                    ) : null}
+                    {action === "assign_rider" ? (
+                      <DataTableRowAction
+                        label="Assign rider"
+                        icon={Bike}
+                        disabled={pinDispatchBlocker(order) !== null}
+                        onClick={() => setDispatching(order)}
+                      />
+                    ) : null}
+                    <DataTableRowAction
+                      label={action === "review_finished" ? "Review" : "Open"}
+                      icon={Eye}
+                      href={
+                        action === "review_finished"
+                          ? `/ops/finished-work?order=${order.id}`
+                          : `/ops/orders/${order.id}`
+                      }
+                    />
+                  </>
+                )}
               />
-            </>
-          )}
-        />
-      )}
+            ) : null}
+          </section>
+        );
+      })}
 
       <ConfirmPaymentSheet
         order={paying}
