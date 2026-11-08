@@ -4,6 +4,7 @@ import type { ShopHours } from "@/lib/api/types";
 import type { StatusIconName, StatusTone } from "@/lib/order-state";
 import {
   closureOnDay,
+  dayWindow,
   extensionToday,
   manilaClock,
   shopStatus,
@@ -38,7 +39,7 @@ export function ShopStatusPanel({
   const clock = manilaClock(now);
   // Nothing is drawn open on a closure date or while closed for a while.
   const shut = hours.temporarilyClosed || closureOnDay(hours.closures, clock.dayKey) != null;
-  const today = shut ? null : (hours.week.find((row) => row.weekday === clock.weekday) ?? null);
+  const today = shut ? null : dayWindow(hours, clock.weekday);
   const extension = shut ? null : extensionToday(hours, now);
   const Heading = headingLevel === 2 ? "h2" : "h3";
 

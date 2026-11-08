@@ -14,9 +14,9 @@ import {
 const SHOP_COPY: Record<string, string> = {
   supplier_profile_stale: STALE_SHOP_HOURS_COPY,
   invalid_shop_hours:
-    "GRIDGO could not use those hours. Keep one opening and closing time on the same day, and closure dates that cover 90 dates or fewer.",
+    "GRIDGO could not use those hours. Each day needs a closing time later than its opening time, and closure dates can cover 90 dates or fewer.",
   production_day_length_unavailable:
-    "Every open day needs the same number of hours for now. Pick one opening and closing time for all your open days.",
+    "Your usual hours must be the same on every open day. Give a shorter or longer day its own hours instead.",
   invalid_shop_extension:
     "GRIDGO could not extend today to that time. Pick a time later than your usual close, before midnight, and at least 30 minutes from now.",
   shop_closed: "Your shop is temporarily closed. Reopen it before extending today's hours.",

@@ -1927,8 +1927,14 @@ export type ShopHoursExtension = { day: string; opensMinute: number; closesMinut
 export type ShopHours = {
   /** Shared with `/me/supplier-profile`; a stale one is `409 supplier_profile_stale`. */
   version: number;
-  /** One window per open weekday; a weekday left out is closed. */
+  /** The base week: one window per open weekday at the usual hours; a weekday left out is closed. */
   week: WeeklyWindow[];
+  /**
+   * `schedule.weekdayOverrides`: open weekdays with their own hours, replacing
+   * the base window (a half-day Saturday). Absent or `[]`: every open day
+   * keeps the base hours.
+   */
+  overrides?: WeeklyWindow[];
   closures: ScheduleClosure[];
   temporarilyClosed: boolean;
   isOpenNow: boolean;
@@ -1943,7 +1949,12 @@ export type ShopHours = {
 
 /** `PATCH /me/shop-hours` without its `expectedVersion`. Fields left out are kept. */
 export type ShopHoursPatch = {
-  schedule?: { utcOffsetMinutes: number; week: WeeklyWindow[]; closures: ScheduleClosure[] };
+  schedule?: {
+    utcOffsetMinutes: number;
+    week: WeeklyWindow[];
+    closures: ScheduleClosure[];
+    weekdayOverrides: WeeklyWindow[];
+  };
   temporarilyClosed?: boolean;
   extension?: { closesMinute: number } | null;
 };
