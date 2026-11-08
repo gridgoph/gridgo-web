@@ -34,11 +34,15 @@ const SEP_18 = "2026-09-18T02:00:00.000Z";
 
 const listUsers = vi.hoisted(() => vi.fn<() => Promise<User[]>>());
 const listApprovalCases = vi.hoisted(() => vi.fn<() => Promise<ApprovalCaseQueue>>());
+const updateUserAccount = vi.hoisted(() =>
+  vi.fn<(id: string, body: { status: string; reason: string }) => Promise<unknown>>(),
+);
 
 vi.mock("@/lib/api/client", async () => ({
   ...(await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client")),
   listUsers,
   listApprovalCases,
+  updateUserAccount,
 }));
 
 afterEach(cleanup);
@@ -104,6 +108,15 @@ function visibleNames(table: HTMLElement): string[] {
   return PEOPLE.map((p) => p.name).filter((name) => within(table).queryByText(name));
 }
 
+function peopleSummary(): string {
+  const summary = screen.getByText((_, node) => {
+    return (
+      node?.getAttribute("aria-live") === "polite" && /people/.test(node.textContent ?? "")
+    );
+  });
+  return (summary.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
 async function pickFacet(
   user: ReturnType<typeof userEvent.setup>,
   facet: "Account" | "Standing",
@@ -126,28 +139,51 @@ describe("Roles Account and Standing facets", () => {
     render(<AdminRolesPage />);
     const table = await screen.findByRole("table");
     await within(table).findByText("Dara Cruz");
-    expect(visibleNames(table)).toHaveLength(4);
+    // Rico's standing is removed, so he is not a row. Account "Active" is not why.
+    expect(visibleNames(table)).toEqual(["Dara Cruz", "North Press", "Ana Reyes"]);
+    expect(within(table).queryByText("Rico Santos")).not.toBeInTheDocument();
+    expect(within(table).queryByText("Left the fleet")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^Standing( \d+)?$/ }));
+    expect(screen.queryByRole("button", { name: /^Removed\s+\d+$/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Active\s+2$/ })).toBeVisible();
+    expect(screen.getByRole("button", { name: /^Suspended\s+1$/ })).toBeVisible();
+    await user.keyboard("{Escape}");
 
     // Account → Suspended is accreditation only: the shop Operations suspended.
     await pickFacet(user, "Account", "Suspended");
     expect(visibleNames(table)).toEqual(["Dara Cruz"]);
     await pickFacet(user, "Account", "Suspended");
-    expect(visibleNames(table)).toHaveLength(4);
+    expect(visibleNames(table)).toEqual(["Dara Cruz", "North Press", "Ana Reyes"]);
 
     // Standing → Suspended is the account hold, never the accreditation.
     await pickFacet(user, "Standing", "Suspended");
     expect(visibleNames(table)).toEqual(["North Press"]);
     expect(within(table).getByText("Counter was closed")).toBeVisible();
+    const northRow = within(table).getByText("North Press").closest("tr");
+    if (!northRow) throw new Error("missing North row");
+    expect(within(northRow).getByRole("button", { name: "Restore account" })).toBeVisible();
     await pickFacet(user, "Standing", "Suspended");
-
-    await pickFacet(user, "Standing", "Removed");
-    expect(visibleNames(table)).toEqual(["Rico Santos"]);
-    expect(within(table).getByText("Left the fleet")).toBeVisible();
-    await pickFacet(user, "Standing", "Removed");
 
     // Missing standing (an older API) reads as Active.
     await pickFacet(user, "Standing", "Active");
     expect(visibleNames(table)).toEqual(["Dara Cruz", "Ana Reyes"]);
+    await pickFacet(user, "Standing", "Active");
+
+    await user.type(screen.getByPlaceholderText("Filter people…"), "rico@riders.ph");
+    // Phone cards and the desktop table both say the search missed.
+    expect(screen.getAllByText("No rows match what you searched for.").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Rico Santos")).not.toBeInTheDocument();
+    expect(screen.queryByText("Left the fleet")).not.toBeInTheDocument();
+    await user.clear(screen.getByPlaceholderText("Filter people…"));
+    expect(await within(screen.getByRole("table")).findByText("Dara Cruz")).toBeVisible();
+
+    await user.click(screen.getByRole("tab", { name: "Sign-ins" }));
+    const signIns = screen.getByRole("table");
+    expect(within(signIns).queryByText("Rico Santos")).not.toBeInTheDocument();
+    expect(within(signIns).getByText("Dara Cruz")).toBeVisible();
+    expect(within(signIns).getByText("North Press")).toBeVisible();
+    expect(within(signIns).getByText("Ana Reyes")).toBeVisible();
   }, 20000);
 
   it("keeps the account actions distinct from reviewing a suspension", async () => {
@@ -165,13 +201,123 @@ describe("Roles Account and Standing facets", () => {
     ).toBeVisible();
     expect(within(daraRow).getByRole("button", { name: "Remove account" })).toBeVisible();
 
-    const ricoRow = within(table).getByText("Rico Santos").closest("tr");
-    if (!ricoRow) throw new Error("missing Rico row");
+    expect(within(table).queryByText("Rico Santos")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Removed\s+\d+$/ })).not.toBeInTheDocument();
+
+    const northRow = within(table).getByText("North Press").closest("tr");
+    if (!northRow) throw new Error("missing North row");
+    expect(within(northRow).getByText("Counter was closed")).toBeVisible();
+    expect(within(northRow).getByRole("button", { name: "Restore account" })).toBeVisible();
+    expect(within(northRow).getByRole("button", { name: "Remove account" })).toBeVisible();
     expect(
-      within(ricoRow).getByRole("button", { name: "Restore account" }),
-    ).toBeVisible();
+      within(northRow).queryByRole("button", { name: "Suspend account" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps a removed account out of the page count and both searches", async () => {
+    const user = userEvent.setup();
+    const listed = [
+      {
+        id: "user_north",
+        email: "north@press.ph",
+        name: "North Press",
+        role: "client" as const,
+        accountStatus: "suspended" as const,
+        accountStatusReason: "Counter was closed",
+      },
+      ...Array.from({ length: 10 }, (_, index) => ({
+        id: `user_${index}`,
+        email: `person${index}@gridgo.ph`,
+        name: `Person ${index}`,
+        role: "client" as const,
+      })),
+    ];
+    listUsers.mockResolvedValue([
+      ...listed,
+      {
+        id: "user_rico",
+        email: "rico@riders.ph",
+        name: "Rico Santos",
+        role: "client",
+        accountStatus: "removed",
+        accountStatusReason: "Left the fleet",
+      },
+    ]);
+    listApprovalCases.mockResolvedValue({ approvalCases: [], nextCursor: null });
+
+    render(<AdminRolesPage />);
+    const table = await screen.findByRole("table");
+    expect(await within(table).findByText("North Press")).toBeVisible();
+    expect(peopleSummary()).toMatch(/of 11 people$/);
+    expect(peopleSummary()).not.toMatch(/of 12 people/);
+
+    await user.type(screen.getByPlaceholderText("Filter people…"), "Left the fleet");
+    expect(screen.getAllByText("No rows match what you searched for.").length).toBeGreaterThan(0);
+    await user.clear(screen.getByPlaceholderText("Filter people…"));
+    await user.type(screen.getByPlaceholderText("Filter people…"), "rico@riders.ph");
+    expect(screen.getAllByText("No rows match what you searched for.").length).toBeGreaterThan(0);
+
+    await user.click(screen.getByRole("tab", { name: "Sign-ins" }));
+    expect(screen.queryByText("Rico Santos")).not.toBeInTheDocument();
+    expect(peopleSummary()).toMatch(/of 11 people$/);
+    await user.clear(screen.getByPlaceholderText("Filter people…"));
+    await user.type(screen.getByPlaceholderText("Filter people…"), "Rico Santos");
+    expect(screen.getAllByText("No rows match what you searched for.").length).toBeGreaterThan(0);
+  }, 20000);
+
+  it("lists removed accounts only behind the Removed filter, each with Restore", async () => {
+    const user = userEvent.setup();
+    mockDirectory();
+    updateUserAccount.mockResolvedValue({});
+    render(<AdminRolesPage />);
+    const table = await screen.findByRole("table");
+    await within(table).findByText("Dara Cruz");
+
+    // Off by default: the removed rider is neither listed nor counted.
+    const removed = screen.getByRole("button", { name: "Removed accounts, 1" });
+    expect(removed).toHaveAttribute("aria-pressed", "false");
+    expect(within(table).queryByText("Rico Santos")).not.toBeInTheDocument();
+    expect(visibleNames(table)).toEqual(["Dara Cruz", "North Press", "Ana Reyes"]);
+
+    // On: only the removed account, with Restore and nothing that removes again.
+    await user.click(removed);
+    expect(removed).toHaveAttribute("aria-pressed", "true");
+    const filtered = screen.getByRole("table");
+    expect(visibleNames(filtered)).toEqual(["Rico Santos"]);
+    expect(within(filtered).getByText("Left the fleet")).toBeVisible();
+    const ricoRow = within(filtered).getByText("Rico Santos").closest("tr");
+    if (!ricoRow) throw new Error("missing Rico row");
     expect(
       within(ricoRow).queryByRole("button", { name: "Remove account" }),
     ).not.toBeInTheDocument();
-  });
+    expect(
+      within(ricoRow).queryByRole("button", { name: "Suspend account" }),
+    ).not.toBeInTheDocument();
+
+    // Restore goes through the account-standing endpoint, never a delete.
+    await user.click(within(ricoRow).getByRole("button", { name: "Restore account" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.type(within(dialog).getByRole("textbox"), "Back on the fleet");
+    await user.click(within(dialog).getByRole("button", { name: "Confirm restore" }));
+    expect(updateUserAccount).toHaveBeenCalledWith("user_rico", {
+      status: "active",
+      reason: "Back on the fleet",
+    });
+
+    // Suspended accounts are not affected by the filter being off.
+    await user.click(removed);
+    expect(within(screen.getByRole("table")).getByText("North Press")).toBeVisible();
+  }, 20000);
+
+  it("says so when no account has been removed", async () => {
+    const user = userEvent.setup();
+    listUsers.mockResolvedValue(PEOPLE.filter((p) => p.accountStatus !== "removed"));
+    listApprovalCases.mockResolvedValue({ approvalCases: [], nextCursor: null });
+    render(<AdminRolesPage />);
+    await within(await screen.findByRole("table")).findByText("Dara Cruz");
+    await user.click(screen.getByRole("button", { name: "Removed accounts, 0" }));
+    expect(screen.getByText("No removed accounts")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Show the directory" }));
+    expect(within(screen.getByRole("table")).getByText("Dara Cruz")).toBeVisible();
+  }, 20000);
 });

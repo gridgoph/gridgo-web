@@ -255,6 +255,14 @@ export function opsErrorMessage(err: unknown, fallback: string): string {
       : "GRIDGO is closed, so this waits for operating hours. Try again when it opens.";
   }
 
+  // A shop's own dispatch hours (SHOP_HOURS_API.md): the API says when.
+  if (err.code === "outside_shop_hours") {
+    const at = err.detail("nextDispatchAt");
+    return typeof at === "string" && Number.isFinite(Date.parse(at))
+      ? `The shop is closed for dispatch. Assign a rider from ${manilaWhen(at)}.`
+      : "The shop is closed for dispatch. Assign a rider when it opens.";
+  }
+
   const specific = CODE_COPY[err.code];
   if (specific) return specific;
 

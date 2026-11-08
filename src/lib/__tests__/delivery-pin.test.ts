@@ -150,7 +150,9 @@ describe("a dearer pin's payment", () => {
   it("is Operations' call in the Orders queue and on the rail", () => {
     expect(stageNeedsOperations(waiting)).toBe(true);
     expect(stageNeedsOperations(order({ deliveryPin: pin({ change: change() }) }))).toBe(false);
-    expect(waitingOnOperationsCount([waiting, order()])).toBe(1);
+    // The pin payment is one call. The other order is ready for a rider, which
+    // the queue also counts.
+    expect(waitingOnOperationsCount([waiting, order()])).toBe(2);
   });
 
   it("leads the row's closed line", () => {

@@ -8,20 +8,21 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, Zap } from "lucide-react";
 
 import {
+  OPERATIONS_ACTION_LABEL,
   STAGES,
   actionableCount,
+  operationsAction,
   ordersInStage,
   stageCounts,
-  stageNeedsOperations,
+  stageOf,
+  waitingOnOperationsCount,
+  workHoldLabel,
+  workHoldOf,
   type Stage,
 } from "@/app/ops/_lib/pipeline";
-import { buildNeedsActionQueue } from "@/app/ops/_lib/needs-action";
 import { FileCheckQueue } from "@/components/orders/FileCheckQueue";
+import { NeedsActionQueue } from "@/components/orders/NeedsActionQueue";
 import { ReceiptScanMark } from "@/components/orders/ReceiptScan";
-import {
-  NeedsActionQueue,
-  useNeedsActionClock,
-} from "@/components/orders/NeedsActionQueue";
 import {
   QueueOrderCell,
   queueOrderFilterValue,
@@ -39,16 +40,17 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { SkeletonLines } from "@/components/ui/loading";
-import { ApiError, getSettings, listOrders } from "@/lib/api/client";
-import type { OperatingHours, Order } from "@/lib/api/types";
+import { ApiError, listOrders } from "@/lib/api/client";
+import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
+import { useQueueContext } from "@/lib/live/useQueueContext";
 import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
 import { receiptScanMarkValue } from "@/lib/receipt-scan";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { basketShopCounts } from "@/lib/baskets";
 import { isExpressOrder, ORDER_SPEED_OPTIONS, orderSpeed } from "@/lib/express";
 import { presentOrderState } from "@/lib/order-state";
-import { awaitingFinishedReview, finishedReviewWaitingCount } from "@/lib/shop-handover";
+import { finishedReviewWaitingCount } from "@/lib/shop-handover";
 
 /**
  * Every order, in one place, filtered by where it has got to.
@@ -62,8 +64,9 @@ import { awaitingFinishedReview, finishedReviewWaitingCount } from "@/lib/shop-h
  * Only the second one is worth walking across the room for, so only the second
  * one is emphasised.
  *
- * It opens on Needs action, ahead of the stages: every order waiting on
- * Operations, grouped by what is owed and oldest first.
+ * It opens on Needs action, ahead of the stages: the orders Operations can
+ * act on, grouped by that action and oldest first. The stage tables under
+ * those groups are the orders that need nothing from Operations.
  */
 export default function OpsOrdersPage() {
   const router = useRouter();
@@ -105,34 +108,23 @@ export default function OpsOrdersPage() {
     void load();
   }, [load]);
 
-  // The file check reads GRIDGO's operating hours. A failed read only drops
-  // the hours strip; each order still carries its own review time.
-  const [hours, setHours] = useState<OperatingHours | null>(null);
-  const loadHours = useCallback(async () => {
-    try {
-      setHours((await getSettings()).operatingHours ?? null);
-    } catch {
-      // Keep whatever was read last.
-    }
-  }, []);
-  useEffect(() => {
-    void loadHours();
-  }, [loadHours]);
-  useLiveReload("settings", loadHours);
+  // GRIDGO's hours (the file check's strip, and when dispatch opens), the
+  // API's dispatch offers, and the minute clock the rail shares. A failed
+  // read only drops what it would have added.
+  const context = useQueueContext();
+  const hours = context.hours ?? null;
 
   const counts = useMemo(() => stageCounts(orders ?? []), [orders]);
   const waiting = useMemo(
     () =>
       Object.fromEntries(
-        STAGES.map((entry) => [entry.id, actionableCount(orders ?? [], entry.id)]),
+        STAGES.map((entry) => [entry.id, actionableCount(orders ?? [], entry.id, context)]),
       ) as Record<Stage, number>,
-    [orders],
+    [orders, context],
   );
-  // One clock for the tab total and the rows, so they never disagree.
-  const now = useNeedsActionClock();
   const needsActionTotal = useMemo(
-    () => buildNeedsActionQueue(orders ?? [], now).length,
-    [orders, now],
+    () => waitingOnOperationsCount(orders ?? [], context),
+    [orders, context],
   );
   const rows = useMemo(() => {
     if (stage === NEEDS_ACTION) return [];
@@ -191,24 +183,26 @@ export default function OpsOrdersPage() {
       {
         id: "waiting",
         header: "Waiting on",
-        sortValue: (order) => (stageNeedsOperations(order) ? 0 : 1),
-        cell: (order) => (
-          <span
-            className="text-body whitespace-nowrap"
-            style={{
-              color: stageNeedsOperations(order)
-                ? "var(--color-text-primary)"
-                : "var(--color-text-muted)",
-              fontFamily: stageNeedsOperations(order) ? "var(--font-medium)" : undefined,
-            }}
-          >
-            {stageNeedsOperations(order)
-              ? "You"
-              : awaitingFinishedReview(order)
-                ? "Your review"
-                : waitingOn(order.state)}
-          </span>
-        ),
+        sortValue: (order) => (operationsAction(order, context) ? 0 : 1),
+        cell: (order) => {
+          const action = operationsAction(order, context);
+          const hold = action ? null : workHoldOf(order, context);
+          return (
+            <span
+              className="text-body whitespace-nowrap"
+              style={{
+                color: action ? "var(--color-text-primary)" : "var(--color-text-muted)",
+                fontFamily: action ? "var(--font-medium)" : undefined,
+              }}
+            >
+              {action
+                ? OPERATIONS_ACTION_LABEL[action]
+                : hold
+                  ? workHoldLabel(hold, context)
+                  : waitingOn(order.state)}
+            </span>
+          );
+        },
       },
       {
         // The shop's receipt scan, sent before it calls a rider. Blank until a
@@ -240,7 +234,7 @@ export default function OpsOrdersPage() {
         ),
       },
     ],
-    [shopCounts],
+    [shopCounts, context],
   );
 
   if (loading && !orders) return <SkeletonLines lines={6} />;
@@ -326,11 +320,43 @@ export default function OpsOrdersPage() {
       </div>
 
       {stage === NEEDS_ACTION ? (
-        <NeedsActionQueue
-          orders={orders ?? []}
-          now={now}
-          onRefresh={() => void load()}
-        />
+        <>
+          <NeedsActionQueue
+            orders={orders ?? []}
+            hours={hours}
+            context={context}
+            onRefresh={() => void load()}
+          />
+          {STAGES.map((entry) => {
+            const resting = (orders ?? [])
+              .filter(
+                (order) =>
+                  stageOf(order) === entry.id && operationsAction(order, context) === null,
+              )
+              .sort((a, b) => (a.updatedAt || "").localeCompare(b.updatedAt || ""));
+            if (resting.length === 0) return null;
+            return (
+              <section key={entry.id} className="flex flex-col gap-3" aria-label={entry.label}>
+                <p className="text-body text-text-secondary m-0">{entry.hint}</p>
+                <DataTable
+                  columns={columns}
+                  data={resting}
+                  getRowId={(order) => order.id}
+                  caption={`Orders at ${entry.label}`}
+                  filterPlaceholder="Filter orders…"
+                  facets={SPEED_FACETS}
+                  rowActions={(order) => (
+                    <DataTableRowAction
+                      label="Open"
+                      icon={Eye}
+                      href={`/ops/orders/${order.id}`}
+                    />
+                  )}
+                />
+              </section>
+            );
+          })}
+        </>
       ) : stage === "qa" ? (
         // The file check is its own queue: oldest first, a live wait, and Pass
         // or Send back from the row. Orders still in payment review show their
@@ -421,6 +447,7 @@ function waitingOn(state: string): string {
     case "supplier_self_qc":
       return "Shop";
     case "ready_for_dispatch":
+      return "Assign rider";
     case "rider_assigned":
     case "picked_up":
     case "out_for_delivery":
