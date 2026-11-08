@@ -274,6 +274,98 @@ describe("PlayTestersDesk", () => {
     expect(screen.queryByLabelText("Add a Client tester")).not.toBeInTheDocument();
   });
 
+  it("shows a feedback tap on its Manila date", async () => {
+    // 01:00 on 9 Nov in Manila is still 8 Nov in UTC.
+    api.listPlayTesters.mockResolvedValue(
+      roster({
+        testers: [
+          tester({
+            feedback: { shownCount: 1, tappedAt: "2026-11-08T17:00:00.000Z", dismissedCount: 0 },
+          }),
+        ],
+      }),
+    );
+    await ready();
+    expect(
+      screen.getAllByLabelText("Feedback card shown 1 time, tapped Nov 9, dismissed 0").length,
+    ).toBeGreaterThan(0);
+  });
+
+  /** Client on screen, with a Shop roster ready for when the app switches. */
+  function twoApps() {
+    const shop = roster({
+      app: "supplier",
+      testers: [tester({ userId: "user_shop", name: "Shop Tester", email: "shop@example.com" })],
+    });
+    api.listPlayTesters.mockImplementation(async (app: string) =>
+      app === "supplier" ? shop : roster(),
+    );
+    const view = render(<PlayTestersDesk tree="ops" />);
+    const toShop = async () => {
+      nav.params = new URLSearchParams("app=supplier");
+      view.rerender(<PlayTestersDesk tree="ops" />);
+      await screen.findAllByText("Shop Tester");
+    };
+    return { toShop };
+  }
+
+  it("keeps the Shop page when a Client save finishes after the switch", async () => {
+    let finish!: () => void;
+    api.updatePlayTesterSettings.mockReturnValue(new Promise<void>((done) => (finish = done)));
+    const { toShop } = twoApps();
+    await screen.findAllByText("Ana Reyes");
+    fireEvent.click(screen.getByRole("button", { name: "Edit opted-in count" }));
+    fireEvent.change(screen.getByLabelText("Opted-in testers"), { target: { value: "17" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await toShop();
+    const reads = api.listPlayTesters.mock.calls.length;
+    await act(async () => finish());
+    expect(api.listPlayTesters.mock.calls.length).toBe(reads);
+    expect(screen.getAllByText("Shop Tester").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Ana Reyes")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit opted-in count" })).toBeInTheDocument();
+  });
+
+  it("keeps the Shop page when a Client add finishes after the switch", async () => {
+    let finish!: () => void;
+    api.addPlayTester.mockReturnValue(new Promise<void>((done) => (finish = done)));
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { toShop } = twoApps();
+    await screen.findAllByText("Ana Reyes");
+    fireEvent.change(screen.getByLabelText("Add a Client tester"), {
+      target: { value: "late@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add tester" }));
+    await toShop();
+    const reads = api.listPlayTesters.mock.calls.length;
+    await act(async () => finish());
+    expect(api.listPlayTesters.mock.calls.length).toBe(reads);
+    expect(screen.queryByText("Added late@example.com.")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Shop Tester").length).toBeGreaterThan(0);
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
+  it("lets a failed add from a form that is gone land nowhere", async () => {
+    let fail!: (err: unknown) => void;
+    api.addPlayTester.mockReturnValue(new Promise<void>((_, reject) => (fail = reject)));
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { toShop } = twoApps();
+    await screen.findAllByText("Ana Reyes");
+    fireEvent.change(screen.getByLabelText("Add a Client tester"), {
+      target: { value: "x@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add tester" }));
+    await toShop();
+    await act(async () => fail(new ApiError(404, { error: "user_not_found" })));
+    const field = screen.getByLabelText("Add a Shop tester");
+    expect(field).not.toHaveAttribute("aria-invalid");
+    expect(field).not.toBeDisabled();
+    expect(screen.queryByText(/No GRIDGO account uses this email/)).not.toBeInTheDocument();
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
   it("drops a read that lands after the page is gone", async () => {
     let resolve!: (value: PlayTesterRoster) => void;
     api.listPlayTesters.mockReturnValue(new Promise((done) => (resolve = done)));

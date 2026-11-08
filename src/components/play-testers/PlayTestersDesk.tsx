@@ -46,6 +46,7 @@ import {
   addTesterError,
   removeTesterError,
   rosterLoadError,
+  manilaDateOf,
   shortDay,
   testerAppFrom,
   testerAppLabel,
@@ -71,8 +72,12 @@ export function PlayTestersDesk({ tree }: { tree: "ops" | "admin" }) {
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const mounted = useRef(true);
-  // Only the latest read may land: switching apps mid-read drops the old one.
+  // Only the latest read for the app on screen may land. A save, add or
+  // remove that finishes after the app was switched never reads or commits.
   const generation = useRef(0);
+  const activeApp = useRef(app);
+  activeApp.current = app;
+  const isActive = (forApp: TesterApp) => mounted.current && activeApp.current === forApp;
 
   useEffect(() => {
     mounted.current = true;
@@ -82,18 +87,21 @@ export function PlayTestersDesk({ tree }: { tree: "ops" | "admin" }) {
   }, []);
 
   const load = useCallback(async () => {
+    const forApp = app;
+    if (!isActive(forApp)) return;
     const mine = ++generation.current;
+    const current = () => isActive(forApp) && mine === generation.current;
     setLoading(true);
     try {
-      const next = await listPlayTesters(app);
-      if (!mounted.current || mine !== generation.current) return;
+      const next = await listPlayTesters(forApp);
+      if (!current() || next.app !== forApp) return;
       setRoster(next);
       setLoadError(null);
     } catch (err) {
-      if (!mounted.current || mine !== generation.current) return;
+      if (!current()) return;
       setLoadError(rosterLoadError(err));
     } finally {
-      if (mounted.current && mine === generation.current) setLoading(false);
+      if (current()) setLoading(false);
     }
   }, [app]);
 
@@ -118,23 +126,24 @@ export function PlayTestersDesk({ tree }: { tree: "ops" | "admin" }) {
   const saveSettings = useCallback(
     async (patch: PlayTesterSettingsPatch) => {
       await updatePlayTesterSettings(app, patch);
-      if (mounted.current) await load();
+      if (isActive(app)) await load();
     },
     [app, load],
   );
 
   async function confirmRemove() {
     if (!removing) return;
+    const forApp = app;
     setRemoveBusy(true);
     setRemoveError(null);
     try {
-      await removePlayTester(app, removing.userId);
-      if (!mounted.current) return;
+      await removePlayTester(forApp, removing.userId);
+      if (!isActive(forApp)) return;
       setNotice(`Removed ${removing.name || removing.email}.`);
       setRemoving(null);
       void load();
     } catch (err) {
-      if (!mounted.current) return;
+      if (!isActive(forApp)) return;
       setRemoveError(removeTesterError(err));
       void load();
     } finally {
@@ -244,7 +253,7 @@ export function PlayTestersDesk({ tree }: { tree: "ops" | "admin" }) {
       <div className="grid gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <StreakPanel stats={stats} />
         {stats ? (
-          <PlayClockPanel app={app} stats={stats} onSave={saveSettings} />
+          <PlayClockPanel key={app} app={app} stats={stats} onSave={saveSettings} />
         ) : (
           <div className="gg-card" aria-busy>
             <Skeleton className="h-32 w-full" />
@@ -255,12 +264,13 @@ export function PlayTestersDesk({ tree }: { tree: "ops" | "admin" }) {
       <section className="flex flex-col gap-3" aria-label={`${testerAppLabel(app)} testers`}>
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <AddTester
+            key={app}
             app={app}
-            onAdded={(email) => {
+            onAdded={(forApp, email) => {
+              if (!isActive(forApp)) return;
               setNotice(`Added ${email}.`);
               void load();
             }}
-            mounted={mounted}
           />
           <DayLegend />
         </div>
@@ -430,7 +440,7 @@ function StreakPanel({ stats }: { stats: PlayTesterRoster["stats"] | null }) {
 }
 
 function FeedbackMarks({ feedback }: { feedback: PlayTester["feedback"] }) {
-  const tapped = feedback.tappedAt ? shortDay(feedback.tappedAt.slice(0, 10)) : null;
+  const tapped = feedback.tappedAt ? shortDay(manilaDateOf(feedback.tappedAt)) : null;
   const label = `Feedback card shown ${feedback.shownCount} ${
     feedback.shownCount === 1 ? "time" : "times"
   }, ${tapped ? `tapped ${tapped}` : "not tapped"}, dismissed ${feedback.dismissedCount}`;
@@ -461,20 +471,24 @@ function FeedbackMarks({ feedback }: { feedback: PlayTester["feedback"] }) {
 function AddTester({
   app,
   onAdded,
-  mounted,
 }: {
   app: TesterApp;
-  onAdded: (email: string) => void;
-  mounted: React.RefObject<boolean>;
+  /** Called with the app the tester was added to; the desk ignores a switched-away app. */
+  onAdded: (app: TesterApp, email: string) => void;
 }) {
+  // This form's own lifetime: it remounts per app, so a late reply never
+  // reaches a form that is gone.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const id = useId();
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setError(null);
-  }, [app]);
 
   async function submit() {
     const value = email.trim();
@@ -488,7 +502,7 @@ function AddTester({
       await addPlayTester(app, value);
       if (!mounted.current) return;
       setEmail("");
-      onAdded(value);
+      onAdded(app, value);
     } catch (err) {
       if (!mounted.current) return;
       setError(addTesterError(err, app));
