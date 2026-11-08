@@ -1,4 +1,24 @@
 import { isApiError } from "@/lib/api/client";
+import type { Order } from "@/lib/api/types";
+
+/** The API's limit on the trimmed reason. */
+export const ORDER_REMOVAL_REASON_MAX = 2_000;
+
+export function reasonTooLong(reason: string): boolean {
+  return reason.trim().length > ORDER_REMOVAL_REASON_MAX;
+}
+
+/**
+ * Why this order cannot be removed, from the API's own eligibility projection,
+ * or null when it can (or when an older API sent no projection: then the
+ * server's refusal on submit is the only word).
+ */
+export function orderRemovalBlockedReason(order: Order): string | null {
+  const removal = order.removal;
+  if (!removal || removal.allowed) return null;
+  const reason = removal.blockedReason?.trim();
+  return reason || "This order cannot be removed.";
+}
 
 /**
  * Remove order rules (contract `POST /ops/orders/:id/remove`). The email is
@@ -11,7 +31,12 @@ export function orderRemovalReady(input: {
   clientEmail: string | null | undefined;
 }): boolean {
   if (!input.clientEmail) return false;
-  return input.reason.trim().length > 0 && input.typedEmail === input.clientEmail;
+  const reason = input.reason.trim();
+  return (
+    reason.length > 0 &&
+    reason.length <= ORDER_REMOVAL_REASON_MAX &&
+    input.typedEmail === input.clientEmail
+  );
 }
 
 /** Every refusal as one plain sentence. The blocked reason is the API's own. */
@@ -25,7 +50,7 @@ export function orderRemovalErrorMessage(err: unknown): string {
       case "order_already_removed":
         return "This order was already removed. Go back to the overview.";
       case "reason_required":
-        return "Write why this order is being removed.";
+        return "Write why this order is being removed, in 2,000 characters or fewer.";
       case "confirm_email_mismatch":
         return "That email does not match the client on this order. Type it exactly as shown.";
       case "order_removal_blocked": {

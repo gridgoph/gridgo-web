@@ -159,6 +159,71 @@ describe("Remove order visibility by role", () => {
   });
 });
 
+describe("Remove order eligibility from the API", () => {
+  it("offers the action when the API allows removal", async () => {
+    order = fixture({ removal: { allowed: true, blockedReason: null } });
+    render(<AdminOrderWorkspacePage />);
+    expect(await screen.findByRole("button", { name: "Remove order" })).toBeEnabled();
+  });
+
+  it("shows the API's reason instead of the action when removal is blocked", async () => {
+    order = fixture({
+      removal: {
+        allowed: false,
+        blockedReason: "This order has a released payout and must stay in the financial records.",
+      },
+    });
+    render(<AdminOrderWorkspacePage />);
+    expect(
+      await screen.findByText(
+        "This order has a released payout and must stay in the financial records.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Remove order" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove order" })).toBeNull();
+    expect(screen.queryByText(EMAIL)).toBeNull();
+  });
+
+  it("still explains a block that came without a reason", async () => {
+    order = fixture({ removal: { allowed: false, blockedReason: null } });
+    render(<AdminOrderWorkspacePage />);
+    expect(await screen.findByText("This order cannot be removed.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove order" })).toBeNull();
+  });
+});
+
+describe("Remove order reason length", () => {
+  async function withReason(text: string) {
+    const user = userEvent.setup();
+    const dialog = await openDialog(user);
+    const { reason, email, submit } = controls(dialog);
+    await user.click(reason);
+    await user.paste(text);
+    await user.type(email, EMAIL);
+    return { user, dialog, reason, submit };
+  }
+
+  it("accepts exactly 2,000 characters", async () => {
+    const { reason, submit } = await withReason("x".repeat(2_000));
+    expect(submit).toBeEnabled();
+    expect(reason).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("counts the trimmed reason, as the API does", async () => {
+    const { submit } = await withReason(`  ${"x".repeat(2_000)}  `);
+    expect(submit).toBeEnabled();
+  });
+
+  it("refuses 2,001 characters and says why", async () => {
+    const { user, dialog, reason, submit } = await withReason("x".repeat(2_001));
+    expect(submit).toBeDisabled();
+    expect(reason).toHaveAttribute("aria-invalid", "true");
+    expect(within(dialog).getByText("2,001 characters. Keep it to 2,000.")).toBeInTheDocument();
+    await user.click(submit);
+    expect(posted).toEqual([]);
+  });
+});
+
 describe("Remove order dialog", () => {
   it("says what removal does in plain words and shows the email to type", async () => {
     const user = userEvent.setup();
@@ -243,7 +308,7 @@ describe("Remove order dialog", () => {
     [403, { error: "forbidden" }, "Only a Super Admin can remove an order."],
     [404, { error: "order_not_found" }, "This order is no longer on the platform."],
     [409, { error: "order_already_removed" }, "This order was already removed."],
-    [400, { error: "reason_required" }, "Write why this order is being removed."],
+    [400, { error: "reason_required" }, "in 2,000 characters or fewer."],
     [400, { error: "confirm_email_mismatch" }, "That email does not match the client"],
     [
       409,

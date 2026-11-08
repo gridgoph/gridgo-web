@@ -4,8 +4,11 @@ import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
+  ORDER_REMOVAL_REASON_MAX,
+  orderRemovalBlockedReason,
   orderRemovalErrorMessage,
   orderRemovalReady,
+  reasonTooLong,
 } from "@/app/admin/_lib/order-removal";
 import {
   AlertDialog,
@@ -49,7 +52,11 @@ export function RemoveOrder({ order, returnHref }: Props) {
 
   const clientEmail = order.clientEmail ?? null;
   const title = order.title || "Untitled order";
+  const blockedReason = orderRemovalBlockedReason(order);
   const ready = orderRemovalReady({ reason, typedEmail, clientEmail });
+  const reasonLength = reason.trim().length;
+  const reasonOver = reasonTooLong(reason);
+  const showCount = reasonLength > ORDER_REMOVAL_REASON_MAX - 200;
   const emailOff =
     clientEmail !== null &&
     typedEmail.length >= clientEmail.length &&
@@ -78,6 +85,20 @@ export function RemoveOrder({ order, returnHref }: Props) {
       setError(orderRemovalErrorMessage(err));
       setBusy(false);
     }
+  }
+
+  if (blockedReason) {
+    return (
+      <section
+        aria-labelledby={headingId}
+        className="flex flex-col gap-1 rounded-card border border-outline p-4"
+      >
+        <h2 id={headingId} className="text-h3 text-text-primary m-0">
+          Remove order
+        </h2>
+        <p className="text-body text-text-secondary m-0">{blockedReason}</p>
+      </section>
+    );
   }
 
   return (
@@ -136,7 +157,7 @@ export function RemoveOrder({ order, returnHref }: Props) {
               </p>
             </div>
 
-            <Field>
+            <Field data-invalid={reasonOver || undefined}>
               <FieldLabel htmlFor={reasonId}>Reason (required)</FieldLabel>
               <Textarea
                 id={reasonId}
@@ -146,7 +167,19 @@ export function RemoveOrder({ order, returnHref }: Props) {
                 placeholder="Why this order should be removed"
                 disabled={busy}
                 required
+                aria-invalid={reasonOver || undefined}
+                aria-describedby={showCount ? `${reasonId}-count` : undefined}
               />
+              {showCount ? (
+                <p
+                  id={`${reasonId}-count`}
+                  className={`text-caption m-0 ${reasonOver ? "text-error" : "text-text-muted"}`}
+                >
+                  {reasonOver
+                    ? `${reasonLength.toLocaleString("en-PH")} characters. Keep it to ${ORDER_REMOVAL_REASON_MAX.toLocaleString("en-PH")}.`
+                    : `${reasonLength.toLocaleString("en-PH")} of ${ORDER_REMOVAL_REASON_MAX.toLocaleString("en-PH")} characters`}
+                </p>
+              ) : null}
             </Field>
 
             <Field data-invalid={emailOff || undefined}>

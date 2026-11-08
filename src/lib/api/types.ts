@@ -1041,6 +1041,12 @@ export type Order = {
    * remove the order. Absent for every other role.
    */
   clientEmail?: string | null;
+  /**
+   * Super Admin only: whether `POST /ops/orders/:id/remove` would accept this
+   * order now, and the API's plain-language reason when it would not. Absent
+   * from an older API, which means unknown: the API still refuses on submit.
+   */
+  removal?: { allowed: boolean; blockedReason: string | null } | null;
   supplierId: string | null;
   riderId: string | null;
   /**
