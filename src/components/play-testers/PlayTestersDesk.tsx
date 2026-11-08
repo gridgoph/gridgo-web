@@ -403,7 +403,7 @@ function StreakPanel({ stats }: { stats: PlayTesterRoster["stats"] | null }) {
                     key={i}
                     aria-hidden
                     className={cn(
-                      "h-3 w-5 rounded-[3px]",
+                      "h-4 w-6 rounded-[4px]",
                       i < full ? "bg-success" : "bg-surface-variant",
                     )}
                   />

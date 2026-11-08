@@ -1,6 +1,7 @@
 import { Check, X } from "lucide-react";
 
 import type { TesterDay, TesterDayState } from "@/lib/api/play-testers";
+import { manilaToday } from "@/lib/audit";
 import { DAY_STATE_LABEL, longDay, shortDay } from "@/lib/play-testers";
 import { cn } from "@/lib/utils";
 
@@ -59,7 +60,7 @@ export function DayStrip({ days }: { days: TesterDay[] }) {
       {first && last ? (
         <div className="text-caption text-text-muted flex justify-between tabular-nums" aria-hidden>
           <span>{shortDay(first.date)}</span>
-          <span>{last.state === "today" ? "Today" : shortDay(last.date)}</span>
+          <span>{last.state === "today" || last.date === manilaToday() ? "Today" : shortDay(last.date)}</span>
         </div>
       ) : null}
     </div>

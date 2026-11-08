@@ -40,7 +40,7 @@ export type PlayTesterStats = {
   needed: number;
   /** Typed in from Play Console, `YYYY-MM-DD`. */
   playClockStartDate: string | null;
-  optedInCount: number | null;
+  optedInCount: number;
   productionApprovedAt: string | null;
 };
 
@@ -52,7 +52,7 @@ export type PlayTesterRoster = {
 
 export type PlayTesterSettingsPatch = {
   playClockStartDate?: string | null;
-  optedInCount?: number | null;
+  optedInCount?: number;
   productionApprovedAt?: string | null;
 };
 

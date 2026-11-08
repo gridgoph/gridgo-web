@@ -116,7 +116,6 @@ export function PlayClockPanel({
       return void save({ playClockStartDate: draft });
     }
     if (field === "optedIn") {
-      if (draft.trim() === "") return void save({ optedInCount: null });
       const n = parseOptedIn(draft);
       if (n === null) return setError("Enter a whole number, 0 or more.");
       return void save({ optedInCount: n });
@@ -163,7 +162,7 @@ export function PlayClockPanel({
         </p>
       </div>
 
-      <dl className="m-0 grid gap-3">
+      <dl className="m-0 grid gap-1">
         <Row
           label="Clock started"
           value={
@@ -331,9 +330,9 @@ function Row({
   extra?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-x-2">
       <dt className="text-caption text-text-muted">{label}</dt>
-      <dd className="m-0">
+      <dd className="m-0 min-w-0">
         {editing ? (
           editor
         ) : (
