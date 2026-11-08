@@ -166,19 +166,17 @@ describe("Remove order eligibility from the API", () => {
     expect(await screen.findByRole("button", { name: "Remove order" })).toBeEnabled();
   });
 
-  it("shows the API's reason instead of the action when removal is blocked", async () => {
-    order = fixture({
-      removal: {
-        allowed: false,
-        blockedReason: "This order has a released payout and must stay in the financial records.",
-      },
-    });
+  it.each([
+    ["payout_released", "A payout has already been released."],
+    ["refund_activity", "This order has a refund in progress or completed."],
+    ["payment_submitted", "A payment has been submitted or confirmed."],
+    ["financial_activity", "This order has financial activity."],
+    ["shop_assigned", "A shop is already assigned."],
+    ["some_new_code", "This order cannot be removed."],
+  ])("shows one line instead of the action when blocked by %s", async (code, line) => {
+    order = fixture({ removal: { allowed: false, blockedReason: code } });
     render(<AdminOrderWorkspacePage />);
-    expect(
-      await screen.findByText(
-        "This order has a released payout and must stay in the financial records.",
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(line)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Remove order" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove order" })).toBeNull();
     expect(screen.queryByText(EMAIL)).toBeNull();

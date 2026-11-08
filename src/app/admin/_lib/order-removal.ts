@@ -8,16 +8,27 @@ export function reasonTooLong(reason: string): boolean {
   return reason.trim().length > ORDER_REMOVAL_REASON_MAX;
 }
 
+/** Short messages for the API's `removal.blockedReason` codes (contract table). */
+const BLOCKED_REASON_COPY: Record<string, string> = {
+  payout_released: "A payout has already been released.",
+  refund_activity: "This order has a refund in progress or completed.",
+  payment_submitted: "A payment has been submitted or confirmed.",
+  financial_activity: "This order has financial activity.",
+  shop_assigned: "A shop is already assigned.",
+};
+
 /**
- * Why this order cannot be removed, from the API's own eligibility projection,
- * or null when it can (or when an older API sent no projection: then the
- * server's refusal on submit is the only word).
+ * Why this order cannot be removed, from the API's eligibility projection, or
+ * null when it can (or when an older API sent no projection: then the server's
+ * refusal on submit is the only word).
  */
 export function orderRemovalBlockedReason(order: Order): string | null {
   const removal = order.removal;
   if (!removal || removal.allowed) return null;
-  const reason = removal.blockedReason?.trim();
-  return reason || "This order cannot be removed.";
+  return (
+    (removal.blockedReason && BLOCKED_REASON_COPY[removal.blockedReason]) ||
+    "This order cannot be removed."
+  );
 }
 
 /**

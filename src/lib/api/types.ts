@@ -1043,7 +1043,9 @@ export type Order = {
   clientEmail?: string | null;
   /**
    * Super Admin only: whether `POST /ops/orders/:id/remove` would accept this
-   * order now, and the API's plain-language reason when it would not. Absent
+   * order now, and the reason code when it would not (`payout_released`,
+   * `refund_activity`, `payment_submitted`, `financial_activity`,
+   * `shop_assigned`; see `docs/ORDER_REMOVAL_API.md` in gridgo-api). Absent
    * from an older API, which means unknown: the API still refuses on submit.
    */
   removal?: { allowed: boolean; blockedReason: string | null } | null;
