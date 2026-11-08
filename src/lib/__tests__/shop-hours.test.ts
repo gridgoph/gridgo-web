@@ -2,13 +2,18 @@ import { describe, expect, it } from "vitest";
 
 import type { ShopHours, WeeklyWindow } from "@/lib/api/types";
 import {
+  changedOwnDay,
   closedDayCount,
+  dayWindow,
+  draftDayHours,
+  effectiveWeek,
   extensionPastGridgoHours,
   extensionState,
   manilaClock,
   normalizeShopHours,
   normalizeShopHoursList,
   openDaysLabel,
+  overridesFromDraft,
   schedulePatch,
   shopStatus,
   sortShopRows,
@@ -19,6 +24,7 @@ import {
   weekDraftOf,
   weekFromDraft,
   weekLabel,
+  withOwnHours,
 } from "@/lib/shop-hours";
 
 /** A Manila wall-clock time. 16 Oct 2026 is a Friday (weekday 5). */
@@ -53,6 +59,7 @@ describe("normalizeShopHours", () => {
     expect(hours()).toEqual({
       version: 1,
       week: MON_SAT,
+      overrides: [],
       closures: [],
       temporarilyClosed: false,
       isOpenNow: false,
@@ -138,14 +145,22 @@ describe("weekly hours", () => {
     });
   });
 
-  it("notices hours that differ from day to day, and keeps the hours most days have", () => {
+  it("reads an older uneven base week as the usual hours plus a day with its own", () => {
     const week = [...MON_SAT.slice(0, 5), { weekday: 6, opensMinute: 480, closesMinute: 720 }];
     expect(weekDraftOf(week)).toEqual({
-      draft: { days: [1, 2, 3, 4, 5, 6], opensMinute: 480, closesMinute: 1080 },
-      uneven: true,
+      draft: {
+        days: [1, 2, 3, 4, 5, 6],
+        opensMinute: 480,
+        closesMinute: 1080,
+        own: { 6: { opensMinute: 480, closesMinute: 720 } },
+      },
+      uneven: false,
     });
-    // Uneven hours always count as a change, so the screen offers to even them.
-    expect(weekDraftChanged(week, weekDraftOf(week).draft)).toBe(true);
+    // Saving moves Saturday into an override, so it still counts as a change.
+    expect(weekDraftChanged({ week, overrides: [] }, weekDraftOf(week).draft)).toBe(true);
+    expect(overridesFromDraft(weekDraftOf(week).draft)).toEqual([
+      { weekday: 6, opensMinute: 480, closesMinute: 720 },
+    ]);
     expect(weekLabel(week)).toBe("Mon–Fri, 8:00 AM to 6:00 PM; Sat, 8:00 AM to 12:00 PM");
   });
 
@@ -156,18 +171,29 @@ describe("weekly hours", () => {
       { weekday: 3, opensMinute: 540, closesMinute: 1020 },
       { weekday: 5, opensMinute: 540, closesMinute: 1020 },
     ]);
-    expect(weekDraftChanged(MON_SAT, draft)).toBe(true);
-    expect(weekDraftChanged(MON_SAT, weekDraftOf(MON_SAT).draft)).toBe(false);
+    expect(weekDraftChanged({ week: MON_SAT }, draft)).toBe(true);
+    expect(weekDraftChanged({ week: MON_SAT }, weekDraftOf(MON_SAT).draft)).toBe(false);
+    // One set of hours sends no day with its own.
+    expect(overridesFromDraft(weekDraftOf(MON_SAT).draft)).toEqual([]);
   });
 
-  it("names what is missing", () => {
-    expect(validateWeekDraft({ days: [], opensMinute: 480, closesMinute: 1080 })).toMatch(
+  it("names what is missing, and which day it is about", () => {
+    expect(validateWeekDraft({ days: [], opensMinute: 480, closesMinute: 1080 })?.message).toMatch(
       /at least one day/,
     );
-    expect(validateWeekDraft({ days: [1], opensMinute: 1080, closesMinute: 480 })).toMatch(
-      /closing time later/,
-    );
+    expect(validateWeekDraft({ days: [1], opensMinute: 1080, closesMinute: 480 })).toEqual({
+      weekday: null,
+      message: "Pick a closing time later than the opening time.",
+    });
     expect(validateWeekDraft({ days: [1], opensMinute: 480, closesMinute: 1080 })).toBeNull();
+    expect(
+      validateWeekDraft({
+        days: [1, 6],
+        opensMinute: 480,
+        closesMinute: 1080,
+        own: { 6: { opensMinute: 900, closesMinute: 420 } },
+      }),
+    ).toEqual({ weekday: 6, message: "Pick a Saturday closing time later than its opening time." });
   });
 
   it("says the open days in a shop's words", () => {
@@ -355,6 +381,74 @@ describe("staying open later today", () => {
   });
 });
 
+describe("a day with different hours", () => {
+  const SAT_EARLY = { weekday: 6, opensMinute: 420, closesMinute: 900 };
+  const short = () => hours({ overrides: [SAT_EARLY] });
+
+  it("reads the API's weekday overrides, only for open days", () => {
+    const read = normalizeShopHours({
+      ...DEV_HOURS,
+      schedule: {
+        ...DEV_HOURS.schedule,
+        weekdayOverrides: [
+          SAT_EARLY,
+          { weekday: 0, opensMinute: 480, closesMinute: 600 },
+          { ...SAT_EARLY, closesMinute: 1000 },
+        ],
+      },
+    });
+    expect(read?.overrides).toEqual([SAT_EARLY]);
+  });
+
+  it("switches a day on and off, and saves only a real difference", () => {
+    const base = weekDraftOf(MON_SAT).draft;
+    const on = withOwnHours(base, 6, { opensMinute: 420, closesMinute: 900 });
+    expect(overridesFromDraft(on)).toEqual([SAT_EARLY]);
+    expect(weekFromDraft(on)).toEqual(MON_SAT);
+    expect(weekDraftChanged(hours(), on)).toBe(true);
+    expect(weekDraftChanged(hours(), withOwnHours(base, 6, draftDayHours(base, 6)))).toBe(false);
+    expect(overridesFromDraft({ ...on, days: [1, 2, 3, 4, 5] })).toEqual([]);
+    expect(weekDraftChanged(short(), weekDraftOf(MON_SAT, [SAT_EARLY]).draft)).toBe(false);
+  });
+
+  it("sends the base week unchanged with Saturday as an override", () => {
+    const draft = withOwnHours(weekDraftOf(MON_SAT).draft, 6, { opensMinute: 420, closesMinute: 900 });
+    const { patch } = schedulePatch(
+      hours(),
+      { week: weekFromDraft(draft), overrides: overridesFromDraft(draft) },
+      at("2026-10-16T10:00"),
+    );
+    expect(patch).toEqual({
+      schedule: { utcOffsetMinutes: 480, week: MON_SAT, closures: [], weekdayOverrides: [SAT_EARLY] },
+    });
+    // Closing Saturday drops its override in the same request.
+    expect(
+      schedulePatch(short(), { week: MON_SAT.slice(0, 5) }, at("2026-10-16T10:00")).patch.schedule
+        ?.weekdayOverrides,
+    ).toEqual([]);
+  });
+
+  it("puts the API's refusal beside the one day that changed", () => {
+    const base = weekDraftOf(MON_SAT).draft;
+    expect(changedOwnDay(hours(), withOwnHours(base, 6, { opensMinute: 420, closesMinute: 900 }))).toBe(6);
+    expect(changedOwnDay(hours(), { ...base, closesMinute: 1020 })).toBeNull();
+  });
+
+  it("counts a shorter Saturday in today's status, extension and labels", () => {
+    // 17 Oct 2026 is a Saturday.
+    const saturday = at("2026-10-17T10:00");
+    expect(dayWindow(short(), 6)).toEqual(SAT_EARLY);
+    expect(shopStatus(hours({ isOpenNow: true, overrides: [SAT_EARLY] }), saturday).detail).toBe(
+      "Until 3:00 PM today.",
+    );
+    const state = extensionState(short(), saturday);
+    expect(state.kind === "available" && state.normalClose).toBe(900);
+    expect(weekLabel(effectiveWeek(short()))).toBe(
+      "Mon–Fri, 8:00 AM to 6:00 PM; Sat, 7:00 AM to 3:00 PM",
+    );
+  });
+});
+
 describe("saving the week or the closure dates", () => {
   const extended = hours({
     todayExtension: { day: "2026-10-16", opensMinute: 1080, closesMinute: 1200 },
@@ -372,6 +466,7 @@ describe("saving the week or the closure dates", () => {
         utcOffsetMinutes: 480,
         week: MON_SAT,
         closures: [{ startDay: "2026-12-24", endDay: "2026-12-26" }],
+        weekdayOverrides: [],
       },
       extension: { closesMinute: 1200 },
     });

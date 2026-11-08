@@ -1036,6 +1036,19 @@ export type Order = {
    * and a rider.
    */
   clientName?: string | null;
+  /**
+   * Super Admin only: the client's exact email, the phrase typed back to
+   * remove the order. Absent for every other role.
+   */
+  clientEmail?: string | null;
+  /**
+   * Super Admin only: whether `POST /ops/orders/:id/remove` would accept this
+   * order now, and the reason code when it would not (`payout_released`,
+   * `refund_activity`, `payment_submitted`, `financial_activity`,
+   * `shop_assigned`; see `docs/ORDER_REMOVAL_API.md` in gridgo-api). Absent
+   * from an older API, which means unknown: the API still refuses on submit.
+   */
+  removal?: { allowed: boolean; blockedReason: string | null } | null;
   supplierId: string | null;
   riderId: string | null;
   /**
@@ -1914,8 +1927,14 @@ export type ShopHoursExtension = { day: string; opensMinute: number; closesMinut
 export type ShopHours = {
   /** Shared with `/me/supplier-profile`; a stale one is `409 supplier_profile_stale`. */
   version: number;
-  /** One window per open weekday; a weekday left out is closed. */
+  /** The base week: one window per open weekday at the usual hours; a weekday left out is closed. */
   week: WeeklyWindow[];
+  /**
+   * `schedule.weekdayOverrides`: open weekdays with their own hours, replacing
+   * the base window (a half-day Saturday). Absent or `[]`: every open day
+   * keeps the base hours.
+   */
+  overrides?: WeeklyWindow[];
   closures: ScheduleClosure[];
   temporarilyClosed: boolean;
   isOpenNow: boolean;
@@ -1930,7 +1949,12 @@ export type ShopHours = {
 
 /** `PATCH /me/shop-hours` without its `expectedVersion`. Fields left out are kept. */
 export type ShopHoursPatch = {
-  schedule?: { utcOffsetMinutes: number; week: WeeklyWindow[]; closures: ScheduleClosure[] };
+  schedule?: {
+    utcOffsetMinutes: number;
+    week: WeeklyWindow[];
+    closures: ScheduleClosure[];
+    weekdayOverrides: WeeklyWindow[];
+  };
   temporarilyClosed?: boolean;
   extension?: { closesMinute: number } | null;
 };

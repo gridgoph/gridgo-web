@@ -1,6 +1,7 @@
 "use client";
 import {
   Award,
+  CalendarCheck,
   Calculator,
   Gift,
   SwatchBook,
@@ -243,6 +244,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   vouchers: TicketPercent,
   promotions: Gift,
   "founding-testers": Award,
+  "play-testers": CalendarCheck,
   legal: BookText,
   acceptances: Signature,
   privacy: UserLock,

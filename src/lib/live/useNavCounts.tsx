@@ -11,7 +11,8 @@ import {
 } from "react";
 
 import { needsDecisionCount } from "@/app/admin/_lib/tracker";
-import { waitingOnOperationsCount } from "@/app/ops/_lib/pipeline";
+import { waitingOnOperationsCount, type QueueContext } from "@/app/ops/_lib/pipeline";
+import { useQueueContext } from "@/lib/live/useQueueContext";
 import { isAwaitingSignupReview } from "@/components/approvals/signup-queue";
 import {
   getTracker,
@@ -69,12 +70,27 @@ type CountSource = {
  * the list once and reduces it for each.
  */
 const ORDER_COUNTS = {
-  "orders-waiting": { resources: ["orders"], reduce: waitingOnOperationsCount },
+  // The queue's own count, with the queue's context: a dispatch the API does
+  // not offer yet is not counted until it does.
+  "orders-waiting": {
+    resources: ["orders"],
+    reduce: waitingOnOperationsCount,
+    hours: true,
+  },
   // The Finished work desk's Waiting tab.
-  "finished-work-waiting": { resources: ["orders", "jobs"], reduce: finishedReviewWaitingCount },
+  "finished-work-waiting": {
+    resources: ["orders", "jobs"],
+    reduce: finishedReviewWaitingCount,
+    hours: false,
+  },
 } satisfies Record<
   string,
-  { resources: readonly InvalidateResource[]; reduce: (orders: Order[]) => number }
+  {
+    resources: readonly InvalidateResource[];
+    reduce: (orders: Order[], context: QueueContext) => number;
+    /** Also read the queue context (hours, dispatch offers, the clock). */
+    hours: boolean;
+  }
 >;
 
 type OrderCountKey = keyof typeof ORDER_COUNTS;
@@ -323,18 +339,27 @@ function OrderCountsSource({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [key],
   );
+  const keys = useMemo(() => key.split(",") as OrderCountKey[], [key]);
+  // The queue's own context and minute clock, shared with the orders page.
+  // A minute passing recomputes from these orders; it never refetches them.
+  const context = useQueueContext(keys.some((source) => ORDER_COUNTS[source].hours));
+  const [orders, setOrders] = useState<Order[] | null>(null);
   const load = useSerializedLoad(
     useCallback(async () => {
       try {
-        const orders = await listOrders();
-        for (const source of key.split(",") as OrderCountKey[]) {
-          onCount(source, ORDER_COUNTS[source].reduce(orders));
-        }
+        setOrders(await listOrders());
       } catch {
         /* Keep the last good counts. */
       }
-    }, [key, onCount]),
+    }, []),
   );
+
+  useEffect(() => {
+    if (!orders) return;
+    for (const source of keys) {
+      onCount(source, ORDER_COUNTS[source].reduce(orders, context));
+    }
+  }, [orders, context, keys, onCount]);
 
   useLiveReload(resources, load);
   useEffect(() => {

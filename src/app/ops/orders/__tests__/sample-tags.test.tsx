@@ -12,6 +12,10 @@ const listOrders = vi.hoisted(() => vi.fn());
 let search = new URLSearchParams("stage=payment");
 vi.mock("@/lib/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/client")>()),
+  // The queue context's reads stay unknown here: nothing is hidden, and
+  // nothing settles after the test is torn down.
+  listDispatchOffers: () => new Promise(() => {}),
+  getSettings: () => new Promise(() => {}),
   listOrders,
 }));
 vi.mock("next/navigation", () => ({

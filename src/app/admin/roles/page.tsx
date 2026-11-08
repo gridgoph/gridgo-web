@@ -53,6 +53,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   listApprovalCases,
@@ -86,6 +87,18 @@ function standingLabel(user: User): string {
   return STANDING_ACTIVE;
 }
 
+/**
+ * Standing `removed` is off both lists and their counts unless the Removed
+ * filter is on. The record is never deleted. Missing standing reads as Active.
+ */
+function isRemovedAccount(user: User): boolean {
+  return user.accountStatus === "removed";
+}
+
+function isListedAccount(user: User): boolean {
+  return !isRemovedAccount(user);
+}
+
 const NO_SIGN_IN = "No sign-in recorded";
 
 type RolesTab = "directory" | "sign-ins";
@@ -115,7 +128,7 @@ function accountConsequence(action: AccountAction): string {
     return "This suspends the account. They stay in this directory and their sign-in stays valid. The app replaces their workspace with this reason until you restore the account. Accreditation is unchanged.";
   }
   if (action === "remove") {
-    return "This does not delete the person, their orders, or their sign-in. They stay in this directory and see this reason instead of the app until you restore the account.";
+    return "This does not delete the person, their orders, or their sign-in. They leave this directory and see this reason instead of the app. Turn on Removed to find and restore them.";
   }
   return "They can use GRIDGO again. The reason stored on the account is cleared. This note stays on the audit log.";
 }
@@ -128,7 +141,9 @@ function AdminRolesPage() {
   const [signInSort, setSignInSort] = useState<SignInSort>("latest");
   const [signInFilter, setSignInFilter] = useState<SignInFilter>("all");
   const [users, setUsers] = useState<User[] | null>(null);
-  // Sign-ins always lists every account; the Founding Tester filter is Directory's.
+  // Off by default: removed accounts are history, not part of the directory.
+  const [showRemoved, setShowRemoved] = useState(false);
+  // Sign-ins ignores the Founding Tester filter. Both lists omit removed standing.
   const [signInUsers, setSignInUsers] = useState<User[] | null>(null);
   const [suspensions, setSuspensions] = useState<Map<string, UserSuspension>>(
     () => new Map(),
@@ -357,8 +372,19 @@ function AdminRolesPage() {
     [],
   );
 
+  // Drop removed standing before search, facets, sign-in filters, and the page
+  // count. The Removed filter lists only them, each with Restore.
+  const directoryRows = useMemo(
+    () => (users ?? []).filter(showRemoved ? isRemovedAccount : isListedAccount),
+    [users, showRemoved],
+  );
+  const removedCount = useMemo(
+    () => (users ?? []).filter(isRemovedAccount).length,
+    [users],
+  );
+
   const signInRows = useMemo(() => {
-    const rows = (signInUsers ?? []).filter((user) => {
+    const rows = (signInUsers ?? []).filter(isListedAccount).filter((user) => {
       const recorded = signedInMillis(user.lastAuthenticatedAt) != null;
       if (signInFilter === "signed-in") return recorded;
       if (signInFilter === "none") return !recorded;
@@ -391,11 +417,13 @@ function AdminRolesPage() {
         options: [
           { value: STANDING_ACTIVE, label: STANDING_ACTIVE },
           { value: STANDING_SUSPENDED, label: STANDING_SUSPENDED, icon: Ban },
-          { value: STANDING_REMOVED, label: STANDING_REMOVED, icon: UserX },
+          ...(showRemoved
+            ? [{ value: STANDING_REMOVED, label: STANDING_REMOVED, icon: UserX }]
+            : []),
         ],
       },
     ],
-    [],
+    [showRemoved],
   );
   const suspendedCount = suspensions.size;
 
@@ -531,12 +559,9 @@ function AdminRolesPage() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Platform role changes are the highest-blast-radius control in GRIDGO. Granting
-          Super Admin creates another full administrator; removing it revokes governance
-          access immediately. Suspending or removing an account changes its Standing, not
-          its accreditation in the Account column. The person stays in this directory,
-          stays signed in, and sees your reason instead of the app. Every change is
-          audited.
+          Granting Super Admin creates another full administrator. A suspended
+          person stays listed; a removed one moves to Removed, where you can
+          restore them. Nothing is deleted, and every change is audited.
         </p>
         <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
@@ -602,9 +627,30 @@ function AdminRolesPage() {
         {testerFilter !== "all" ? (
           <span className="text-caption text-text-muted">Client accounts only.</span>
         ) : null}
+        <Toggle
+          variant="outline"
+          className="min-h-11 gap-2 px-3 sm:ml-auto"
+          pressed={showRemoved}
+          onPressedChange={setShowRemoved}
+          aria-label={`Removed accounts, ${removedCount}`}
+        >
+          <UserX aria-hidden />
+          Removed
+          <span className="tabular-nums text-text-muted">{removedCount}</span>
+        </Toggle>
       </div>
 
-      {!pending && !users?.length && shownFilter !== "all" ? (
+      {!pending && showRemoved && directoryRows.length === 0 ? (
+        <EmptyState
+          title="No removed accounts"
+          body="Accounts you remove are listed here, ready to restore."
+          action={
+            <Button variant="secondary" onClick={() => setShowRemoved(false)}>
+              Show the directory
+            </Button>
+          }
+        />
+      ) : !pending && directoryRows.length === 0 && shownFilter !== "all" ? (
         <EmptyState
           title={
             shownFilter === "earned" ? "No Founding Testers yet" : "Every client has the label"
@@ -620,7 +666,7 @@ function AdminRolesPage() {
             </Button>
           }
         />
-      ) : !pending && !users?.length ? (
+      ) : !pending && directoryRows.length === 0 ? (
         <EmptyState
           title="No users"
           body="The directory is empty. Users appear once accounts exist on the demo API."
@@ -633,7 +679,7 @@ function AdminRolesPage() {
       ) : (
         <DataTable
           columns={columns}
-          data={users ?? []}
+          data={directoryRows}
           loading={pending || shownFilter !== testerFilter}
           getRowId={(u) => u.id}
           caption="Platform users and roles"
@@ -674,7 +720,7 @@ function AdminRolesPage() {
                   />
                 </div>
                 <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Account">
-                  {status !== "suspended" ? (
+                  {status === "active" ? (
                     <DataTableRowAction
                       label="Suspend account"
                       icon={Ban}

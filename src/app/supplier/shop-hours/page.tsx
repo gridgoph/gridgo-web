@@ -16,7 +16,7 @@ import { getMyShopHours, getSettings, isApiError, updateMyShopHours } from "@/li
 import type { ScheduleClosure, ShopHours, ShopHoursPatch, WeeklyWindow } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
-import { schedulePatch, timeLabel, weekFromDraft } from "@/lib/shop-hours";
+import { overridesFromDraft, schedulePatch, timeLabel, weekFromDraft } from "@/lib/shop-hours";
 import { shopHoursErrorMessage, shopHoursRouteMissing } from "@/lib/shop-hours-errors";
 
 type Load =
@@ -112,6 +112,7 @@ export default function SupplierShopHoursPage() {
    */
   async function saveSchedule(change: {
     week?: WeeklyWindow[];
+    overrides?: WeeklyWindow[];
     closures?: ScheduleClosure[];
   }): Promise<string | null> {
     const current = hoursRef.current;
@@ -243,7 +244,9 @@ export default function SupplierShopHoursPage() {
             hours={hours}
             now={now}
             saving={saving}
-            onSave={(draft) => saveSchedule({ week: weekFromDraft(draft) })}
+            onSave={(draft) =>
+              saveSchedule({ week: weekFromDraft(draft), overrides: overridesFromDraft(draft) })
+            }
           />
           <ClosureDatesCard
             closures={hours.closures}

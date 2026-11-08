@@ -140,6 +140,10 @@ beforeEach(() => {
       if (one) return reply({ order: orders.find((order) => order.id === one[1]) });
       if (path === "/users") return reply({ users: riders });
       if (path === "/settings") return reply({ settings: {} });
+      // The API offers every ready order with no stop to a rider.
+      if (path === "/dispatch/offers") {
+        return reply({ offers: orders.filter((order) => order.state === "ready_for_dispatch") });
+      }
       if (basket && path === `/baskets/${basket.id}`) return reply({ basket });
       return reply({ error: "not_found" }, 404);
     }),
@@ -153,7 +157,11 @@ afterEach(() => {
 });
 
 async function rowFor(title: string) {
-  const table = await screen.findByRole("table", { name: "Orders waiting on you" });
+  await screen.findByRole("heading", { name: /^Confirm payment / });
+  const table = screen
+    .getAllByRole("table")
+    .find((entry) => within(entry).queryByText(title));
+  if (!table) throw new Error(`No table has ${title}`);
   return within(within(table).getByText(title).closest("tr")!);
 }
 
@@ -177,9 +185,7 @@ describe("Confirm payment from the queue", { timeout: 20_000 }, () => {
       { path: "/orders/ord_pay/payments/initial/confirm", body: {} },
     ]);
     // The queue is re-read: the payment no longer waits on you.
-    expect(
-      await screen.findByRole("table", { name: "Orders waiting on you" }),
-    ).not.toHaveTextContent("Flyers");
+    expect(await screen.findByRole("heading", { name: "Confirm payment 0" })).toBeVisible();
   });
 
   it("rejects with the same client-visible reason", async () => {
@@ -305,9 +311,7 @@ describe("Assign rider from the queue", { timeout: 20_000 }, () => {
         },
       },
     ]);
-    expect(
-      await screen.findByRole("table", { name: "Orders waiting on you" }),
-    ).not.toHaveTextContent("Banner");
+    expect(await screen.findByRole("heading", { name: "Assign rider 0" })).toBeVisible();
   });
 
   it("says why when the API refuses the rider", async () => {
