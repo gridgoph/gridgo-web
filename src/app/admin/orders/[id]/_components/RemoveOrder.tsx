@@ -164,6 +164,7 @@ export function RemoveOrder({ order, returnHref }: Props) {
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
                 rows={3}
+                className="max-h-40 overflow-y-auto"
                 placeholder="Why this order should be removed"
                 disabled={busy}
                 required
