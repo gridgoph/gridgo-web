@@ -11,9 +11,10 @@ import {
 } from "react";
 
 import { needsDecisionCount } from "@/app/admin/_lib/tracker";
-import { waitingOnOperationsCount } from "@/app/ops/_lib/pipeline";
+import { waitingOnOperationsCount, type QueueContext } from "@/app/ops/_lib/pipeline";
 import { isAwaitingSignupReview } from "@/components/approvals/signup-queue";
 import {
+  getSettings,
   getTracker,
   getWorkspaceRole,
   listApprovalCases,
@@ -69,12 +70,27 @@ type CountSource = {
  * the list once and reduces it for each.
  */
 const ORDER_COUNTS = {
-  "orders-waiting": { resources: ["orders"], reduce: waitingOnOperationsCount },
+  // The queue's own count, with GRIDGO's hours: a dispatch that waits for
+  // them is not counted until GRIDGO opens.
+  "orders-waiting": {
+    resources: ["orders", "settings"],
+    reduce: waitingOnOperationsCount,
+    hours: true,
+  },
   // The Finished work desk's Waiting tab.
-  "finished-work-waiting": { resources: ["orders", "jobs"], reduce: finishedReviewWaitingCount },
+  "finished-work-waiting": {
+    resources: ["orders", "jobs"],
+    reduce: finishedReviewWaitingCount,
+    hours: false,
+  },
 } satisfies Record<
   string,
-  { resources: readonly InvalidateResource[]; reduce: (orders: Order[]) => number }
+  {
+    resources: readonly InvalidateResource[];
+    reduce: (orders: Order[], context: QueueContext) => number;
+    /** Also read GRIDGO's operating hours for this count. */
+    hours: boolean;
+  }
 >;
 
 type OrderCountKey = keyof typeof ORDER_COUNTS;
@@ -326,9 +342,21 @@ function OrderCountsSource({
   const load = useSerializedLoad(
     useCallback(async () => {
       try {
-        const orders = await listOrders();
-        for (const source of key.split(",") as OrderCountKey[]) {
-          onCount(source, ORDER_COUNTS[source].reduce(orders));
+        const keys = key.split(",") as OrderCountKey[];
+        const needsHours = keys.some((source) => ORDER_COUNTS[source].hours);
+        const [orders, hours] = await Promise.all([
+          listOrders(),
+          // Without the hours the count is the page's own count without them.
+          needsHours
+            ? getSettings().then(
+                (settings) => settings.operatingHours ?? null,
+                () => null,
+              )
+            : Promise.resolve(null),
+        ]);
+        const context: QueueContext = { hours, nowMs: Date.now() };
+        for (const source of keys) {
+          onCount(source, ORDER_COUNTS[source].reduce(orders, context));
         }
       } catch {
         /* Keep the last good counts. */

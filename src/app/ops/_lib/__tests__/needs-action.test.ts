@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
 
-import type { Order } from "@/lib/api/types";
+import type { OperatingHours, Order } from "@/lib/api/types";
 
 import {
   OPERATIONS_ACTION_LABEL,
   OPERATIONS_ACTIONS,
   actionableCount,
+  confirmPaymentWaitAt,
   operationsAction,
   ordersForAction,
+  pendingInstallment,
   waitingOnOperationsCount,
+  workHoldLabel,
+  workHoldOf,
 } from "../pipeline";
 
 function order(id: string, state: string, extra: Partial<Order> = {}): Order {
@@ -143,3 +147,132 @@ function review(id: string, at: string): Order {
     },
   } as Partial<Order>);
 }
+
+describe("a 75/25 balance waiting after the payment stage", () => {
+  // The API's own keys: `initial` and `final_online`, as `GET /orders` sends them.
+  function balancePending(state: string): Order {
+    return order(`bal_${state}`, state, {
+      downpaymentPercent: 75,
+      payments: {
+        initial: { status: "confirmed", amountMinor: 55950 },
+        final_online: {
+          status: "pending_confirmation",
+          amountMinor: 18650,
+          submittedAt: "2026-11-08T03:00:00Z",
+        },
+      },
+    } as unknown as Partial<Order>);
+  }
+
+  it.each(["production", "awaiting_collection", "out_for_delivery"])(
+    "keeps a pending final installment under Confirm payment while %s",
+    (state) => {
+      const row = balancePending(state);
+      expect(pendingInstallment(row)).toBe("balance");
+      expect(operationsAction(row)).toBe("confirm_payment");
+      expect(ordersForAction([row], "confirm_payment").map((o) => o.id)).toEqual([row.id]);
+      expect(waitingOnOperationsCount([row])).toBe(1);
+      expect(confirmPaymentWaitAt(row)).toBe("2026-11-08T03:00:00Z");
+    },
+  );
+
+  it("does not list a confirmed balance or a finished order", () => {
+    const paid = order("paid", "out_for_delivery", {
+      payments: {
+        initial: { status: "confirmed", amountMinor: 1 },
+        final_online: { status: "confirmed", amountMinor: 1 },
+      },
+    } as unknown as Partial<Order>);
+    const done = { ...balancePending("completed"), id: "done" } as Order;
+    expect(operationsAction(paid)).toBeNull();
+    expect(operationsAction(done)).toBeNull();
+    expect(waitingOnOperationsCount([paid, done])).toBe(0);
+  });
+});
+
+describe("a ready order the API will not dispatch", () => {
+  const ready = (id: string, extra: Partial<Order> = {}) =>
+    order(id, "ready_for_dispatch", extra);
+
+  // Open every day, 08:00–17:00 Manila.
+  const hours = {
+    timeZone: "Asia/Manila",
+    schedule: {
+      utcOffsetMinutes: 480,
+      week: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+        weekday,
+        opensMinute: 8 * 60,
+        closesMinute: 17 * 60,
+      })),
+      closures: [],
+    },
+    artworkReviewMinutes: 30,
+  } as unknown as OperatingHours;
+  const open = { hours, nowMs: Date.parse("2026-11-09T02:00:00Z") }; // 10:00 Manila
+  const closed = { hours, nowMs: Date.parse("2026-11-09T12:00:00Z") }; // 20:00 Manila
+
+  const held = [
+    ready("deadline", {
+      rescheduleRequest: {
+        status: "declined",
+        resolution: "operations_required",
+        workHeld: true,
+      },
+    } as unknown as Partial<Order>),
+    ready("recovery", {
+      shopRecovery: { status: "ops_review" },
+    } as unknown as Partial<Order>),
+    ready("refund", { refundHold: true }),
+    ready("settled", { refundDisposition: "fulfilled_with_refund" }),
+  ];
+
+  it.each(held.map((row) => [row.id, row] as const))(
+    "holds %s out of Assign rider and the count",
+    (_, row) => {
+      expect(workHoldOf(row, open)).not.toBeNull();
+      expect(operationsAction(row, open)).toBeNull();
+      expect(ordersForAction([row], "assign_rider", open)).toEqual([]);
+      expect(waitingOnOperationsCount([row], open)).toBe(0);
+      expect(actionableCount([row], "production", open)).toBe(0);
+    },
+  );
+
+  it("names each hold calmly", () => {
+    expect(held.map((row) => workHoldLabel(workHoldOf(row, open)!, open))).toEqual([
+      "Paused: deadline request",
+      "Paused: shop change",
+      "Paused: refund",
+      "Paused: refund",
+    ]);
+  });
+
+  it("counts a free ready order, and holds it while GRIDGO is closed", () => {
+    const free = ready("free");
+    const accepted = ready("accepted", {
+      shopRecovery: { status: "accepted" },
+      rescheduleRequest: { status: "declined", resolution: "rematched", workHeld: false },
+      refundDisposition: "delivery_adjustment",
+    } as unknown as Partial<Order>);
+    expect(operationsAction(free, open)).toBe("assign_rider");
+    expect(operationsAction(accepted, open)).toBe("assign_rider");
+    expect(waitingOnOperationsCount([free, accepted, ...held], open)).toBe(2);
+
+    expect(workHoldOf(free, closed)).toBe("after_hours");
+    expect(operationsAction(free, closed)).toBeNull();
+    expect(waitingOnOperationsCount([free, accepted, ...held], closed)).toBe(0);
+    expect(workHoldLabel("after_hours", closed)).toBe("Dispatch tomorrow, 8:00 AM");
+    // Without the hours (an older API or a failed read) nothing is assumed closed.
+    expect(operationsAction(free)).toBe("assign_rider");
+  });
+
+  it("still lets a held order's payment be confirmed", () => {
+    const row = ready("held_pay", {
+      rescheduleRequest: { workHeld: true },
+      payments: {
+        initial: { status: "confirmed", amountMinor: 1 },
+        final_online: { status: "pending_confirmation", amountMinor: 1 },
+      },
+    } as unknown as Partial<Order>);
+    expect(operationsAction(row, open)).toBe("confirm_payment");
+  });
+});

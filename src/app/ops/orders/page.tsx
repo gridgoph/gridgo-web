@@ -9,7 +9,6 @@ import { Eye, Zap } from "lucide-react";
 
 import {
   OPERATIONS_ACTION_LABEL,
-  OPERATIONS_ACTIONS,
   STAGES,
   actionableCount,
   operationsAction,
@@ -17,7 +16,9 @@ import {
   stageCounts,
   stageOf,
   waitingOnOperationsCount,
-  type OperationsAction,
+  workHoldLabel,
+  workHoldOf,
+  type QueueContext,
   type Stage,
 } from "@/app/ops/_lib/pipeline";
 import { FileCheckQueue } from "@/components/orders/FileCheckQueue";
@@ -122,17 +123,26 @@ export default function OpsOrdersPage() {
   }, [loadHours]);
   useLiveReload("settings", loadHours);
 
+  // Dispatch waits for GRIDGO's hours, so the groups re-read the clock each
+  // minute: an order joins Assign rider when GRIDGO opens.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const context = useMemo<QueueContext>(() => ({ hours, nowMs }), [hours, nowMs]);
+
   const counts = useMemo(() => stageCounts(orders ?? []), [orders]);
   const waiting = useMemo(
     () =>
       Object.fromEntries(
-        STAGES.map((entry) => [entry.id, actionableCount(orders ?? [], entry.id)]),
+        STAGES.map((entry) => [entry.id, actionableCount(orders ?? [], entry.id, context)]),
       ) as Record<Stage, number>,
-    [orders],
+    [orders, context],
   );
   const needsActionTotal = useMemo(
-    () => waitingOnOperationsCount(orders ?? []),
-    [orders],
+    () => waitingOnOperationsCount(orders ?? [], context),
+    [orders, context],
   );
   const rows = useMemo(() => {
     if (stage === NEEDS_ACTION) return [];
@@ -191,9 +201,10 @@ export default function OpsOrdersPage() {
       {
         id: "waiting",
         header: "Waiting on",
-        sortValue: (order) => (operationsAction(order) ? 0 : 1),
+        sortValue: (order) => (operationsAction(order, context) ? 0 : 1),
         cell: (order) => {
-          const action = operationsAction(order);
+          const action = operationsAction(order, context);
+          const hold = action ? null : workHoldOf(order, context);
           return (
             <span
               className="text-body whitespace-nowrap"
@@ -202,7 +213,11 @@ export default function OpsOrdersPage() {
                 fontFamily: action ? "var(--font-medium)" : undefined,
               }}
             >
-              {action ? OPERATIONS_ACTION_LABEL[action] : waitingOn(order.state)}
+              {action
+                ? OPERATIONS_ACTION_LABEL[action]
+                : hold
+                  ? workHoldLabel(hold, context)
+                  : waitingOn(order.state)}
             </span>
           );
         },
@@ -237,7 +252,7 @@ export default function OpsOrdersPage() {
         ),
       },
     ],
-    [shopCounts],
+    [shopCounts, context],
   );
 
   if (loading && !orders) return <SkeletonLines lines={6} />;
@@ -327,13 +342,14 @@ export default function OpsOrdersPage() {
           <NeedsActionQueue
             orders={orders ?? []}
             hours={hours}
+            context={context}
             onRefresh={() => void load()}
           />
           {STAGES.map((entry) => {
             const resting = (orders ?? [])
               .filter(
                 (order) =>
-                  stageOf(order) === entry.id && operationsAction(order) === null,
+                  stageOf(order) === entry.id && operationsAction(order, context) === null,
               )
               .sort((a, b) => (a.updatedAt || "").localeCompare(b.updatedAt || ""));
             if (resting.length === 0) return null;

@@ -53,6 +53,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Toggle } from "@/components/ui/toggle";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   listApprovalCases,
@@ -86,9 +87,16 @@ function standingLabel(user: User): string {
   return STANDING_ACTIVE;
 }
 
-/** Standing `removed` leaves both lists. Missing standing still reads as Active. */
+/**
+ * Standing `removed` is off both lists and their counts unless the Removed
+ * filter is on. The record is never deleted. Missing standing reads as Active.
+ */
+function isRemovedAccount(user: User): boolean {
+  return user.accountStatus === "removed";
+}
+
 function isListedAccount(user: User): boolean {
-  return user.accountStatus !== "removed";
+  return !isRemovedAccount(user);
 }
 
 const NO_SIGN_IN = "No sign-in recorded";
@@ -120,7 +128,7 @@ function accountConsequence(action: AccountAction): string {
     return "This suspends the account. They stay in this directory and their sign-in stays valid. The app replaces their workspace with this reason until you restore the account. Accreditation is unchanged.";
   }
   if (action === "remove") {
-    return "This does not delete the person, their orders, or their sign-in. They leave this directory and see this reason instead of the app. This page has no control to bring the account back.";
+    return "This does not delete the person, their orders, or their sign-in. They leave this directory and see this reason instead of the app. Turn on Removed to find and restore them.";
   }
   return "They can use GRIDGO again. The reason stored on the account is cleared. This note stays on the audit log.";
 }
@@ -133,6 +141,8 @@ function AdminRolesPage() {
   const [signInSort, setSignInSort] = useState<SignInSort>("latest");
   const [signInFilter, setSignInFilter] = useState<SignInFilter>("all");
   const [users, setUsers] = useState<User[] | null>(null);
+  // Off by default: removed accounts are history, not part of the directory.
+  const [showRemoved, setShowRemoved] = useState(false);
   // Sign-ins ignores the Founding Tester filter. Both lists omit removed standing.
   const [signInUsers, setSignInUsers] = useState<User[] | null>(null);
   const [suspensions, setSuspensions] = useState<Map<string, UserSuspension>>(
@@ -362,9 +372,14 @@ function AdminRolesPage() {
     [],
   );
 
-  // Drop removed standing before search, facets, sign-in filters, and the page count.
+  // Drop removed standing before search, facets, sign-in filters, and the page
+  // count. The Removed filter lists only them, each with Restore.
   const directoryRows = useMemo(
-    () => (users ?? []).filter(isListedAccount),
+    () => (users ?? []).filter(showRemoved ? isRemovedAccount : isListedAccount),
+    [users, showRemoved],
+  );
+  const removedCount = useMemo(
+    () => (users ?? []).filter(isRemovedAccount).length,
     [users],
   );
 
@@ -402,10 +417,13 @@ function AdminRolesPage() {
         options: [
           { value: STANDING_ACTIVE, label: STANDING_ACTIVE },
           { value: STANDING_SUSPENDED, label: STANDING_SUSPENDED, icon: Ban },
+          ...(showRemoved
+            ? [{ value: STANDING_REMOVED, label: STANDING_REMOVED, icon: UserX }]
+            : []),
         ],
       },
     ],
-    [],
+    [showRemoved],
   );
   const suspendedCount = suspensions.size;
 
@@ -547,8 +565,8 @@ function AdminRolesPage() {
           its accreditation in the Account column. A suspended person stays in this
           directory and sees your reason instead of the app until you restore the account.
           Removing an account does not delete the person, their orders, or their sign-in.
-          They leave this directory, and this page has no control to bring them back.
-          Every change is audited.
+          They leave this directory; Removed lists them with Restore. Every change is
+          audited.
         </p>
         <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh
@@ -614,9 +632,30 @@ function AdminRolesPage() {
         {testerFilter !== "all" ? (
           <span className="text-caption text-text-muted">Client accounts only.</span>
         ) : null}
+        <Toggle
+          variant="outline"
+          className="min-h-11 gap-2 px-3 sm:ml-auto"
+          pressed={showRemoved}
+          onPressedChange={setShowRemoved}
+          aria-label={`Removed accounts, ${removedCount}`}
+        >
+          <UserX aria-hidden />
+          Removed
+          <span className="tabular-nums text-text-muted">{removedCount}</span>
+        </Toggle>
       </div>
 
-      {!pending && directoryRows.length === 0 && shownFilter !== "all" ? (
+      {!pending && showRemoved && directoryRows.length === 0 ? (
+        <EmptyState
+          title="No removed accounts"
+          body="Accounts you remove are listed here, ready to restore."
+          action={
+            <Button variant="secondary" onClick={() => setShowRemoved(false)}>
+              Show the directory
+            </Button>
+          }
+        />
+      ) : !pending && directoryRows.length === 0 && shownFilter !== "all" ? (
         <EmptyState
           title={
             shownFilter === "earned" ? "No Founding Testers yet" : "Every client has the label"
@@ -686,7 +725,7 @@ function AdminRolesPage() {
                   />
                 </div>
                 <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Account">
-                  {status !== "suspended" ? (
+                  {status === "active" ? (
                     <DataTableRowAction
                       label="Suspend account"
                       icon={Ban}
@@ -701,7 +740,7 @@ function AdminRolesPage() {
                       onClick={() => openAccount(u, "remove")}
                     />
                   ) : null}
-                  {status === "suspended" ? (
+                  {status === "suspended" || status === "removed" ? (
                     <DataTableRowAction
                       label="Restore account"
                       icon={RotateCcw}

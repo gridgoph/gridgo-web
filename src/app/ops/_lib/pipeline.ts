@@ -14,9 +14,10 @@
  * Pure functions -- no React, no fetch.
  */
 
-import type { Order } from "@/lib/api/types";
+import type { OperatingHours, Order, PaymentInstallment } from "@/lib/api/types";
 import { paymentIsSettled } from "@/lib/api/constraints";
-import { balanceNotRequired, paymentOf } from "@/lib/payments";
+import { addOpeningMs, isOpenAt, manilaWhenFrom } from "@/lib/operating-hours";
+import { balanceNotRequired, listedInstallments, paymentOf } from "@/lib/payments";
 import { shopProofFileIds } from "@/lib/payout-proofs";
 import {
   canAddProgressPhoto,
@@ -159,25 +160,93 @@ export const OPERATIONS_ACTION_LABEL: Record<OperationsAction, string> = {
   assign_rider: "Assign rider",
 };
 
-/** A downpayment, pin payment, or change payment is waiting to be confirmed. */
+/**
+ * The order's own installment waiting on a decision, downpayment first, at any
+ * stage: a 75/25 balance arrives while the order is printing or on the road.
+ * Finished and cancelled orders owe no decision here.
+ */
+export function pendingInstallment(order: Order): PaymentInstallment | null {
+  if (stageOf(order) === "done") return null;
+  for (const installment of listedInstallments(order)) {
+    if (paymentOf(order, installment)?.status === "pending_confirmation") return installment;
+  }
+  return null;
+}
+
+/** An installment, pin payment, or change payment is waiting to be confirmed. */
 export function paymentAwaitingConfirmation(order: Order): boolean {
   if (pinPaymentAwaitingOperations(order)) return true;
   if (changePaymentAwaitingStaff(order)) return true;
-  if (stageOf(order) === "payment") {
-    return paymentOf(order, "downpayment")?.status === "pending_confirmation";
-  }
-  return false;
+  return pendingInstallment(order) !== null;
 }
 
-export function operationsAction(order: Order): OperationsAction | null {
+/** What the queue knows beyond the order: GRIDGO's hours, and now. */
+export type QueueContext = {
+  hours?: OperatingHours | null;
+  nowMs?: number;
+};
+
+/**
+ * A stop the API puts on dispatch, read from fields it projects
+ * (`dispatchWorkHeld`, and GRIDGO's dispatch hours). The pin payment is not
+ * here: it is a confirmation, and that is Operations' work.
+ */
+export type WorkHold = "deadline_request" | "shop_change" | "refund" | "after_hours";
+
+export function workHoldOf(order: Order, context: QueueContext = {}): WorkHold | null {
+  // `409 reschedule_fulfillment_stopped`
+  if (order.rescheduleRequest?.workHeld) return "deadline_request";
+  // `409 shop_recovery_pending`: any recovery not yet accepted.
+  if (order.shopRecovery && order.shopRecovery.status !== "accepted") return "shop_change";
+  // An active refund request, or a settlement already approved. An adjustment
+  // (a delivery-pin credit) stops nothing.
+  if (
+    order.refundHold ||
+    (order.refundDisposition && order.refundDisposition !== "delivery_adjustment")
+  ) {
+    return "refund";
+  }
+  // `409 outside_operating_hours`: rider assignment waits for GRIDGO's hours.
+  if (
+    order.state === "ready_for_dispatch" &&
+    context.hours &&
+    !isOpenAt(context.hours.schedule, context.nowMs ?? Date.now())
+  ) {
+    return "after_hours";
+  }
+  return null;
+}
+
+/** Short, calm, and in the queue's own words. */
+export function workHoldLabel(
+  hold: WorkHold,
+  context: QueueContext = {},
+): string {
+  if (hold === "deadline_request") return "Paused: deadline request";
+  if (hold === "shop_change") return "Paused: shop change";
+  if (hold === "refund") return "Paused: refund";
+  const now = context.nowMs ?? Date.now();
+  const opens = context.hours ? addOpeningMs(context.hours.schedule, now, 0) : null;
+  return opens === null ? "Dispatch after hours" : `Dispatch ${manilaWhenFrom(opens, now)}`;
+}
+
+export function operationsAction(
+  order: Order,
+  context: QueueContext = {},
+): OperationsAction | null {
   // Artwork is this order's group even when a payment is also open, so the
   // file check is not listed twice.
   if (order.state === "needs_qa") return "check_artwork";
   if (paymentAwaitingConfirmation(order)) return "confirm_payment";
   if (awaitingFinishedReview(order)) return "review_finished";
   // A pending pin payment is a confirmation, above. The API refuses assignment
-  // while that payment waits (`409 delivery_pin_payment_pending`).
-  if (order.state === "ready_for_dispatch" && pinDispatchBlocker(order) === null) {
+  // while that payment waits (`409 delivery_pin_payment_pending`), and while
+  // a deadline request, a shop change, a refund or GRIDGO's hours stop work.
+  if (
+    order.state === "ready_for_dispatch" &&
+    pinDispatchBlocker(order) === null &&
+    workHoldOf(order, context) === null
+  ) {
     return "assign_rider";
   }
   return null;
@@ -186,10 +255,9 @@ export function operationsAction(order: Order): OperationsAction | null {
 /** Earliest submitted proof, or when the order last moved if no proof time exists. */
 export function confirmPaymentWaitAt(order: Order): string {
   const times: string[] = [];
-  const down = paymentOf(order, "downpayment");
-  if (down?.status === "pending_confirmation" && down.submittedAt) {
-    times.push(down.submittedAt);
-  }
+  const installment = pendingInstallment(order);
+  const submittedAt = installment ? paymentOf(order, installment)?.submittedAt : null;
+  if (submittedAt) times.push(submittedAt);
   const pinPayment = pinChangeOf(order)?.payment;
   if (pinPaymentAwaitingOperations(order) && pinPayment?.submittedAt) {
     times.push(pinPayment.submittedAt);
@@ -204,8 +272,12 @@ export function confirmPaymentWaitAt(order: Order): string {
 }
 
 /** One action's orders, oldest wait first. Artwork keeps the file check's own order. */
-export function ordersForAction(orders: readonly Order[], action: OperationsAction): Order[] {
-  const matched = orders.filter((order) => operationsAction(order) === action);
+export function ordersForAction(
+  orders: readonly Order[],
+  action: OperationsAction,
+  context: QueueContext = {},
+): Order[] {
+  const matched = orders.filter((order) => operationsAction(order, context) === action);
   if (action === "confirm_payment") {
     return [...matched].sort(
       (a, b) =>
@@ -244,9 +316,14 @@ export function stageCounts(orders: readonly Order[]): Record<Stage, number> {
  * A stage total counts every order at that step. This counts only the ones in
  * an action group, including a rider to assign and finished work to review.
  */
-export function actionableCount(orders: readonly Order[], stage: Stage): number {
-  return orders.filter((order) => stageOf(order) === stage && operationsAction(order) !== null)
-    .length;
+export function actionableCount(
+  orders: readonly Order[],
+  stage: Stage,
+  context: QueueContext = {},
+): number {
+  return orders.filter(
+    (order) => stageOf(order) === stage && operationsAction(order, context) !== null,
+  ).length;
 }
 
 /**
@@ -256,8 +333,11 @@ export function actionableCount(orders: readonly Order[], stage: Stage): number 
  * the action groups, so the pill and the page agree. A job that is only with
  * the shop, only with a rider, or only late is not one of them.
  */
-export function waitingOnOperationsCount(orders: readonly Order[]): number {
-  return orders.filter((order) => operationsAction(order) !== null).length;
+export function waitingOnOperationsCount(
+  orders: readonly Order[],
+  context: QueueContext = {},
+): number {
+  return orders.filter((order) => operationsAction(order, context) !== null).length;
 }
 
 export type StepStatus = "done" | "current" | "locked";
