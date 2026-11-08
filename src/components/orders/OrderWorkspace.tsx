@@ -277,6 +277,11 @@ type Props = {
   queueLabel?: string;
   /** Where the payout desk lives for this account, when it has one. */
   payoutsHref?: string;
+  /**
+   * The destructive control at the end of the working column. Only the Super
+   * Admin route passes one, so Operations never mounts it.
+   */
+  dangerAction?: (order: Order) => React.ReactNode;
 };
 
 /** The workspace's sections, in the order the work happens. */
@@ -329,6 +334,7 @@ export function OrderWorkspace({
   queueHref,
   queueLabel = "Back to queue",
   payoutsHref,
+  dangerAction,
 }: Props) {
   const { id: orderId } = useParams<{ id: string }>();
 
@@ -1269,6 +1275,8 @@ export function OrderWorkspace({
               {actionError}
             </p>
           ) : null}
+
+          {dangerAction?.(order)}
         </div>
 
         {phone ? null : (
