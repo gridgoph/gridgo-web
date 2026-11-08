@@ -559,14 +559,9 @@ function AdminRolesPage() {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Platform role changes are the highest-blast-radius control in GRIDGO. Granting
-          Super Admin creates another full administrator; removing it revokes governance
-          access immediately. Suspending or removing an account changes its Standing, not
-          its accreditation in the Account column. A suspended person stays in this
-          directory and sees your reason instead of the app until you restore the account.
-          Removing an account does not delete the person, their orders, or their sign-in.
-          They leave this directory; Removed lists them with Restore. Every change is
-          audited.
+          Granting Super Admin creates another full administrator. A suspended
+          person stays listed; a removed one moves to Removed, where you can
+          restore them. Nothing is deleted, and every change is audited.
         </p>
         <Button variant="secondary" disabled={loading} onClick={() => void load()}>
           Refresh

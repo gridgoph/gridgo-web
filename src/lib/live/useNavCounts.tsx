@@ -12,9 +12,9 @@ import {
 
 import { needsDecisionCount } from "@/app/admin/_lib/tracker";
 import { waitingOnOperationsCount, type QueueContext } from "@/app/ops/_lib/pipeline";
+import { useQueueContext } from "@/lib/live/useQueueContext";
 import { isAwaitingSignupReview } from "@/components/approvals/signup-queue";
 import {
-  getSettings,
   getTracker,
   getWorkspaceRole,
   listApprovalCases,
@@ -70,10 +70,10 @@ type CountSource = {
  * the list once and reduces it for each.
  */
 const ORDER_COUNTS = {
-  // The queue's own count, with GRIDGO's hours: a dispatch that waits for
-  // them is not counted until GRIDGO opens.
+  // The queue's own count, with the queue's context: a dispatch the API does
+  // not offer yet is not counted until it does.
   "orders-waiting": {
-    resources: ["orders", "settings"],
+    resources: ["orders"],
     reduce: waitingOnOperationsCount,
     hours: true,
   },
@@ -88,7 +88,7 @@ const ORDER_COUNTS = {
   {
     resources: readonly InvalidateResource[];
     reduce: (orders: Order[], context: QueueContext) => number;
-    /** Also read GRIDGO's operating hours for this count. */
+    /** Also read the queue context (hours, dispatch offers, the clock). */
     hours: boolean;
   }
 >;
@@ -339,30 +339,27 @@ function OrderCountsSource({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [key],
   );
+  const keys = useMemo(() => key.split(",") as OrderCountKey[], [key]);
+  // The queue's own context and minute clock, shared with the orders page.
+  // A minute passing recomputes from these orders; it never refetches them.
+  const context = useQueueContext(keys.some((source) => ORDER_COUNTS[source].hours));
+  const [orders, setOrders] = useState<Order[] | null>(null);
   const load = useSerializedLoad(
     useCallback(async () => {
       try {
-        const keys = key.split(",") as OrderCountKey[];
-        const needsHours = keys.some((source) => ORDER_COUNTS[source].hours);
-        const [orders, hours] = await Promise.all([
-          listOrders(),
-          // Without the hours the count is the page's own count without them.
-          needsHours
-            ? getSettings().then(
-                (settings) => settings.operatingHours ?? null,
-                () => null,
-              )
-            : Promise.resolve(null),
-        ]);
-        const context: QueueContext = { hours, nowMs: Date.now() };
-        for (const source of keys) {
-          onCount(source, ORDER_COUNTS[source].reduce(orders, context));
-        }
+        setOrders(await listOrders());
       } catch {
         /* Keep the last good counts. */
       }
-    }, [key, onCount]),
+    }, []),
   );
+
+  useEffect(() => {
+    if (!orders) return;
+    for (const source of keys) {
+      onCount(source, ORDER_COUNTS[source].reduce(orders, context));
+    }
+  }, [orders, context, keys, onCount]);
 
   useLiveReload(resources, load);
   useEffect(() => {

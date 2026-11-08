@@ -18,7 +18,6 @@ import {
   waitingOnOperationsCount,
   workHoldLabel,
   workHoldOf,
-  type QueueContext,
   type Stage,
 } from "@/app/ops/_lib/pipeline";
 import { FileCheckQueue } from "@/components/orders/FileCheckQueue";
@@ -41,9 +40,10 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { SkeletonLines } from "@/components/ui/loading";
-import { ApiError, getSettings, listOrders } from "@/lib/api/client";
-import type { OperatingHours, Order } from "@/lib/api/types";
+import { ApiError, listOrders } from "@/lib/api/client";
+import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
+import { useQueueContext } from "@/lib/live/useQueueContext";
 import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
 import { receiptScanMarkValue } from "@/lib/receipt-scan";
 import { formatDateTime, formatPhp } from "@/lib/format";
@@ -108,29 +108,11 @@ export default function OpsOrdersPage() {
     void load();
   }, [load]);
 
-  // The file check reads GRIDGO's operating hours. A failed read only drops
-  // the hours strip; each order still carries its own review time.
-  const [hours, setHours] = useState<OperatingHours | null>(null);
-  const loadHours = useCallback(async () => {
-    try {
-      setHours((await getSettings()).operatingHours ?? null);
-    } catch {
-      // Keep whatever was read last.
-    }
-  }, []);
-  useEffect(() => {
-    void loadHours();
-  }, [loadHours]);
-  useLiveReload("settings", loadHours);
-
-  // Dispatch waits for GRIDGO's hours, so the groups re-read the clock each
-  // minute: an order joins Assign rider when GRIDGO opens.
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = window.setInterval(() => setNowMs(Date.now()), 60_000);
-    return () => window.clearInterval(timer);
-  }, []);
-  const context = useMemo<QueueContext>(() => ({ hours, nowMs }), [hours, nowMs]);
+  // GRIDGO's hours (the file check's strip, and when dispatch opens), the
+  // API's dispatch offers, and the minute clock the rail shares. A failed
+  // read only drops what it would have added.
+  const context = useQueueContext();
+  const hours = context.hours ?? null;
 
   const counts = useMemo(() => stageCounts(orders ?? []), [orders]);
   const waiting = useMemo(

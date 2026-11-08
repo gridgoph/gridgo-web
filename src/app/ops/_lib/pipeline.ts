@@ -180,18 +180,26 @@ export function paymentAwaitingConfirmation(order: Order): boolean {
   return pendingInstallment(order) !== null;
 }
 
-/** What the queue knows beyond the order: GRIDGO's hours, and now. */
+/** What the queue knows beyond the order. */
 export type QueueContext = {
   hours?: OperatingHours | null;
   nowMs?: number;
+  /**
+   * The ready orders the API would hand a rider now: the ids from
+   * `GET /dispatch/offers`, which applies GRIDGO's hours (to orders that
+   * snapshot them) and the shop's dispatch hours. Null or absent when it could
+   * not be read, and then nothing is assumed: the API decides on the click.
+   */
+  dispatchable?: ReadonlySet<string> | null;
 };
 
 /**
  * A stop the API puts on dispatch, read from fields it projects
- * (`dispatchWorkHeld`, and GRIDGO's dispatch hours). The pin payment is not
- * here: it is a confirmation, and that is Operations' work.
+ * (`dispatchWorkHeld`), or the API leaving the order out of its dispatch
+ * offers (hours). The pin payment is not here: it is a confirmation, and that
+ * is Operations' work.
  */
-export type WorkHold = "deadline_request" | "shop_change" | "refund" | "after_hours";
+export type WorkHold = "deadline_request" | "shop_change" | "refund" | "not_offered";
 
 export function workHoldOf(order: Order, context: QueueContext = {}): WorkHold | null {
   // `409 reschedule_fulfillment_stopped`
@@ -206,13 +214,19 @@ export function workHoldOf(order: Order, context: QueueContext = {}): WorkHold |
   ) {
     return "refund";
   }
-  // `409 outside_operating_hours`: rider assignment waits for GRIDGO's hours.
+  // Hours: the API's own offer list, never inferred from GRIDGO's schedule,
+  // which binds only orders that snapshot it (`409 outside_operating_hours`,
+  // `outside_shop_hours`). A pin blocker keeps its own wording.
   if (
     order.state === "ready_for_dispatch" &&
-    context.hours &&
-    !isOpenAt(context.hours.schedule, context.nowMs ?? Date.now())
+    context.dispatchable &&
+    !context.dispatchable.has(order.id) &&
+    // Offers leave out test orders for a real account, so they say nothing
+    // about a test order's hours.
+    !order.reviewData &&
+    pinDispatchBlocker(order) === null
   ) {
-    return "after_hours";
+    return "not_offered";
   }
   return null;
 }
@@ -226,8 +240,13 @@ export function workHoldLabel(
   if (hold === "shop_change") return "Paused: shop change";
   if (hold === "refund") return "Paused: refund";
   const now = context.nowMs ?? Date.now();
-  const opens = context.hours ? addOpeningMs(context.hours.schedule, now, 0) : null;
-  return opens === null ? "Dispatch after hours" : `Dispatch ${manilaWhenFrom(opens, now)}`;
+  // GRIDGO closed is the likeliest reason, and its opening is a fact. With
+  // GRIDGO open, it is the shop's hours.
+  if (context.hours && !isOpenAt(context.hours.schedule, now)) {
+    const opens = addOpeningMs(context.hours.schedule, now, 0);
+    if (opens !== null) return `Dispatch ${manilaWhenFrom(opens, now)}`;
+  }
+  return "Dispatch when the shop opens";
 }
 
 export function operationsAction(
@@ -241,7 +260,7 @@ export function operationsAction(
   if (awaitingFinishedReview(order)) return "review_finished";
   // A pending pin payment is a confirmation, above. The API refuses assignment
   // while that payment waits (`409 delivery_pin_payment_pending`), and while
-  // a deadline request, a shop change, a refund or GRIDGO's hours stop work.
+  // a deadline request, a shop change, a refund or dispatch hours stop work.
   if (
     order.state === "ready_for_dispatch" &&
     pinDispatchBlocker(order) === null &&

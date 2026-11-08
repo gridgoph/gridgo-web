@@ -246,7 +246,7 @@ describe("a ready order the API will not dispatch", () => {
     ]);
   });
 
-  it("counts a free ready order, and holds it while GRIDGO is closed", () => {
+  it("counts a free ready order and leaves held ones out", () => {
     const free = ready("free");
     const accepted = ready("accepted", {
       shopRecovery: { status: "accepted" },
@@ -256,13 +256,37 @@ describe("a ready order the API will not dispatch", () => {
     expect(operationsAction(free, open)).toBe("assign_rider");
     expect(operationsAction(accepted, open)).toBe("assign_rider");
     expect(waitingOnOperationsCount([free, accepted, ...held], open)).toBe(2);
+  });
 
-    expect(workHoldOf(free, closed)).toBe("after_hours");
-    expect(operationsAction(free, closed)).toBeNull();
-    expect(waitingOnOperationsCount([free, accepted, ...held], closed)).toBe(0);
-    expect(workHoldLabel("after_hours", closed)).toBe("Dispatch tomorrow, 8:00 AM");
-    // Without the hours (an older API or a failed read) nothing is assumed closed.
-    expect(operationsAction(free)).toBe("assign_rider");
+  it("follows the API's dispatch offers for hours, never GRIDGO's schedule alone", () => {
+    // Before 08:00. The legacy order has no hours snapshot, so the API still
+    // offers it and assigns it; the snapshotted one waits.
+    const legacy = ready("legacy");
+    const snapshotted = ready("snapshotted");
+    const night = { ...closed, dispatchable: new Set(["legacy"]) };
+    expect(operationsAction(legacy, night)).toBe("assign_rider");
+    expect(workHoldOf(snapshotted, night)).toBe("not_offered");
+    expect(operationsAction(snapshotted, night)).toBeNull();
+    expect(waitingOnOperationsCount([legacy, snapshotted], night)).toBe(1);
+    expect(actionableCount([legacy, snapshotted], "production", night)).toBe(1);
+    expect(workHoldLabel("not_offered", night)).toBe("Dispatch tomorrow, 8:00 AM");
+
+    // GRIDGO open but not offered: the shop's own dispatch hours.
+    const day = { ...open, dispatchable: new Set<string>() };
+    expect(operationsAction(snapshotted, day)).toBeNull();
+    expect(workHoldLabel("not_offered", day)).toBe("Dispatch when the shop opens");
+
+    // Offers unknown (a failed read): nothing is hidden on a guess, even at night.
+    expect(operationsAction(snapshotted, closed)).toBe("assign_rider");
+    expect(operationsAction(snapshotted, { ...closed, dispatchable: null })).toBe("assign_rider");
+
+    // Offers leave out test orders for a real account; they say nothing here.
+    const test = ready("test", { reviewData: true });
+    expect(operationsAction(test, day)).toBe("assign_rider");
+
+    // Independent stops still hold an order the offers would list.
+    const both = { ...open, dispatchable: new Set(held.map((row) => row.id)) };
+    expect(waitingOnOperationsCount(held, both)).toBe(0);
   });
 
   it("still lets a held order's payment be confirmed", () => {
