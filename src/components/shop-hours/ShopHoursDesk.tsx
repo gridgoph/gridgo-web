@@ -33,6 +33,8 @@ import {
   SHOP_STATE_ORDER,
   closedDayCount,
   closureOnDay,
+  dayWindow,
+  effectiveWeek,
   extensionToday,
   manilaClock,
   shopStatus,
@@ -123,16 +125,16 @@ export function ShopHoursDesk({ tree }: { tree: ShopHoursTree }) {
       {
         id: "week",
         header: "Weekly hours",
-        sortValue: (row) => row.hours.week.length,
-        filterValue: (row) => weekLabel(row.hours.week),
+        sortValue: (row) => effectiveWeek(row.hours).length,
+        filterValue: (row) => weekLabel(effectiveWeek(row.hours)),
         cell: (row) => (
           <div className="flex min-w-0 flex-col gap-1">
             <WeekLetters
-              week={row.hours.week}
+              week={effectiveWeek(row.hours)}
               todayWeekday={today.weekday}
-              label={`Open ${weekLabel(row.hours.week)}`}
+              label={`Open ${weekLabel(effectiveWeek(row.hours))}`}
             />
-            <span className="text-caption text-text-secondary">{weekLabel(row.hours.week)}</span>
+            <span className="text-caption text-text-secondary">{weekLabel(effectiveWeek(row.hours))}</span>
           </div>
         ),
       },
@@ -262,7 +264,7 @@ export function ShopHoursDesk({ tree }: { tree: ShopHoursTree }) {
 function TodayCell({ row, now }: { row: ShopHoursRow; now: number }) {
   const clock = manilaClock(now);
   const extension = extensionToday(row.hours, now);
-  const usual = row.hours.week.find((window) => window.weekday === clock.weekday) ?? null;
+  const usual = dayWindow(row.hours, clock.weekday);
   if (row.hours.temporarilyClosed) {
     return <span className="text-body text-text-muted">Not open today</span>;
   }

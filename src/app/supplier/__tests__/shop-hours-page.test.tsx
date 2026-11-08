@@ -136,9 +136,54 @@ describe("supplier Shop hours", () => {
         utcOffsetMinutes: 480,
         week: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ weekday, opensMinute: 480, closesMinute: 1080 })),
         closures: [],
+        weekdayOverrides: [],
       },
       extension: { closesMinute: 1200 },
     });
+  });
+
+  it("keeps one set of hours as before, with every day on the usual hours", async () => {
+    api.getMyShopHours.mockResolvedValue(hours());
+    render(<SupplierShopHoursPage />);
+    const saturday = await screen.findByRole("switch", { name: "Saturday, different hours" });
+    expect(saturday).not.toBeChecked();
+    expect(screen.getAllByRole("switch", { name: /, different hours$/ })).toHaveLength(6);
+    expect(screen.queryByText(/not available yet/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Saturday opens")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save weekly hours" })).not.toBeInTheDocument();
+    // Switched on at the usual times is no change yet.
+    fireEvent.click(saturday);
+    expect(await screen.findByLabelText("Saturday opens")).toBeInTheDocument();
+    expect(screen.getByLabelText("Saturday closes")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save weekly hours" })).not.toBeInTheDocument();
+  });
+
+  it("reads a short Saturday and puts it back on the usual hours", async () => {
+    const SAT = { weekday: 6, opensMinute: 420, closesMinute: 900 };
+    api.getMyShopHours.mockResolvedValue(hours({ overrides: [SAT] }));
+    api.updateMyShopHours.mockResolvedValue(hours({ version: 2 }));
+    render(<SupplierShopHoursPage />);
+    const saturday = await screen.findByRole("switch", { name: "Saturday, different hours" });
+    expect(saturday).toBeChecked();
+    expect(screen.getByText("7:00 AM–3:00 PM")).toBeInTheDocument();
+    fireEvent.click(saturday);
+    fireEvent.click(screen.getByRole("button", { name: "Save weekly hours" }));
+    await waitFor(() => expect(api.updateMyShopHours).toHaveBeenCalled());
+    expect(api.updateMyShopHours).toHaveBeenCalledWith(1, {
+      schedule: { utcOffsetMinutes: 480, week: MON_SAT, closures: [], weekdayOverrides: [] },
+    });
+  });
+
+  it("shows the API's refusal in plain words beside the day that changed", async () => {
+    const SAT = { weekday: 6, opensMinute: 420, closesMinute: 900 };
+    api.getMyShopHours.mockResolvedValue(hours({ overrides: [SAT] }));
+    api.updateMyShopHours.mockRejectedValue(new ApiError(400, { error: "invalid_shop_hours" }));
+    render(<SupplierShopHoursPage />);
+    fireEvent.click(await screen.findByRole("switch", { name: "Saturday, different hours" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save weekly hours" }));
+    const alert = await screen.findByText(/Each day needs a closing time later than its opening time/);
+    const row = screen.getByRole("switch", { name: "Saturday, different hours" }).closest("div.border-t");
+    expect(row).toContainElement(alert);
   });
 
   it("asks before a save that has to end today's extension", async () => {
