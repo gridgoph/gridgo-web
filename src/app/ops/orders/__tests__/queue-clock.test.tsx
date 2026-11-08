@@ -131,3 +131,61 @@ it("moves the page and the rail together across opening and closing", async () =
 
   expect(listOrders.mock.calls.length).toBe(ordersReads);
 });
+
+it("follows a shop's own dispatch hours inside GRIDGO's, with no order changing", async () => {
+  // GRIDGO is open all day. The shop's weekday override closes dispatch from
+  // 10:00 to 11:00 Manila; the API's offers say so, nothing else does.
+  const shopCloses = OPENS + 2 * 3_600_000;
+  const shopOpens = shopCloses + 3_600_000;
+  vi.setSystemTime(shopCloses - 90_000);
+  listDispatchOffers.mockImplementation(async () =>
+    Date.now() >= shopCloses && Date.now() < shopOpens ? [] : [snapshotted],
+  );
+  listOrders.mockResolvedValue([snapshotted]);
+
+  render(
+    <LiveContext.Provider value={connected}>
+      <NavCountsProvider sources={["orders-waiting"]} pathname="/ops/orders">
+        <RailProbe />
+        <OpsOrdersPage />
+      </NavCountsProvider>
+    </LiveContext.Provider>,
+  );
+  expect(await screen.findByRole("heading", { name: "Assign rider 1" })).toBeVisible();
+  await vi.waitFor(() => expect(rail()).toBe("1"));
+  const ordersReads = listOrders.mock.calls.length;
+
+  // The shop closes: out of the group, the stage's waiting count and the rail.
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+  });
+  await vi.waitFor(() => expect(rail()).toBe("0"));
+  expect(screen.getByRole("heading", { name: "Assign rider 0" })).toBeVisible();
+  expect(needsAction()).toBe("0");
+  expect(screen.getByRole("button", { name: /With the shop/ }).textContent).toBe("With the shop1");
+  expect(screen.getAllByText("Dispatch when the shop opens").length).toBeGreaterThan(0);
+
+  // The shop opens again.
+  await act(async () => {
+    vi.setSystemTime(shopOpens - 30_000);
+    await vi.advanceTimersByTimeAsync(60_000);
+  });
+  await vi.waitFor(() => expect(rail()).toBe("1"));
+  expect(screen.getByRole("heading", { name: "Assign rider 1" })).toBeVisible();
+  expect(listOrders.mock.calls.length).toBe(ordersReads);
+});
+
+it("keeps a night-time order the API offers assignable", async () => {
+  vi.setSystemTime(OPENS - 4 * 3_600_000); // 04:00 Manila, GRIDGO closed
+  listDispatchOffers.mockResolvedValue([snapshotted]); // no hours snapshot: offered
+  render(
+    <LiveContext.Provider value={connected}>
+      <NavCountsProvider sources={["orders-waiting"]} pathname="/ops/orders">
+        <RailProbe />
+        <OpsOrdersPage />
+      </NavCountsProvider>
+    </LiveContext.Provider>,
+  );
+  expect(await screen.findByRole("heading", { name: "Assign rider 1" })).toBeVisible();
+  await vi.waitFor(() => expect(rail()).toBe("1"));
+});

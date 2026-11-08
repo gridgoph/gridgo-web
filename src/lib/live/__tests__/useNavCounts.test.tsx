@@ -19,6 +19,8 @@ const { listIssueReports, listSupportChatThreads } = vi.hoisted(() => ({
 
 vi.mock("@/lib/api/client", () => ({
   getTracker: vi.fn(),
+  getSettings: vi.fn(() => new Promise(() => {})),
+  listDispatchOffers: vi.fn(() => new Promise(() => {})),
   listApprovalCases: vi.fn(),
   listClaims: vi.fn(),
   listEscalations: vi.fn(),

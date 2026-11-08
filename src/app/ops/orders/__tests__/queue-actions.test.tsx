@@ -140,6 +140,10 @@ beforeEach(() => {
       if (one) return reply({ order: orders.find((order) => order.id === one[1]) });
       if (path === "/users") return reply({ users: riders });
       if (path === "/settings") return reply({ settings: {} });
+      // The API offers every ready order with no stop to a rider.
+      if (path === "/dispatch/offers") {
+        return reply({ offers: orders.filter((order) => order.state === "ready_for_dispatch") });
+      }
       if (basket && path === `/baskets/${basket.id}`) return reply({ basket });
       return reply({ error: "not_found" }, 404);
     }),
