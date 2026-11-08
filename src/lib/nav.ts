@@ -72,6 +72,7 @@ export type NavIconKey =
   | "vouchers"
   | "promotions"
   | "founding-testers"
+  | "play-testers"
   | "legal"
   | "acceptances"
   | "privacy"
@@ -666,6 +667,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          // Google Play's 14-day closed test (gridgo-api docs/TESTER_PROGRAM_API.md).
+          id: "ops-play-testers",
+          href: "/ops/play-testers",
+          label: "Play testers",
+          title: "Google Play testers",
+          icon: "play-testers",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "ops-claims",
           href: "/ops/claims",
           label: "Claims & holds",
@@ -841,6 +852,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Founding Testers",
           title: "Founding Testers",
           icon: "founding-testers",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          // Google Play's 14-day closed test (gridgo-api docs/TESTER_PROGRAM_API.md).
+          id: "admin-play-testers",
+          href: "/admin/play-testers",
+          label: "Play testers",
+          title: "Google Play testers",
+          icon: "play-testers",
           ready: true,
           placeholderBody: "",
         },
