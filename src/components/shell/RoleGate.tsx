@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { legalGateAllows } from "@/lib/supplier-legal";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { AccountStandingNotice } from "@/components/auth/AccountStandingNotice";
@@ -22,7 +22,14 @@ import {
   onForbidden,
   setTestOperationsSession,
 } from "@/lib/api/client";
-import type { PortalRole } from "@/lib/api/types";
+import type { PortalRole, ShopSummary } from "@/lib/api/types";
+import {
+  ShopPendingNotice,
+  ShopRemovedNotice,
+} from "@/components/shop-team/ShopAccessNotices";
+import { ShopAccessProvider } from "@/lib/auth/shop-access";
+import { portalRolesFromMemberships } from "@/lib/auth/portal-access";
+import { homeForRole } from "@/lib/routes";
 import { withdrawnStanding, type WithdrawnStanding } from "@/lib/auth/account-standing";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { roleLabel } from "@/lib/routes";
@@ -33,7 +40,20 @@ type Props = {
 };
 
 type ProjectionStatus =
-  "idle" | "checking" | "allowed" | "held" | "withdrawn" | "denied" | "unavailable";
+  | "idle"
+  | "checking"
+  | "allowed"
+  | "held"
+  | "withdrawn"
+  | "denied"
+  | "unavailable"
+  // Shop teams (gridgo-api docs/SHOP_TEAM_API.md): joined but not approved,
+  // or removed by an Owner or Operations.
+  | "shop_pending"
+  | "shop_removed";
+
+/** Where a removed shop login lands once its session has ended. */
+export const SHOP_REMOVED_LOGIN = "/login?left=shop";
 
 /** API refusals that mean GRIDGO suspended or removed the whole account. */
 const ACCOUNT_HOLD_CODES = new Set(["account_suspended", "account_removed"]);
@@ -79,6 +99,7 @@ export function RoleGate({ allow, children }: Props) {
   const [standing, setStanding] = useState<WithdrawnStanding | null>(null);
   const [projectionHold, setProjectionHold] = useState<AccountHold | null>(null);
   const [testOperations, setTestOperations] = useState(false);
+  const [shop, setShop] = useState<ShopSummary | null>(null);
   const [attempt, setAttempt] = useState(0);
   const lastForbiddenRecheck = useRef(0);
 
@@ -109,6 +130,19 @@ export function RoleGate({ allow, children }: Props) {
             (projection as { testOperations?: boolean }).testOperations === true;
           setTestOperationsSession(testOps);
           setTestOperations(testOps);
+          const shopSummary =
+            allow === "supplier"
+              ? ((projection as { shop?: ShopSummary | null }).shop ?? null)
+              : null;
+          setShop(shopSummary);
+          if (shopSummary?.status === "pending") {
+            setProjectionStatus("shop_pending");
+            return;
+          }
+          if (shopSummary?.status === "removed") {
+            setProjectionStatus("shop_removed");
+            return;
+          }
           const held = accountHold(projection.user);
           setProjectionHold(held);
           if (held) {
@@ -122,6 +156,14 @@ export function RoleGate({ allow, children }: Props) {
           return;
         } catch (error) {
           if (!active) return;
+          if (isApiError(error) && error.code === "shop_access_removed") {
+            setProjectionStatus("shop_removed");
+            return;
+          }
+          if (isApiError(error) && error.code === "shop_approval_pending") {
+            setProjectionStatus("shop_pending");
+            return;
+          }
           if (isApiError(error) && error.kind === "forbidden") {
             setProjectionStatus("denied");
             return;
@@ -167,11 +209,40 @@ export function RoleGate({ allow, children }: Props) {
     });
   }, [allow, projectionStatus]);
 
+  const recheck = useCallback(() => setAttempt((current) => current + 1), []);
+
+  // A removed shop login ends its session (the API also closes its stream and
+  // refuses every request). Someone with another GRIDGO workspace keeps that.
+  const shopRemoved =
+    allow === "supplier" &&
+    (projectionStatus === "shop_removed" ||
+      (auth.status === "unavailable" && auth.accessError === "shop_access_removed"));
+  const otherRole = portalRolesFromMemberships(auth.memberships ?? []).find(
+    (role) => role !== "supplier",
+  );
+  const endRemovedSession = shopRemoved && !otherRole;
+  const { signOut } = auth;
+  useEffect(() => {
+    if (endRemovedSession) void signOut({ redirectUrl: SHOP_REMOVED_LOGIN });
+  }, [endRemovedSession, signOut]);
+
+
   if (auth.status === "unmapped") {
     return (
       <PortalAccessDenied
         body="This signed-in identity is not connected to a GRIDGO portal account. Ask GRIDGO Operations to assign access, or use another account."
         onSignOut={() => void auth.signOut()}
+      />
+    );
+  }
+
+  if (shopRemoved) {
+    return (
+      <ShopRemovedNotice
+        onSignOut={() => void auth.signOut({ redirectUrl: SHOP_REMOVED_LOGIN })}
+        otherWorkspace={
+          otherRole ? { href: homeForRole(otherRole), label: roleLabel(otherRole) } : null
+        }
       />
     );
   }
@@ -235,6 +306,16 @@ export function RoleGate({ allow, children }: Props) {
     );
   }
 
+  if (projectionStatus === "shop_pending") {
+    return (
+      <ShopPendingNotice
+        shopName={shop?.name}
+        onCheckAgain={recheck}
+        onSignOut={() => void auth.signOut()}
+      />
+    );
+  }
+
   if (projectionStatus === "denied") {
     return (
       <PortalAccessDenied
@@ -280,8 +361,10 @@ export function RoleGate({ allow, children }: Props) {
   }
 
   return (
-    <AppShell role={allow} testOperations={testOperations}>
-      {children}
-    </AppShell>
+    <ShopAccessProvider shop={allow === "supplier" ? shop : null}>
+      <AppShell role={allow} testOperations={testOperations}>
+        {children}
+      </AppShell>
+    </ShopAccessProvider>
   );
 }

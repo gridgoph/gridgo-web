@@ -35,6 +35,12 @@ vi.mock("@/lib/auth/AuthProvider", () => ({
   useAuth: () => authState,
 }));
 
+const shopTeam = vi.hoisted(() => ({
+  listMyShopMemberships: vi.fn(async () => [] as Array<{ status: string }>),
+  discoverShopInvites: vi.fn(async () => [] as unknown[]),
+}));
+vi.mock("@/lib/api/shop-team", () => shopTeam);
+
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
@@ -44,13 +50,38 @@ afterEach(() => {
 });
 
 describe("portal landing", () => {
-  it("shows settled denial for a mapped identity with no portal membership", () => {
+  it("opens the shop workspace for a client account that joined a shop", async () => {
+    authState.memberships = [{ role: "client" }];
+    shopTeam.listMyShopMemberships.mockResolvedValueOnce([{ status: "pending" }]);
+    render(<HomePage />);
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/supplier"));
+  });
+
+  it("sends a person with an email or phone invite to join", async () => {
+    authState.status = "unmapped";
+    shopTeam.discoverShopInvites.mockResolvedValueOnce([{ id: "shi_1" }]);
+    render(<HomePage />);
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith("/join-team"));
+  });
+
+  it("tells a removed Staff login why, instead of a connection error", async () => {
+    authState.status = "unavailable";
+    (authState as { accessError?: string | null }).accessError = "shop_access_removed";
+    render(<HomePage />);
+    expect(
+      await screen.findByRole("heading", { name: "You're no longer on this shop's team" }),
+    ).toBeVisible();
+    expect(shopTeam.listMyShopMemberships).not.toHaveBeenCalled();
+    (authState as { accessError?: string | null }).accessError = null;
+  });
+
+  it("shows settled denial for a mapped identity with no portal membership", async () => {
     authState.memberships = [{ role: "client" }];
 
     render(<HomePage />);
 
     expect(
-      screen.getByRole("heading", { name: "Portal access has not been assigned" }),
+      await screen.findByRole("heading", { name: "Portal access has not been assigned" }),
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "Use another account" })).toBeVisible();
     expect(replaceMock).not.toHaveBeenCalled();

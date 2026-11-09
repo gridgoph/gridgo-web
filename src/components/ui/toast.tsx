@@ -5,6 +5,9 @@ import { Toast as ToastPrimitive } from "@base-ui/react/toast";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
+import { onUploadActivity, type UploadActivity } from "@/lib/upload-activity";
+import { uploadErrorMessage } from "@/lib/upload-errors";
 import { ArrivalBurst, ArrivalSlip } from "@/components/shell/ArrivalSlip";
 import {
   ARRIVAL_BURST_TOAST_TYPE,
@@ -36,7 +39,9 @@ function ToastViewport({ className, ...props }: ToastPrimitive.Viewport.Props) {
     <ToastPrimitive.Viewport
       data-slot="toast-viewport"
       className={cn(
-        "pointer-events-none fixed inset-x-4 bottom-4 z-50 mx-auto w-auto max-w-sm outline-none sm:right-4 sm:left-auto sm:mx-0 sm:w-full",
+        // Shared dialogs/backdrops use layer 50. Upload cancellation must stay
+        // actionable when a file is being sent from a modal.
+        "pointer-events-none fixed inset-x-4 bottom-4 z-[60] mx-auto w-auto max-w-sm outline-none sm:right-4 sm:left-auto sm:mx-0 sm:w-full",
         className,
       )}
       {...props}
@@ -182,6 +187,58 @@ function ToastList() {
   const { toasts } = ToastPrimitive.useToastManager();
 
   return toasts.map((toastItem) => {
+    if (toastItem.type === "upload") {
+      const activity = toastItem.data?.activity as UploadActivity;
+      const pending = activity.phase !== "stored" && activity.phase !== "failed";
+      const sending = activity.phase === "sending" || activity.phase === "preparing";
+      const percent = activity.total
+        ? Math.min(100, (activity.loaded / activity.total) * 100)
+        : null;
+      return (
+        <Toast
+          key={toastItem.id}
+          toast={toastItem}
+          swipeDirection={pending ? [] : undefined}
+        >
+          <ToastContent className="items-start">
+            <ToastIcon
+              type={
+                pending ? "loading" : activity.phase === "stored" ? "success" : "error"
+              }
+            />
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <ToastTitle />
+              <p className="text-caption text-text-secondary break-all">
+                {activity.filename}
+              </p>
+              {sending ? (
+                <div aria-live="off" className="flex flex-col gap-2">
+                  <Progress value={percent} aria-label={`Sending ${activity.filename}`} />
+                  <p className="text-caption text-text-secondary tabular-nums">
+                    {uploadBytes(activity.loaded)}
+                    {activity.total ? ` of ${uploadBytes(activity.total)}` : ""} sent
+                    {percent !== null ? ` · ${Math.floor(percent)}%` : ""}
+                  </p>
+                </div>
+              ) : null}
+              <ToastDescription />
+            </div>
+            {pending ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`Cancel upload of ${activity.filename}`}
+                onClick={activity.cancel}
+              >
+                Cancel
+              </Button>
+            ) : (
+              <ToastClose />
+            )}
+          </ToastContent>
+        </Toast>
+      );
+    }
     // A Desk arrival is a slip, not a status card: same register line the
     // inbox draws, so the two never look like different systems.
     if (toastItem.type === ARRIVAL_TOAST_TYPE) {
@@ -226,6 +283,46 @@ function ToastList() {
   });
 }
 
+function uploadBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${Number((bytes / 1024 / 1024).toFixed(1))} MB`;
+}
+
+function UploadNotifications() {
+  const { add } = ToastPrimitive.useToastManager();
+  React.useEffect(
+    () =>
+      onUploadActivity((activity) => {
+        const titles: Record<UploadActivity["phase"], string> = {
+          preparing: "Preparing upload…",
+          sending: "Sending file…",
+          saving: "Saving file…",
+          stored: "File stored",
+          failed: "Upload stopped",
+        };
+        add({
+          id: activity.id,
+          type: "upload",
+          title: titles[activity.phase],
+          description:
+            activity.phase === "saving"
+              ? "All bytes sent. Waiting for storage."
+              : activity.phase === "stored"
+                ? "Your form may still be saving."
+                : activity.phase === "failed"
+                  ? uploadErrorMessage(activity.error)
+                  : undefined,
+          data: { activity },
+          // Keep in-flight progress visible; errors remain until dismissed.
+          timeout: activity.phase === "stored" ? 5_000 : 0,
+        });
+      }),
+    [add],
+  );
+  return null;
+}
+
 function Toaster({
   children,
   toastManager = toast,
@@ -234,6 +331,7 @@ function Toaster({
   return (
     <ToastProvider toastManager={toastManager} {...props}>
       {children}
+      <UploadNotifications />
       <ToastPortal>
         <ToastViewport>
           <ToastList />

@@ -13,6 +13,7 @@
  */
 
 import { isApiError } from "@/lib/api/client";
+import { UploadInterrupted } from "@/lib/api/multipart";
 
 const TYPE_NAMES: Record<string, string> = {
   "image/jpeg": "JPEG",
@@ -60,6 +61,9 @@ export function uploadErrorMessage(
     notSent = "was not sent",
   }: { what?: string; notSent?: string } = {},
 ): string {
+  if (err instanceof UploadInterrupted) return err.message;
+  if (err instanceof DOMException && err.name === "AbortError")
+    return "Upload cancelled.";
   if (!isApiError(err)) {
     return `The connection dropped, so ${what} ${notSent}. Check the connection and try again.`;
   }

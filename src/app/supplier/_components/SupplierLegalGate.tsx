@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 
 import { SkeletonCards } from "@/components/ui/loading";
 import { ApiError } from "@/lib/api/client";
+import { useShopAccess } from "@/lib/auth/shop-access";
 import { acceptSupplierLegal, getSupplierLegalPending } from "@/lib/api/supplier-self";
 import {
   LEGAL_VERSION_CHANGED,
@@ -61,9 +62,26 @@ function webContext(): { app: string; device: string } {
   return { app: "gridgo-web/supplier", device };
 }
 
+/**
+ * A shop's Staff never signs the shop's agreements: those belong to the Owner,
+ * and the API refuses the legal routes to Staff (`403 shop_owner_required`).
+ * Staff work under the Owner's acceptance, so their gate is always clear.
+ */
+const STAFF_GATE: GateValue = {
+  status: "clear",
+  pending: [],
+  checking: false,
+  refresh: () => undefined,
+  error: null,
+  accepting: false,
+  accept: async () => false,
+};
+
 export function SupplierLegalGate({ children }: { children: ReactNode }) {
   const { user } = useUser();
   const userId = user?.id ?? null;
+  const { staff } = useShopAccess();
+  if (staff) return <Gate.Provider value={STAFF_GATE}>{children}</Gate.Provider>;
   return (
     <LegalSession key={userId} userId={userId}>
       {children}

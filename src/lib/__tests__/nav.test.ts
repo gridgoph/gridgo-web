@@ -32,6 +32,7 @@ describe("ROLE_NAV", () => {
       "/supplier/jobs",
       "/supplier/chat",
       "/supplier/shop",
+      "/supplier/team",
       "/supplier/documents",
       "/supplier/services",
       "/supplier/catalogue",
@@ -252,6 +253,7 @@ describe("ROLE_NAV", () => {
       "/supplier/services",
       "/supplier/shop",
       "/supplier/shop-hours",
+      "/supplier/team",
     ]);
   });
 
@@ -442,6 +444,7 @@ describe("ROLE_NAV", () => {
         ?.items.map((n) => n.href),
     ).toEqual([
       "/supplier/shop",
+      "/supplier/team",
       "/supplier/documents",
       "/supplier/services",
       "/supplier/catalogue",

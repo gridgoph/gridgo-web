@@ -1,4 +1,7 @@
 import { withRequestDeadline } from "@/lib/api/requestDeadline";
+import { sendMultipart, UploadInterrupted } from "@/lib/api/multipart";
+import { beginUpload } from "@/lib/upload-activity";
+import { clearSharedReads, sharedRead } from "@/lib/api/sharedReads";
 /**
  * Typed GRIDGO demo API client.
  *
@@ -293,6 +296,7 @@ let tokenProvider: TokenProvider = () => null;
 
 /** Wire the client to Clerk's rotating session token (called once from AuthProvider). */
 export function setTokenProvider(provider: TokenProvider): void {
+  if (tokenProvider !== provider) clearSharedReads();
   tokenProvider = provider;
 }
 
@@ -337,6 +341,7 @@ let testOperationsSession = false;
  * it for every other tree.
  */
 export function setTestOperationsSession(on: boolean): void {
+  if (testOperationsSession !== on) clearSharedReads();
   testOperationsSession = on;
 }
 
@@ -360,6 +365,18 @@ async function send(
   ) {
     path = withReviewData(path);
   }
+  const headers = await authorizedHeaders(path, init, signal, accept, tokenOptions);
+  return fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
+}
+
+async function authorizedHeaders(
+  path: string,
+  init: RequestInit,
+  signal: AbortSignal,
+  accept: string,
+  tokenOptions?: TokenProviderOptions,
+): Promise<Record<string, string>> {
+  const role = path.startsWith("/auth/") ? null : getWorkspaceRole();
   const headers: Record<string, string> = {
     Accept: accept,
     ...(role ? { "X-GRIDGO-Role": role } : {}),
@@ -373,7 +390,7 @@ async function send(
   const token = await tokenProvider(tokenOptions);
   signal.throwIfAborted();
   if (token) headers.Authorization = `Bearer ${token}`;
-  return fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
+  return headers;
 }
 
 function parseBody(text: string): unknown {
@@ -396,12 +413,103 @@ async function request<T>(
   init: RequestInit = {},
   tokenOptions?: TokenProviderOptions,
 ): Promise<T> {
-  return withRequestDeadline(init.signal, async (signal) => {
-    const res = await send(path, init, signal, "application/json", tokenOptions);
-    const data = parseBody(await res.text());
-    if (!res.ok) throw failed(path, res.status, data);
-    return data as T;
+  if (typeof FormData !== "undefined" && init.body instanceof FormData) {
+    return multipartRequest<T>(path, init.body, init, tokenOptions);
+  }
+  const read = () =>
+    withRequestDeadline(init.signal, async (signal) => {
+      const res = await send(path, init, signal, "application/json", tokenOptions);
+      const data = parseBody(await res.text());
+      if (!res.ok) throw failed(path, res.status, data);
+      return data as T;
+    });
+  if ((init.method ?? "GET").toUpperCase() !== "GET") {
+    clearSharedReads();
+    try {
+      return await read();
+    } finally {
+      clearSharedReads();
+    }
+  }
+  // A caller-owned abort signal/deadline or token refresh stays independent.
+  if (init.signal || tokenOptions || init.headers) return read();
+  return shareRoleRead(path, read);
+}
+
+// Lists read by both the shell and its desks. Query strings (including page
+// cursors) stay part of the key. Never replace complete lists with one page.
+const SHARED_LIST_PATHS = new Set([
+  "/orders",
+  "/jobs",
+  "/users",
+  "/claims",
+  "/escalations",
+  "/approval-cases",
+  "/ops/issue-reports",
+  "/ops/shop-failures",
+  "/ops/reschedule-requests",
+  "/refund-requests",
+  "/ops/catalog-reviews",
+  "/ops/product-type-requests",
+  "/ops/colour-price-checks",
+  "/ops/quote-requests",
+  "/admin/privacy-requests",
+  "/ops/client-shop-chats",
+  "/support-chat/threads",
+  "/credits/balance",
+  "/admin/tracker",
+]);
+
+/** Also used by the support-chat transport, which owns its own HTTP errors. */
+export function shareRoleRead<T>(path: string, read: () => Promise<T>): Promise<T> {
+  if (typeof window === "undefined" || !SHARED_LIST_PATHS.has(path.split("?")[0])) {
+    return read();
+  }
+  const role = getWorkspaceRole();
+  const scopedPath =
+    testOperationsSession && role === "ops_admin" && acceptsReviewData(path)
+      ? withReviewData(path)
+      : path;
+  return sharedRead(JSON.stringify([getApiBase(), role, scopedPath]), read);
+}
+
+async function multipartRequest<T>(
+  path: string,
+  body: FormData,
+  init: RequestInit,
+  tokenOptions?: TokenProviderOptions,
+): Promise<T> {
+  const controller = new AbortController();
+  const cancel = () => controller.abort(init.signal?.reason);
+  if (init.signal?.aborted) cancel();
+  else init.signal?.addEventListener("abort", cancel, { once: true });
+  const file = body.get("file");
+  const update = beginUpload(file instanceof File ? file.name : "File", () => {
+    controller.abort(new UploadInterrupted("upload_cancelled", "Upload cancelled."));
   });
+  try {
+    // A stuck Clerk token still times out in 20s, before any bytes are sent.
+    const headers = await withRequestDeadline(controller.signal, (signal) =>
+      authorizedHeaders(path, init, signal, "application/json", tokenOptions),
+    );
+    const response = await sendMultipart(
+      `${getApiBase()}${path}`,
+      body,
+      headers,
+      controller.signal,
+      update,
+    );
+    const data = parseBody(response.text);
+    if (response.status < 200 || response.status >= 300)
+      throw failed(path, response.status, data);
+    update({ phase: "stored" });
+    return data as T;
+  } catch (error) {
+    update({ phase: "failed", error });
+    throw error;
+  } finally {
+    init.signal?.removeEventListener("abort", cancel);
+  }
 }
 
 /** Shared JSON transport for endpoint modules, including workspace revocation checks. */

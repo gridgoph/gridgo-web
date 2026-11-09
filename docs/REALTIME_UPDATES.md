@@ -23,6 +23,11 @@ on foreground return and poll as a fallback. Existing Refresh buttons remain ava
 `useLiveReload` coalesces matching events and permits one follow-up refresh during a load.
 Pages using `useSerializedLoad` share that boundary with initial and manual loads: there is
 one running request and at most one pending callback, replaced by the latest invocation.
+The API client also shares identical shell/desk list reads within a refresh batch, including
+their settled result through the current event-loop turn. Keys include API origin, workspace
+and the complete query (including review-data flags and cursors). Session changes, writes and
+fresh resource/inbox events invalidate those reads. Later refreshes read again; this does not
+cache lists between polling cycles or turn complete-list counts into page counts.
 Request deadlines cover token acquisition, headers, and body reads; the SSE connection has
 a separate inactivity watchdog. Timing constants live in the implementation.
 

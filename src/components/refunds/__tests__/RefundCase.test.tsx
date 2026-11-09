@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RefundCase } from "@/components/refunds/RefundCase";
 import { setTokenProvider } from "@/lib/api/client";
 import type { Order, RefundAttempt, RefundRequest } from "@/lib/api/types";
+import { FixtureUploadXhr } from "@/test/multipart-xhr";
 
 vi.stubGlobal("React", React);
 vi.mock("next/navigation", () => ({ useParams: () => ({ id: "refund_1" }) }));
@@ -159,6 +160,7 @@ beforeEach(() => {
   URL.createObjectURL = vi.fn(() => "blob:preview");
   URL.revokeObjectURL = vi.fn();
   setTokenProvider(() => "fixture-token");
+  vi.stubGlobal("XMLHttpRequest", FixtureUploadXhr);
   calls = [];
   answer = () => null;
   vi.stubGlobal(

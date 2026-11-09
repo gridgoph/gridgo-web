@@ -21,6 +21,7 @@ vi.mock("@/lib/api/supplier-self", () => ({
   acceptSupplierLegal: m.accept,
 }));
 import { SupplierLegalGate, useSupplierLegal } from "../SupplierLegalGate";
+import { ShopAccessProvider } from "@/lib/auth/shop-access";
 const doc = {
   id: "v1",
   documentId: "supplier-agreement",
@@ -194,4 +195,19 @@ it("does not discard a successful acceptance when focus triggers another read", 
   m.pending.mockResolvedValue(clear);
   await act(async () => finish(clear));
   await screen.findByText("Acceptance succeeded");
+});
+it("lets shop Staff work without reading the Owner's agreements", async () => {
+  m.pending.mockResolvedValue(blocked);
+  render(
+    <ShopAccessProvider
+      shop={{ id: "shop", name: "Blueprint Print Co.", role: "staff", status: "active" }}
+    >
+      <SupplierLegalGate>
+        <Work />
+      </SupplierLegalGate>
+    </ShopAccessProvider>,
+  );
+  expect(screen.getByText("Ordinary work")).toBeVisible();
+  expect(m.pending).not.toHaveBeenCalled();
+  expect(m.replace).not.toHaveBeenCalled();
 });

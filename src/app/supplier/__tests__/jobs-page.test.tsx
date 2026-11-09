@@ -28,6 +28,7 @@ vi.mock("@/lib/api/client", async () => {
 });
 
 import SupplierJobsPage from "@/app/supplier/jobs/page";
+import { ShopAccessProvider } from "@/lib/auth/shop-access";
 
 afterEach(() => {
   cleanup();
@@ -222,5 +223,36 @@ describe("SupplierJobsPage", () => {
     expect(
       await screen.findByText(/only available to supplier accounts/i),
     ).toBeInTheDocument();
+  });
+});
+
+describe("SupplierJobsPage for shop Staff", () => {
+  it("never shows what a job pays", async () => {
+    // A Staff order arrives with its money stripped by the API.
+    listJobsMock.mockResolvedValue([
+      job({ id: "ord_staff", state: "in_production", title: "Flyers A5" }),
+    ]);
+    render(
+      <ShopAccessProvider
+        shop={{ id: "user_owner", name: "Blueprint Print Co.", role: "staff", status: "active" }}
+      >
+        <SupplierJobsPage />
+      </ShopAccessProvider>,
+    );
+    const table = await screen.findByRole("table");
+    expect(within(table).getAllByText("Flyers A5")[0]).toBeVisible();
+    expect(within(table).queryByText("You earn")).not.toBeInTheDocument();
+    expect(screen.queryByText("On the board")).not.toBeInTheDocument();
+    expect(screen.queryByText(/₱/)).not.toBeInTheDocument();
+  });
+
+  it("keeps pay on the Owner's board", async () => {
+    listJobsMock.mockResolvedValue([
+      job({ id: "ord_owner", state: "in_production", title: "Flyers A5", supplierPriceMinor: 50000 }),
+    ]);
+    render(<SupplierJobsPage />);
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText("You earn")).toBeVisible();
+    expect(screen.getByText("On the board")).toBeVisible();
   });
 });

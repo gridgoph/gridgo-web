@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { UploadXhr } from "@/test/multipart-xhr";
 
 import {
   getApiBase,
@@ -63,11 +64,22 @@ describe("tracker client", () => {
   });
 
   it("uploads decision files under the tracker_decision purpose", async () => {
-    const fetchMock = respondWith({ file: { fileId: "file_1" } }, 201);
-    const stored = await uploadTrackerAttachment(new File(["x"], "a.png", { type: "image/png" }));
-    const sent = call(fetchMock);
-    expect(sent.url).toBe("/files");
-    const body = sent.init.body as FormData;
+    setTokenProvider(() => "clerk-session-token");
+    vi.stubGlobal(
+      "XMLHttpRequest",
+      class extends UploadXhr {
+        responseText = JSON.stringify({ file: { fileId: "file_1" } });
+        send(body: FormData) {
+          super.send(body);
+          queueMicrotask(() => this.respond());
+        }
+      },
+    );
+    const stored = await uploadTrackerAttachment(
+      new File(["x"], "a.png", { type: "image/png" }),
+    );
+    expect(UploadXhr.current.url).toBe(`${getApiBase()}/files`);
+    const body = UploadXhr.current.body!;
     expect(body.get("purpose")).toBe("tracker_decision");
     expect((body.get("file") as File).name).toBe("a.png");
     expect(stored.fileId).toBe("file_1");
