@@ -82,6 +82,7 @@ export type NavIconKey =
   | "shop-hours"
   | "quotes"
   | "sample-batches"
+  | "team"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -206,6 +207,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Shop details",
           title: "Shop details",
           icon: "verification",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "supplier-team",
+          href: "/supplier/team",
+          label: "Team",
+          title: "Team",
+          icon: "team",
           ready: true,
           placeholderBody: "",
         },
@@ -1239,7 +1249,42 @@ export function isPortalRole(role: Role | string): role is PortalRole {
  * Operations membership the API fences to test data
  * (`gridgoph/gridgo-api` docs/REVIEW_DATA_API.md).
  */
-export type NavScope = { testOperations?: boolean };
+export type NavScope = {
+  testOperations?: boolean;
+  /**
+   * A shop Staff login (`shop.role === "staff"` on `/auth/me/supplier`). The
+   * API refuses every Owner-only route (`403 shop_owner_required`); this keeps
+   * the rail and the address bar from leading there.
+   */
+  shopStaff?: boolean;
+};
+
+/**
+ * Everything a shop's Staff may open: receiving and processing orders. Prices,
+ * products, production times, hours, profile, payouts, earnings, reports and
+ * the team stay with the Owner (gridgo-api docs/SHOP_TEAM_API.md).
+ */
+export const SHOP_STAFF_NAV_IDS: ReadonlySet<string> = new Set(["supplier-jobs"]);
+
+/** Pages outside the rail that Staff may still open. */
+const SHOP_STAFF_EXTRA_PATHS: readonly string[] = ["/supplier/phone-app", "/supplier/notice"];
+
+/** Where a Staff login lands, and where the logo and refusals send them. */
+export const SHOP_STAFF_HOME = "/supplier/jobs";
+
+/**
+ * Whether a Staff login may open `pathname`. Anything else in the supplier
+ * tree shows "Owner only" without reading, so a typed address does nothing.
+ */
+export function shopStaffAllowsPath(pathname: string): boolean {
+  const path = pathname.replace(/\/+$/, "");
+  if (path === "/supplier") return true;
+  const allowed = [
+    ...navForRole("supplier", { shopStaff: true }).map((item) => item.href),
+    ...SHOP_STAFF_EXTRA_PATHS,
+  ];
+  return allowed.some((href) => path === href || path.startsWith(`${href}/`));
+}
 
 /**
  * The Operations pages a test operations login needs to run a test order end
@@ -1269,6 +1314,14 @@ export function navGroupsForRole(
 ): readonly NavGroup[] {
   if (!isPortalRole(role)) return [];
   const groups = ROLE_NAV_GROUPS[role];
+  if (scope.shopStaff && role === "supplier") {
+    return groups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => SHOP_STAFF_NAV_IDS.has(item.id)),
+      }))
+      .filter((group) => group.items.length > 0);
+  }
   if (!scope.testOperations || role !== "ops_admin") return groups;
   return groups
     .map((group) => ({

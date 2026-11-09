@@ -26,7 +26,13 @@ type AuthState = {
   memberships: RoleMembership[];
   status: PortalIdentityStatus;
   loading: boolean;
-  signOut: () => Promise<void>;
+  /**
+   * The API's refusal code when `/auth/me` itself was refused, such as
+   * `shop_access_removed` for a shop Staff login the Owner removed. Null
+   * whenever the identity loaded.
+   */
+  accessError: string | null;
+  signOut: (options?: { redirectUrl?: string }) => Promise<void>;
   refresh: () => Promise<void>;
 };
 
@@ -98,6 +104,7 @@ function SessionAuthProvider({
   const [revision, setRevision] = useState(0);
   const [user, setUser] = useState<User | null>(null);
   const [memberships, setMemberships] = useState<RoleMembership[]>([]);
+  const [accessError, setAccessError] = useState<string | null>(null);
   const [status, setStatus] = useState<PortalIdentityStatus>(() =>
     clerkSession.isLoaded && !clerkSession.isSignedIn ? "signed_out" : "checking",
   );
@@ -218,6 +225,7 @@ function SessionAuthProvider({
       }
       if (!isCurrent()) return;
       hasMappedIdentity.current = true;
+      setAccessError(null);
       setRevision((value) => value + 1);
       setUser(next.user);
       setMemberships(next.memberships);
@@ -232,6 +240,7 @@ function SessionAuthProvider({
       hasMappedIdentity.current = false;
       setUser(null);
       setMemberships([]);
+      setAccessError(isApiError(error) && error.kind === "forbidden" ? error.code : null);
       setStatus(
         isApiError(error) && error.kind === "unauthorized" ? "unmapped" : "unavailable",
       );
@@ -244,19 +253,20 @@ function SessionAuthProvider({
     void refresh();
   }, [refresh]);
 
-  const signOut = useCallback(async () => {
+  const signOut = useCallback(async (options?: { redirectUrl?: string }) => {
+    const redirectUrl = options?.redirectUrl ?? "/login";
     invalidateRefresh();
     // A shared phone stops getting this shop's notifications. It needs the
     // session, so it runs first, and it is bounded so sign-out never waits.
     await releaseWebPushForSignOut().catch(() => undefined);
-    await clerkSession.signOut({ redirectUrl: "/login" });
+    await clerkSession.signOut({ redirectUrl });
     if (!mounted.current) return;
     setTokenProvider(() => null);
     hasMappedIdentity.current = false;
     setUser(null);
     setMemberships([]);
     setStatus("signed_out");
-    router.replace("/login");
+    router.replace(redirectUrl);
   }, [clerkSession, invalidateRefresh, router]);
 
   const value = useMemo<AuthState>(
@@ -266,10 +276,11 @@ function SessionAuthProvider({
       memberships,
       status,
       loading: status === "checking",
+      accessError,
       signOut,
       refresh,
     }),
-    [revision, user, memberships, status, signOut, refresh],
+    [revision, user, memberships, status, accessError, signOut, refresh],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

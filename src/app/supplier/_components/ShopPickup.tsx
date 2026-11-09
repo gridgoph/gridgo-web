@@ -1,5 +1,6 @@
 "use client";
 
+import { useShopAccess } from "@/lib/auth/shop-access";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bike, ImagePlus, Lock, Mic, MicOff, Phone, PhoneOff, Send, X } from "lucide-react";
 
@@ -74,7 +75,10 @@ type Props = {
 export function ShopPickup({ order, stopped, onJobChanged }: Props) {
   const summaryOnJob = pickupChatOf(order);
   const onTheWay = order.state === "rider_assigned" && !stopped;
-  const callable = !stopped && pickupCallAvailability(order).kind === "open";
+  // Calls with the rider are the Owner's in the API (`/orders/:id/calls` is
+  // not a Staff route); Staff keep the pickup chat and the rider's approach.
+  const { staff } = useShopAccess();
+  const callable = !staff && !stopped && pickupCallAvailability(order).kind === "open";
 
   if (!summaryOnJob && !onTheWay) return null;
 

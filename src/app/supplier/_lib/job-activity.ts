@@ -12,6 +12,7 @@
  * 2h ago".
  */
 
+import { actorLine } from "@/lib/shop-team";
 import type { Order, TimelineEntry } from "@/lib/api/types";
 import { presentTimelineActor, presentTimelineNote } from "@/lib/order-state";
 import { shopTimelineState } from "@/lib/shop-handover";
@@ -80,7 +81,7 @@ export function jobActivity(job: Order): JobActivity {
     at,
     iso,
     what,
-    who: presentTimelineActor(entry?.by),
+    who: entry?.actor ? actorLine(entry.actor) : presentTimelineActor(entry?.by),
   };
 }
 

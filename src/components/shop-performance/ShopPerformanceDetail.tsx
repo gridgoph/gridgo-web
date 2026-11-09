@@ -12,6 +12,7 @@
  * One implementation for Operations and Super Admin; links stay in the tree.
  */
 
+import { OpsShopTeam } from "@/components/shop-team/OpsShopTeam";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowUpRight } from "lucide-react";
@@ -271,6 +272,8 @@ export function ShopPerformanceDetail({
           />
         ))}
       </div>
+
+      <OpsShopTeam shopId={supplierId} />
 
       <section aria-labelledby="warnings-heading" className="flex flex-col gap-3">
         <h3 id="warnings-heading" className="text-h3 text-text-primary m-0">

@@ -111,6 +111,7 @@ import {
   type ReleaseTarget,
 } from "@/components/orders/ReleaseMilestoneDialog";
 import { Timeline } from "@/components/orders/Timeline";
+import { OrderActions } from "@/components/orders/OrderActions";
 import { ProblemReportPanel } from "@/components/problem-reports/ProblemReportPanel";
 import { FileRefundDialog, type FiledRequest } from "@/components/refunds/dialogs";
 import {
@@ -1258,6 +1259,14 @@ export function OrderWorkspace({
               marker={{ icon: CircleDot, tone: "muted" }}
             >
               <Timeline entries={order.timeline} order={order} />
+              {order.actions?.length ? (
+                <div className="mt-4 flex flex-col gap-1">
+                  <h4 className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+                    Who did what
+                  </h4>
+                  <OrderActions actions={order.actions} />
+                </div>
+              ) : null}
             </SectionRow>
 
             <SectionRow
@@ -1527,6 +1536,11 @@ function physicalInvoiceMarker(order: Order): MarkerSpec {
 
 function historySummary(order: Order): string {
   const count = order.timeline.length;
+  const actions = order.actions ?? [];
+  if (count === 0 && actions.length) {
+    const last = actions.reduce((a, b) => (b.at > a.at ? b : a));
+    return `${actions.length === 1 ? "One action" : `${actions.length} actions`}, last ${formatDateTime(last.at)}.`;
+  }
   if (count === 0) return "Nothing recorded yet.";
   const latest = [...order.timeline].sort((a, b) => a.at.localeCompare(b.at))[count - 1];
   return `${count === 1 ? "One event" : `${count} events`}, last ${formatDateTime(latest.at)}.`;

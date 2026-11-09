@@ -10,6 +10,7 @@ import {
   type StatusTone,
 } from "@/lib/order-state";
 import type { PaymentSplitSource } from "@/lib/payments";
+import { actorLine } from "@/lib/shop-team";
 
 /** Tone → the marker's ink. Matches StatusChip so one state reads one way. */
 const TONE_INK: Record<StatusTone, string> = {
@@ -105,7 +106,11 @@ export function Timeline({
               </div>
               <p className="text-caption text-text-muted m-0 mt-0.5">
                 {formatDateTime(entry.at)}
-                {entry.by ? ` · ${presentTimelineActor(entry.by)}` : ""}
+                {entry.actor
+                  ? ` · ${actorLine(entry.actor)}`
+                  : entry.by
+                    ? ` · ${presentTimelineActor(entry.by)}`
+                    : ""}
               </p>
               {entry.note ? (
                 <p className="text-caption text-text-secondary m-0 mt-1">
