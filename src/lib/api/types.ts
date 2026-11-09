@@ -427,6 +427,12 @@ export type SupplierPortalProfile = {
 };
 
 export type SupplierPortalRoleProjection = PortalRoleProjectionBase<"supplier"> & {
+  /**
+   * The shop this person works for and their place in it (gridgo-api
+   * docs/SHOP_TEAM_API.md). Absent on an API without shop teams, which means
+   * the shop's own Owner account.
+   */
+  shop?: ShopSummary | null;
   supplierProfile: SupplierPortalProfile | null;
   approvalCase: (ApprovalCaseSummary & { kind: "supplier" }) | null;
   readiness: {
@@ -468,9 +474,66 @@ type PortalRoleProjectionByRole = {
 export type PortalRoleProjection<R extends PortalRole = PortalRole> =
   PortalRoleProjectionByRole[R];
 
+// ---- Shop team (gridgo-api docs/SHOP_TEAM_API.md) ----
+
+export type ShopRole = "owner" | "staff";
+export type ShopMemberStatus = "pending" | "active" | "removed";
+
+/** One shop a person belongs to. `id` is the shop (its Owner account's user ID). */
+export type ShopSummary = {
+  id: string;
+  name: string;
+  role: ShopRole;
+  status: ShopMemberStatus;
+};
+
+export type ShopMember = {
+  userId: string;
+  name: string;
+  role: ShopRole;
+  status: ShopMemberStatus;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ShopInviteKind = "email" | "phone" | "qr" | "link";
+export type ShopInviteStatus = "open" | "claimed" | "revoked" | "expired";
+
+export type ShopInvite = {
+  id: string;
+  shopId: string;
+  kind: ShopInviteKind;
+  /** The email or E.164 phone for those kinds; null for QR and link. */
+  identity: string | null;
+  createdAt: string;
+  expiresAt: string;
+  claimedBy?: string | null;
+  status: ShopInviteStatus;
+  /** On a discovered invite only: the shop that sent it. */
+  shop?: ShopSummary;
+};
+
+/** Who did something on an order: a shop person, staff of GRIDGO, or `system`. */
+export type OrderActor = {
+  userId: string | null;
+  name: string;
+  /** `owner` / `staff` for shop actions, a platform role, or `system`. */
+  role: string;
+};
+
+/** One recorded action on an order (`order.actions`, Operations and the shop only). */
+export type OrderAction = {
+  id: string;
+  at: string;
+  action: string;
+  actor: OrderActor;
+};
+
 export type TimelineEntry = {
   at: string;
   state: string;
+  /** The person behind this entry, as they were when they did it. */
+  actor?: OrderActor | null;
   /**
    * Who moved it. Absent on a supplier's timeline: the API keeps only
    * `{ at, state, note }` there (gridgo-api SUPPLIER_JOB_READINESS_API.md).
@@ -1391,6 +1454,8 @@ export type Order = {
   createdAt: string;
   updatedAt: string;
   timeline: TimelineEntry[];
+  /** Who did each action on this order and when. Operations and the shop only. */
+  actions?: OrderAction[];
 
   /**
    * Where to send a printed invoice, and when Operations promised it would

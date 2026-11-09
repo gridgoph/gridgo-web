@@ -21,6 +21,7 @@ import { StatusChip } from "@/components/ui/StatusChip";
 import { ApiError, listJobs } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
+import { useShopAccess } from "@/lib/auth/shop-access";
 import { isExpressOrder } from "@/lib/express";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { needsSupplierAction, presentSupplierJobStatus, primaryAction } from "@/lib/supplier-actions";
@@ -112,6 +113,8 @@ export default function SupplierJobsPage() {
   }, [load]);
 
   const rows = useMemo(() => jobs ?? [], [jobs]);
+  // Staff never see what a job pays (the API strips it from their orders).
+  const { staff: shopStaff } = useShopAccess();
   const now = useAcceptDeadlines(rows);
   const opened = useRef(true);
   useEffect(() => {
@@ -123,7 +126,7 @@ export default function SupplierJobsPage() {
   }, [now, load]);
 
   const columns = useMemo<DataTableColumn<Order>[]>(
-    () => [
+    () => ([
       {
         id: "job",
         header: "Job",
@@ -233,8 +236,10 @@ export default function SupplierJobsPage() {
           <span className="text-body text-text-secondary">{nextStepLabel(job, now)}</span>
         ),
       },
-    ],
-    [now],
+    ] satisfies DataTableColumn<Order>[]).filter(
+      (column) => !(shopStaff && column.id === "earnings"),
+    ),
+    [now, shopStaff],
   );
 
   const facets = useMemo<DataTableFacet[]>(
@@ -324,14 +329,16 @@ export default function SupplierJobsPage() {
           icon={Clock3}
           loading={pending}
         />
-        <StatCard
-          label="On the board"
-          value={formatPhp(onTheBoard)}
-          hint="What every assigned job pays your shop"
-          icon={Banknote}
-          loading={pending}
-          className="col-span-2 lg:col-span-1"
-        />
+        {shopStaff ? null : (
+          <StatCard
+            label="On the board"
+            value={formatPhp(onTheBoard)}
+            hint="What every assigned job pays your shop"
+            icon={Banknote}
+            loading={pending}
+            className="col-span-2 lg:col-span-1"
+          />
+        )}
       </div>
 
       <DataTable

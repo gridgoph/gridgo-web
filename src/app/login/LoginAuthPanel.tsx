@@ -1,6 +1,7 @@
 "use client";
 
 import { SignIn, SignOutButton, useAuth } from "@clerk/nextjs";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -23,6 +24,12 @@ export const SIGN_IN_APPEARANCE = {
  */
 export function LoginAuthPanel() {
   const { isLoaded, isSignedIn } = useAuth();
+  // `?left=shop`: a shop's Owner or Operations removed this login, and the
+  // portal ended its session (RoleGate). One line says why they are here.
+  const [leftShop, setLeftShop] = useState(false);
+  useEffect(() => {
+    setLeftShop(new URLSearchParams(window.location.search).get("left") === "shop");
+  }, []);
 
   if (!isLoaded) return null;
 
@@ -53,12 +60,19 @@ export function LoginAuthPanel() {
   }
 
   return (
-    <SignIn
+    <>
+      {leftShop ? (
+        <p className="text-body m-0 text-text-secondary" role="status" data-testid="left-shop">
+          Your access to the shop was removed.
+        </p>
+      ) : null}
+      <SignIn
       routing="hash"
       fallbackRedirectUrl="/"
       transferable={false}
       withSignUp={false}
       appearance={SIGN_IN_APPEARANCE}
-    />
+      />
+    </>
   );
 }

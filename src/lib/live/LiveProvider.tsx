@@ -227,6 +227,12 @@ function AccountLiveProvider({ children, role, onOpenNotification }: LiveProvide
             setSnapshot(notification.id);
           }
         },
+        onAccessRevoked: () => {
+          if (cancelled) return;
+          // `/auth/me` now refuses with `shop_access_removed`; RoleGate ends
+          // the shop session from that answer.
+          void identityRefresh.current();
+        },
         onInvalidate: (ping) => {
           if (cancelled) return;
           if (ping.resource === "notifications")
