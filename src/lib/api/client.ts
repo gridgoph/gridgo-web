@@ -1,6 +1,7 @@
 import { withRequestDeadline } from "@/lib/api/requestDeadline";
 import { sendMultipart, UploadInterrupted } from "@/lib/api/multipart";
 import { beginUpload } from "@/lib/upload-activity";
+import { clearSharedReads, sharedRead } from "@/lib/api/sharedReads";
 /**
  * Typed GRIDGO demo API client.
  *
@@ -295,6 +296,7 @@ let tokenProvider: TokenProvider = () => null;
 
 /** Wire the client to Clerk's rotating session token (called once from AuthProvider). */
 export function setTokenProvider(provider: TokenProvider): void {
+  if (tokenProvider !== provider) clearSharedReads();
   tokenProvider = provider;
 }
 
@@ -339,6 +341,7 @@ let testOperationsSession = false;
  * it for every other tree.
  */
 export function setTestOperationsSession(on: boolean): void {
+  if (testOperationsSession !== on) clearSharedReads();
   testOperationsSession = on;
 }
 
@@ -413,12 +416,61 @@ async function request<T>(
   if (typeof FormData !== "undefined" && init.body instanceof FormData) {
     return multipartRequest<T>(path, init.body, init, tokenOptions);
   }
-  return withRequestDeadline(init.signal, async (signal) => {
-    const res = await send(path, init, signal, "application/json", tokenOptions);
-    const data = parseBody(await res.text());
-    if (!res.ok) throw failed(path, res.status, data);
-    return data as T;
-  });
+  const read = () =>
+    withRequestDeadline(init.signal, async (signal) => {
+      const res = await send(path, init, signal, "application/json", tokenOptions);
+      const data = parseBody(await res.text());
+      if (!res.ok) throw failed(path, res.status, data);
+      return data as T;
+    });
+  if ((init.method ?? "GET").toUpperCase() !== "GET") {
+    clearSharedReads();
+    try {
+      return await read();
+    } finally {
+      clearSharedReads();
+    }
+  }
+  // A caller-owned abort signal/deadline or token refresh stays independent.
+  if (init.signal || tokenOptions || init.headers) return read();
+  return shareRoleRead(path, read);
+}
+
+// Lists read by both the shell and its desks. Query strings (including page
+// cursors) stay part of the key. Never replace complete lists with one page.
+const SHARED_LIST_PATHS = new Set([
+  "/orders",
+  "/jobs",
+  "/users",
+  "/claims",
+  "/escalations",
+  "/approval-cases",
+  "/ops/issue-reports",
+  "/ops/shop-failures",
+  "/ops/reschedule-requests",
+  "/refund-requests",
+  "/ops/catalog-reviews",
+  "/ops/product-type-requests",
+  "/ops/colour-price-checks",
+  "/ops/quote-requests",
+  "/admin/privacy-requests",
+  "/ops/client-shop-chats",
+  "/support-chat/threads",
+  "/credits/balance",
+  "/admin/tracker",
+]);
+
+/** Also used by the support-chat transport, which owns its own HTTP errors. */
+export function shareRoleRead<T>(path: string, read: () => Promise<T>): Promise<T> {
+  if (typeof window === "undefined" || !SHARED_LIST_PATHS.has(path.split("?")[0])) {
+    return read();
+  }
+  const role = getWorkspaceRole();
+  const scopedPath =
+    testOperationsSession && role === "ops_admin" && acceptsReviewData(path)
+      ? withReviewData(path)
+      : path;
+  return sharedRead(JSON.stringify([getApiBase(), role, scopedPath]), read);
 }
 
 async function multipartRequest<T>(
