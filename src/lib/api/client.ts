@@ -1,4 +1,6 @@
 import { withRequestDeadline } from "@/lib/api/requestDeadline";
+import { sendMultipart, UploadInterrupted } from "@/lib/api/multipart";
+import { beginUpload } from "@/lib/upload-activity";
 /**
  * Typed GRIDGO demo API client.
  *
@@ -360,6 +362,18 @@ async function send(
   ) {
     path = withReviewData(path);
   }
+  const headers = await authorizedHeaders(path, init, signal, accept, tokenOptions);
+  return fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
+}
+
+async function authorizedHeaders(
+  path: string,
+  init: RequestInit,
+  signal: AbortSignal,
+  accept: string,
+  tokenOptions?: TokenProviderOptions,
+): Promise<Record<string, string>> {
+  const role = path.startsWith("/auth/") ? null : getWorkspaceRole();
   const headers: Record<string, string> = {
     Accept: accept,
     ...(role ? { "X-GRIDGO-Role": role } : {}),
@@ -373,7 +387,7 @@ async function send(
   const token = await tokenProvider(tokenOptions);
   signal.throwIfAborted();
   if (token) headers.Authorization = `Bearer ${token}`;
-  return fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
+  return headers;
 }
 
 function parseBody(text: string): unknown {
@@ -396,12 +410,54 @@ async function request<T>(
   init: RequestInit = {},
   tokenOptions?: TokenProviderOptions,
 ): Promise<T> {
+  if (typeof FormData !== "undefined" && init.body instanceof FormData) {
+    return multipartRequest<T>(path, init.body, init, tokenOptions);
+  }
   return withRequestDeadline(init.signal, async (signal) => {
     const res = await send(path, init, signal, "application/json", tokenOptions);
     const data = parseBody(await res.text());
     if (!res.ok) throw failed(path, res.status, data);
     return data as T;
   });
+}
+
+async function multipartRequest<T>(
+  path: string,
+  body: FormData,
+  init: RequestInit,
+  tokenOptions?: TokenProviderOptions,
+): Promise<T> {
+  const controller = new AbortController();
+  const cancel = () => controller.abort(init.signal?.reason);
+  if (init.signal?.aborted) cancel();
+  else init.signal?.addEventListener("abort", cancel, { once: true });
+  const file = body.get("file");
+  const update = beginUpload(file instanceof File ? file.name : "File", () => {
+    controller.abort(new UploadInterrupted("upload_cancelled", "Upload cancelled."));
+  });
+  try {
+    // A stuck Clerk token still times out in 20s, before any bytes are sent.
+    const headers = await withRequestDeadline(controller.signal, (signal) =>
+      authorizedHeaders(path, init, signal, "application/json", tokenOptions),
+    );
+    const response = await sendMultipart(
+      `${getApiBase()}${path}`,
+      body,
+      headers,
+      controller.signal,
+      update,
+    );
+    const data = parseBody(response.text);
+    if (response.status < 200 || response.status >= 300)
+      throw failed(path, response.status, data);
+    update({ phase: "stored" });
+    return data as T;
+  } catch (error) {
+    update({ phase: "failed", error });
+    throw error;
+  } finally {
+    init.signal?.removeEventListener("abort", cancel);
+  }
 }
 
 /** Shared JSON transport for endpoint modules, including workspace revocation checks. */
