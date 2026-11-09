@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import OpsPayoutReviewPage from "@/app/ops/payouts/[id]/page";
 import { setTokenProvider } from "@/lib/api/client";
 import type { Order, PayoutMilestone } from "@/lib/api/types";
+import { FixtureUploadXhr } from "@/test/multipart-xhr";
 
 vi.stubGlobal("React", React);
 vi.mock("@/lib/live/useLiveReload", () => ({ useLiveReload: () => {} }));
@@ -79,6 +80,7 @@ beforeEach(() => {
   order = fixture();
   posts = [];
   setTokenProvider(() => "fixture-token");
+  vi.stubGlobal("XMLHttpRequest", FixtureUploadXhr);
   vi.stubGlobal(
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
