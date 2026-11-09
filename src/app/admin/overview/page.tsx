@@ -12,7 +12,8 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { SkeletonLines } from "@/components/ui/loading";
 import { StatCard } from "@/components/ui/StatCard";
 import { StatusChip } from "@/components/ui/StatusChip";
-import { ApiError, creditBalance, listOrders, listUsers } from "@/lib/api/client";
+import { ApiError, listOrders, listUsers } from "@/lib/api/client";
+import { loadOverviewCredits } from "@/app/admin/_lib/overview-credits";
 import type { CreditBalance, Order, User } from "@/lib/api/types";
 import { formatPhp } from "@/lib/format";
 import { presentOrderState } from "@/lib/order-state";
@@ -55,16 +56,7 @@ export default function AdminOverviewPage() {
           people.set(u.id, u.supplierName ?? u.name ?? u.email);
         }
 
-        const clientIds = [...new Set(orders.map((o) => o.clientId).filter(Boolean))];
-        // Credits endpoint is per-client; no platform-wide credits list exists.
-        const credits: CreditBalance[] = [];
-        for (const clientId of clientIds) {
-          try {
-            credits.push(await creditBalance(clientId));
-          } catch {
-            // Skip clients without a credit ledger.
-          }
-        }
+        const credits = await loadOverviewCredits(orders);
         setData({ orders, credits, people });
       } catch (err) {
         setData(null);

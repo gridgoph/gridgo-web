@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 
 import { useLiveOptional } from "@/lib/live/LiveProvider";
+import { invalidateSharedReads } from "@/lib/api/sharedReads";
 
 /**
  * Re-read a legal or privacy screen when a staff inbox notice of that kind
@@ -52,6 +53,7 @@ export function useLegalInboxReload(
     for (const row of matching) {
       if (seen.current.has(row.id)) continue;
       seen.current.add(row.id);
+      invalidateSharedReads(row);
       fresh = true;
     }
     if (fresh) void loadRef.current();

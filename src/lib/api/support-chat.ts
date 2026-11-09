@@ -1,5 +1,13 @@
 import { withRequestDeadline } from "@/lib/api/requestDeadline";
-import { ApiError, getApiBase, getAuthToken, getWorkspaceRole } from "@/lib/api/client";
+import {
+  ApiError,
+  getApiBase,
+  getAuthToken,
+  getWorkspaceRole,
+  shareRoleRead,
+} from "@/lib/api/client";
+import { clearSharedReads } from "@/lib/api/sharedReads";
+
 import type {
   SupportChatEvent,
   SupportChatMessage,
@@ -11,33 +19,44 @@ import type {
 import { parseSseChunk, reconnectDelayMs, type SseEvent } from "@/lib/eventStream";
 
 async function chatRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  return withRequestDeadline(init.signal, async (signal) => {
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-      ...(init.headers as Record<string, string> | undefined),
-    };
-    if (init.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
-    signal.throwIfAborted();
-    const token = await getAuthToken();
-    signal.throwIfAborted();
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-      const role = getWorkspaceRole();
-      if (role) headers["X-GRIDGO-Role"] = role;
-    }
-    const res = await fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
-    const text = await res.text();
-    let data: unknown = null;
-    if (text) {
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = text;
+  const read = () =>
+    withRequestDeadline(init.signal, async (signal) => {
+      const headers: Record<string, string> = {
+        Accept: "application/json",
+        ...(init.headers as Record<string, string> | undefined),
+      };
+      if (init.body && !headers["Content-Type"])
+        headers["Content-Type"] = "application/json";
+      signal.throwIfAborted();
+      const token = await getAuthToken();
+      signal.throwIfAborted();
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
+        const role = getWorkspaceRole();
+        if (role) headers["X-GRIDGO-Role"] = role;
       }
+      const res = await fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
+      const text = await res.text();
+      let data: unknown = null;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = text;
+        }
+      }
+      if (!res.ok) throw new ApiError(res.status, data);
+      return data as T;
+    });
+  if ((init.method ?? "GET").toUpperCase() !== "GET") {
+    clearSharedReads();
+    try {
+      return await read();
+    } finally {
+      clearSharedReads();
     }
-    if (!res.ok) throw new ApiError(res.status, data);
-    return data as T;
-  });
+  }
+  return init.signal || init.headers ? read() : shareRoleRead(path, read);
 }
 
 export async function listSupportChatThreads(filters?: {

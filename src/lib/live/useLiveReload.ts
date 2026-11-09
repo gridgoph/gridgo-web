@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 
 import type { InvalidatePing, InvalidateResource } from "@/lib/api/types";
 import { useLiveOptional } from "@/lib/live/LiveProvider";
+import { invalidateSharedReads } from "@/lib/api/sharedReads";
 
 export const LIVE_RELOAD_COALESCE_MS = 300;
 const FALLBACK_POLL_MS = 30_000;
@@ -85,6 +86,7 @@ export function useLiveReload(
 
     const unsubscribe = subscribe((ping) => {
       if (!matchesInvalidate(ping, resources, matchId)) return;
+      invalidateSharedReads(ping);
       pending = true;
       if (!timer) timer = setTimeout(flush, LIVE_RELOAD_COALESCE_MS);
     });
