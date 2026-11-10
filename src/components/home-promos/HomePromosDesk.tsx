@@ -144,7 +144,16 @@ export function HomePromosDesk({ tree }: { tree: "ops" | "admin" }) {
         id: "dates",
         header: "Dates",
         sortValue: (row) => Date.parse(row.startsAt) || 0,
-        cell: (row) => <span className="text-body text-text-secondary whitespace-nowrap">{datesText(row)}</span>,
+        cell: (row) => {
+          // Start and end on their own lines, so times never squeeze the counts.
+          const [from, to] = datesText(row).split(" to ");
+          return (
+            <span className="flex flex-col text-body text-text-secondary">
+              <span className="whitespace-nowrap">{from}</span>
+              {to ? <span className="whitespace-nowrap">to {to}</span> : null}
+            </span>
+          );
+        },
       },
       {
         id: "order",
@@ -171,21 +180,8 @@ export function HomePromosDesk({ tree }: { tree: "ops" | "admin" }) {
         sortValue: (row) => row.taps,
         cell: (row) => <Metric icon={MousePointerClick} value={row.taps} label="link taps" />,
       },
-      {
-        id: "enabled",
-        header: "On",
-        sortValue: (row) => (row.enabled ? 1 : 0),
-        cell: (row) => (
-          <Switch
-            checked={row.enabled}
-            disabled={toggling === row.id}
-            onCheckedChange={(checked) => void toggle(row, checked)}
-            aria-label={`${row.name} ${row.enabled ? "on" : "off"}`}
-          />
-        ),
-      },
     ],
-    [base, toggling],
+    [base],
   );
 
   const addButton = (
@@ -230,7 +226,16 @@ export function HomePromosDesk({ tree }: { tree: "ops" | "admin" }) {
         defaultSortId="status"
         defaultSortDirection="asc"
         rowActions={(row) => (
-          <DataTableRowAction label="Edit" icon={Pencil} href={`${base}/${encodeURIComponent(row.id)}`} />
+          // The switch sits with the pinned actions so a wide row never hides it.
+          <span className="flex items-center gap-2">
+            <Switch
+              checked={row.enabled}
+              disabled={toggling === row.id}
+              onCheckedChange={(checked) => void toggle(row, checked)}
+              aria-label={`${row.name} ${row.enabled ? "on" : "off"}`}
+            />
+            <DataTableRowAction label="Edit" icon={Pencil} href={`${base}/${encodeURIComponent(row.id)}`} />
+          </span>
         )}
       />
     );

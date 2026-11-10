@@ -94,7 +94,7 @@ describe("Home promos list", () => {
     expect(within(rows[0]).getByLabelText("30 sheet opens")).toBeInTheDocument();
     expect(within(rows[0]).getByLabelText("12 link taps")).toBeInTheDocument();
     expect(within(rows[1]).getByText("Scheduled")).toBeInTheDocument();
-    expect(within(rows[1]).getByText(/^Dec 1, 8:00.* to Dec 31, 8:00/)).toBeInTheDocument();
+    expect(within(rows[1]).getByText(/^to Dec 31, 8:00/)).toBeInTheDocument();
     expect(screen.getByText("New promo").closest("a")).toHaveAttribute("href", "/ops/home-promos/new");
   });
 
