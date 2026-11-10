@@ -48,6 +48,20 @@ describe("who did it", () => {
     expect(screen.getAllByRole("listitem")).toHaveLength(actions.length);
   });
 
+  it("says a Staff message to the client, and keeps unknown actions neutral", () => {
+    render(
+      <OrderActions
+        actions={[
+          { id: "m1", at: "2026-11-08T09:00:00.000Z", action: "client_shop_chat.message_sent", actor: staff },
+          { id: "m0", at: "2026-11-08T08:00:00.000Z", action: "brand.new_thing", actor: staff },
+        ]}
+      />,
+    );
+    const rows = screen.getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent("Sam Santos · Staff messaged the client");
+    expect(rows[1]).toHaveTextContent("Sam Santos · Staff updated the order");
+  });
+
   it("renders nothing without actions", () => {
     const { container } = render(<OrderActions actions={[]} />);
     expect(container).toBeEmptyDOMElement();

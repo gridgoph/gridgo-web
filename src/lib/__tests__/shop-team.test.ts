@@ -17,6 +17,7 @@ import {
   isShopStaff,
   joinTeamUrl,
   joinTokenFromHash,
+  messengerShareTarget,
   normalizeInvitePhone,
   openInvites,
   orderActionRows,
@@ -60,6 +61,28 @@ describe("join link", () => {
     expect(joinTokenFromHash("#token=short")).toBeNull();
     expect(joinTokenFromHash("")).toBeNull();
     expect(joinTokenFromHash(`#token=${TOKEN}x`)).toBeNull();
+  });
+});
+
+describe("Share via Messenger", () => {
+  const url = `https://portal.example/join-team#token=${TOKEN}`;
+
+  it("opens the Messenger app with the link filled in on a phone", () => {
+    for (const agent of [
+      "Mozilla/5.0 (Linux; Android 14; Pixel 8) Mobile",
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
+    ]) {
+      expect(messengerShareTarget(url, agent)).toEqual({
+        href: `fb-messenger://share/?link=${encodeURIComponent(url)}`,
+        prefilled: true,
+      });
+    }
+  });
+
+  it("opens Messenger to paste into on a computer", () => {
+    expect(
+      messengerShareTarget(url, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/140"),
+    ).toEqual({ href: "https://www.messenger.com/", prefilled: false });
   });
 });
 
