@@ -163,6 +163,13 @@ export function notificationHref(role: Role, notification: Notification): string
     return null;
   }
 
+  // Home promo edits (gridgo-client#402) open the Home promos page in the reader's tree.
+  if (type === "home_promotion_updated") {
+    if (role === "super_admin") return "/admin/home-promos";
+    if (role === "ops_admin") return "/ops/home-promos";
+    return null;
+  }
+
   // Founding Tester reminders and awards (gridgo-api#293) name no client for
   // staff, so staff land on the progress view in their own tree.
   if (type.startsWith("founding_tester_")) {
