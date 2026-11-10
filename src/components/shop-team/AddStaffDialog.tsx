@@ -1,6 +1,6 @@
 "use client";
 
-import { Link2, Mail, QrCode } from "lucide-react";
+import { Link2, Mail, QrCode, RefreshCw } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 
 import { InviteLink, InviteQr } from "@/components/shop-team/InviteShare";
@@ -16,7 +16,7 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { isApiError } from "@/lib/api/client";
-import { createShopInvite } from "@/lib/api/shop-team";
+import { createShopInvite, replaceShopInvite } from "@/lib/api/shop-team";
 import type { ShopInvite } from "@/lib/api/types";
 import {
   inviteExpiresIn,
@@ -27,7 +27,13 @@ import {
 
 export type AddStaffMethod = "contact" | "qr" | "link";
 
-type Created = { method: AddStaffMethod; invite: ShopInvite; url: string };
+type Created = {
+  method: AddStaffMethod;
+  invite: ShopInvite;
+  url: string;
+  /** Set after New code: the earlier link and QR no longer work. */
+  replaced?: boolean;
+};
 
 /**
  * Add staff three ways. GRIDGO sends no email or text: every invite is a
@@ -52,6 +58,7 @@ export function AddStaffDialog({
   const [inputError, setInputError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [renewing, setRenewing] = useState(false);
   const [created, setCreated] = useState<Created | null>(null);
 
   // Each opening starts clean; a token is never kept past its dialog.
@@ -83,6 +90,30 @@ export function AddStaffDialog({
     }
   }
 
+  /**
+   * New code: the API cancels the shown invite and issues another of the same
+   * kind and recipient. The shown link and QR change only once that succeeds,
+   * so a failure leaves the Owner looking at the code that still works.
+   */
+  async function renew(current: Created) {
+    setRenewing(true);
+    setError(null);
+    try {
+      const result = await replaceShopInvite(current.invite.id);
+      setCreated({
+        method: current.method,
+        invite: result.invite,
+        url: joinTeamUrl(window.location.origin, result.token),
+        replaced: true,
+      });
+      onCreated();
+    } catch (caught) {
+      setError(shopTeamErrorCopy(isApiError(caught) ? caught.code : null));
+    } finally {
+      setRenewing(false);
+    }
+  }
+
   function submitContact() {
     const parsed = parseInviteIdentity(contact);
     if (!parsed) {
@@ -96,7 +127,7 @@ export function AddStaffDialog({
   const shown = created && created.method === method ? created : null;
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
+    <Dialog open={open} onOpenChange={(next) => !busy && !renewing && onOpenChange(next)}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Add staff</DialogTitle>
@@ -110,17 +141,20 @@ export function AddStaffDialog({
           }}
           className="gap-4"
         >
-          <TabsList aria-label="How to invite" className="grid h-auto w-full grid-cols-3">
-            <TabsTrigger value="contact" className="min-h-11 gap-1.5">
-              <Mail aria-hidden />
+          <TabsList
+            aria-label="How to invite"
+            className="grid h-auto w-full grid-cols-3 group-data-horizontal/tabs:h-auto"
+          >
+            <TabsTrigger value="contact" className="min-h-11 gap-1.5 whitespace-normal leading-tight">
+              <Mail aria-hidden className="max-md:hidden" />
               Email or phone
             </TabsTrigger>
-            <TabsTrigger value="qr" className="min-h-11 gap-1.5">
-              <QrCode aria-hidden />
+            <TabsTrigger value="qr" className="min-h-11 gap-1.5 whitespace-normal leading-tight">
+              <QrCode aria-hidden className="max-md:hidden" />
               QR code
             </TabsTrigger>
-            <TabsTrigger value="link" className="min-h-11 gap-1.5">
-              <Link2 aria-hidden />
+            <TabsTrigger value="link" className="min-h-11 gap-1.5 whitespace-normal leading-tight">
+              <Link2 aria-hidden className="max-md:hidden" />
               Link
             </TabsTrigger>
           </TabsList>
@@ -128,7 +162,12 @@ export function AddStaffDialog({
           <TabsContent value="contact" className="flex flex-col gap-3">
             {shown ? (
               <>
-                <InviteReady invite={shown.invite} />
+                <InviteReady
+                  invite={shown.invite}
+                  onNewCode={() => void renew(shown)}
+                  renewing={renewing}
+                  replaced={shown.replaced}
+                />
                 <p className="text-body text-text-secondary m-0">
                   They&rsquo;ll see it when they sign in with{" "}
                   <span className="text-text-primary">{shown.invite.identity}</span>. Or send
@@ -178,7 +217,13 @@ export function AddStaffDialog({
                 <p className="text-body text-text-secondary m-0 text-center">
                   Scan with the GRIDGO Supplier app or a phone camera.
                 </p>
-                <InviteReady invite={shown.invite} centered />
+                <InviteReady
+                  invite={shown.invite}
+                  centered
+                  onNewCode={() => void renew(shown)}
+                  renewing={renewing}
+                  replaced={shown.replaced}
+                />
               </>
             ) : (
               <Button variant="primary" disabled={busy} onClick={() => void create("qr")}>
@@ -191,7 +236,12 @@ export function AddStaffDialog({
             {shown ? (
               <>
                 <InviteLink url={shown.url} shopName={shopName} />
-                <InviteReady invite={shown.invite} />
+                <InviteReady
+                  invite={shown.invite}
+                  onNewCode={() => void renew(shown)}
+                  renewing={renewing}
+                  replaced={shown.replaced}
+                />
               </>
             ) : (
               <Button variant="primary" disabled={busy} onClick={() => void create("link")}>
@@ -210,13 +260,44 @@ export function AddStaffDialog({
   );
 }
 
-function InviteReady({ invite, centered = false }: { invite: ShopInvite; centered?: boolean }) {
+/**
+ * "Works once · expires in 48 h", with New code beside it. After a new code,
+ * it says the earlier one is dead, so the Owner knows to resend.
+ */
+function InviteReady({
+  invite,
+  centered = false,
+  onNewCode,
+  renewing,
+  replaced = false,
+}: {
+  invite: ShopInvite;
+  centered?: boolean;
+  onNewCode: () => void;
+  renewing: boolean;
+  replaced?: boolean;
+}) {
   return (
-    <p
-      className={`text-caption text-text-muted m-0${centered ? " text-center" : ""}`}
-      role="status"
-    >
-      Works once · {inviteExpiresIn(invite.expiresAt).toLowerCase()}
-    </p>
+    <div className={`flex flex-col gap-1${centered ? " items-center text-center" : ""}`}>
+      <div
+        className={`flex flex-wrap items-center gap-x-3 gap-y-1${centered ? " justify-center" : ""}`}
+      >
+        <p className="text-caption text-text-muted m-0" role="status">
+          Works once · {inviteExpiresIn(invite.expiresAt).toLowerCase()}
+        </p>
+        <Button variant="outline" size="sm" disabled={renewing} onClick={onNewCode}>
+          <RefreshCw
+            aria-hidden
+            className={renewing ? "motion-safe:animate-spin" : undefined}
+          />
+          {renewing ? "Making new code…" : "New code"}
+        </Button>
+      </div>
+      {replaced ? (
+        <p className="text-caption text-text-secondary m-0" role="status">
+          New code ready. The old one no longer works.
+        </p>
+      ) : null}
+    </div>
   );
 }

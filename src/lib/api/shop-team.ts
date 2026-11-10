@@ -77,6 +77,19 @@ export async function createShopInvite(
   return { invite: result.invite, token: result.token };
 }
 
+/**
+ * "New code": cancel this invite and issue a fresh one of the same kind and
+ * recipient in one step. The old link and QR stop working at once; the new
+ * token is returned once, like a created invite.
+ */
+export async function replaceShopInvite(inviteId: string): Promise<CreatedShopInvite> {
+  const result = await apiRequest<CreatedShopInvite>(
+    `/me/shop-team/invites/${seg(inviteId)}/replace`,
+    json({}),
+  );
+  return { invite: result.invite, token: result.token };
+}
+
 export async function revokeShopInvite(inviteId: string): Promise<ShopInvite> {
   const result = await apiRequest<{ invite: ShopInvite }>(
     `/me/shop-team/invites/${seg(inviteId)}`,
