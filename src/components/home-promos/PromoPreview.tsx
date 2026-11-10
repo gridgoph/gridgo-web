@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { ExternalLink, Pause, Play, RefreshCw, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from "react";
+import { ArrowRight, ArrowUpRight, ExternalLink, Pause, Play, RefreshCw, Sparkles } from "lucide-react";
 
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import type { HomePromoStyle, HomePromoTag, HomePromoTapAction } from "@/lib/api/home-promos";
+import type { HomePromoTag, HomePromoTapAction } from "@/lib/api/home-promos";
 import { ROTATE_MS, TAG_LABEL } from "@/lib/home-promos";
+import { hexFromCssColor, promoCardColors, type PromoCardColors } from "@/lib/promo-card-colors";
 import { cn } from "@/lib/utils";
 
 /** What the preview draws: the form's values as the client app would. */
@@ -19,13 +20,42 @@ export type PreviewPromo = {
   linkText: string;
   linkUrl: string;
   tapAction: HomePromoTapAction;
-  style: HomePromoStyle;
+  /** The card's `#RRGGBB`. */
+  color: string;
 };
 
 type Slide = { kind: "reorder" } | { kind: "promo"; promo: PreviewPromo };
 
 /** The client tile's height (gridgo-client `HOME_TILE_HEIGHT`), at phone scale. */
 const TILE_HEIGHT = 112;
+/**
+ * gridgo-client `TILE_SLOTS`: inside the 1px border and 12px padding, every
+ * Home tile is a top row, a title line, a subtitle line and a footer, so the
+ * promo and Reorder share baselines.
+ */
+const SLOTS = { top: 32, title: 26, subtitle: 16, footer: 12 } as const;
+const TILE_INSET = 13;
+const OUTLINE = "var(--color-outline)";
+
+/** The phone screen's colour in the current theme, as `#RRGGBB`, for the card's hairline rule. */
+function useScreenColor(ref: RefObject<HTMLElement | null>): string | null {
+  const [color, setColor] = useState<string | null>(null);
+  useEffect(() => {
+    const read = () => {
+      if (ref.current) setColor(hexFromCssColor(getComputedStyle(ref.current).backgroundColor));
+    };
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    const query = window.matchMedia?.("(prefers-color-scheme: dark)");
+    query?.addEventListener?.("change", read);
+    return () => {
+      observer.disconnect();
+      query?.removeEventListener?.("change", read);
+    };
+  }, [ref]);
+  return color;
+}
 
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
@@ -63,7 +93,7 @@ export function PromoPreview({
   const focused = promos.find((p) => p.key === focusKey) ?? promos[0] ?? null;
   const focusIndex = focused ? promos.indexOf(focused) + 1 : 0;
   const signature = focused
-    ? [focused.name, focused.logoUrl, focused.imageUrl, focused.description, focused.tag, focused.style, focused.linkText].join("|")
+    ? [focused.name, focused.logoUrl, focused.imageUrl, focused.description, focused.tag, focused.color, focused.linkText, focused.tapAction].join("|")
     : "";
 
   // Editing a field shows that promo, and holds there a moment.
@@ -118,6 +148,11 @@ export function PromoPreview({
 
   const current = slides[safeIndex];
   const sheetPromo = current.kind === "promo" ? current.promo : focused;
+  const phone = useRef<HTMLDivElement>(null);
+  const screenColor = useScreenColor(phone);
+  const cardColors = (promo: PreviewPromo) => promoCardColors(promo.color, screenColor, OUTLINE);
+  // The pager sits in the tile's footer slot, in the ink of the page it is on.
+  const pageInk = current.kind === "promo" ? cardColors(current.promo) : null;
 
   return (
     <div className={cn("flex flex-col items-center gap-3", className)}>
@@ -151,6 +186,7 @@ export function PromoPreview({
 
       {/* The phone: 320 wide, the client's Home drawn in its own tokens. */}
       <div
+        ref={phone}
         className="relative w-[320px] max-w-full overflow-hidden rounded-[36px] border-[6px] border-text-primary bg-background"
         style={{ height: 620 }}
         role="group"
@@ -164,16 +200,17 @@ export function PromoPreview({
           <MockHome />
           <div className="flex gap-3">
             <div
-              className="flex min-w-0 flex-1 basis-0 flex-col justify-between rounded-card border border-outline bg-surface-variant p-3"
+              className="flex min-w-0 flex-1 basis-0 flex-col rounded-card border border-outline bg-surface-variant p-3"
               style={{ height: TILE_HEIGHT }}
             >
-              <span className="block size-9 rounded-pill bg-surface-high" />
-              <span className="flex flex-col gap-1.5">
-                <span className="block h-3 w-16 rounded-pill bg-outline" />
-                <span className="block h-2.5 w-20 rounded-pill bg-outline-subtle" />
-              </span>
+              <TileSlots
+                top={<span className="block size-8 rounded-pill bg-surface-high" />}
+                title={<span className="block h-3 w-16 rounded-pill bg-outline" />}
+                subtitle={<span className="block h-2.5 w-20 rounded-pill bg-outline-subtle" />}
+                footer={<span className="block h-1.5 w-full rounded-pill bg-outline-subtle" />}
+              />
             </div>
-            <div className="flex min-w-0 flex-1 basis-0 flex-col gap-1.5">
+            <div className="min-w-0 flex-1 basis-0">
               <div
                 className="relative touch-pan-y overflow-hidden rounded-card select-none"
                 style={{ height: TILE_HEIGHT }}
@@ -192,24 +229,29 @@ export function PromoPreview({
                 >
                   {slides.map((slide, i) => (
                     <div key={slide.kind === "reorder" ? "reorder" : slide.promo.key} className="h-full w-full shrink-0" data-active={i === safeIndex}>
-                      {slide.kind === "reorder" ? <ReorderTile /> : <PromoTile promo={slide.promo} />}
+                      {slide.kind === "reorder" ? <ReorderTile /> : <PromoTile promo={slide.promo} colors={cardColors(slide.promo)} />}
                     </div>
                   ))}
                 </div>
+                {count > 1 ? (
+                  <div
+                    className="pointer-events-none absolute flex items-center gap-1"
+                    style={{ right: TILE_INSET, bottom: TILE_INSET + (SLOTS.footer - 6) / 2, height: 6 }}
+                    data-testid="preview-dots"
+                  >
+                    {slides.map((slide, i) => (
+                      <span
+                        key={slide.kind === "reorder" ? "reorder" : slide.promo.key}
+                        className={cn("block h-1.5 rounded-pill transition-all", !pageInk && (i === safeIndex ? "bg-text-primary" : "bg-text-muted"))}
+                        style={{
+                          width: i === safeIndex ? 12 : 6,
+                          backgroundColor: pageInk ? (i === safeIndex ? pageInk.ink : pageInk.muted) : undefined,
+                        }}
+                      />
+                    ))}
+                  </div>
+                ) : null}
               </div>
-              {count > 1 ? (
-                <div className="flex justify-center gap-1" data-testid="preview-dots">
-                  {slides.map((slide, i) => (
-                    <span
-                      key={slide.kind === "reorder" ? "reorder" : slide.promo.key}
-                      className={cn(
-                        "block h-1.5 rounded-pill transition-all",
-                        i === safeIndex ? "w-4 bg-text-primary" : "w-1.5 bg-outline",
-                      )}
-                    />
-                  ))}
-                </div>
-              ) : null}
             </div>
           </div>
           <MockTabBar />
@@ -279,16 +321,38 @@ function MockTabBar() {
   );
 }
 
+/** gridgo-client `HomeTileSlots`: the one grid both Home tiles are drawn on. */
+function TileSlots({ top, title, subtitle, footer }: { top: ReactNode; title?: ReactNode; subtitle?: ReactNode; footer?: ReactNode }) {
+  return (
+    <>
+      <span className="flex items-center" style={{ height: SLOTS.top }}>
+        {top}
+      </span>
+      <span className="flex min-w-0 flex-col justify-end" style={{ height: SLOTS.title }}>
+        {title}
+      </span>
+      <span className="flex min-w-0 flex-col justify-center" style={{ height: SLOTS.subtitle }}>
+        {subtitle}
+      </span>
+      <span className="flex flex-col justify-center" style={{ height: SLOTS.footer }}>
+        {footer}
+      </span>
+    </>
+  );
+}
+
 function ReorderTile() {
   return (
-    <div className="flex h-full flex-col justify-between rounded-card border border-outline bg-surface-variant p-3">
-      <span className="flex size-9 items-center justify-center rounded-pill bg-surface-high">
-        <RefreshCw className="size-[18px] text-text-primary" aria-hidden />
-      </span>
-      <span className="flex min-w-0 flex-col">
-        <span className="text-h3 text-text-primary">Reorder</span>
-        <span className="text-caption truncate text-text-secondary">Last print</span>
-      </span>
+    <div className="flex h-full flex-col rounded-card border border-outline bg-surface-variant p-3">
+      <TileSlots
+        top={
+          <span className="flex size-8 items-center justify-center rounded-pill bg-surface-high">
+            <RefreshCw className="size-4 text-text-primary" aria-hidden />
+          </span>
+        }
+        title={<span className="text-h3 text-text-primary">Reorder</span>}
+        subtitle={<span className="text-caption truncate text-text-secondary">Last print</span>}
+      />
     </div>
   );
 }
@@ -311,60 +375,61 @@ function Logo({ url, name, size }: { url: string | null; name: string; size: num
   );
 }
 
-function TagChip({ tag, onYellow }: { tag: HomePromoTag; onYellow?: boolean }) {
+function TagChip({ tag }: { tag: HomePromoTag }) {
   return (
-    <span
-      className={cn(
-        "inline-flex h-5 min-w-0 items-center truncate rounded-pill border px-1.5 text-[11px] leading-none whitespace-nowrap",
-        onYellow ? "border-[var(--color-action-yellow-on)]/30 text-[var(--color-action-yellow-on)]" : "border-outline text-text-secondary",
-      )}
-    >
+    <span className="inline-flex h-5 min-w-0 items-center truncate rounded-pill border border-outline px-1.5 text-[11px] leading-none whitespace-nowrap text-text-secondary">
       {TAG_LABEL[tag]}
     </span>
   );
 }
 
-function PromoTile({ promo }: { promo: PreviewPromo }) {
-  const yellow = promo.style === "yellow";
-  if (promo.imageUrl) {
-    return (
-      <div className="relative h-full overflow-hidden rounded-card border border-outline bg-surface-variant">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={promo.imageUrl} alt="" className="absolute inset-0 size-full object-cover" />
-        <div className="absolute top-2 left-2">
-          <Logo url={promo.logoUrl} name={promo.name} size={32} />
-        </div>
-        <div
-          className={cn(
-            "absolute inset-x-0 bottom-0 flex items-center gap-1 px-3 py-1.5",
-            yellow ? "bg-[var(--color-action-yellow)] text-[var(--color-action-yellow-on)]" : "bg-surface text-text-primary",
-          )}
-        >
-          <span className="text-caption min-w-0 flex-1 truncate" style={{ fontFamily: "var(--font-bold)" }}>
-            {promo.name || "Business name"}
-          </span>
-          {promo.tapAction === "link" ? <ExternalLink className="size-3.5 shrink-0" aria-hidden /> : null}
-        </div>
-      </div>
-    );
-  }
+/**
+ * gridgo-client `HomePromoTile`: logo and tag on the top row, the name on the
+ * title line, the link text and an arrow under it, all in the ink that reads
+ * on the promo's colour.
+ */
+function PromoTile({ promo, colors }: { promo: PreviewPromo; colors: PromoCardColors }) {
   return (
     <div
-      className={cn(
-        "flex h-full flex-col justify-between rounded-card border p-3",
-        yellow
-          ? "border-transparent bg-[var(--color-action-yellow)] text-[var(--color-action-yellow-on)]"
-          : "border-outline bg-surface-variant text-text-primary",
-      )}
+      className="relative flex h-full flex-col overflow-hidden rounded-card border p-3"
+      style={{ backgroundColor: colors.background, borderColor: colors.border, color: colors.ink }}
+      data-testid="preview-promo-tile"
+      data-ink={colors.ink}
     >
-      <span className="flex items-start justify-between gap-1">
-        <Logo url={promo.logoUrl} name={promo.name} size={36} />
-        <TagChip tag={promo.tag} onYellow={yellow} />
-      </span>
-      <span className="flex min-w-0 items-center gap-1">
-        <span className="text-h3 min-w-0 flex-1 truncate">{promo.name || "Business name"}</span>
-        {promo.tapAction === "link" ? <ExternalLink className="size-3.5 shrink-0" aria-hidden /> : null}
-      </span>
+      {promo.imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={promo.imageUrl} alt="" className="absolute inset-y-0 right-0 h-full w-[45%] object-cover opacity-90" />
+      ) : null}
+      <TileSlots
+        top={
+          <span className="relative flex w-full items-center justify-between gap-2">
+            <Logo url={promo.logoUrl} name={promo.name} size={SLOTS.top} />
+            <span
+              className="min-w-0 truncate rounded-pill px-2 py-0.5 text-[10px] leading-[14px] tracking-[0.6px] uppercase"
+              style={{ backgroundColor: colors.chip, color: colors.muted, fontFamily: "var(--font-bold)" }}
+              data-testid="preview-promo-tag"
+            >
+              {TAG_LABEL[promo.tag]}
+            </span>
+          </span>
+        }
+        title={
+          <span className="relative flex min-w-0 items-center gap-1">
+            <span className="text-h3 min-w-0 flex-1 truncate">{promo.name || "Business name"}</span>
+            {promo.tapAction === "link" ? <ArrowUpRight className="size-4 shrink-0" aria-hidden /> : null}
+          </span>
+        }
+        subtitle={
+          promo.linkText ? (
+            <span className="relative flex min-w-0 items-center gap-0.5" data-testid="preview-promo-link">
+              <span className="text-caption min-w-0 truncate" style={{ color: colors.muted }}>
+                {promo.linkText}
+              </span>
+              <ArrowRight className="size-3 shrink-0" strokeWidth={2.25} aria-hidden />
+            </span>
+          ) : null
+        }
+      />
     </div>
   );
 }

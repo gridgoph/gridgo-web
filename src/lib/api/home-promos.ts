@@ -22,9 +22,11 @@
 
 import { apiRequest } from "@/lib/api/client";
 import type { StoredFile } from "@/lib/api/types";
+import { colorFromStyle, isHexColor } from "@/lib/promo-card-colors";
 
 export type HomePromoTag = "partner" | "sponsored" | "featured_shop";
 export type HomePromoTapAction = "sheet" | "link";
+/** The older API's card style; `color` replaced it and the API still derives it. */
 export type HomePromoStyle = "light" | "yellow";
 /** Derived by the API from `enabled`, the dates and the clock. */
 export type HomePromoStatus = "live" | "scheduled" | "off" | "ended";
@@ -47,7 +49,8 @@ export type HomePromo = {
   linkText: string;
   linkUrl: string;
   tapAction: HomePromoTapAction;
-  style: HomePromoStyle;
+  /** The card's colour, `#RRGGBB` uppercase; from `style` on an API without `color`. */
+  color: string;
   startsAt: string;
   endsAt: string | null;
   enabled: boolean;
@@ -69,6 +72,8 @@ export type HomePromoInput = {
   linkText: string;
   linkUrl: string;
   tapAction: HomePromoTapAction;
+  color: string;
+  /** Sent beside `color` so an API without `color` keeps the nearest style. */
   style: HomePromoStyle;
   startsAt: string;
   endsAt: string | null;
@@ -125,7 +130,7 @@ export function readHomePromo(raw: unknown): HomePromo {
     linkText: typeof raw.linkText === "string" ? raw.linkText : "",
     linkUrl: typeof raw.linkUrl === "string" ? raw.linkUrl : "",
     tapAction: raw.tapAction === "link" ? "link" : "sheet",
-    style: raw.style === "yellow" ? "yellow" : "light",
+    color: isHexColor(raw.color) ? raw.color.toUpperCase() : colorFromStyle(raw.style),
     startsAt: str(raw.startsAt) ?? "",
     endsAt: str(raw.endsAt),
     enabled: raw.enabled === true,

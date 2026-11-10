@@ -145,7 +145,7 @@ describe("Add and edit", () => {
     fireEvent.change(screen.getByLabelText("Button words"), { target: { value: "Visit DavaoGo" } });
     fireEvent.change(screen.getByLabelText("Link"), { target: { value: "https://davaogo.app/" } });
     fireEvent.click(screen.getByRole("radio", { name: /Open link directly/ }));
-    fireEvent.click(screen.getByRole("radio", { name: /Yellow/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Yellow" }));
     fireEvent.click(screen.getByRole("button", { name: "Add promo" }));
     await waitFor(() => expect(api.createHomePromo).toHaveBeenCalled());
     expect(api.createHomePromo.mock.calls[0][0]).toMatchObject({
@@ -154,6 +154,7 @@ describe("Add and edit", () => {
       image: null,
       tag: "partner",
       tapAction: "link",
+      color: "#FFDE58",
       style: "yellow",
       linkUrl: "https://davaogo.app/",
       enabled: true,
@@ -199,7 +200,7 @@ describe("Preview", () => {
     linkText: "Visit DavaoGo",
     linkUrl: "https://davaogo.app/",
     tapAction: "sheet" as const,
-    style: "yellow" as const,
+    color: "#FFDE58",
   };
 
   it("rotates Reorder and the promo every five seconds, with dots", async () => {
@@ -232,6 +233,94 @@ describe("Preview", () => {
     expect(within(sheet).getByText("Partner")).toBeInTheDocument();
     expect(within(sheet).getByText("Rides around Davao.")).toBeInTheDocument();
     expect(within(sheet).getByText("Visit DavaoGo")).toBeInTheDocument();
+  });
+});
+
+describe("Card colour", () => {
+  async function newPromo(tree: "ops" | "admin") {
+    api.listHomePromos.mockResolvedValue([]);
+    render(<HomePromoEditor tree={tree} promoId="new" />);
+    return screen.findByLabelText("Card colour");
+  }
+
+  it("suggests White, the GRIDGO accent and Yellow, White first by default", async () => {
+    const hex = await newPromo("ops");
+    expect(hex).toHaveValue("#FFFFFF");
+    const group = screen.getByRole("group", { name: "Suggested colours" });
+    expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(["White", "GRIDGO accent", "Yellow"]);
+    expect(within(group).getByRole("button", { name: "White" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(within(group).getByRole("button", { name: "GRIDGO accent" }));
+    expect(hex).toHaveValue("#1A1A1A");
+    expect(within(group).getByRole("button", { name: "GRIDGO accent" })).toHaveAttribute("aria-pressed", "true");
+    expect(within(group).getByRole("button", { name: "White" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("takes any colour from the picker, and no swatch stays pressed", async () => {
+    const hex = await newPromo("admin");
+    fireEvent.input(screen.getByLabelText("Pick any colour"), { target: { value: "#3366cc" } });
+    expect(hex).toHaveValue("#3366CC");
+    const group = screen.getByRole("group", { name: "Suggested colours" });
+    for (const button of within(group).getAllByRole("button")) expect(button).toHaveAttribute("aria-pressed", "false");
+    expect(screen.getByTestId("preview-promo-tile")).toHaveStyle({ backgroundColor: "#3366CC" });
+  });
+
+  it("tidies a typed code and refuses one that is not a colour", async () => {
+    const hex = await newPromo("ops");
+    fireEvent.change(hex, { target: { value: "ff8800" } });
+    fireEvent.blur(hex);
+    expect(hex).toHaveValue("#FF8800");
+    expect(screen.queryByText("Use a colour like #1A1A1A.")).toBeNull();
+
+    fireEvent.focus(hex);
+    fireEvent.change(hex, { target: { value: "#12" } });
+    expect(screen.queryByText("Use a colour like #1A1A1A.")).toBeNull();
+    // Half typed: the card keeps the colour it had.
+    expect(screen.getByTestId("preview-promo-tile")).toHaveStyle({ backgroundColor: "#FFFFFF" });
+    fireEvent.blur(hex);
+    expect(screen.getByText("Use a colour like #1A1A1A.")).toBeInTheDocument();
+    expect(hex).toHaveAttribute("aria-invalid", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Add promo" }));
+    expect(api.createHomePromo).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["#FFFFFF", "#1A1A1A"],
+    ["#FFDE58", "#1A1A1A"],
+    ["#1A1A1A", "#FFFFFF"],
+    ["#3366CC", "#FFFFFF"],
+    ["#808080", "#1A1A1A"],
+  ])("draws a %s card with %s text in the preview", async (color, ink) => {
+    const hex = await newPromo("ops");
+    fireEvent.change(screen.getByLabelText("Button words"), { target: { value: "See their offer" } });
+    fireEvent.change(hex, { target: { value: color } });
+    const tile = screen.getByTestId("preview-promo-tile");
+    expect(tile).toHaveAttribute("data-ink", ink);
+    expect(tile).toHaveStyle({ backgroundColor: color, color: ink });
+    expect(within(tile).getByTestId("preview-promo-link")).toHaveTextContent("See their offer");
+  });
+
+  it.each(["ops", "admin"] as const)("saves a changed colour with its fallback style (%s)", async (tree) => {
+    api.listHomePromos.mockResolvedValue([davaogo()]);
+    api.getHomePromo.mockResolvedValue(davaogo());
+    api.updateHomePromo.mockResolvedValue(readHomePromo(rawHomePromo({ color: "#3366CC" })));
+    render(<HomePromoEditor tree={tree} promoId="promo_davaogo" />);
+    const hex = await screen.findByLabelText("Card colour");
+    fireEvent.change(hex, { target: { value: "#3366cc" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(api.updateHomePromo).toHaveBeenCalledWith("promo_davaogo", { color: "#3366CC", style: "light" }),
+    );
+  });
+
+  it("shows a saved promo's colour, and an older promo's style as its colour", async () => {
+    api.listHomePromos.mockResolvedValue([]);
+    api.getHomePromo.mockResolvedValue(readHomePromo(rawHomePromo({ color: "#0a7d4f", style: "light" })));
+    render(<HomePromoEditor tree="admin" promoId="promo_davaogo" />);
+    expect(await screen.findByLabelText("Card colour")).toHaveValue("#0A7D4F");
+    cleanup();
+    api.getHomePromo.mockResolvedValue(readHomePromo(rawHomePromo({ style: "yellow" })));
+    render(<HomePromoEditor tree="ops" promoId="promo_davaogo" />);
+    expect(await screen.findByLabelText("Card colour")).toHaveValue("#FFDE58");
   });
 });
 
