@@ -229,6 +229,7 @@ const ACTION_LABEL: Record<string, string> = {
   "dispatch.milestone": "Updated the delivery",
   "file.saved": "Added a file",
   "pickup_chat.message_sent": "Messaged the rider",
+  "client_shop_chat.message_sent": "Messaged the client",
   "pickup_checklist.inspected": "Rider checked the order",
   "pickup_checklist.handoff_signed": "Signed the handover",
   "pickup_checklist.escalate": "Raised a pickup problem",
