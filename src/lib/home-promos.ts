@@ -365,7 +365,6 @@ export function homePromoErrorText(err: unknown, fallback: string): string {
       }
     default:
       if (err.kind === "validation") return "Check the highlighted fields and try again.";
-      if (err.kind === "server") return "GRIDGO could not save just now. Try again.";
       return fallback;
   }
 }

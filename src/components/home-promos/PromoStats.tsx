@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, Eye, MousePointerClick, PanelBottomOpen } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -46,8 +46,13 @@ export function statsCsv(name: string, days: HomePromoDay[]): string {
 export function PromoStats({ promo }: { promo: HomePromo }) {
   const initial = useMemo(() => statsRange(promo), [promo]);
   const [range, setRange] = useState(initial);
-  /** The last successful read, kept with the range that produced it. */
+  /**
+   * The rows of the latest request, kept with the range that produced it.
+   * Cleared when a request starts, so a range read earlier never stands in
+   * for one that is loading again or failed.
+   */
   const [loaded, setLoaded] = useState<{ key: string; days: HomePromoDay[] } | null>(null);
+  const latest = useRef(0);
   const [error, setError] = useState<string | null>(null);
   const rangeError = statsRangeError(range);
   const key = `${range.from}..${range.to}`;
@@ -56,12 +61,14 @@ export function PromoStats({ promo }: { promo: HomePromo }) {
     useCallback(async () => {
       if (statsRangeError(range)) return;
       const asked = `${range.from}..${range.to}`;
+      const request = ++latest.current;
+      setLoaded(null);
       setError(null);
       try {
         const rows = await getHomePromoStats(promo.id, range);
-        setLoaded({ key: asked, days: fillDays(range, rows) });
+        if (request === latest.current) setLoaded({ key: asked, days: fillDays(range, rows) });
       } catch (err) {
-        setError(homePromoErrorText(err, "Could not load the numbers."));
+        if (request === latest.current) setError(homePromoErrorText(err, "Could not load the numbers."));
       }
     }, [promo.id, range]),
   );
@@ -69,8 +76,9 @@ export function PromoStats({ promo }: { promo: HomePromo }) {
     void load();
   }, [load]);
 
-  // Only the range on screen counts: a pending or failed new range shows no
-  // figures and cannot be downloaded, rather than zeros nobody measured.
+  // Only the latest successful read of exactly the range on screen counts:
+  // while a range loads (even one read before) or after it fails, there are
+  // no figures and no CSV, rather than numbers from another request.
   const days = loaded && loaded.key === key && !rangeError ? loaded.days : null;
   const totals = useMemo(
     () =>

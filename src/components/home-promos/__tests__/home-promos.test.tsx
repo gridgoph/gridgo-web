@@ -331,6 +331,37 @@ describe("By day", () => {
     expect(screen.getByRole("button", { name: "CSV" })).toBeDisabled();
     expect(screen.queryByRole("table", { name: /by day/ })).toBeNull();
   });
+  it("does not reuse a range's old numbers when returning to it while it reloads or fails", async () => {
+    await loaded();
+    const from = screen.getByLabelText("From");
+    api.getHomePromoStats.mockResolvedValueOnce([{ day: "2026-11-10", views: 5, opens: 0, taps: 0 }]);
+    fireEvent.change(from, { target: { value: "2026-11-08" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "CSV" })).toBeEnabled());
+
+    // Back to the first range: its earlier rows must not show while it reloads.
+    let finish!: (rows: unknown[]) => void;
+    api.getHomePromoStats.mockReturnValueOnce(new Promise((done) => (finish = done)));
+    fireEvent.change(from, { target: { value: "2026-11-09" } });
+    await waitFor(() => expect(api.getHomePromoStats).toHaveBeenCalledTimes(3));
+    expect(screen.getByRole("button", { name: "CSV" })).toBeDisabled();
+    expect(screen.queryByText("Views")).toBeNull();
+    expect(screen.queryByRole("table", { name: /by day/ })).toBeNull();
+    await act(async () => finish([{ day: "2026-11-10", views: 9, opens: 0, taps: 0 }]));
+    const table = await screen.findByRole("table", { name: /by day/ });
+    expect(within(table).getByText("9")).toBeInTheDocument();
+
+    // Away and back again, and this time the reload fails.
+    api.getHomePromoStats.mockResolvedValueOnce([{ day: "2026-11-10", views: 5, opens: 0, taps: 0 }]);
+    fireEvent.change(from, { target: { value: "2026-11-08" } });
+    await waitFor(() => expect(api.getHomePromoStats).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(screen.getByRole("button", { name: "CSV" })).toBeEnabled());
+    api.getHomePromoStats.mockRejectedValueOnce(new ApiError(503, { error: "unavailable" }));
+    fireEvent.change(from, { target: { value: "2026-11-09" } });
+    expect(await screen.findByText("Could not load the numbers.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "CSV" })).toBeDisabled();
+    expect(screen.queryByText("Views")).toBeNull();
+    expect(screen.queryByRole("table", { name: /by day/ })).toBeNull();
+  });
 });
 
 describe("On Home now follows the clock", () => {
