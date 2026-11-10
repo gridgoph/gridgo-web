@@ -10,8 +10,11 @@
  *   DELETE /ops/promotions/:id          (soft delete)
  *   GET    /ops/promotions/:id/stats?from=YYYY-MM-DD&to=YYYY-MM-DD
  *
- * Logos and card images ride the ordinary `/files` flow with the staff-only
- * purposes `promotion_logo` and `promotion_image`.
+ * Contract: gridgo-api `docs/HOME_PROMOTIONS_API.md`. Logos and card images
+ * ride the ordinary `/files` upload with the staff-only purposes
+ * `promotion_logo` (5 MiB) and `promotion_image` (15 MiB); the promo write
+ * binds them, so never call `/files/:id/attach` for them. Responses carry a
+ * five-minute signed `downloadUrl`.
  *
  * This is the only file that knows the API's field names: everything raw is
  * read through `readHomePromo` into the shapes below.
@@ -54,10 +57,11 @@ export type HomePromo = {
   updatedAt: string | null;
 };
 
+/** Write body: media is `{fileId}` only; PATCH keeps omitted fields. */
 export type HomePromoInput = {
   name: string;
-  logoFileId: string;
-  imageFileId: string | null;
+  logo: { fileId: string };
+  image: { fileId: string } | null;
   description: string;
   tag: HomePromoTag;
   linkText: string;
@@ -82,8 +86,10 @@ function str(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+/** Counters are PostgreSQL bigints, which may arrive as digit strings. */
 function count(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+  const n = typeof value === "string" && /^\d+$/.test(value) ? Number(value) : value;
+  return typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 }
 
 /** A file ref: a bare id, or `{fileId|id, url|downloadUrl}`. */

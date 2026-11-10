@@ -1,9 +1,14 @@
-/** A Home promo as `GET /ops/promotions` sends it (contract "Home promo slot"). */
+/** A Home promo as `GET /ops/promotions` sends it (gridgo-api docs/HOME_PROMOTIONS_API.md). */
 export function rawHomePromo(extra: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: "promo_davaogo",
     name: "DavaoGo",
-    logo: { fileId: "file_logo", url: "https://files.example/logo.png" },
+    logo: {
+      fileId: "file_logo",
+      contentType: "image/png",
+      downloadUrl: "https://files.example/logo.png",
+      expiresAt: "2026-11-10T00:05:00.000Z",
+    },
     image: null,
     description: "Rides and deliveries around Davao.",
     tag: "partner",
@@ -19,7 +24,6 @@ export function rawHomePromo(extra: Record<string, unknown> = {}): Record<string
     views: 120,
     opens: 30,
     taps: 12,
-    updatedAt: "2026-11-10T00:00:00.000Z",
     ...extra,
   };
 }

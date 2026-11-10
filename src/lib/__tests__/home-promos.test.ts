@@ -76,7 +76,8 @@ describe("validateHomePromoDraft", () => {
   it("keeps the description to 140 characters and the order to a whole number", () => {
     expect(validateHomePromoDraft(filled({ description: "x".repeat(141) })).description).toMatch(/140/);
     expect(validateHomePromoDraft(filled({ displayOrder: "1.5" })).displayOrder).toBeTruthy();
-    expect(validateHomePromoDraft(filled({ displayOrder: "0" })).displayOrder).toBeTruthy();
+    expect(validateHomePromoDraft(filled({ displayOrder: "-1" })).displayOrder).toBeTruthy();
+    expect(validateHomePromoDraft(filled({ displayOrder: "0" })).displayOrder).toBeUndefined();
   });
 });
 
@@ -87,8 +88,8 @@ describe("inputFromHomePromoDraft", () => {
     );
     expect(input).toMatchObject({
       name: "DavaoGo",
-      logoFileId: "file_logo",
-      imageFileId: null,
+      logo: { fileId: "file_logo" },
+      image: null,
       tag: "partner",
       tapAction: "sheet",
       style: "light",
@@ -156,6 +157,11 @@ describe("readHomePromo", () => {
     expect(promo.logo).toEqual({ fileId: "file_x", url: "https://files.example/x.png" });
     expect([promo.views, promo.opens, promo.taps]).toEqual([3, 2, 1]);
   });
+
+  it("reads bigint counters sent as digit strings", () => {
+    const promo = readHomePromo(rawHomePromo({ views: "1200", opens: "30", taps: "x" }));
+    expect([promo.views, promo.opens, promo.taps]).toEqual([1200, 30, 0]);
+  });
 });
 
 describe("stats", () => {
@@ -184,5 +190,21 @@ describe("stats", () => {
   it("gives a rate only when there were views", () => {
     expect(rate(1, 4)).toBe(25);
     expect(rate(1, 0)).toBeNull();
+  });
+});
+
+describe("statsCsv", () => {
+  it("writes one row per day, oldest first, and defuses formula-looking names", async () => {
+    const { statsCsv } = await import("@/components/home-promos/PromoStats");
+    const csv = statsCsv('=HYPERLINK("x")', [
+      { day: "2026-11-10", views: 2, opens: 1, taps: 0 },
+      { day: "2026-11-09", views: 5, opens: 0, taps: 0 },
+    ]);
+    expect(csv.split("\n")).toEqual([
+      "promo,day,views,sheet_opens,link_taps",
+      `"'=HYPERLINK(""x"")",2026-11-09,5,0,0`,
+      `"'=HYPERLINK(""x"")",2026-11-10,2,1,0`,
+      "",
+    ]);
   });
 });

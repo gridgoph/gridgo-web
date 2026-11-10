@@ -24,7 +24,8 @@ function n(value: number): string {
 
 /** CSV for partner reporting: one row per Manila day, oldest first. */
 export function statsCsv(name: string, days: HomePromoDay[]): string {
-  const quote = (s: string) => `"${s.replace(/"/g, '""')}"`;
+  // A leading = + - @ tab or CR would run as a spreadsheet formula: prefix a quote.
+  const quote = (s: string) => `"${(/^[=+\-@\t\r]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
   const lines = ["promo,day,views,sheet_opens,link_taps"];
   for (const d of [...days].reverse()) lines.push([quote(name), d.day, d.views, d.opens, d.taps].join(","));
   return lines.join("\n") + "\n";

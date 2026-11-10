@@ -162,9 +162,12 @@ function EditorBody({
   );
 
   const errors: HomePromoErrors = attempted ? validateHomePromoDraft(draft) : {};
+  // Compared by file id: a fresh upload draws from a local URL, the API from a signed one.
   const dirty = useMemo(() => {
-    const base = promo ? draftFromHomePromo(promo) : null;
-    return !base || JSON.stringify(base) !== JSON.stringify(draft);
+    if (!promo) return true;
+    const plain = (d: HomePromoDraft) =>
+      JSON.stringify({ ...d, logo: d.logo?.fileId ?? null, image: d.image?.fileId ?? null });
+    return plain(draftFromHomePromo(promo)) !== plain(draft);
   }, [promo, draft]);
 
   function set<K extends keyof HomePromoDraft>(key: K, value: HomePromoDraft[K]) {
@@ -462,14 +465,14 @@ function EditorBody({
                   id="promo-order"
                   type="number"
                   inputMode="numeric"
-                  min={1}
+                  min={0}
                   max={HOME_PROMO_LIMITS.displayOrderMax}
                   value={draft.displayOrder}
                   onChange={(e) => set("displayOrder", e.target.value)}
                   aria-invalid={errors.displayOrder ? true : undefined}
                   className="w-28"
                 />
-                <FieldDescription>1 shows first after Reorder</FieldDescription>
+                <FieldDescription>Lowest shows first after Reorder.</FieldDescription>
                 {errors.displayOrder ? <FieldError>{errors.displayOrder}</FieldError> : null}
               </Field>
               <Field orientation="horizontal" className="items-center self-start sm:pt-7">

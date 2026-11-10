@@ -142,8 +142,8 @@ describe("Add and edit", () => {
     await waitFor(() => expect(api.createHomePromo).toHaveBeenCalled());
     expect(api.createHomePromo.mock.calls[0][0]).toMatchObject({
       name: "DavaoGo",
-      logoFileId: "file_new",
-      imageFileId: null,
+      logo: { fileId: "file_new" },
+      image: null,
       tag: "partner",
       tapAction: "link",
       style: "yellow",

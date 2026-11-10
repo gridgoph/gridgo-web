@@ -18,11 +18,11 @@ import type { StatusIconName, StatusTone } from "@/lib/order-state";
 import { isoToManilaLocal, manilaLocalToIso } from "@/lib/vouchers";
 
 export const HOME_PROMO_LIMITS = {
-  name: 60,
+  name: 120,
   description: 140,
-  linkText: 24,
+  linkText: 80,
   url: 2048,
-  displayOrderMax: 999,
+  displayOrderMax: 9999,
 } as const;
 
 /** The client app's rotation interval: Reorder, then each live promo. */
@@ -178,8 +178,8 @@ export function validateHomePromoDraft(draft: HomePromoDraft): HomePromoErrors {
       errors.endsAt = "End after the start.";
   }
   const order = draft.displayOrder.trim();
-  if (!/^\d+$/.test(order) || Number(order) < 1 || Number(order) > HOME_PROMO_LIMITS.displayOrderMax)
-    errors.displayOrder = `Use a whole number, 1 to ${HOME_PROMO_LIMITS.displayOrderMax}.`;
+  if (!/^\d+$/.test(order) || Number(order) > HOME_PROMO_LIMITS.displayOrderMax)
+    errors.displayOrder = `Use a whole number, 0 to ${HOME_PROMO_LIMITS.displayOrderMax}.`;
   return errors;
 }
 
@@ -187,8 +187,8 @@ export function validateHomePromoDraft(draft: HomePromoDraft): HomePromoErrors {
 export function inputFromHomePromoDraft(draft: HomePromoDraft): HomePromoInput {
   return {
     name: draft.name.trim(),
-    logoFileId: draft.logo?.fileId ?? "",
-    imageFileId: draft.image?.fileId ?? null,
+    logo: { fileId: draft.logo?.fileId ?? "" },
+    image: draft.image ? { fileId: draft.image.fileId } : null,
     description: draft.description.trim(),
     tag: draft.tag,
     linkText: draft.linkText.trim(),
@@ -262,12 +262,21 @@ export function homePromoErrorText(err: unknown, fallback: string): string {
     case "not_found":
     case "promotion_not_found":
       return "This promo was removed.";
-    case "invalid_link_url":
-    case "link_url_must_be_https":
-      return "The link must be a full https:// address.";
-    case "invalid_dates":
-    case "ends_before_start":
-      return "End after the start.";
+    case "promotion_file_not_ready":
+      return "That picture is still uploading or was not accepted. Upload it again.";
+    case "invalid_promotion":
+      switch (err.detail<string>("field")) {
+        case "linkUrl":
+          return "The link must be a full https:// address.";
+        case "endsAt":
+          return "End after the start.";
+        case "startsAt":
+          return "Pick the start date and time.";
+        case "logo":
+          return "Add the logo.";
+        default:
+          return "Check the fields and try again.";
+      }
     default:
       if (err.kind === "validation") return "Check the highlighted fields and try again.";
       if (err.kind === "server") return "GRIDGO could not save just now. Try again.";
