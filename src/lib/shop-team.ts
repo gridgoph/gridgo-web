@@ -27,6 +27,21 @@ export function joinTeamUrl(origin: string, token: string): string {
   return `${origin.replace(/\/+$/, "")}${JOIN_TEAM_PATH}#token=${encodeURIComponent(token)}`;
 }
 
+/**
+ * Where "Messenger" sends a join link. On a phone, the Messenger app's share
+ * link opens a new message with the link filled in. A computer has no such
+ * link without a Facebook app id, so it opens Messenger and the Owner pastes
+ * the link, which the button has already copied.
+ */
+export function messengerShareTarget(
+  url: string,
+  userAgent: string,
+): { href: string; prefilled: boolean } {
+  return /Android|iPhone|iPad|iPod/i.test(userAgent)
+    ? { href: `fb-messenger://share/?link=${encodeURIComponent(url)}`, prefilled: true }
+    : { href: "https://www.messenger.com/", prefilled: false };
+}
+
 /** The API's tokens are 43 base64url characters; anything else is not one. */
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;
 

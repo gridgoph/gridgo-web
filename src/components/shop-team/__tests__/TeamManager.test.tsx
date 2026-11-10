@@ -8,14 +8,17 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TeamManager } from "@/components/shop-team/TeamManager";
+import { ApiError } from "@/lib/api/client";
 import type { ShopInvite, ShopMember } from "@/lib/api/types";
 
 const TOKEN = "T".repeat(43);
+const NEW_TOKEN = "N".repeat(43);
 
 const api = vi.hoisted(() => ({
   getMyShopTeam: vi.fn(),
   createShopInvite: vi.fn(),
   revokeShopInvite: vi.fn(),
+  replaceShopInvite: vi.fn(),
   approveShopMember: vi.fn(),
   setShopMemberRole: vi.fn(),
   removeShopMember: vi.fn(),
@@ -223,5 +226,115 @@ describe("Owner Team page", () => {
     expect(await within(dialog).findByLabelText("Invite link")).toHaveValue(
       `${window.location.origin}/join-team#token=${TOKEN}`,
     );
+  });
+
+  it("New code swaps the shown link only after the API issues the new one", async () => {
+    let finish: (value: unknown) => void = () => undefined;
+    api.replaceShopInvite.mockImplementation(
+      () => new Promise((resolve) => (finish = resolve)),
+    );
+    render(<TeamManager />);
+    await userEvent.click(await screen.findByRole("button", { name: "Add staff" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("tab", { name: "Link" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Create link" }));
+    const link = await within(dialog).findByLabelText("Invite link");
+
+    await userEvent.click(within(dialog).getByRole("button", { name: "New code" }));
+    expect(api.replaceShopInvite).toHaveBeenCalledWith("shi_link");
+    // Still waiting on the API: the old link stays on screen.
+    expect(
+      within(dialog).getByRole("button", { name: "Making new code…" }),
+    ).toBeDisabled();
+    expect(link).toHaveValue(`${window.location.origin}/join-team#token=${TOKEN}`);
+
+    finish({
+      invite: { ...openInvite, id: "shi_link_2", kind: "link", identity: null },
+      token: NEW_TOKEN,
+    });
+    await waitFor(() =>
+      expect(within(dialog).getByLabelText("Invite link")).toHaveValue(
+        `${window.location.origin}/join-team#token=${NEW_TOKEN}`,
+      ),
+    );
+    expect(
+      within(dialog).getByText("New code ready. The old one no longer works."),
+    ).toBeVisible();
+
+    // A second New code replaces the newest invite, not the first one.
+    api.replaceShopInvite.mockResolvedValueOnce({
+      invite: { ...openInvite, id: "shi_link_3", kind: "link", identity: null },
+      token: TOKEN,
+    });
+    await userEvent.click(within(dialog).getByRole("button", { name: "New code" }));
+    expect(api.replaceShopInvite).toHaveBeenLastCalledWith("shi_link_2");
+  });
+
+  it("keeps the working code on screen when New code is refused", async () => {
+    api.replaceShopInvite.mockRejectedValue(
+      new ApiError(409, { error: "shop_invite_used" }),
+    );
+    render(<TeamManager />);
+    await userEvent.click(await screen.findByRole("button", { name: "Add staff" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("tab", { name: "QR code" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show QR code" }));
+    const qr = await within(dialog).findByRole("img", { name: "Invite QR code" });
+    const before = qr.innerHTML;
+    await userEvent.click(within(dialog).getByRole("button", { name: "New code" }));
+    expect(api.replaceShopInvite).toHaveBeenCalledWith("shi_qr");
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "This invite was already used.",
+    );
+    expect(within(dialog).getByRole("img", { name: "Invite QR code" }).innerHTML).toBe(
+      before,
+    );
+    expect(within(dialog).queryByText(/old one no longer works/)).not.toBeInTheDocument();
+  });
+
+  it("New code redraws the QR from the new token", async () => {
+    api.replaceShopInvite.mockResolvedValue({
+      invite: { ...openInvite, id: "shi_qr_2", kind: "qr", identity: null },
+      token: NEW_TOKEN,
+    });
+    render(<TeamManager />);
+    await userEvent.click(await screen.findByRole("button", { name: "Add staff" }));
+    const dialog = await screen.findByRole("dialog");
+    await userEvent.click(within(dialog).getByRole("tab", { name: "QR code" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Show QR code" }));
+    const before = (await within(dialog).findByRole("img", { name: "Invite QR code" }))
+      .innerHTML;
+    await userEvent.click(within(dialog).getByRole("button", { name: "New code" }));
+    await within(dialog).findByText("New code ready. The old one no longer works.");
+    expect(
+      within(dialog).getByRole("img", { name: "Invite QR code" }).innerHTML,
+    ).not.toBe(before);
+  });
+
+  it("Share via Messenger copies the link and opens Messenger on a computer", async () => {
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    const user = userEvent.setup();
+    render(<TeamManager />);
+    await user.click(await screen.findByRole("button", { name: "Add staff" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("tab", { name: "Link" }));
+    await user.click(within(dialog).getByRole("button", { name: "Create link" }));
+    await user.click(
+      await within(dialog).findByRole("button", { name: "Share via Messenger" }),
+    );
+    expect(open).toHaveBeenCalledWith(
+      "https://www.messenger.com/",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    expect(await navigator.clipboard.readText()).toBe(
+      `${window.location.origin}/join-team#token=${TOKEN}`,
+    );
+    expect(
+      within(dialog).getByText("Link copied. Paste it into a Messenger chat."),
+    ).toBeVisible();
+    // Copy link stays.
+    expect(within(dialog).getByRole("button", { name: "Link copied" })).toBeVisible();
+    open.mockRestore();
   });
 });
