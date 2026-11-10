@@ -76,6 +76,14 @@ export type PlayOptInSummary = {
   groupMode: PlayOptInGroupMode;
   optInUrl: string;
   groupJoinUrl: string | null;
+  /**
+   * The automatic once-a-day opt-in push. Absent on an API without it.
+   * It only goes out while the campaign is on; a manual broadcast counts
+   * toward the same day's one send.
+   */
+  dailyReminderEnabled?: boolean;
+  /** 0–23, an hour in Asia/Manila. */
+  dailyReminderHour?: number;
   /** GRIDGO's signal: Play installs reported by the app plus staff marks. */
   optedInCount: number;
   /** Of those, first seen from a Play install. */
@@ -105,6 +113,9 @@ export type PlayTesterSettingsPatch = {
   groupJoinUrl?: string | null;
   /** 1–10000. */
   target?: number;
+  dailyReminderEnabled?: boolean;
+  /** Integer 0–23, Asia/Manila. */
+  dailyReminderHour?: number;
 };
 
 export async function listPlayTesters(app: TesterApp): Promise<PlayTesterRoster> {

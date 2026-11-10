@@ -6,6 +6,8 @@ import {
   approvalTimestamp,
   parseOptedIn,
   playClockDay,
+  REMINDER_HOURS,
+  reminderHourLabel,
   rosterLoadError,
   shortDay,
   testerAppFrom,
@@ -133,5 +135,19 @@ describe("broadcast failures", () => {
       expect(failure.uncertain).toBe(true);
       expect(failure.message).not.toMatch(/Nothing was sent/);
     }
+  });
+});
+
+describe("daily reminder hour", () => {
+  it("names each Manila hour in 12-hour time", () => {
+    expect(reminderHourLabel(10)).toBe("10:00 AM (Manila)");
+    expect(reminderHourLabel(0)).toBe("12:00 AM (Manila)");
+    expect(reminderHourLabel(12)).toBe("12:00 PM (Manila)");
+    expect(reminderHourLabel(23)).toBe("11:00 PM (Manila)");
+    expect(reminderHourLabel(18, false)).toBe("6:00 PM");
+  });
+
+  it("offers every hour from 0 to 23", () => {
+    expect(REMINDER_HOURS).toEqual(Array.from({ length: 24 }, (_, h) => h));
   });
 });

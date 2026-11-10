@@ -52,6 +52,8 @@ import {
   campaignSettingsError,
   markOptedInError,
   parseTarget,
+  REMINDER_HOURS,
+  reminderHourLabel,
   testerAppLabel,
   validGroupJoinUrl,
   validOptInUrl,
@@ -475,9 +477,9 @@ function Figure({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-type Field = "optInUrl" | "groupJoinUrl" | "target";
+type Field = "optInUrl" | "groupJoinUrl" | "target" | "reminderHour";
 
-/** The campaign switch, its two links and the target. */
+/** The campaign switch, its two links, the target and the daily reminder. */
 function CampaignCard({
   app,
   optIn,
@@ -501,6 +503,10 @@ function CampaignCard({
   const [error, setError] = useState<string | null>(null);
   const [toggling, setToggling] = useState<boolean | null>(null);
   const label = testerAppLabel(app);
+  // Older APIs send neither field; then the reminder rows stay hidden.
+  const reminderEnabled = optIn.dailyReminderEnabled;
+  const reminderHour = optIn.dailyReminderHour;
+  const hasReminder = typeof reminderEnabled === "boolean" && typeof reminderHour === "number";
 
   function open(field: Field) {
     setError(null);
@@ -510,7 +516,9 @@ function CampaignCard({
         ? optIn.optInUrl
         : field === "groupJoinUrl"
           ? (optIn.groupJoinUrl ?? "")
-          : String(optIn.target),
+          : field === "reminderHour"
+            ? String(reminderHour ?? "")
+            : String(optIn.target),
     );
   }
 
@@ -547,6 +555,15 @@ function CampaignCard({
         return setError("Use the Google Group link: https://groups.google.com/g/…");
       }
       return void save({ groupJoinUrl: value });
+    }
+    if (field === "reminderHour") {
+      const hour = Number(value);
+      if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+        return setError("Choose an hour from 12:00 AM to 11:00 PM.");
+      }
+      // Nothing changed: close without a write.
+      if (hour === reminderHour) return setEditing(null);
+      return void save({ dailyReminderHour: hour });
     }
     const n = parseTarget(value);
     if (n === null) return setError("Enter a whole number from 1 to 10,000.");
@@ -671,7 +688,57 @@ function CampaignCard({
             />,
           )}
         />
+        {hasReminder ? (
+          <>
+            <div className="grid grid-cols-[6.5rem_minmax(0,1fr)] items-center gap-x-2 min-h-11">
+              <dt className="text-caption text-text-muted">Daily reminder</dt>
+              <dd className="m-0 flex items-center gap-2">
+                <Switch
+                  aria-label={`${label} daily reminder`}
+                  checked={reminderEnabled}
+                  disabled={busy}
+                  onCheckedChange={(value) => {
+                    if (value === reminderEnabled) return;
+                    void save({ dailyReminderEnabled: value });
+                  }}
+                />
+                <span className="text-body text-text-primary">
+                  {reminderEnabled ? "On" : "Off"}
+                </span>
+              </dd>
+            </div>
+            <Row
+              label="Reminder time"
+              value={reminderHourLabel(reminderHour)}
+              editing={editing === "reminderHour"}
+              onEdit={() => open("reminderHour")}
+              editLabel="Edit daily reminder time"
+              editor={editor(
+                "reminderHour",
+                <select
+                  aria-label="Daily reminder time (Manila)"
+                  className="h-11 min-w-0 rounded-[var(--radius-field)] border border-input bg-card px-3 text-body text-foreground"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                >
+                  {REMINDER_HOURS.map((hour) => (
+                    <option key={hour} value={String(hour)}>
+                      {reminderHourLabel(hour)}
+                    </option>
+                  ))}
+                </select>,
+              )}
+            />
+          </>
+        ) : null}
       </dl>
+
+      {hasReminder ? (
+        <p className="text-caption text-text-muted m-0">
+          Goes out once a day at this time while the campaign is on. A manual broadcast
+          counts toward that day&apos;s one send.
+        </p>
+      ) : null}
 
       {error ? (
         <p className="text-body text-error m-0" role="alert">
