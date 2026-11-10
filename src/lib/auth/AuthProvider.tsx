@@ -14,6 +14,7 @@ import {
 import { useRouter } from "next/navigation";
 
 import { getAuthMe, isApiError, setTokenProvider } from "@/lib/api/client";
+import { withRequestDeadline } from "@/lib/api/requestDeadline";
 import type { RoleMembership, User } from "@/lib/api/types";
 import { releaseWebPushForSignOut } from "@/lib/pwa/webPush";
 
@@ -189,7 +190,12 @@ function SessionAuthProvider({
 
       if (isCurrent())
         setStatus((current) => (current === "mapped" ? current : "checking"));
-      const token = await clerkSession.getToken();
+      // Bounded like every API call: a Clerk token request that never answers
+      // must end on the retryable "Could not check portal access" screen, not
+      // leave every role gate on "Checking portal access…" for good.
+      const token = await withRequestDeadline(controller.signal, () =>
+        clerkSession.getToken(),
+      );
       if (!isCurrent()) return;
       if (!token) {
         hasMappedIdentity.current = false;
