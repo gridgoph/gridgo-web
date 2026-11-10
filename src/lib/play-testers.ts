@@ -8,7 +8,12 @@
  */
 
 import { isApiError } from "@/lib/api/client";
-import type { TesterApp, TesterDayState } from "@/lib/api/play-testers";
+import type {
+  PlayOptInStep,
+  PlayOptInSummary,
+  TesterApp,
+  TesterDayState,
+} from "@/lib/api/play-testers";
 import { manilaDayStart, manilaToday } from "@/lib/audit";
 
 export const RUN_DAYS = 14;
@@ -135,4 +140,116 @@ export function settingsError(err: unknown): string {
   if (err.status === 403) return ACCESS_COPY;
   if (err.kind === "validation") return "Check the value. Dates cannot be in the future.";
   return "Could not save. Try again.";
+}
+
+// ---------------------------------------------------------------------------
+// Android Play opt-in campaign (contract `gridgo-api/docs/PLAY_OPTIN_API.md`).
+// "Opted in" here is GRIDGO's signal (a Play install the app reported, or a
+// staff mark). Play Console's own figure is typed in and shown apart.
+
+/** The fixed words every opt-in push and Home card carries (set by the API). */
+export const PLAY_OPTIN_COPY = "Help us launch GRIDGO on Play, become a tester.";
+
+/** What the person last did, in the flow's order. */
+export const PLAY_OPTIN_STEP_LABEL: Record<PlayOptInStep, string> = {
+  confirm_gmail: "Tapped",
+  join_group: "Gmail confirmed",
+  // Joined automatically, or only opened the join link: never claim membership.
+  open_optin: "Group step",
+  install_from_play: "Opened opt-in",
+  opted_in: "Opted in",
+};
+
+/** Sort order for the Last step column: further along sorts higher. */
+export const PLAY_OPTIN_STEP_ORDER: Record<PlayOptInStep, number> = {
+  confirm_gmail: 1,
+  join_group: 2,
+  open_optin: 3,
+  install_from_play: 4,
+  opted_in: 5,
+};
+
+/** Mirrors the API's `invalid_opt_in_url` check. */
+export function validOptInUrl(input: string): boolean {
+  const url = parseHttps(input, "play.google.com");
+  return url !== null && /^\/apps\/testing\/[a-zA-Z0-9_.]+$/.test(url.pathname);
+}
+
+/** Mirrors the API's `invalid_group_join_url` check. */
+export function validGroupJoinUrl(input: string): boolean {
+  const url = parseHttps(input, "groups.google.com");
+  return url !== null && /^\/(?:a\/[^/]+\/)?g\/[^/]+(?:\/.*)?$/.test(url.pathname);
+}
+
+function parseHttps(input: string, host: string): URL | null {
+  if (input.length > 2048 || /[\s\x00-\x1f\x7f]/.test(input)) return null;
+  try {
+    const url = new URL(input);
+    if (url.protocol !== "https:" || url.hostname !== host) return null;
+    if (url.port || url.username || url.password) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+/** A whole target from 1 to 10000, or null. */
+export function parseTarget(input: string): number | null {
+  const text = input.trim();
+  if (!/^\d+$/.test(text)) return null;
+  const n = Number(text);
+  return n >= 1 && n <= 10_000 ? n : null;
+}
+
+/**
+ * Why Send would be refused, before the click, or null when it can go.
+ * Mirrors `409 campaign_disabled` / `group_not_configured`.
+ */
+export function broadcastBlocker(
+  optIn: Pick<PlayOptInSummary, "campaignEnabled" | "groupMode" | "groupJoinUrl">,
+  productionApproved: boolean,
+): string | null {
+  if (productionApproved) return "Production is approved. The campaign is over.";
+  if (!optIn.campaignEnabled) return "Turn the campaign on first.";
+  if (optIn.groupMode === "link" && !optIn.groupJoinUrl) return "Add the group link first.";
+  return null;
+}
+
+export function broadcastError(err: unknown): string {
+  if (!isApiError(err)) return "Could not reach the API. Nothing was sent. Retry.";
+  switch (err.code) {
+    case "campaign_disabled":
+      return "The campaign is off or production is approved. Nothing was sent.";
+    case "group_not_configured":
+      return "Add the group link first. Nothing was sent.";
+    default:
+      return err.status === 403 ? ACCESS_COPY : "Could not send. Nothing was sent. Try again.";
+  }
+}
+
+export function markOptedInError(err: unknown): string {
+  if (!isApiError(err)) return "Could not reach the API. Check the connection, then retry.";
+  if (err.code === "user_not_found") return "This account no longer has this app. The list is refreshed.";
+  if (err.status === 403) return ACCESS_COPY;
+  return "Could not mark opted in. Try again.";
+}
+
+export function campaignSettingsError(err: unknown): string {
+  if (!isApiError(err)) return "Could not reach the API. Check the connection, then retry.";
+  switch (err.code) {
+    case "invalid_opt_in_url":
+      return "Use the Play testing link: https://play.google.com/apps/testing/…";
+    case "invalid_group_join_url":
+      return "Use the Google Group link: https://groups.google.com/g/…";
+    case "invalid_target":
+      return "Enter a whole number from 1 to 10,000.";
+    default:
+      return settingsError(err);
+  }
+}
+
+/** "Sent to 8 accounts." Zero is a real outcome here: nobody is still on the APK. */
+export function broadcastReach(notifiedUsers: number): string {
+  if (notifiedUsers === 0) return "Sent to nobody. No Android APK user is still waiting.";
+  return `Sent to ${notifiedUsers} ${notifiedUsers === 1 ? "account" : "accounts"}.`;
 }

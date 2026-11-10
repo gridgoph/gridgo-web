@@ -65,3 +65,35 @@ describe("play testers rules", () => {
     expect(shortDay(null)).toBe("—");
   });
 });
+
+describe("Play opt-in rules", () => {
+  it("mirrors the API's link checks", async () => {
+    const { validOptInUrl, validGroupJoinUrl } = await import("@/lib/play-testers");
+    expect(validOptInUrl("https://play.google.com/apps/testing/ph.gridgo.client")).toBe(true);
+    expect(validOptInUrl("http://play.google.com/apps/testing/ph.gridgo.client")).toBe(false);
+    expect(validOptInUrl("https://play.google.com/store/apps/details?id=x")).toBe(false);
+    expect(validOptInUrl("https://evil.example/apps/testing/ph.gridgo.client")).toBe(false);
+    expect(validGroupJoinUrl("https://groups.google.com/g/gridgo-testers")).toBe(true);
+    expect(validGroupJoinUrl("https://groups.google.com/a/gridgo.ph/g/testers")).toBe(true);
+    expect(validGroupJoinUrl("https://groups.google.com/forum/x")).toBe(false);
+    expect(validGroupJoinUrl("https://groups.google.com:444/g/x")).toBe(false);
+  });
+
+  it("takes a target from 1 to 10000", async () => {
+    const { parseTarget } = await import("@/lib/play-testers");
+    expect(parseTarget("12")).toBe(12);
+    expect(parseTarget("0")).toBeNull();
+    expect(parseTarget("10001")).toBeNull();
+    expect(parseTarget("1.5")).toBeNull();
+  });
+
+  it("says why Send is held before the click", async () => {
+    const { broadcastBlocker } = await import("@/lib/play-testers");
+    const on = { campaignEnabled: true, groupMode: "link" as const, groupJoinUrl: "https://groups.google.com/g/x" };
+    expect(broadcastBlocker(on, false)).toBeNull();
+    expect(broadcastBlocker({ ...on, campaignEnabled: false }, false)).toMatch(/campaign on/);
+    expect(broadcastBlocker({ ...on, groupJoinUrl: null }, false)).toMatch(/group link/);
+    expect(broadcastBlocker({ ...on, groupMode: "automatic", groupJoinUrl: null }, false)).toBeNull();
+    expect(broadcastBlocker(on, true)).toMatch(/approved/);
+  });
+});
