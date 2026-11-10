@@ -141,7 +141,9 @@ export function PlayOptInPanel({
         id: "app",
         header: "App",
         hideOnMobile: true,
-        cell: (row) => <span className="text-body text-text-secondary">{testerAppLabel(row.app)}</span>,
+        cell: (row) => (
+          <span className="text-body text-text-secondary">{testerAppLabel(row.app)}</span>
+        ),
       },
       {
         id: "gmail",
@@ -190,9 +192,15 @@ export function PlayOptInPanel({
         <CampaignCard app={app} optIn={optIn} onSave={onSave} />
       </div>
 
-      <section className="flex flex-col gap-3" aria-labelledby={`play-optin-unfinished-${app}`}>
+      <section
+        className="flex flex-col gap-3"
+        aria-labelledby={`play-optin-unfinished-${app}`}
+      >
         <div className="flex flex-col gap-0.5">
-          <h2 id={`play-optin-unfinished-${app}`} className="text-h3 text-text-primary m-0">
+          <h2
+            id={`play-optin-unfinished-${app}`}
+            className="text-h3 text-text-primary m-0"
+          >
             Tapped, not finished
           </h2>
           <p className="text-caption text-text-muted m-0">
@@ -237,10 +245,12 @@ export function PlayOptInPanel({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Mark {marking ? personName(marking) : ""} opted in?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Mark {marking ? personName(marking) : ""} opted in?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Only if Play Console lists {marking?.gmail ?? "them"}. It cannot be undone, and
-              their daily check-ins start.
+              Only if Play Console lists {marking?.gmail ?? "them"}. It cannot be undone,
+              and their daily check-ins start.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {markError ? (
@@ -309,6 +319,8 @@ function OptedInCard({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<string | null>(null);
+  // Set after a send whose outcome is unknown; it stays until a send succeeds.
+  const [uncertain, setUncertain] = useState<string | null>(null);
 
   const target = optIn.target;
   const count = optIn.optedInCount;
@@ -322,11 +334,20 @@ function OptedInCard({
       const announcement = await sendPlayOptInBroadcast(app);
       if (!mounted.current) return;
       setConfirming(false);
+      setUncertain(null);
       setSent(broadcastReach(announcement.notifiedUsers));
       onSent();
     } catch (err) {
       if (!mounted.current) return;
-      setError(broadcastError(err));
+      const failure = broadcastError(err);
+      if (failure.uncertain) {
+        // Never leave a resend one tap away: close and say so on the card.
+        setConfirming(false);
+        setUncertain(failure.message);
+        onSent();
+      } else {
+        setError(failure.message);
+      }
     } finally {
       if (mounted.current) setBusy(false);
     }
@@ -383,6 +404,11 @@ function OptedInCard({
           Send broadcast
         </Button>
         {blocker ? <p className="text-caption text-text-muted m-0">{blocker}</p> : null}
+        {uncertain ? (
+          <p className="text-caption text-warning m-0" role="alert">
+            {uncertain}
+          </p>
+        ) : null}
         {sent ? (
           <p className="text-caption text-text-secondary m-0" role="status">
             {sent}
@@ -398,10 +424,15 @@ function OptedInCard({
           <AlertDialogHeader>
             <AlertDialogTitle>Send to {label} Android users?</AlertDialogTitle>
             <AlertDialogDescription>
-              Pushes to every {label} account on the Android APK that has not opted in. There
-              is no unsend.
+              Pushes to every {label} account on the Android APK that has not opted in.
+              There is no unsend.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {uncertain ? (
+            <p className="text-body text-warning m-0" role="alert">
+              The last send may have gone out. Only send again once you have checked.
+            </p>
+          ) : null}
           <p className="gg-card text-body text-text-primary m-0 flex items-start gap-2">
             <Megaphone size={16} aria-hidden className="mt-0.5 shrink-0" />
             {PLAY_OPTIN_COPY}
@@ -419,7 +450,11 @@ function OptedInCard({
             >
               Not now
             </AlertDialogCancel>
-            <AlertDialogAction variant="default" disabled={busy} onClick={() => void send()}>
+            <AlertDialogAction
+              variant="default"
+              disabled={busy}
+              onClick={() => void send()}
+            >
               {busy ? "Sending…" : "Send"}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -433,7 +468,9 @@ function Figure({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-2">
       <span className="text-caption text-text-muted">{label}</span>
-      <span className="text-h2 text-text-primary tabular-nums leading-none">{children}</span>
+      <span className="text-h2 text-text-primary tabular-nums leading-none">
+        {children}
+      </span>
     </div>
   );
 }
@@ -498,7 +535,9 @@ function CampaignCard({
     const value = draft.trim();
     if (field === "optInUrl") {
       if (!validOptInUrl(value)) {
-        return setError("Use the Play testing link: https://play.google.com/apps/testing/…");
+        return setError(
+          "Use the Play testing link: https://play.google.com/apps/testing/…",
+        );
       }
       return void save({ optInUrl: value });
     }
@@ -647,7 +686,9 @@ function CampaignCard({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {toggling ? `Turn on the ${label} campaign?` : `Turn off the ${label} campaign?`}
+              {toggling
+                ? `Turn on the ${label} campaign?`
+                : `Turn off the ${label} campaign?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {toggling

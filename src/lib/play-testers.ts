@@ -92,12 +92,12 @@ export function parseOptedIn(input: string): number | null {
   return Number.isSafeInteger(n) && n <= 2_147_483_647 ? n : null;
 }
 
-const ACCESS_COPY =
-  "Only Operations and Super Admin can open the Play testers page.";
+const ACCESS_COPY = "Only Operations and Super Admin can open the Play testers page.";
 
 /** Read failures: who may open it, or how to recover. */
 export function rosterLoadError(err: unknown): string {
-  if (!isApiError(err)) return "Could not reach the API. Check the connection, then retry.";
+  if (!isApiError(err))
+    return "Could not reach the API. Check the connection, then retry.";
   if (err.code === "test_operations_forbidden") {
     return "Test operations logins cannot open the Play testers page.";
   }
@@ -107,7 +107,8 @@ export function rosterLoadError(err: unknown): string {
 
 /** Inline copy under the email field. */
 export function addTesterError(err: unknown, app: TesterApp): string {
-  if (!isApiError(err)) return "Could not reach the API. Check the connection, then retry.";
+  if (!isApiError(err))
+    return "Could not reach the API. Check the connection, then retry.";
   const noun = TESTER_APPS.find((choice) => choice.app === app)?.noun ?? "matching";
   switch (err.code) {
     case "invalid_email":
@@ -136,7 +137,8 @@ export function removeTesterError(err: unknown): string {
 }
 
 export function settingsError(err: unknown): string {
-  if (!isApiError(err)) return "Could not reach the API. Check the connection, then retry.";
+  if (!isApiError(err))
+    return "Could not reach the API. Check the connection, then retry.";
   if (err.status === 403) return ACCESS_COPY;
   if (err.kind === "validation") return "Check the value. Dates cannot be in the future.";
   return "Could not save. Try again.";
@@ -211,31 +213,57 @@ export function broadcastBlocker(
 ): string | null {
   if (productionApproved) return "Production is approved. The campaign is over.";
   if (!optIn.campaignEnabled) return "Turn the campaign on first.";
-  if (optIn.groupMode === "link" && !optIn.groupJoinUrl) return "Add the group link first.";
+  if (optIn.groupMode === "link" && !optIn.groupJoinUrl)
+    return "Add the group link first.";
   return null;
 }
 
-export function broadcastError(err: unknown): string {
-  if (!isApiError(err)) return "Could not reach the API. Nothing was sent. Retry.";
+/**
+ * A refused send (`4xx`) is certain: the API answered before writing anything.
+ * A lost connection or a server error is not: the broadcast may have committed
+ * and the reply been lost, so the page never says "nothing was sent" and never
+ * offers a one-tap resend.
+ */
+export type BroadcastFailure = { message: string; uncertain: boolean };
+
+export const BROADCAST_UNCERTAIN =
+  "Could not confirm the send. It may have gone out. Check a tester's phone before sending again.";
+
+export function broadcastError(err: unknown): BroadcastFailure {
+  if (!isApiError(err) || err.status >= 500 || err.status < 400) {
+    return { message: BROADCAST_UNCERTAIN, uncertain: true };
+  }
   switch (err.code) {
     case "campaign_disabled":
-      return "The campaign is off or production is approved. Nothing was sent.";
+      return {
+        message: "The campaign is off or production is approved. Nothing was sent.",
+        uncertain: false,
+      };
     case "group_not_configured":
-      return "Add the group link first. Nothing was sent.";
+      return { message: "Add the group link first. Nothing was sent.", uncertain: false };
     default:
-      return err.status === 403 ? ACCESS_COPY : "Could not send. Nothing was sent. Try again.";
+      return {
+        message:
+          err.status === 403
+            ? ACCESS_COPY
+            : "The API refused the send. Nothing was sent.",
+        uncertain: false,
+      };
   }
 }
 
 export function markOptedInError(err: unknown): string {
-  if (!isApiError(err)) return "Could not reach the API. Check the connection, then retry.";
-  if (err.code === "user_not_found") return "This account no longer has this app. The list is refreshed.";
+  if (!isApiError(err))
+    return "Could not reach the API. Check the connection, then retry.";
+  if (err.code === "user_not_found")
+    return "This account no longer has this app. The list is refreshed.";
   if (err.status === 403) return ACCESS_COPY;
   return "Could not mark opted in. Try again.";
 }
 
 export function campaignSettingsError(err: unknown): string {
-  if (!isApiError(err)) return "Could not reach the API. Check the connection, then retry.";
+  if (!isApiError(err))
+    return "Could not reach the API. Check the connection, then retry.";
   switch (err.code) {
     case "invalid_opt_in_url":
       return "Use the Play testing link: https://play.google.com/apps/testing/…";

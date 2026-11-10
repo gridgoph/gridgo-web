@@ -2,7 +2,14 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -30,8 +37,9 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/ops/play-testers",
 }));
 vi.mock("@/lib/api/play-testers", async () => {
-  const actual =
-    await vi.importActual<typeof import("@/lib/api/play-testers")>("@/lib/api/play-testers");
+  const actual = await vi.importActual<typeof import("@/lib/api/play-testers")>(
+    "@/lib/api/play-testers",
+  );
   return { ...actual, ...api };
 });
 
@@ -69,7 +77,10 @@ function optIn(overrides: Partial<PlayOptInSummary> = {}): PlayOptInSummary {
   };
 }
 
-function roster(play: Partial<PlayOptInSummary> = {}, approved: string | null = null): PlayTesterRoster {
+function roster(
+  play: Partial<PlayOptInSummary> = {},
+  approved: string | null = null,
+): PlayTesterRoster {
   return {
     app: "client",
     stats: {
@@ -143,7 +154,9 @@ describe("Play opt-in campaign", () => {
     ).toBeInTheDocument();
     expect(api.sendPlayOptInBroadcast).not.toHaveBeenCalled();
     fireEvent.click(within(dialog()).getByRole("button", { name: "Send" }));
-    await waitFor(() => expect(api.sendPlayOptInBroadcast).toHaveBeenCalledWith("client"));
+    await waitFor(() =>
+      expect(api.sendPlayOptInBroadcast).toHaveBeenCalledWith("client"),
+    );
     expect(await screen.findByText("Sent to 8 accounts.")).toBeInTheDocument();
   });
 
@@ -160,18 +173,69 @@ describe("Play opt-in campaign", () => {
   });
 
   it.each([
+    ["a lost connection", new TypeError("Failed to fetch")],
+    ["a server error", new ApiError(500, { error: "server_error" })],
+    ["a gateway timeout", new ApiError(504, { error: "gateway_timeout" })],
+  ])(
+    "never says nothing was sent after %s, and keeps a resend behind a warning",
+    async (_, err) => {
+      api.sendPlayOptInBroadcast.mockRejectedValue(err);
+      await ready();
+      fireEvent.click(screen.getByRole("button", { name: "Send broadcast" }));
+      fireEvent.click(within(dialog()).getByRole("button", { name: "Send" }));
+      expect(
+        await screen.findByText(/Could not confirm the send\. It may have gone out\./),
+      ).toBeInTheDocument();
+      // The confirm closed: no resend one tap away.
+      await waitFor(() =>
+        expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
+      );
+      expect(screen.queryByText(/Nothing was sent/)).not.toBeInTheDocument();
+      expect(api.sendPlayOptInBroadcast).toHaveBeenCalledTimes(1);
+      // Reopening warns before any second send.
+      fireEvent.click(screen.getByRole("button", { name: "Send broadcast" }));
+      expect(
+        within(dialog()).getByText(
+          "The last send may have gone out. Only send again once you have checked.",
+        ),
+      ).toBeInTheDocument();
+      expect(api.sendPlayOptInBroadcast).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([
+    [
+      "campaign_disabled",
+      "The campaign is off or production is approved. Nothing was sent.",
+    ],
+    ["group_not_configured", "Add the group link first. Nothing was sent."],
+  ])("says nothing was sent only for a definite refusal (%s)", async (code, copy) => {
+    api.sendPlayOptInBroadcast.mockRejectedValue(new ApiError(409, { error: code }));
+    await ready();
+    fireEvent.click(screen.getByRole("button", { name: "Send broadcast" }));
+    fireEvent.click(within(dialog()).getByRole("button", { name: "Send" }));
+    expect(await within(dialog()).findByText(copy)).toBeInTheDocument();
+    expect(screen.queryByText(/Could not confirm the send/)).not.toBeInTheDocument();
+  });
+
+  it.each([
     [{ campaignEnabled: false }, null, "Turn the campaign on first."],
     [{ groupJoinUrl: null }, null, "Add the group link first."],
     [{}, "2026-11-09T00:00:00.000Z", "Production is approved. The campaign is over."],
-  ] as const)("holds Send with the reason before the click", async (play, approved, why) => {
-    api.listPlayTesters.mockResolvedValue(roster(play, approved));
-    await ready();
-    expect(screen.getByRole("button", { name: "Send broadcast" })).toBeDisabled();
-    expect(screen.getByText(why)).toBeInTheDocument();
-  });
+  ] as const)(
+    "holds Send with the reason before the click",
+    async (play, approved, why) => {
+      api.listPlayTesters.mockResolvedValue(roster(play, approved));
+      await ready();
+      expect(screen.getByRole("button", { name: "Send broadcast" })).toBeDisabled();
+      expect(screen.getByText(why)).toBeInTheDocument();
+    },
+  );
 
   it("allows Send without a group link when the API adds members itself", async () => {
-    api.listPlayTesters.mockResolvedValue(roster({ groupMode: "automatic", groupJoinUrl: null }));
+    api.listPlayTesters.mockResolvedValue(
+      roster({ groupMode: "automatic", groupJoinUrl: null }),
+    );
     await ready();
     expect(screen.getByRole("button", { name: "Send broadcast" })).toBeEnabled();
     expect(screen.getByText("Added for them")).toBeInTheDocument();
@@ -183,7 +247,9 @@ describe("Play opt-in campaign", () => {
     expect(within(dialog()).getByText(/It cannot be undone/)).toBeInTheDocument();
     expect(api.markPlayOptedIn).not.toHaveBeenCalled();
     fireEvent.click(within(dialog()).getByRole("button", { name: "Mark opted in" }));
-    await waitFor(() => expect(api.markPlayOptedIn).toHaveBeenCalledWith("client", "user_cara"));
+    await waitFor(() =>
+      expect(api.markPlayOptedIn).toHaveBeenCalledWith("client", "user_cara"),
+    );
     expect(await screen.findByText("Marked Cara Lim opted in.")).toBeInTheDocument();
     expect(api.listPlayTesters).toHaveBeenCalledTimes(2);
   });
@@ -191,7 +257,9 @@ describe("Play opt-in campaign", () => {
   it("turns the campaign off through a confirm", async () => {
     await ready();
     fireEvent.click(screen.getByRole("switch", { name: "Client opt-in campaign" }));
-    expect(within(dialog()).getByText("Turn off the Client campaign?")).toBeInTheDocument();
+    expect(
+      within(dialog()).getByText("Turn off the Client campaign?"),
+    ).toBeInTheDocument();
     fireEvent.click(within(dialog()).getByRole("button", { name: "Turn off" }));
     await waitFor(() =>
       expect(api.updatePlayTesterSettings).toHaveBeenCalledWith("client", {
@@ -210,7 +278,9 @@ describe("Play opt-in campaign", () => {
       await screen.findByText("Use the Google Group link: https://groups.google.com/g/…"),
     ).toBeInTheDocument();
     expect(api.updatePlayTesterSettings).not.toHaveBeenCalled();
-    fireEvent.change(group, { target: { value: "https://groups.google.com/g/new-testers" } });
+    fireEvent.change(group, {
+      target: { value: "https://groups.google.com/g/new-testers" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(api.updatePlayTesterSettings).toHaveBeenCalledWith("client", {
@@ -219,13 +289,17 @@ describe("Play opt-in campaign", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Edit opt-in target" })).toBeInTheDocument(),
+      expect(
+        screen.getByRole("button", { name: "Edit opt-in target" }),
+      ).toBeInTheDocument(),
     );
     fireEvent.click(screen.getByRole("button", { name: "Edit opt-in target" }));
     const target = screen.getByLabelText("Opt-in target");
     fireEvent.change(target, { target: { value: "0" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByText("Enter a whole number from 1 to 10,000.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Enter a whole number from 1 to 10,000."),
+    ).toBeInTheDocument();
     fireEvent.change(target, { target: { value: "20" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
@@ -236,10 +310,14 @@ describe("Play opt-in campaign", () => {
   it("clears the group link when the field is emptied", async () => {
     await ready();
     fireEvent.click(screen.getByRole("button", { name: "Edit Google Group join link" }));
-    fireEvent.change(screen.getByLabelText("Google Group join link"), { target: { value: "" } });
+    fireEvent.change(screen.getByLabelText("Google Group join link"), {
+      target: { value: "" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
-      expect(api.updatePlayTesterSettings).toHaveBeenCalledWith("client", { groupJoinUrl: null }),
+      expect(api.updatePlayTesterSettings).toHaveBeenCalledWith("client", {
+        groupJoinUrl: null,
+      }),
     );
   });
 
