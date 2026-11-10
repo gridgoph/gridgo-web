@@ -71,6 +71,7 @@ export type NavIconKey =
   | "featured-prints"
   | "vouchers"
   | "promotions"
+  | "home-promos"
   | "founding-testers"
   | "play-testers"
   | "legal"
@@ -668,6 +669,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          // Partner cards rotating with Reorder on the client's Home (gridgo-client#402).
+          id: "ops-home-promos",
+          href: "/ops/home-promos",
+          label: "Home promos",
+          title: "Home promos",
+          icon: "home-promos",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "ops-founding-testers",
           href: "/ops/founding-testers",
           label: "Founding Testers",
@@ -1032,6 +1043,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          // Partner cards rotating with Reorder on the client's Home (gridgo-client#402).
+          id: "admin-home-promos",
+          href: "/admin/home-promos",
+          label: "Home promos",
+          title: "Home promos",
+          icon: "home-promos",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "admin-refunds",
           href: "/admin/refunds",
           label: "Client refunds",
@@ -1390,6 +1411,8 @@ export function contextTitleForPath(
   if (/^\/(ops|admin)\/quotes\/[^/]+/.test(pathname)) return "Quote request";
   if (/^\/(ops|admin)\/sample-batches\/[^/]+/.test(pathname)) return "Sample batch";
   if (pathname.startsWith("/admin/vouchers/")) return "Voucher campaign";
+  if (/^\/(ops|admin)\/home-promos\/new$/.test(pathname)) return "New Home promo";
+  if (/^\/(ops|admin)\/home-promos\/[^/]+/.test(pathname)) return "Home promo";
   if (/^\/(ops|admin)\/founding-testers\/[^/]+/.test(pathname)) return "Client account";
   if (/^\/(ops|admin)\/legal\/[^/]+/.test(pathname)) return "Legal document";
   if (/^\/(ops|admin)\/organizations\/[^/]+\/statement$/.test(pathname)) {
