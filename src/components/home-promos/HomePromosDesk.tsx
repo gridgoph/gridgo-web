@@ -7,6 +7,7 @@ import { Eye, MousePointerClick, PanelBottomOpen, Pencil, Plus } from "lucide-re
 
 import { PromoPreview, type PreviewPromo } from "@/components/home-promos/PromoPreview";
 import { useFileUrls } from "@/components/home-promos/useFileUrls";
+import { usePromoClock } from "@/components/home-promos/usePromoClock";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { DataTable, DataTableRowAction, type DataTableColumn } from "@/components/ui/data-table";
@@ -21,10 +22,18 @@ import {
   presentHomePromoStatus,
   rotationOrder,
   sortHomePromos,
+  withStatusAt,
 } from "@/lib/home-promos";
+import { useLiveReload } from "@/lib/live/useLiveReload";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
-const DATE = new Intl.DateTimeFormat("en-PH", { month: "short", day: "numeric", timeZone: "Asia/Manila" });
+const DATE = new Intl.DateTimeFormat("en-PH", {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "Asia/Manila",
+});
 
 function datesText(promo: HomePromo): string {
   const start = Date.parse(promo.startsAt);
@@ -68,6 +77,9 @@ export function HomePromosDesk({ tree }: { tree: "ops" | "admin" }) {
   useEffect(() => {
     void load();
   }, [load]);
+  // Another staff member's edit arrives as an inbox notice; re-read on it.
+  useLiveReload("notifications", load);
+  const now = usePromoClock(promos ?? [], load);
 
   async function toggle(promo: HomePromo, enabled: boolean) {
     setToggling(promo.id);
@@ -82,8 +94,9 @@ export function HomePromosDesk({ tree }: { tree: "ops" | "admin" }) {
     }
   }
 
-  const rows = useMemo(() => sortHomePromos(promos ?? []), [promos]);
-  const live = useMemo(() => rotationOrder(promos ?? []), [promos]);
+  // Status moves with the clock, not only when the list was read.
+  const rows = useMemo(() => sortHomePromos(withStatusAt(promos ?? [], now)), [promos, now]);
+  const live = useMemo(() => rotationOrder(promos ?? [], now), [promos, now]);
   const urls = useFileUrls(live.flatMap((p) => [p.logo, p.image]));
   const previews: PreviewPromo[] = live.map((p) => ({
     key: p.id,

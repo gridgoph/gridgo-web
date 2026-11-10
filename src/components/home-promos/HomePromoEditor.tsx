@@ -17,6 +17,7 @@ import {
 import { PromoPreview, type PreviewPromo } from "@/components/home-promos/PromoPreview";
 import { PromoStats } from "@/components/home-promos/PromoStats";
 import { useFileUrls } from "@/components/home-promos/useFileUrls";
+import { usePromoClock } from "@/components/home-promos/usePromoClock";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -61,11 +62,15 @@ import {
   inputFromHomePromoDraft,
   nextDisplayOrder,
   presentHomePromoStatus,
+  patchFromDraft,
   rotationOrder,
+  statusAt,
   validateHomePromoDraft,
   type HomePromoDraft,
   type HomePromoErrors,
 } from "@/lib/home-promos";
+import { useLiveReload } from "@/lib/live/useLiveReload";
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import { uploadErrorMessage } from "@/lib/upload-errors";
 import { cn } from "@/lib/utils";
 
@@ -83,9 +88,9 @@ export function HomePromoEditor({ tree, promoId }: Props) {
   const [promo, setPromo] = useState<HomePromo | null>(null);
   const [others, setOthers] = useState<HomePromo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const loadedOnce = useRef(false);
 
   const load = useCallback(async () => {
-    setError(null);
     try {
       const [list, one] = await Promise.all([
         listHomePromos(),
@@ -93,20 +98,25 @@ export function HomePromoEditor({ tree, promoId }: Props) {
       ]);
       setOthers(list.filter((p) => p.id !== promoId));
       setPromo(one);
+      setError(null);
+      loadedOnce.current = true;
     } catch (err) {
-      setError(homePromoErrorText(err, "Could not load this promo."));
+      // A background re-read that fails keeps the page as it is.
+      if (!loadedOnce.current) setError(homePromoErrorText(err, "Could not load this promo."));
     }
   }, [isNew, promoId]);
+  const refresh = useSerializedLoad(load);
   useEffect(() => {
-    void load();
-  }, [load]);
+    void refresh();
+  }, [refresh]);
+  useLiveReload("notifications", refresh);
 
   if (error) {
     return (
       <ErrorState
         body={error}
         action={
-          <Button variant="secondary" onClick={() => void load()}>
+          <Button variant="secondary" onClick={() => void refresh()}>
             Retry
           </Button>
         }
@@ -118,13 +128,19 @@ export function HomePromoEditor({ tree, promoId }: Props) {
   }
   return (
     <EditorBody
-      key={promo ? `${promo.id}:${promo.updatedAt ?? ""}` : "new"}
+      key={promo ? promo.id : "new"}
       tree={tree}
       promo={promo}
       others={others}
       onSaved={setPromo}
+      onReturn={refresh}
     />
   );
+}
+
+/** A draft as compared for "changed": media by file id, not by link. */
+function plain(d: HomePromoDraft): string {
+  return JSON.stringify({ ...d, logo: d.logo?.fileId ?? null, image: d.image?.fileId ?? null });
 }
 
 function EditorBody({
@@ -132,14 +148,21 @@ function EditorBody({
   promo,
   others,
   onSaved,
+  onReturn,
 }: {
   tree: "ops" | "admin";
   promo: HomePromo | null;
   others: HomePromo[];
   onSaved: (promo: HomePromo) => void;
+  onReturn: () => void;
 }) {
   const router = useRouter();
   const listHref = `/${tree}/home-promos`;
+  /**
+   * The values this edit started from. Save sends only what differs from
+   * it, so a field another tab changed meanwhile is never written back.
+   */
+  const [origin, setOrigin] = useState<HomePromoDraft | null>(() => (promo ? draftFromHomePromo(promo) : null));
   const [draft, setDraft] = useState<HomePromoDraft>(() =>
     promo ? draftFromHomePromo(promo) : emptyHomePromoDraft(Date.now(), nextDisplayOrder(others)),
   );
@@ -162,13 +185,20 @@ function EditorBody({
   );
 
   const errors: HomePromoErrors = attempted ? validateHomePromoDraft(draft) : {};
-  // Compared by file id: a fresh upload draws from a local URL, the API from a signed one.
-  const dirty = useMemo(() => {
-    if (!promo) return true;
-    const plain = (d: HomePromoDraft) =>
-      JSON.stringify({ ...d, logo: d.logo?.fileId ?? null, image: d.image?.fileId ?? null });
-    return plain(draftFromHomePromo(promo)) !== plain(draft);
-  }, [promo, draft]);
+  const dirty = !origin || plain(origin) !== plain(draft);
+  const latest = useMemo(() => (promo ? draftFromHomePromo(promo) : null), [promo]);
+  const changedElsewhere = !!origin && !!latest && plain(origin) !== plain(latest);
+
+  // A fresh read with no edit open takes the new values; an open edit is kept.
+  useEffect(() => {
+    if (!latest || dirty) return;
+    if (origin && plain(origin) === plain(latest)) return;
+    setOrigin(latest);
+    setDraft(latest);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latest]);
+
+  const now = usePromoClock(promo ? [promo, ...others] : others, onReturn);
 
   function set<K extends keyof HomePromoDraft>(key: K, value: HomePromoDraft[K]) {
     setDraft((d) => ({ ...d, [key]: value }));
@@ -201,12 +231,16 @@ function EditorBody({
     setSaving(true);
     setSaveError(null);
     try {
-      const input = inputFromHomePromoDraft(draft);
-      const saved = promo ? await updateHomePromo(promo.id, input) : await createHomePromo(input);
-      if (!promo) {
-        router.replace(`${listHref}/${encodeURIComponent(saved.id)}?created=1`);
+      if (!promo || !origin) {
+        const created = await createHomePromo(inputFromHomePromoDraft(draft));
+        router.replace(`${listHref}/${encodeURIComponent(created.id)}?created=1`);
         return;
       }
+      const saved = await updateHomePromo(promo.id, patchFromDraft(origin, draft));
+      // The saved promo is the truth now, including anything changed elsewhere.
+      const next = draftFromHomePromo(saved);
+      setOrigin(next);
+      setDraft(next);
       setSavedAt(Date.now());
       onSaved(saved);
     } catch (err) {
@@ -232,7 +266,7 @@ function EditorBody({
   // Preview: the other live promos plus this draft at its display order.
   const urls = useFileUrls([draft.logo, draft.image, ...others.flatMap((p) => [p.logo, p.image])]);
   const draftKey = promo?.id ?? "draft";
-  const status = draftStatus(draft);
+  const status = draftStatus(draft, now);
   const previews = useMemo(() => {
     const toPreview = (p: HomePromo): PreviewPromo & { order: number } => ({
       key: p.id,
@@ -261,10 +295,10 @@ function EditorBody({
       order: Number(draft.displayOrder) || 0,
     };
     // The draft is always shown, live or not, so its look can be checked.
-    return [...rotationOrder(others).map(toPreview), mine].sort((a, b) => a.order - b.order);
-  }, [others, draft, urls, draftKey]);
+    return [...rotationOrder(others, now).map(toPreview), mine].sort((a, b) => a.order - b.order);
+  }, [others, draft, urls, draftKey, now]);
 
-  const presented = presentHomePromoStatus(promo && !dirty ? promo.status : status);
+  const presented = presentHomePromoStatus(promo && !dirty ? statusAt(promo, now) : status);
   const descriptionLeft = HOME_PROMO_LIMITS.description - draft.description.trim().length;
 
   return (
@@ -305,7 +339,7 @@ function EditorBody({
               <FilePicker
                 id="promo-logo"
                 label="Logo"
-                hint="Square, PNG or JPEG"
+                hint="Square. PNG, JPEG or WebP, up to 5 MB."
                 file={draft.logo}
                 url={draft.logo ? urls[draft.logo.fileId] ?? null : null}
                 round
@@ -316,7 +350,7 @@ function EditorBody({
               <FilePicker
                 id="promo-image"
                 label="Card image"
-                hint="Optional, fills the card"
+                hint="Optional, fills the card. PNG, JPEG or WebP, up to 15 MB."
                 file={draft.image}
                 url={draft.image ? urls[draft.image.fileId] ?? null : null}
                 busy={uploading === "promotion_image"}
@@ -338,7 +372,7 @@ function EditorBody({
                 aria-describedby="promo-description-count"
               />
               <FieldDescription id="promo-description-count">
-                <span className={descriptionLeft < 20 ? "text-warning" : undefined}>{descriptionLeft}</span> characters left. Shown in the sheet.
+                <span className={descriptionLeft < 20 ? "text-warning" : undefined}>{descriptionLeft}</span> characters left. Shown in the sheet; optional.
               </FieldDescription>
               {errors.description ? <FieldError>{errors.description}</FieldError> : null}
             </Field>
@@ -486,6 +520,13 @@ function EditorBody({
             </div>
           </FieldGroup>
 
+          {changedElsewhere && dirty ? (
+            <Alert>
+              <AlertDescription>
+                Someone changed this promo since you opened it. Save sends only the fields you changed.
+              </AlertDescription>
+            </Alert>
+          ) : null}
           {saveError ? (
             <Alert variant="destructive">
               <AlertDescription>{saveError}</AlertDescription>

@@ -389,9 +389,9 @@ function PromoSheet({ promo, onClose }: { promo: PreviewPromo; onClose: () => vo
           <span className="text-h3 text-text-primary">{promo.name || "Business name"}</span>
           <TagChip tag={promo.tag} />
         </span>
-        <span className="text-body text-center text-text-secondary">
-          {promo.description || "A short line about them."}
-        </span>
+        {promo.description ? (
+          <span className="text-body text-center text-text-secondary">{promo.description}</span>
+        ) : null}
         <span
           className="mt-1 flex min-h-12 w-full items-center justify-center gap-2 rounded-pill bg-[var(--color-action-yellow)] px-4 text-[var(--color-action-yellow-on)]"
           style={{ fontFamily: "var(--font-bold)" }}

@@ -8,7 +8,14 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { Input } from "@/components/ui/input";
 import { SkeletonCards } from "@/components/ui/loading";
 import { getHomePromoStats, type HomePromo, type HomePromoDay } from "@/lib/api/home-promos";
-import { fillDays, homePromoErrorText, manilaDay, rate, statsRange } from "@/lib/home-promos";
+import {
+  fillDays,
+  homePromoErrorText,
+  manilaDay,
+  rate,
+  statsRange,
+  statsRangeError,
+} from "@/lib/home-promos";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 const DAY = new Intl.DateTimeFormat("en-PH", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
@@ -39,14 +46,20 @@ export function statsCsv(name: string, days: HomePromoDay[]): string {
 export function PromoStats({ promo }: { promo: HomePromo }) {
   const initial = useMemo(() => statsRange(promo), [promo]);
   const [range, setRange] = useState(initial);
-  const [rows, setRows] = useState<HomePromoDay[] | null>(null);
+  /** The last successful read, kept with the range that produced it. */
+  const [loaded, setLoaded] = useState<{ key: string; days: HomePromoDay[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const rangeError = statsRangeError(range);
+  const key = `${range.from}..${range.to}`;
 
   const load = useSerializedLoad(
     useCallback(async () => {
+      if (statsRangeError(range)) return;
+      const asked = `${range.from}..${range.to}`;
       setError(null);
       try {
-        setRows(await getHomePromoStats(promo.id, range));
+        const rows = await getHomePromoStats(promo.id, range);
+        setLoaded({ key: asked, days: fillDays(range, rows) });
       } catch (err) {
         setError(homePromoErrorText(err, "Could not load the numbers."));
       }
@@ -56,7 +69,9 @@ export function PromoStats({ promo }: { promo: HomePromo }) {
     void load();
   }, [load]);
 
-  const days = useMemo(() => (rows ? fillDays(range, rows) : null), [rows, range]);
+  // Only the range on screen counts: a pending or failed new range shows no
+  // figures and cannot be downloaded, rather than zeros nobody measured.
+  const days = loaded && loaded.key === key && !rangeError ? loaded.days : null;
   const totals = useMemo(
     () =>
       (days ?? []).reduce(
@@ -66,7 +81,6 @@ export function PromoStats({ promo }: { promo: HomePromo }) {
     [days],
   );
   const today = manilaDay(Date.now());
-  const rangeValid = range.from <= range.to;
 
   function download() {
     if (!days) return;
@@ -93,6 +107,7 @@ export function PromoStats({ promo }: { promo: HomePromo }) {
               value={range.from}
               max={range.to}
               onChange={(e) => e.target.value && setRange((r) => ({ ...r, from: e.target.value }))}
+              aria-invalid={rangeError ? true : undefined}
               className="w-40"
             />
           </label>
@@ -104,23 +119,32 @@ export function PromoStats({ promo }: { promo: HomePromo }) {
               min={range.from}
               max={today}
               onChange={(e) => e.target.value && setRange((r) => ({ ...r, to: e.target.value }))}
+              aria-invalid={rangeError ? true : undefined}
               className="w-40"
             />
           </label>
-          <Button variant="outline" onClick={download} disabled={!days || !rangeValid}>
+          <Button variant="outline" onClick={download} disabled={!days}>
             <Download aria-hidden data-icon="inline-start" />
             CSV
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        <Total icon={Eye} label="Views" value={totals.views} />
-        <Total icon={PanelBottomOpen} label="Sheet opens" value={totals.opens} share={rate(totals.opens, totals.views)} />
-        <Total icon={MousePointerClick} label="Link taps" value={totals.taps} share={rate(totals.taps, totals.views)} />
-      </div>
+      {rangeError ? (
+        <p className="text-caption text-error m-0" role="alert">
+          {rangeError}
+        </p>
+      ) : null}
 
-      {error ? (
+      {days ? (
+        <div className="grid grid-cols-3 gap-2">
+          <Total icon={Eye} label="Views" value={totals.views} />
+          <Total icon={PanelBottomOpen} label="Sheet opens" value={totals.opens} share={rate(totals.opens, totals.views)} />
+          <Total icon={MousePointerClick} label="Link taps" value={totals.taps} share={rate(totals.taps, totals.views)} />
+        </div>
+      ) : null}
+
+      {rangeError ? null : error ? (
         <ErrorState
           body={error}
           action={

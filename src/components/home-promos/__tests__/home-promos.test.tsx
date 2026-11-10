@@ -31,14 +31,18 @@ vi.mock("@/lib/api/home-promos", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/home-promos")>()),
   ...api,
 }));
+const { getFileDownloadUrl } = vi.hoisted(() => ({ getFileDownloadUrl: vi.fn() }));
 vi.mock("@/lib/api/client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/api/client")>()),
-  getFileDownloadUrl: vi.fn().mockResolvedValue("https://files.example/signed.png"),
+  getFileDownloadUrl,
 }));
 
 const { HomePromosDesk } = await import("@/components/home-promos/HomePromosDesk");
 const { HomePromoEditor } = await import("@/components/home-promos/HomePromoEditor");
 const { PromoPreview } = await import("@/components/home-promos/PromoPreview");
+const { PromoStats } = await import("@/components/home-promos/PromoStats");
+const { useFileUrls } = await import("@/components/home-promos/useFileUrls");
+const { ApiError } = await import("@/lib/api/client");
 const OpsPage = (await import("@/app/ops/home-promos/page")).default;
 const AdminPage = (await import("@/app/admin/home-promos/page")).default;
 const OpsEditPage = (await import("@/app/ops/home-promos/[promoId]/page")).default;
@@ -63,30 +67,34 @@ const later = () =>
   );
 
 beforeEach(() => {
+  getFileDownloadUrl.mockResolvedValue("https://files.example/signed.png");
   URL.createObjectURL = vi.fn(() => "blob:local");
   URL.revokeObjectURL = vi.fn();
   window.matchMedia = vi.fn().mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() });
 });
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.clearAllMocks();
   params.promoId = "new";
 });
 
 describe("Home promos list", () => {
   it("shows each promo's status, dates and totals, live first", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-10T04:00:00Z"));
     api.listHomePromos.mockResolvedValue([later(), davaogo()]);
     render(<HomePromosDesk tree="ops" />);
     const table = await screen.findByRole("table", { name: "Home promos" });
     const rows = within(table).getAllByRole("row").slice(1);
     expect(within(rows[0]).getByText("DavaoGo")).toBeInTheDocument();
     expect(within(rows[0]).getByText("Live")).toBeInTheDocument();
-    expect(within(rows[0]).getByText("From Nov 10")).toBeInTheDocument();
+    expect(within(rows[0]).getByText(/^From Nov 10, 8:00/)).toBeInTheDocument();
     expect(within(rows[0]).getByLabelText("120 views")).toBeInTheDocument();
     expect(within(rows[0]).getByLabelText("30 sheet opens")).toBeInTheDocument();
     expect(within(rows[0]).getByLabelText("12 link taps")).toBeInTheDocument();
     expect(within(rows[1]).getByText("Scheduled")).toBeInTheDocument();
-    expect(within(rows[1]).getByText("Dec 1 to Dec 31")).toBeInTheDocument();
+    expect(within(rows[1]).getByText(/^Dec 1, 8:00.* to Dec 31, 8:00/)).toBeInTheDocument();
     expect(screen.getByText("New promo").closest("a")).toHaveAttribute("href", "/ops/home-promos/new");
   });
 
@@ -166,7 +174,7 @@ describe("Add and edit", () => {
     expect(save).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Business name"), { target: { value: "DavaoGO" } });
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-    await waitFor(() => expect(api.updateHomePromo).toHaveBeenCalledWith("promo_davaogo", expect.objectContaining({ name: "DavaoGO" })));
+    await waitFor(() => expect(api.updateHomePromo).toHaveBeenCalledWith("promo_davaogo", { name: "DavaoGO" }));
 
     const stats = await screen.findByRole("table", { name: /by day/ });
     await waitFor(() => expect(within(stats).getByText("7")).toBeInTheDocument());
@@ -244,5 +252,128 @@ describe("Role access", () => {
     cleanup();
     render(<AdminEditPage />);
     expect(await screen.findByRole("button", { name: "Add promo" })).toBeInTheDocument();
+  });
+});
+
+describe("Saving an edit while someone else changes the promo", () => {
+  it("sends only the changed field, so a switch turned off elsewhere stays off", async () => {
+    const start = readHomePromo(rawHomePromo({ startsAt: "2026-11-10T00:00:30.000Z" }));
+    api.listHomePromos.mockResolvedValue([start]);
+    api.getHomePromo.mockResolvedValue(start);
+    render(<HomePromoEditor tree="ops" promoId="promo_davaogo" />);
+    fireEvent.change(await screen.findByLabelText("Description"), { target: { value: "New line." } });
+
+    // Another tab switches it off; this tab regains focus and re-reads.
+    const off = readHomePromo(rawHomePromo({ startsAt: "2026-11-10T00:00:30.000Z", enabled: false, status: "off" }));
+    api.getHomePromo.mockResolvedValue(off);
+    api.listHomePromos.mockResolvedValue([off]);
+    fireEvent.focus(window);
+    expect(await screen.findByText(/Someone changed this promo since you opened it/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Description")).toHaveValue("New line.");
+
+    api.updateHomePromo.mockResolvedValue(
+      readHomePromo(rawHomePromo({ enabled: false, status: "off", description: "New line." })),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(api.updateHomePromo).toHaveBeenCalledTimes(1));
+    expect(api.updateHomePromo.mock.calls[0]).toEqual(["promo_davaogo", { description: "New line." }]);
+    // The saved promo is now the truth: off.
+    expect(await screen.findByRole("switch", { name: "Off" })).not.toBeChecked();
+  });
+
+  it("takes a fresh read when nothing is being edited", async () => {
+    api.listHomePromos.mockResolvedValue([davaogo()]);
+    api.getHomePromo.mockResolvedValue(davaogo());
+    render(<HomePromoEditor tree="admin" promoId="promo_davaogo" />);
+    await screen.findByRole("switch", { name: "On" });
+    api.getHomePromo.mockResolvedValue(readHomePromo(rawHomePromo({ enabled: false, status: "off" })));
+    fireEvent.focus(window);
+    expect(await screen.findByRole("switch", { name: "Off" })).toBeInTheDocument();
+    expect(screen.queryByText(/Someone changed this promo/)).toBeNull();
+  });
+});
+
+describe("By day", () => {
+  const promo = () => readHomePromo(rawHomePromo({ startsAt: "2026-11-09T00:00:00.000Z" }));
+
+  async function loaded() {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-10T04:00:00Z"));
+    api.getHomePromoStats.mockResolvedValueOnce([{ day: "2026-11-10", views: 1, opens: 1, taps: 1 }]);
+    render(<PromoStats promo={promo()} />);
+    await screen.findByRole("table", { name: /by day/ });
+    expect(screen.getByRole("button", { name: "CSV" })).toBeEnabled();
+  }
+
+  it("shows no figures and no CSV while a new range is loading", async () => {
+    await loaded();
+    api.getHomePromoStats.mockReturnValueOnce(new Promise(() => {}));
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-11-01" } });
+    await waitFor(() => expect(api.getHomePromoStats).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("button", { name: "CSV" })).toBeDisabled();
+    expect(screen.queryByRole("table", { name: /by day/ })).toBeNull();
+    expect(screen.queryByText("Views")).toBeNull();
+  });
+
+  it("refuses more than 366 days before asking, with a specific message", async () => {
+    await loaded();
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2024-01-01" } });
+    expect(await screen.findByRole("alert")).toHaveTextContent("Pick 366 days or fewer.");
+    expect(screen.getByRole("button", { name: "CSV" })).toBeDisabled();
+    expect(api.getHomePromoStats).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps CSV off when the new range fails, and names a rejected range", async () => {
+    await loaded();
+    api.getHomePromoStats.mockRejectedValueOnce(new ApiError(400, { error: "invalid_promotion_stats_range" }));
+    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-11-02" } });
+    expect(await screen.findByText(/Pick a range of 366 days or fewer/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "CSV" })).toBeDisabled();
+    expect(screen.queryByRole("table", { name: /by day/ })).toBeNull();
+  });
+});
+
+describe("On Home now follows the clock", () => {
+  it("moves a promo from Scheduled to Live to Ended while the page stays open", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(new Date("2026-11-10T01:59:00Z"));
+    api.listHomePromos.mockResolvedValue([
+      readHomePromo(
+        rawHomePromo({ status: "scheduled", startsAt: "2026-11-10T02:00:00.000Z", endsAt: "2026-11-10T02:30:00.000Z" }),
+      ),
+    ]);
+    render(<HomePromosDesk tree="ops" />);
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    const row = () => screen.getAllByRole("row").find((r) => within(r).queryByText("DavaoGo"))!;
+    expect(within(row()).getByText("Scheduled")).toBeInTheDocument();
+    expect(screen.getByText("No live promo. Clients see Reorder only.")).toBeInTheDocument();
+
+    await act(() => vi.advanceTimersByTimeAsync(61_000));
+    expect(within(row()).getByText("Live")).toBeInTheDocument();
+    expect(screen.queryByText("No live promo. Clients see Reorder only.")).toBeNull();
+
+    await act(() => vi.advanceTimersByTimeAsync(30 * 60_000));
+    expect(within(row()).getByText("Ended")).toBeInTheDocument();
+    expect(screen.getByText("No live promo. Clients see Reorder only.")).toBeInTheDocument();
+  });
+});
+
+describe("Signed media links", () => {
+  function Probe({ file }: { file: { fileId: string; url: string | null; expiresAt?: string | null } }) {
+    const urls = useFileUrls([file]);
+    return <span data-testid="url">{urls[file.fileId] ?? "none"}</span>;
+  }
+
+  it("uses the API's link while it is fresh and renews it once it nears expiry", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(new Date("2026-11-10T04:00:00Z"));
+    render(
+      <Probe file={{ fileId: "f1", url: "https://files.example/own.png", expiresAt: "2026-11-10T04:05:00.000Z" }} />,
+    );
+    expect(screen.getByTestId("url")).toHaveTextContent("own.png");
+    expect(getFileDownloadUrl).not.toHaveBeenCalled();
+    await act(() => vi.advanceTimersByTimeAsync(5 * 60_000));
+    expect(getFileDownloadUrl).toHaveBeenCalledWith("f1");
+    expect(screen.getByTestId("url")).toHaveTextContent("signed.png");
   });
 });

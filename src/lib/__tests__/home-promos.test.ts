@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { readHomePromo } from "@/lib/api/home-promos";
+import { draftFromHomePromo, nextBoundary, patchFromDraft, statsRangeError, statusAt, withStatusAt } from "@/lib/home-promos";
 import {
   draftStatus,
   emptyHomePromoDraft,
@@ -37,12 +38,15 @@ describe("isHttpsUrl", () => {
     expect(isHttpsUrl("https://davaogo.app/")).toBe(true);
     expect(isHttpsUrl(" https://davaogo.app/promo?x=1 ")).toBe(true);
   });
+  it("takes any https host the API takes, dotted or not", () => {
+    expect(isHttpsUrl("https://localhost/")).toBe(true);
+  });
+
   it("refuses http, bare hosts, other schemes, spaces and credentials", () => {
     for (const bad of [
       "http://davaogo.app",
       "davaogo.app",
       "https://",
-      "https://localhost",
       "javascript:alert(1)",
       "https://davao go.app",
       "https://user:pw@davaogo.app",
@@ -59,7 +63,7 @@ describe("validateHomePromoDraft", () => {
 
   it("names every missing required field", () => {
     const errors = validateHomePromoDraft(emptyHomePromoDraft(NOW));
-    expect(Object.keys(errors).sort()).toEqual(["description", "linkText", "linkUrl", "logo", "name"]);
+    expect(Object.keys(errors).sort()).toEqual(["linkText", "linkUrl", "logo", "name"]);
   });
 
   it("refuses a link that is not https", () => {
@@ -71,6 +75,15 @@ describe("validateHomePromoDraft", () => {
       validateHomePromoDraft(filled({ startsAt: "2026-11-10T12:00", endsAt: "2026-11-10T12:00" })).endsAt,
     ).toBe("End after the start.");
     expect(validateHomePromoDraft(filled({ startsAt: "" })).startsAt).toBeTruthy();
+  });
+
+  it("lets the description be empty, as the API does", () => {
+    expect(validateHomePromoDraft(filled({ description: "" })).description).toBeUndefined();
+  });
+
+  it("takes display orders up to the API's maximum", () => {
+    expect(validateHomePromoDraft(filled({ displayOrder: "2147483647" })).displayOrder).toBeUndefined();
+    expect(validateHomePromoDraft(filled({ displayOrder: "2147483648" })).displayOrder).toBeTruthy();
   });
 
   it("keeps the description to 140 characters and the order to a whole number", () => {
@@ -123,13 +136,13 @@ describe("status", () => {
 
   it("lists live first, by display order, and rotates only live ones", () => {
     const promos = [
-      readHomePromo(rawHomePromo({ id: "a", status: "off", displayOrder: 1 })),
+      readHomePromo(rawHomePromo({ id: "a", status: "off", enabled: false, displayOrder: 1 })),
       readHomePromo(rawHomePromo({ id: "b", status: "live", displayOrder: 3 })),
       readHomePromo(rawHomePromo({ id: "c", status: "live", displayOrder: 2 })),
-      readHomePromo(rawHomePromo({ id: "d", status: "scheduled", displayOrder: 1 })),
+      readHomePromo(rawHomePromo({ id: "d", status: "scheduled", startsAt: "2026-12-01T00:00:00.000Z", displayOrder: 1 })),
     ];
     expect(sortHomePromos(promos).map((p) => p.id)).toEqual(["c", "b", "d", "a"]);
-    expect(rotationOrder(promos).map((p) => p.id)).toEqual(["c", "b"]);
+    expect(rotationOrder(promos, NOW).map((p) => p.id)).toEqual(["c", "b"]);
     expect(nextDisplayOrder(promos)).toBe(4);
     expect(nextDisplayOrder([])).toBe(1);
   });
@@ -154,7 +167,7 @@ describe("readHomePromo", () => {
     const promo = readHomePromo(
       rawHomePromo({ logo: "file_x", logoUrl: "https://files.example/x.png", totals: { views: 3, opens: 2, taps: 1 } }),
     );
-    expect(promo.logo).toEqual({ fileId: "file_x", url: "https://files.example/x.png" });
+    expect(promo.logo).toEqual({ fileId: "file_x", url: "https://files.example/x.png", expiresAt: null });
     expect([promo.views, promo.opens, promo.taps]).toEqual([3, 2, 1]);
   });
 
@@ -206,5 +219,61 @@ describe("statsCsv", () => {
       `"'=HYPERLINK(""x"")",2026-11-10,2,1,0`,
       "",
     ]);
+  });
+});
+
+describe("patchFromDraft", () => {
+  const promo = () =>
+    readHomePromo(rawHomePromo({ startsAt: "2026-11-10T00:00:30.000Z", endsAt: "2026-12-01T00:00:45.000Z" }));
+
+  it("sends only the changed field, never the switch or the dates", () => {
+    const origin = draftFromHomePromo(promo());
+    expect(patchFromDraft(origin, { ...origin, description: "New line." })).toEqual({ description: "New line." });
+  });
+
+  it("sends nothing for untouched values, keeping stored seconds", () => {
+    const origin = draftFromHomePromo(promo());
+    expect(patchFromDraft(origin, { ...origin })).toEqual({});
+  });
+
+  it("compares media by file id, and sends a changed date or image", () => {
+    const origin = draftFromHomePromo(promo());
+    const next = {
+      ...origin,
+      logo: { fileId: "file_logo", url: "blob:local" },
+      image: { fileId: "file_img", url: "blob:img" },
+      endsAt: "",
+      enabled: false,
+    };
+    expect(patchFromDraft(origin, next)).toEqual({ image: { fileId: "file_img" }, endsAt: null, enabled: false });
+  });
+});
+
+describe("statusAt and boundaries", () => {
+  const promo = readHomePromo(
+    rawHomePromo({ status: "scheduled", startsAt: "2026-11-10T02:00:00.000Z", endsAt: "2026-11-10T06:00:00.000Z" }),
+  );
+
+  it("moves Scheduled to Live at the start and Ended at the end, by the API's rule", () => {
+    expect(statusAt(promo, Date.parse("2026-11-10T01:59:59Z"))).toBe("scheduled");
+    expect(statusAt(promo, Date.parse("2026-11-10T02:00:00Z"))).toBe("live");
+    expect(statusAt(promo, Date.parse("2026-11-10T06:00:00Z"))).toBe("ended");
+    expect(statusAt({ ...promo, enabled: false }, Date.parse("2026-11-10T03:00:00Z"))).toBe("off");
+    expect(withStatusAt([promo], Date.parse("2026-11-10T03:00:00Z"))[0].status).toBe("live");
+  });
+
+  it("finds the next start or end among enabled promos", () => {
+    expect(nextBoundary([promo], Date.parse("2026-11-10T01:00:00Z"))).toBe(Date.parse("2026-11-10T02:00:00Z"));
+    expect(nextBoundary([promo], Date.parse("2026-11-10T03:00:00Z"))).toBe(Date.parse("2026-11-10T06:00:00Z"));
+    expect(nextBoundary([promo], Date.parse("2026-11-10T07:00:00Z"))).toBeNull();
+    expect(nextBoundary([{ ...promo, enabled: false }], Date.parse("2026-11-10T01:00:00Z"))).toBeNull();
+  });
+});
+
+describe("statsRangeError", () => {
+  it("allows 366 days inclusive and names what is wrong otherwise", () => {
+    expect(statsRangeError({ from: "2025-11-10", to: "2026-11-10" })).toBeNull();
+    expect(statsRangeError({ from: "2025-11-09", to: "2026-11-10" })).toBe("Pick 366 days or fewer.");
+    expect(statsRangeError({ from: "2026-11-11", to: "2026-11-10" })).toBe("From must be on or before To.");
   });
 });

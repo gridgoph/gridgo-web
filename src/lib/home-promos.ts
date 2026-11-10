@@ -22,7 +22,10 @@ export const HOME_PROMO_LIMITS = {
   description: 140,
   linkText: 80,
   url: 2048,
-  displayOrderMax: 9999,
+  /** The API's integer column maximum. */
+  displayOrderMax: 2_147_483_647,
+  /** Inclusive days one stats request may cover. */
+  statsDays: 366,
 } as const;
 
 /** The client app's rotation interval: Reorder, then each live promo. */
@@ -70,9 +73,50 @@ export function sortHomePromos(promos: HomePromo[]): HomePromo[] {
   );
 }
 
+/**
+ * The status at `now`, by the API's rule (disabled = off; end reached =
+ * ended; start not reached = scheduled; else live; start inclusive, end
+ * exclusive), so a page left open moves with the clock instead of keeping
+ * the status it read.
+ */
+export function statusAt(
+  promo: Pick<HomePromo, "enabled" | "startsAt" | "endsAt" | "status">,
+  now: number = Date.now(),
+): HomePromoStatus | (string & {}) {
+  if (!promo.enabled) return "off";
+  const starts = Date.parse(promo.startsAt);
+  const ends = promo.endsAt ? Date.parse(promo.endsAt) : NaN;
+  if (Number.isNaN(starts)) return promo.status;
+  if (!Number.isNaN(ends) && now >= ends) return "ended";
+  if (now < starts) return "scheduled";
+  return "live";
+}
+
+/** The promos with their status re-derived at `now`. */
+export function withStatusAt(promos: HomePromo[], now: number = Date.now()): HomePromo[] {
+  return promos.map((p) => {
+    const status = statusAt(p, now);
+    return status === p.status ? p : { ...p, status };
+  });
+}
+
+/** The next start or end after `now` among enabled promos, or null. */
+export function nextBoundary(promos: HomePromo[], now: number = Date.now()): number | null {
+  let next: number | null = null;
+  for (const p of promos) {
+    if (!p.enabled) continue;
+    for (const at of [Date.parse(p.startsAt), p.endsAt ? Date.parse(p.endsAt) : NaN]) {
+      if (!Number.isNaN(at) && at > now && (next === null || at < next)) next = at;
+    }
+  }
+  return next;
+}
+
 /** The live promos in the order the client app rotates them. */
-export function rotationOrder(promos: HomePromo[]): HomePromo[] {
-  return promos.filter((p) => p.status === "live").sort((a, b) => a.displayOrder - b.displayOrder);
+export function rotationOrder(promos: HomePromo[], now: number = Date.now()): HomePromo[] {
+  return promos
+    .filter((p) => statusAt(p, now) === "live")
+    .sort((a, b) => a.displayOrder - b.displayOrder || Date.parse(a.startsAt) - Date.parse(b.startsAt) || a.id.localeCompare(b.id));
 }
 
 /** The form's state: every value as typed, dates in Manila wall time. */
@@ -146,7 +190,7 @@ export function isHttpsUrl(value: string): boolean {
   if (!/^https:\/\//i.test(text) || /\s/.test(text)) return false;
   try {
     const url = new URL(text);
-    return url.protocol === "https:" && url.hostname.includes(".") && !url.username && !url.password;
+    return url.protocol === "https:" && !!url.hostname && !url.username && !url.password;
   } catch {
     return false;
   }
@@ -160,8 +204,7 @@ export function validateHomePromoDraft(draft: HomePromoDraft): HomePromoErrors {
     errors.name = `Keep it to ${HOME_PROMO_LIMITS.name} characters.`;
   if (!draft.logo) errors.logo = "Add the logo.";
   const description = draft.description.trim();
-  if (!description) errors.description = "Write a line about them.";
-  else if (description.length > HOME_PROMO_LIMITS.description)
+  if (description.length > HOME_PROMO_LIMITS.description)
     errors.description = `Keep it to ${HOME_PROMO_LIMITS.description} characters.`;
   const linkText = draft.linkText.trim();
   if (!linkText) errors.linkText = "Enter the button words.";
@@ -179,7 +222,7 @@ export function validateHomePromoDraft(draft: HomePromoDraft): HomePromoErrors {
   }
   const order = draft.displayOrder.trim();
   if (!/^\d+$/.test(order) || Number(order) > HOME_PROMO_LIMITS.displayOrderMax)
-    errors.displayOrder = `Use a whole number, 0 to ${HOME_PROMO_LIMITS.displayOrderMax}.`;
+    errors.displayOrder = "Use a whole number, 0 or more.";
   return errors;
 }
 
@@ -200,6 +243,32 @@ export function inputFromHomePromoDraft(draft: HomePromoDraft): HomePromoInput {
     enabled: draft.enabled,
     displayOrder: Number(draft.displayOrder.trim()),
   };
+}
+
+/**
+ * Only what the person changed since `origin` (the draft the edit started
+ * from), for PATCH: the API keeps every omitted field, so a stale editor
+ * never rewrites what another tab changed meanwhile. Media compare by file id;
+ * an untouched date is left out, which keeps its stored seconds.
+ */
+export function patchFromDraft(origin: HomePromoDraft, draft: HomePromoDraft): Partial<HomePromoInput> {
+  const full = inputFromHomePromoDraft(draft);
+  const patch: Partial<HomePromoInput> = {};
+  const changed = <K extends keyof HomePromoDraft>(key: K) => origin[key] !== draft[key];
+  if (draft.name.trim() !== origin.name.trim()) patch.name = full.name;
+  if ((draft.logo?.fileId ?? null) !== (origin.logo?.fileId ?? null)) patch.logo = full.logo;
+  if ((draft.image?.fileId ?? null) !== (origin.image?.fileId ?? null)) patch.image = full.image;
+  if (draft.description.trim() !== origin.description.trim()) patch.description = full.description;
+  if (changed("tag")) patch.tag = full.tag;
+  if (draft.linkText.trim() !== origin.linkText.trim()) patch.linkText = full.linkText;
+  if (draft.linkUrl.trim() !== origin.linkUrl.trim()) patch.linkUrl = full.linkUrl;
+  if (changed("tapAction")) patch.tapAction = full.tapAction;
+  if (changed("style")) patch.style = full.style;
+  if (changed("startsAt")) patch.startsAt = full.startsAt;
+  if (changed("endsAt")) patch.endsAt = full.endsAt;
+  if (changed("enabled")) patch.enabled = full.enabled;
+  if (draft.displayOrder.trim() !== origin.displayOrder.trim()) patch.displayOrder = full.displayOrder;
+  return patch;
 }
 
 /** What the form would show on Home right now, before the API derives it. */
@@ -234,6 +303,21 @@ export function statsRange(
   return { from: manilaDay(fromAt), to: manilaDay(toAt) };
 }
 
+/** Inclusive Manila days in a `YYYY-MM-DD` range. */
+export function rangeDays(range: { from: string; to: string }): number {
+  return Math.round((Date.parse(`${range.to}T00:00:00Z`) - Date.parse(`${range.from}T00:00:00Z`)) / 86_400_000) + 1;
+}
+
+/** Why the stats API would refuse this range, before asking it; null when fine. */
+export function statsRangeError(range: { from: string; to: string }): string | null {
+  const ok = (d: string) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`));
+  if (!ok(range.from) || !ok(range.to)) return "Pick both dates.";
+  if (range.from > range.to) return "From must be on or before To.";
+  if (rangeDays(range) > HOME_PROMO_LIMITS.statsDays)
+    return `Pick ${HOME_PROMO_LIMITS.statsDays} days or fewer.`;
+  return null;
+}
+
 /** Every day of the range, newest first, with zero for days the API left out. */
 export function fillDays(
   range: { from: string; to: string },
@@ -262,6 +346,8 @@ export function homePromoErrorText(err: unknown, fallback: string): string {
     case "not_found":
     case "promotion_not_found":
       return "This promo was removed.";
+    case "invalid_promotion_stats_range":
+      return `Pick a range of ${HOME_PROMO_LIMITS.statsDays} days or fewer, From on or before To.`;
     case "promotion_file_not_ready":
       return "That picture is still uploading or was not accepted. Upload it again.";
     case "invalid_promotion":

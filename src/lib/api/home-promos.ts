@@ -33,6 +33,8 @@ export type HomePromoFile = {
   fileId: string;
   /** Ready to draw, when the API sends one. */
   url: string | null;
+  /** When a signed `url` stops working; null for a local or unsigned one. */
+  expiresAt?: string | null;
 };
 
 export type HomePromo = {
@@ -94,11 +96,15 @@ function count(value: unknown): number {
 
 /** A file ref: a bare id, or `{fileId|id, url|downloadUrl}`. */
 function readFile(value: unknown, urlBeside?: unknown): HomePromoFile | null {
-  if (typeof value === "string" && value) return { fileId: value, url: str(urlBeside) };
+  if (typeof value === "string" && value) return { fileId: value, url: str(urlBeside), expiresAt: null };
   if (!isRecord(value)) return null;
   const fileId = str(value.fileId) ?? str(value.id);
   if (!fileId) return null;
-  return { fileId, url: str(value.url) ?? str(value.downloadUrl) ?? str(urlBeside) };
+  return {
+    fileId,
+    url: str(value.url) ?? str(value.downloadUrl) ?? str(urlBeside),
+    expiresAt: str(value.expiresAt),
+  };
 }
 
 const TAGS: readonly HomePromoTag[] = ["partner", "sponsored", "featured_shop"];
