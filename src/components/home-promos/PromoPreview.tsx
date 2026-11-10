@@ -37,21 +37,41 @@ const SLOTS = { top: 32, title: 26, subtitle: 16, footer: 12 } as const;
 const TILE_INSET = 13;
 const OUTLINE = "var(--color-outline)";
 
-/** The phone screen's colour in the current theme, as `#RRGGBB`, for the card's hairline rule. */
+/**
+ * The phone screen's colour in the current theme, as `#RRGGBB`, for the card's
+ * hairline rule. A theme switch is read once the new theme has settled (the
+ * next frames, then again after the 200ms colour transitions): read in the
+ * class mutation itself, the browser can still answer with the old theme.
+ */
 function useScreenColor(ref: RefObject<HTMLElement | null>): string | null {
   const [color, setColor] = useState<string | null>(null);
   useEffect(() => {
     const read = () => {
       if (ref.current) setColor(hexFromCssColor(getComputedStyle(ref.current).backgroundColor));
     };
+    let frame = 0;
+    let timer = 0;
+    const cancel = () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+    const settle = () => {
+      cancel();
+      frame = requestAnimationFrame(() => {
+        read();
+        frame = requestAnimationFrame(read);
+      });
+      timer = window.setTimeout(read, 300);
+    };
     read();
-    const observer = new MutationObserver(read);
+    const observer = new MutationObserver(settle);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
     const query = window.matchMedia?.("(prefers-color-scheme: dark)");
-    query?.addEventListener?.("change", read);
+    query?.addEventListener?.("change", settle);
     return () => {
       observer.disconnect();
-      query?.removeEventListener?.("change", read);
+      query?.removeEventListener?.("change", settle);
+      cancel();
     };
   }, [ref]);
   return color;

@@ -324,6 +324,41 @@ describe("Card colour", () => {
   });
 });
 
+describe("Card hairline after a theme switch", () => {
+  afterEach(() => {
+    document.documentElement.classList.remove("light", "dark");
+    vi.restoreAllMocks();
+  });
+
+  it("re-reads the screen once the new theme settles, so a black card on Dark gets its outline", async () => {
+    // The browser answers the mutation itself with the old theme's screen.
+    let screenColor = "rgb(248, 248, 248)";
+    const real = window.getComputedStyle.bind(window);
+    vi.spyOn(window, "getComputedStyle").mockImplementation((el, pseudo) => {
+      const style = real(el, pseudo);
+      if ((el as HTMLElement).getAttribute?.("role") !== "group") return style;
+      return new Proxy(style, { get: (target, key) => (key === "backgroundColor" ? screenColor : Reflect.get(target, key)) });
+    });
+    document.documentElement.classList.add("light");
+    render(
+      <PromoPreview
+        promos={[{ key: "p1", name: "DavaoGo", logoUrl: null, imageUrl: null, description: "", tag: "partner", linkText: "Visit", linkUrl: "https://davaogo.app/", tapAction: "sheet", color: "#000000" }]}
+      />,
+    );
+    const tile = screen.getByTestId("preview-promo-tile");
+    // Black on the light screen: no hairline, the card's own edge.
+    await waitFor(() => expect(tile.style.borderColor).toBe("rgb(0, 0, 0)"));
+
+    act(() => {
+      document.documentElement.classList.replace("light", "dark");
+      setTimeout(() => {
+        screenColor = "rgb(0, 0, 0)";
+      }, 0);
+    });
+    await waitFor(() => expect(tile.style.borderColor).toBe("var(--color-outline)"));
+  });
+});
+
 describe("Role access", () => {
   it("mounts the same desk for Operations and Super Admin, each linking in its own tree", async () => {
     api.listHomePromos.mockResolvedValue([davaogo()]);
