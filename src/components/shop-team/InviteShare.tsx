@@ -51,17 +51,15 @@ export function InviteLink({ url, shopName }: { url: string; shopName?: string |
 
   async function messenger() {
     const target = messengerShareTarget(url, navigator.userAgent);
-    // Open before awaiting the copy, while the tap still counts as the
-    // person's own action (a later open can be blocked as a pop-up).
-    if (!target.prefilled) window.open(target.href, "_blank", "noopener,noreferrer");
-    const ok = await copyText(url);
+    // Hand off in the same tap, before awaiting the copy: browsers block a
+    // pop-up or app link that no longer counts as the person's own action.
+    const copying = copyText(url);
+    if (target.prefilled) window.location.href = target.href;
+    else window.open(target.href, "_blank", "noopener,noreferrer");
+    const ok = await copying;
     setCopied(ok);
-    if (target.prefilled) {
-      window.location.href = target.href;
-      setNote(ok ? "messenger-opened" : null);
-    } else {
-      setNote(ok ? "messenger-paste" : "copy-failed");
-    }
+    if (target.prefilled) setNote(ok ? "messenger-opened" : null);
+    else setNote(ok ? "messenger-paste" : "copy-failed");
   }
 
   return (

@@ -141,17 +141,20 @@ export function AddStaffDialog({
           }}
           className="gap-4"
         >
-          <TabsList aria-label="How to invite" className="grid h-auto w-full grid-cols-3">
-            <TabsTrigger value="contact" className="min-h-11 gap-1.5">
-              <Mail aria-hidden />
+          <TabsList
+            aria-label="How to invite"
+            className="grid h-auto w-full grid-cols-3 group-data-horizontal/tabs:h-auto"
+          >
+            <TabsTrigger value="contact" className="min-h-11 gap-1.5 whitespace-normal leading-tight">
+              <Mail aria-hidden className="max-md:hidden" />
               Email or phone
             </TabsTrigger>
-            <TabsTrigger value="qr" className="min-h-11 gap-1.5">
-              <QrCode aria-hidden />
+            <TabsTrigger value="qr" className="min-h-11 gap-1.5 whitespace-normal leading-tight">
+              <QrCode aria-hidden className="max-md:hidden" />
               QR code
             </TabsTrigger>
-            <TabsTrigger value="link" className="min-h-11 gap-1.5">
-              <Link2 aria-hidden />
+            <TabsTrigger value="link" className="min-h-11 gap-1.5 whitespace-normal leading-tight">
+              <Link2 aria-hidden className="max-md:hidden" />
               Link
             </TabsTrigger>
           </TabsList>
