@@ -98,8 +98,8 @@ export type HomePromoField = Exclude<keyof HomePromoDraft, "image" | "tag" | "ta
 export type HomePromoErrors = Partial<Record<HomePromoField, string>>;
 
 export function emptyHomePromoDraft(now: number = Date.now(), nextOrder = 1): HomePromoDraft {
-  // Start at the next whole hour, Manila.
-  const start = Math.ceil(now / 3_600_000) * 3_600_000;
+  // Start now (to the minute), so a new promo is live once added.
+  const start = Math.floor(now / 60_000) * 60_000;
   return {
     name: "",
     logo: null,

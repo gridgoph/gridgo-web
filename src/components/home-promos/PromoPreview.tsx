@@ -164,7 +164,7 @@ export function PromoPreview({
           <MockHome />
           <div className="flex gap-3">
             <div
-              className="flex flex-1 flex-col justify-between rounded-card border border-outline bg-surface-variant p-3"
+              className="flex min-w-0 flex-1 basis-0 flex-col justify-between rounded-card border border-outline bg-surface-variant p-3"
               style={{ height: TILE_HEIGHT }}
             >
               <span className="block size-9 rounded-pill bg-surface-high" />
@@ -173,7 +173,7 @@ export function PromoPreview({
                 <span className="block h-2.5 w-20 rounded-pill bg-outline-subtle" />
               </span>
             </div>
-            <div className="flex flex-1 flex-col gap-1.5">
+            <div className="flex min-w-0 flex-1 basis-0 flex-col gap-1.5">
               <div
                 className="relative touch-pan-y overflow-hidden rounded-card select-none"
                 style={{ height: TILE_HEIGHT }}
@@ -315,7 +315,7 @@ function TagChip({ tag, onYellow }: { tag: HomePromoTag; onYellow?: boolean }) {
   return (
     <span
       className={cn(
-        "inline-flex h-5 items-center rounded-pill border px-1.5 text-[11px] leading-none",
+        "inline-flex h-5 min-w-0 items-center truncate rounded-pill border px-1.5 text-[11px] leading-none whitespace-nowrap",
         onYellow ? "border-[var(--color-action-yellow-on)]/30 text-[var(--color-action-yellow-on)]" : "border-outline text-text-secondary",
       )}
     >
