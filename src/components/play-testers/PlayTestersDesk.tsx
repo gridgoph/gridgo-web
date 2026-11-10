@@ -6,6 +6,7 @@ import { Eye, MousePointerClick, Trash2, X } from "lucide-react";
 
 import { DayLegend, DayStrip } from "@/components/play-testers/DayStrip";
 import { PlayClockPanel } from "@/components/play-testers/PlayClockPanel";
+import { PlayOptInPanel } from "@/components/play-testers/PlayOptInPanel";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -153,6 +154,7 @@ export function PlayTestersDesk({ tree }: { tree: "ops" | "admin" }) {
 
   const rows = roster?.app === app ? roster.testers : null;
   const stats = roster?.app === app ? roster.stats : null;
+  const playOptIn = roster?.app === app ? (roster.playOptIn ?? null) : null;
 
   const columns = useMemo<DataTableColumn<PlayTester>[]>(
     () => [
@@ -261,7 +263,23 @@ export function PlayTestersDesk({ tree }: { tree: "ops" | "admin" }) {
         )}
       </div>
 
-      <section className="flex flex-col gap-3" aria-label={`${testerAppLabel(app)} testers`}>
+      {playOptIn && stats ? (
+        <PlayOptInPanel
+          key={app}
+          app={app}
+          optIn={playOptIn}
+          productionApproved={stats.productionApprovedAt !== null}
+          onSave={saveSettings}
+          onChanged={() => {
+            if (isActive(app)) void load();
+          }}
+        />
+      ) : null}
+
+      <section className="flex flex-col gap-3" aria-labelledby="play-testers-roster-title">
+        <h2 id="play-testers-roster-title" className="text-h3 text-text-primary m-0">
+          {testerAppLabel(app)} testers
+        </h2>
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <AddTester
             key={app}

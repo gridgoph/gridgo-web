@@ -312,7 +312,7 @@ export function PlayClockPanel({
   );
 }
 
-function Row({
+export function Row({
   label,
   value,
   editing,
