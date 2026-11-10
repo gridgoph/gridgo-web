@@ -108,7 +108,7 @@ export function HomePromosDesk({ tree }: { tree: "ops" | "admin" }) {
     linkText: p.linkText,
     linkUrl: p.linkUrl,
     tapAction: p.tapAction,
-    style: p.style,
+    color: p.color,
   }));
 
   const columns = useMemo<DataTableColumn<HomePromo>[]>(

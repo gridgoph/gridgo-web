@@ -105,6 +105,7 @@ describe("inputFromHomePromoDraft", () => {
       image: null,
       tag: "partner",
       tapAction: "sheet",
+      color: "#FFFFFF",
       style: "light",
       startsAt: "2026-11-10T00:00:00.000Z",
       endsAt: "2026-12-31T15:59:00.000Z",

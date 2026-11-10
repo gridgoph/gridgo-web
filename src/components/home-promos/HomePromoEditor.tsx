@@ -47,7 +47,6 @@ import {
   type HomePromo,
   type HomePromoFile,
   type HomePromoFilePurpose,
-  type HomePromoStyle,
   type HomePromoTapAction,
 } from "@/lib/api/home-promos";
 import {
@@ -70,6 +69,7 @@ import {
   type HomePromoErrors,
 } from "@/lib/home-promos";
 import { useLiveReload } from "@/lib/live/useLiveReload";
+import { DEFAULT_PROMO_COLOR, PROMO_SWATCHES, normalizeHexColor } from "@/lib/promo-card-colors";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import { uploadErrorMessage } from "@/lib/upload-errors";
 import { cn } from "@/lib/utils";
@@ -278,7 +278,7 @@ function EditorBody({
       linkText: p.linkText,
       linkUrl: p.linkUrl,
       tapAction: p.tapAction,
-      style: p.style,
+      color: p.color,
       order: p.displayOrder,
     });
     const mine: PreviewPromo & { order: number } = {
@@ -291,12 +291,13 @@ function EditorBody({
       linkText: draft.linkText.trim(),
       linkUrl: draft.linkUrl.trim(),
       tapAction: draft.tapAction,
-      style: draft.style,
+      // While the hex is half typed, the card keeps the colour it last had.
+      color: normalizeHexColor(draft.color) ?? normalizeHexColor(origin?.color ?? "") ?? DEFAULT_PROMO_COLOR,
       order: Number(draft.displayOrder) || 0,
     };
     // The draft is always shown, live or not, so its look can be checked.
     return [...rotationOrder(others, now).map(toPreview), mine].sort((a, b) => a.order - b.order);
-  }, [others, draft, urls, draftKey, now]);
+  }, [others, draft, origin, urls, draftKey, now]);
 
   const presented = presentHomePromoStatus(promo && !dirty ? statusAt(promo, now) : status);
   const descriptionLeft = HOME_PROMO_LIMITS.description - draft.description.trim().length;
@@ -441,22 +442,11 @@ function EditorBody({
               ))}
             </Choice>
 
-            <Choice label="Card style">
-              {(["light", "yellow"] as HomePromoStyle[]).map((style) => (
-                <Pill key={style} name="promo-style" checked={draft.style === style} onSelect={() => set("style", style)}>
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "inline-block size-4 rounded-[5px] border",
-                      style === "yellow"
-                        ? "border-transparent bg-[var(--color-action-yellow)]"
-                        : "border-outline bg-surface-variant",
-                    )}
-                  />
-                  {style === "yellow" ? "Yellow" : "Light"}
-                </Pill>
-              ))}
-            </Choice>
+            <ColorField
+              value={draft.color}
+              error={errors.color}
+              onChange={(color) => set("color", color)}
+            />
 
             <div className="grid gap-4 sm:grid-cols-2">
               <Field data-invalid={errors.startsAt ? true : undefined}>
@@ -601,6 +591,80 @@ function Choice({ label, children }: { label: string; children: ReactNode }) {
       </span>
       <div className="flex flex-wrap gap-2">{children}</div>
     </div>
+  );
+}
+
+/**
+ * The card colour: three suggested swatches, the browser's colour picker for
+ * any other, and the hex code, which is what is saved.
+ */
+function ColorField({
+  value,
+  error,
+  onChange,
+}: {
+  value: string;
+  error?: string;
+  onChange: (color: string) => void;
+}) {
+  const valid = normalizeHexColor(value);
+  // A half-typed code is not an error until the person leaves the field.
+  const [left, setLeft] = useState(false);
+  const shown = error ?? (left && !valid ? "Use a colour like #1A1A1A." : undefined);
+  return (
+    <Field data-invalid={shown ? true : undefined}>
+      <FieldLabel htmlFor="promo-color">Card colour</FieldLabel>
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Suggested colours">
+        {PROMO_SWATCHES.map((swatch) => {
+          const selected = valid === swatch.color;
+          return (
+            <button
+              key={swatch.color}
+              type="button"
+              aria-pressed={selected}
+              onClick={() => onChange(swatch.color)}
+              className={cn(
+                "inline-flex min-h-11 items-center gap-2 rounded-pill border px-4 text-body",
+                selected
+                  ? "border-text-primary bg-surface-variant text-text-primary"
+                  : "border-outline bg-surface text-text-secondary hover:bg-surface-variant",
+              )}
+            >
+              <span aria-hidden className="inline-block size-4 rounded-[5px] border border-outline" style={{ backgroundColor: swatch.color }} />
+              {swatch.label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="color"
+          aria-label="Pick any colour"
+          value={(valid ?? DEFAULT_PROMO_COLOR).toLowerCase()}
+          onChange={(e) => onChange(e.target.value.toUpperCase())}
+          className="h-11 w-14 shrink-0 cursor-pointer rounded-field border border-outline bg-surface p-1"
+        />
+        <Input
+          id="promo-color"
+          value={value}
+          maxLength={7}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setLeft(false)}
+          onBlur={() => {
+            setLeft(true);
+            const next = normalizeHexColor(value);
+            if (next && next !== value) onChange(next);
+          }}
+          aria-invalid={shown ? true : undefined}
+          aria-describedby="promo-color-hint"
+          autoComplete="off"
+          spellCheck={false}
+          className="w-32 font-mono uppercase"
+        />
+      </div>
+      <FieldDescription id="promo-color-hint">Text and icons switch to stay readable.</FieldDescription>
+      {shown ? <FieldError>{shown}</FieldError> : null}
+    </Field>
   );
 }
 
