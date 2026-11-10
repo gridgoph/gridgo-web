@@ -52,6 +52,8 @@ function optIn(overrides: Partial<PlayOptInSummary> = {}): PlayOptInSummary {
     groupMode: "link",
     optInUrl: "https://play.google.com/apps/testing/ph.gridgo.client",
     groupJoinUrl: "https://groups.google.com/g/gridgo-client-testers",
+    dailyReminderEnabled: true,
+    dailyReminderHour: 10,
     optedInCount: 3,
     detectedPlayCount: 2,
     playConsoleOptedInCount: 5,
@@ -319,6 +321,98 @@ describe("Play opt-in campaign", () => {
         groupJoinUrl: null,
       }),
     );
+  });
+
+  it("loads the daily reminder with its Manila time and the one-send rule", async () => {
+    await ready();
+    expect(screen.getByRole("switch", { name: "Client daily reminder" })).toBeChecked();
+    expect(screen.getByText("10:00 AM (Manila)")).toBeInTheDocument();
+    expect(
+      screen.getByText(/once a day at this time while the campaign is on/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/A manual broadcast\s+counts toward/)).toBeInTheDocument();
+  });
+
+  it("turns the daily reminder off, sending only that field", async () => {
+    await ready();
+    fireEvent.click(screen.getByRole("switch", { name: "Client daily reminder" }));
+    await waitFor(() =>
+      expect(api.updatePlayTesterSettings).toHaveBeenCalledWith("client", {
+        dailyReminderEnabled: false,
+      }),
+    );
+    expect(api.updatePlayTesterSettings).toHaveBeenCalledTimes(1);
+    // The campaign switch is untouched and nothing was sent.
+    expect(api.sendPlayOptInBroadcast).not.toHaveBeenCalled();
+    expect(api.listPlayTesters).toHaveBeenCalledTimes(2);
+  });
+
+  it("turns an off reminder back on", async () => {
+    api.listPlayTesters.mockResolvedValue(roster({ dailyReminderEnabled: false }));
+    await ready();
+    const toggle = screen.getByRole("switch", { name: "Client daily reminder" });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(api.updatePlayTesterSettings).toHaveBeenCalledWith("client", {
+        dailyReminderEnabled: true,
+      }),
+    );
+  });
+
+  it("changes the reminder hour, sending only the hour", async () => {
+    await ready();
+    fireEvent.click(screen.getByRole("button", { name: "Edit daily reminder time" }));
+    const hour = screen.getByLabelText("Daily reminder time (Manila)") as HTMLSelectElement;
+    expect(hour.value).toBe("10");
+    expect(hour.options).toHaveLength(24);
+    expect(screen.getByRole("option", { name: "12:00 AM (Manila)" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "11:00 PM (Manila)" })).toBeInTheDocument();
+    fireEvent.change(hour, { target: { value: "18" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(api.updatePlayTesterSettings).toHaveBeenCalledWith("client", {
+        dailyReminderHour: 18,
+      }),
+    );
+    expect(api.updatePlayTesterSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes the hour editor without a write when the hour is unchanged", async () => {
+    await ready();
+    fireEvent.click(screen.getByRole("button", { name: "Edit daily reminder time" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByRole("button", { name: "Edit daily reminder time" }),
+    ).toBeInTheDocument();
+    expect(api.updatePlayTesterSettings).not.toHaveBeenCalled();
+  });
+
+  it("explains a refused reminder hour", async () => {
+    api.updatePlayTesterSettings.mockRejectedValue(
+      new ApiError(400, { error: "invalid_daily_reminder_hour" }),
+    );
+    await ready();
+    fireEvent.click(screen.getByRole("button", { name: "Edit daily reminder time" }));
+    fireEvent.change(screen.getByLabelText("Daily reminder time (Manila)"), {
+      target: { value: "7" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText("Choose an hour from 12:00 AM to 11:00 PM."),
+    ).toBeInTheDocument();
+  });
+
+  it("hides the daily reminder on an API without it", async () => {
+    api.listPlayTesters.mockResolvedValue(
+      roster({ dailyReminderEnabled: undefined, dailyReminderHour: undefined }),
+    );
+    await ready();
+    expect(screen.getByRole("switch", { name: "Client opt-in campaign" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("switch", { name: "Client daily reminder" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/A manual broadcast/)).not.toBeInTheDocument();
   });
 
   it("hides the campaign on an API without it", async () => {

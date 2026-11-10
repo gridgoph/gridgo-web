@@ -271,9 +271,23 @@ export function campaignSettingsError(err: unknown): string {
       return "Use the Google Group link: https://groups.google.com/g/…";
     case "invalid_target":
       return "Enter a whole number from 1 to 10,000.";
+    case "invalid_daily_reminder_hour":
+      return "Choose an hour from 12:00 AM to 11:00 PM.";
+    case "invalid_daily_reminder_enabled":
+      return "Turn the daily reminder on or off, then retry.";
     default:
       return settingsError(err);
   }
+}
+
+/** The 24 hours the daily reminder can go out at, 0–23 in Asia/Manila. */
+export const REMINDER_HOURS: readonly number[] = Array.from({ length: 24 }, (_, h) => h);
+
+/** "10:00 AM (Manila)". The hour is already Manila's, so no time zone math. */
+export function reminderHourLabel(hour: number, withZone = true): string {
+  const h12 = hour % 12 === 0 ? 12 : hour % 12;
+  const label = `${h12}:00 ${hour < 12 ? "AM" : "PM"}`;
+  return withZone ? `${label} (Manila)` : label;
 }
 
 /** "Sent to 8 accounts." Zero is a real outcome here: nobody is still on the APK. */

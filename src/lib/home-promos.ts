@@ -10,11 +10,11 @@ import type {
   HomePromoFile,
   HomePromoInput,
   HomePromoStatus,
-  HomePromoStyle,
   HomePromoTag,
   HomePromoTapAction,
 } from "@/lib/api/home-promos";
 import type { StatusIconName, StatusTone } from "@/lib/order-state";
+import { DEFAULT_PROMO_COLOR, normalizeHexColor, styleFromColor } from "@/lib/promo-card-colors";
 import { isoToManilaLocal, manilaLocalToIso } from "@/lib/vouchers";
 
 export const HOME_PROMO_LIMITS = {
@@ -43,8 +43,6 @@ export const TAP_COPY: Record<HomePromoTapAction, { label: string; body: string 
   sheet: { label: "Show description first", body: "A sheet opens with the button." },
   link: { label: "Open link directly", body: "The tap goes straight to the link." },
 };
-
-export const STYLE_LABEL: Record<HomePromoStyle, string> = { light: "Light", yellow: "Yellow" };
 
 type Presentation = { label: string; tone: StatusTone; icon: StatusIconName };
 
@@ -129,7 +127,8 @@ export type HomePromoDraft = {
   linkText: string;
   linkUrl: string;
   tapAction: HomePromoTapAction;
-  style: HomePromoStyle;
+  /** The card colour as typed; `#RRGGBB` once valid. */
+  color: string;
   /** `YYYY-MM-DDTHH:MM`, Manila. */
   startsAt: string;
   /** Empty means no end. */
@@ -138,7 +137,7 @@ export type HomePromoDraft = {
   displayOrder: string;
 };
 
-export type HomePromoField = Exclude<keyof HomePromoDraft, "image" | "tag" | "tapAction" | "style" | "enabled">;
+export type HomePromoField = Exclude<keyof HomePromoDraft, "image" | "tag" | "tapAction" | "enabled">;
 export type HomePromoErrors = Partial<Record<HomePromoField, string>>;
 
 export function emptyHomePromoDraft(now: number = Date.now(), nextOrder = 1): HomePromoDraft {
@@ -153,7 +152,7 @@ export function emptyHomePromoDraft(now: number = Date.now(), nextOrder = 1): Ho
     linkText: "",
     linkUrl: "https://",
     tapAction: "sheet",
-    style: "light",
+    color: DEFAULT_PROMO_COLOR,
     startsAt: isoToManilaLocal(new Date(start).toISOString()),
     endsAt: "",
     enabled: true,
@@ -171,7 +170,7 @@ export function draftFromHomePromo(promo: HomePromo): HomePromoDraft {
     linkText: promo.linkText,
     linkUrl: promo.linkUrl,
     tapAction: promo.tapAction,
-    style: promo.style,
+    color: promo.color,
     startsAt: promo.startsAt ? isoToManilaLocal(promo.startsAt) : "",
     endsAt: promo.endsAt ? isoToManilaLocal(promo.endsAt) : "",
     enabled: promo.enabled,
@@ -223,11 +222,13 @@ export function validateHomePromoDraft(draft: HomePromoDraft): HomePromoErrors {
   const order = draft.displayOrder.trim();
   if (!/^\d+$/.test(order) || Number(order) > HOME_PROMO_LIMITS.displayOrderMax)
     errors.displayOrder = "Use a whole number, 0 or more.";
+  if (!normalizeHexColor(draft.color)) errors.color = "Use a colour like #1A1A1A.";
   return errors;
 }
 
 /** The API body. Call only after `validateHomePromoDraft` is empty. */
 export function inputFromHomePromoDraft(draft: HomePromoDraft): HomePromoInput {
+  const color = normalizeHexColor(draft.color) ?? DEFAULT_PROMO_COLOR;
   return {
     name: draft.name.trim(),
     logo: { fileId: draft.logo?.fileId ?? "" },
@@ -237,7 +238,8 @@ export function inputFromHomePromoDraft(draft: HomePromoDraft): HomePromoInput {
     linkText: draft.linkText.trim(),
     linkUrl: draft.linkUrl.trim(),
     tapAction: draft.tapAction,
-    style: draft.style,
+    color,
+    style: styleFromColor(color),
     startsAt: manilaLocalToIso(draft.startsAt) ?? "",
     endsAt: draft.endsAt ? manilaLocalToIso(draft.endsAt) : null,
     enabled: draft.enabled,
@@ -263,7 +265,10 @@ export function patchFromDraft(origin: HomePromoDraft, draft: HomePromoDraft): P
   if (draft.linkText.trim() !== origin.linkText.trim()) patch.linkText = full.linkText;
   if (draft.linkUrl.trim() !== origin.linkUrl.trim()) patch.linkUrl = full.linkUrl;
   if (changed("tapAction")) patch.tapAction = full.tapAction;
-  if (changed("style")) patch.style = full.style;
+  if (normalizeHexColor(draft.color) !== normalizeHexColor(origin.color)) {
+    patch.color = full.color;
+    patch.style = full.style;
+  }
   if (changed("startsAt")) patch.startsAt = full.startsAt;
   if (changed("endsAt")) patch.endsAt = full.endsAt;
   if (changed("enabled")) patch.enabled = full.enabled;
@@ -360,6 +365,8 @@ export function homePromoErrorText(err: unknown, fallback: string): string {
           return "Pick the start date and time.";
         case "logo":
           return "Add the logo.";
+        case "color":
+          return "Use a colour like #1A1A1A.";
         default:
           return "Check the fields and try again.";
       }
