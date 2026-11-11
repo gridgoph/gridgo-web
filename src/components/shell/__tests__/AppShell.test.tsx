@@ -542,14 +542,26 @@ describe("AppShell chrome", () => {
       "page",
     );
     expect(within(opsNav).getByRole("link", { name: "Chat" })).toBeInTheDocument();
-    expect(within(opsNav).getByRole("link", { name: "Issue reports" })).toBeInTheDocument();
-    for (const label of ["Queue", "Field", "Money"]) {
+    expect(within(opsNav).getByRole("link", { name: "Orders" })).toHaveAttribute(
+      "href",
+      "/ops/orders",
+    );
+    for (const label of [
+      "Work queue",
+      "Field & delivery",
+      "People & shops",
+      "Money",
+      "Marketing",
+      "Legal & privacy",
+    ]) {
       const trigger = within(opsNav).getByRole("button", { name: label });
       expect(trigger).toHaveAttribute("aria-expanded", "false");
       expect(trigger.querySelector(".lucide-chevron-right")).not.toBeNull();
     }
     expect(within(opsNav).queryByRole("button", { name: "System" })).toBeNull();
-    expect(within(opsNav).queryByRole("link", { name: "Operational settings" })).toBeNull();
+    expect(
+      within(opsNav).queryByRole("link", { name: "Operational settings" }),
+    ).toBeNull();
     expect(within(opsNav).queryByRole("link", { name: "Audit" })).toBeNull();
     // A folded group's pages are out of the tab order until it opens.
     expect(within(opsNav).queryByRole("link", { name: "Dispatch" })).toBeNull();
@@ -583,27 +595,29 @@ describe("AppShell chrome", () => {
       "page",
     );
     for (const label of ["Shop", "Money"]) {
-      expect(within(supplierNav).getByRole("button", { name: label })).toBeInTheDocument();
+      expect(
+        within(supplierNav).getByRole("button", { name: label }),
+      ).toBeInTheDocument();
     }
   });
 
   it("opens the group holding the current page and leaves the rest folded", () => {
-    renderShell("/ops/orders");
+    renderShell("/ops/finished-work");
     const nav = screen.getByRole("navigation", { name: "Primary navigation" });
-    expect(within(nav).getByRole("button", { name: "Queue" })).toHaveAttribute(
+    expect(within(nav).getByRole("button", { name: "Work queue" })).toHaveAttribute(
       "aria-expanded",
       "true",
     );
-    const orders = within(nav).getByRole("link", { name: "Orders" });
-    expect(orders).toHaveAttribute("aria-current", "page");
-    expect(orders.className).toMatch(/action-yellow/);
-    expect(orders.closest('[data-slot="sidebar-menu-sub"]')).not.toBeNull();
+    const finished = within(nav).getByRole("link", { name: "Finished work" });
+    expect(finished).toHaveAttribute("aria-current", "page");
+    expect(finished.className).toMatch(/action-yellow/);
+    expect(finished.closest('[data-slot="sidebar-menu-sub"]')).not.toBeNull();
     expect(within(nav).queryByRole("link", { name: "Sign-up approvals" })).toBeNull();
     expect(within(nav).getByRole("link", { name: "Service lines" })).toHaveAttribute(
       "href",
       "/ops/service-lines",
     );
-    expect(within(nav).getByRole("button", { name: "Field" })).toHaveAttribute(
+    expect(within(nav).getByRole("button", { name: "Field & delivery" })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
@@ -630,7 +644,7 @@ describe("AppShell chrome", () => {
   it("opens a folded group when navigation lands inside it", () => {
     const { rerender } = renderShell("/ops/overview");
     const nav = screen.getByRole("navigation", { name: "Primary navigation" });
-    expect(within(nav).getByRole("button", { name: "Field" })).toHaveAttribute(
+    expect(within(nav).getByRole("button", { name: "Field & delivery" })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
@@ -642,7 +656,7 @@ describe("AppShell chrome", () => {
         </AppShell>
       </TooltipProvider>,
     );
-    expect(within(nav).getByRole("button", { name: "Field" })).toHaveAttribute(
+    expect(within(nav).getByRole("button", { name: "Field & delivery" })).toHaveAttribute(
       "aria-expanded",
       "true",
     );
@@ -654,14 +668,14 @@ describe("AppShell chrome", () => {
 
   it("remembers which groups the person opened and closed", async () => {
     const user = userEvent.setup();
-    renderShell("/ops/orders");
+    renderShell("/ops/finished-work");
     let nav = screen.getByRole("navigation", { name: "Primary navigation" });
-    await user.click(within(nav).getByRole("button", { name: "Field" }));
-    expect(within(nav).getByRole("button", { name: "Field" })).toHaveAttribute(
+    await user.click(within(nav).getByRole("button", { name: "Field & delivery" }));
+    expect(within(nav).getByRole("button", { name: "Field & delivery" })).toHaveAttribute(
       "aria-expanded",
       "true",
     );
-    await user.click(within(nav).getByRole("button", { name: "Queue" }));
+    await user.click(within(nav).getByRole("button", { name: "Work queue" }));
     expect(
       JSON.parse(window.localStorage.getItem(RAIL_GROUPS_STORAGE_KEY) ?? "{}"),
     ).toEqual({ "ops-field": true, "ops-queue": false });
@@ -669,12 +683,12 @@ describe("AppShell chrome", () => {
     cleanup();
     renderShell("/ops/overview");
     nav = screen.getByRole("navigation", { name: "Primary navigation" });
-    expect(within(nav).getByRole("button", { name: "Field" })).toHaveAttribute(
+    expect(within(nav).getByRole("button", { name: "Field & delivery" })).toHaveAttribute(
       "aria-expanded",
       "true",
     );
     expect(within(nav).getByRole("link", { name: "Dispatch" })).toBeInTheDocument();
-    expect(within(nav).getByRole("button", { name: "Queue" })).toHaveAttribute(
+    expect(within(nav).getByRole("button", { name: "Work queue" })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
@@ -683,12 +697,12 @@ describe("AppShell chrome", () => {
   it("survives unreadable remembered state", () => {
     window.localStorage.setItem(RAIL_GROUPS_STORAGE_KEY, "{not json");
     window.localStorage.setItem(RAIL_OPEN_STORAGE_KEY, "sideways");
-    const { container } = renderShell("/ops/orders");
+    const { container } = renderShell("/ops/finished-work");
     expect(container.querySelector('[data-slot="sidebar"]')).toHaveAttribute(
       "data-state",
       "expanded",
     );
-    expect(screen.getByRole("button", { name: "Queue" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "Work queue" })).toHaveAttribute(
       "aria-expanded",
       "true",
     );
@@ -719,16 +733,15 @@ describe("AppShell chrome", () => {
     const user = userEvent.setup();
     renderShell("/ops/dispatch");
     const nav = screen.getByRole("navigation", { name: "Primary navigation" });
-    const field = within(nav).getByRole("button", { name: "Field" });
+    const field = within(nav).getByRole("button", { name: "Field & delivery" });
     expect(field).toHaveAttribute("aria-expanded", "false");
     expect(field).toHaveAttribute("data-active");
     await user.click(field);
     const dispatch = await screen.findByRole("menuitem", { name: "Dispatch" });
     await vi.waitFor(() =>
-      expect(within(nav).getByRole("button", { name: "Field" })).toHaveAttribute(
-        "aria-expanded",
-        "true",
-      ),
+      expect(
+        within(nav).getByRole("button", { name: "Field & delivery" }),
+      ).toHaveAttribute("aria-expanded", "true"),
     );
     expect(dispatch).toHaveAttribute("href", "/ops/dispatch");
     expect(dispatch).toHaveAttribute("aria-current", "page");
@@ -757,27 +770,39 @@ describe("AppShell chrome", () => {
       const hrefs = within(nav)
         .getAllByRole("link")
         .map((link) => link.getAttribute("href"));
-      expect(hrefs.sort()).toEqual(navForRole(role).map((item) => item.href).sort());
+      expect(hrefs.sort()).toEqual(
+        navForRole(role)
+          .map((item) => item.href)
+          .sort(),
+      );
     });
 
-    it.each(cases)("%s: from the icon rail", async (role, home) => {
-      window.localStorage.setItem(RAIL_OPEN_STORAGE_KEY, "false");
-      const user = userEvent.setup();
-      renderShell(home);
-      const nav = screen.getByRole("navigation", { name: "Primary navigation" });
-      const reached = within(nav)
-        .getAllByRole("link")
-        .map((link) => link.getAttribute("href"));
-      for (const group of navGroupsForRole(role)) {
-        if (!group.label) continue;
-        await user.click(within(nav).getByRole("button", { name: group.label }));
-        const items = await screen.findAllByRole("menuitem");
-        reached.push(...items.map((item) => item.getAttribute("href")));
-        await user.keyboard("{Escape}");
-      }
-      expect(reached.sort()).toEqual(navForRole(role).map((item) => item.href).sort());
-      // One flyout per group: the Super Admin walk outgrows 5 s on a busy runner.
-    }, 20_000);
+    it.each(cases)(
+      "%s: from the icon rail",
+      async (role, home) => {
+        window.localStorage.setItem(RAIL_OPEN_STORAGE_KEY, "false");
+        const user = userEvent.setup();
+        renderShell(home);
+        const nav = screen.getByRole("navigation", { name: "Primary navigation" });
+        const reached = within(nav)
+          .getAllByRole("link")
+          .map((link) => link.getAttribute("href"));
+        for (const group of navGroupsForRole(role)) {
+          if (!group.label) continue;
+          await user.click(within(nav).getByRole("button", { name: group.label }));
+          const items = await screen.findAllByRole("menuitem");
+          reached.push(...items.map((item) => item.getAttribute("href")));
+          await user.keyboard("{Escape}");
+        }
+        expect(reached.sort()).toEqual(
+          navForRole(role)
+            .map((item) => item.href)
+            .sort(),
+        );
+        // One flyout per group: the Super Admin walk outgrows 5 s on a busy runner.
+      },
+      20_000,
+    );
   });
 
   it("keeps a nested parent crumb as a same-tab link with a destination tooltip", async () => {
@@ -812,10 +837,10 @@ describe("AppShell chrome", () => {
     it("heads each role's rail with small muted section labels", () => {
       renderShell("/ops/overview");
       let nav = screen.getByRole("navigation", { name: "Primary navigation" });
-      expect(headings(nav)).toEqual(["Desk", "Work"]);
+      expect(headings(nav)).toEqual(["Desk", "Work", "Manage"]);
       // Each heading names its run of rows for assistive tech too.
       const work = within(nav).getByRole("group", { name: "Work" });
-      for (const label of ["Queue", "Field", "Money"]) {
+      for (const label of ["Work queue", "Field & delivery"]) {
         expect(within(work).getByRole("button", { name: label })).toBeInTheDocument();
       }
       expect(
@@ -841,7 +866,7 @@ describe("AppShell chrome", () => {
       const nav = screen.getByRole("navigation", { name: "Primary navigation" });
       expect(nav.querySelector('[data-slot="sidebar-group-label"]')).toBeNull();
       expect(within(nav).queryByText("Desk")).toBeNull();
-      expect(nav.querySelectorAll("[data-nav-section]")).toHaveLength(2);
+      expect(nav.querySelectorAll("[data-nav-section]")).toHaveLength(3);
     });
   });
 
@@ -860,6 +885,24 @@ describe("AppShell chrome", () => {
       { id: "ord_artwork", state: "needs_qa" },
       { id: "ord_with_shop", state: "production" },
     ];
+
+    // Rider-packs jobs whose finished work waits on GRIDGO: the Work queue's
+    // yellow row.
+    const finished = ["ord_hats", "ord_caps"].map((id) => ({
+      id,
+      state: "supplier_self_qc",
+      supplierId: "shop1",
+      handoverFlow: "rider_packs",
+      shopHandover: {
+        finished: {
+          at: "2026-10-29T00:00:00Z",
+          by: "shop1",
+          supplierId: "shop1",
+          photoFileIds: ["f"],
+        },
+        review: null,
+      },
+    }));
 
     function withListings(count: number) {
       countMocks.listCatalogReviews.mockResolvedValue({
@@ -903,27 +946,31 @@ describe("AppShell chrome", () => {
     });
 
     it("puts the sum beside a folded group's name", async () => {
-      ordersRef.current = waiting;
+      ordersRef.current = finished;
       withListings(3);
       renderShell("/ops/overview");
 
-      const queue = await screen.findByRole("button", { name: "Queue, 5 need action" });
+      const queue = await screen.findByRole("button", {
+        name: "Work queue, 5 need action",
+      });
       expect(queue).toHaveAttribute("aria-expanded", "false");
       const total = queue.querySelector('[data-slot="nav-count"]') as HTMLElement;
       expect(total).toHaveTextContent("5");
-      // Filled while folded, yellow because an order is among the five.
+      // Filled while folded, yellow because a stopped order is among the five.
       expect(total).toHaveAttribute("data-tone", "attention");
-      expect(total.previousElementSibling).toHaveTextContent(/^Queue$/);
+      expect(total.previousElementSibling).toHaveTextContent(/^Work queue$/);
       expect(listOrdersMock).toHaveBeenCalledTimes(1);
     });
 
     it("outlines an open group's total so it reads as the sum of the rows below", async () => {
-      ordersRef.current = waiting;
+      ordersRef.current = finished;
       withListings(3);
       const user = userEvent.setup();
       renderShell("/ops/overview");
 
-      const queue = await screen.findByRole("button", { name: "Queue, 5 need action" });
+      const queue = await screen.findByRole("button", {
+        name: "Work queue, 5 need action",
+      });
       await user.click(queue);
       expect(queue).toHaveAttribute("aria-expanded", "true");
       expect(queue.querySelector('[data-slot="nav-count"]')).toHaveAttribute(
@@ -931,7 +978,7 @@ describe("AppShell chrome", () => {
         "total",
       );
       expect(
-        await screen.findByRole("link", { name: "Orders, 2 need action" }),
+        await screen.findByRole("link", { name: "Finished work, 2 waiting for review" }),
       ).toBeInTheDocument();
       expect(
         screen.getByRole("link", { name: "Listing reviews, 3 waiting for review" }),
@@ -939,12 +986,14 @@ describe("AppShell chrome", () => {
     });
 
     it("drops an open group's total when a single row carries the count", async () => {
-      ordersRef.current = waiting;
-      renderShell("/ops/orders");
+      ordersRef.current = finished;
+      renderShell("/ops/finished-work");
 
-      const orders = await screen.findByRole("link", { name: "Orders, 2 need action" });
-      expect(orders.querySelector('[data-slot="nav-count"]')).toHaveTextContent("2");
-      const queue = screen.getByRole("button", { name: "Queue, 2 need action" });
+      const row = await screen.findByRole("link", {
+        name: "Finished work, 2 waiting for review",
+      });
+      expect(row.querySelector('[data-slot="nav-count"]')).toHaveTextContent("2");
+      const queue = screen.getByRole("button", { name: "Work queue, 2 need action" });
       expect(queue).toHaveAttribute("aria-expanded", "true");
       expect(queue.querySelector('[data-slot="nav-count"]')).toBeNull();
     });
@@ -963,11 +1012,17 @@ describe("AppShell chrome", () => {
     it("counts Needs decision on the Super Admin Tracker row, quietly", async () => {
       countMocks.getTracker.mockImplementation(async () => ({
         fetchedAt: "2026-09-25T00:00:00.000Z",
-        items: [{ status: "needs-decision" }, { status: "needs-decision" }, { status: "live" }],
+        items: [
+          { status: "needs-decision" },
+          { status: "needs-decision" },
+          { status: "live" },
+        ],
       }));
       renderShell("/admin/tracker");
 
-      const tracker = await screen.findByRole("link", { name: "Tracker, 2 need a decision" });
+      const tracker = await screen.findByRole("link", {
+        name: "Tracker, 2 need a decision",
+      });
       expect(tracker).toHaveAttribute("href", "/admin/tracker");
       const badge = tracker.querySelector('[data-slot="nav-count"]') as HTMLElement;
       expect(badge).toHaveTextContent("2");
@@ -994,29 +1049,35 @@ describe("AppShell chrome", () => {
       renderShell("/ops/overview");
 
       await vi.waitFor(() => expect(listOrdersMock).toHaveBeenCalled());
-      await vi.waitFor(() => expect(countMocks.listSupportChatThreads).toHaveBeenCalled());
+      await vi.waitFor(() =>
+        expect(countMocks.listSupportChatThreads).toHaveBeenCalled(),
+      );
       const nav = screen.getByRole("navigation", { name: "Primary navigation" });
       expect(nav.querySelector('[data-slot="nav-count"]')).toBeNull();
-      expect(within(nav).getByRole("button", { name: "Queue" })).toBeInTheDocument();
+      expect(within(nav).getByRole("button", { name: "Work queue" })).toBeInTheDocument();
       expect(within(nav).getByRole("link", { name: "Chat" })).toBeInTheDocument();
     });
 
     it("marks the group icon on the icon rail and lists each count in the flyout", async () => {
       window.localStorage.setItem(RAIL_OPEN_STORAGE_KEY, "false");
-      ordersRef.current = waiting;
+      ordersRef.current = finished;
       withListings(1);
       const user = userEvent.setup();
       renderShell("/ops/overview");
 
-      const queue = await screen.findByRole("button", { name: "Queue, 3 need action" });
+      const queue = await screen.findByRole("button", {
+        name: "Work queue, 3 need action",
+      });
       const bubble = queue.querySelector('[data-slot="rail-count"]') as HTMLElement;
       expect(bubble).toHaveTextContent("3");
       expect(bubble).toHaveAttribute("data-tone", "attention");
 
       await user.click(queue);
       expect(
-        await screen.findByRole("menuitem", { name: "Orders, 2 need action" }),
-      ).toHaveAttribute("href", "/ops/orders");
+        await screen.findByRole("menuitem", {
+          name: "Finished work, 2 waiting for review",
+        }),
+      ).toHaveAttribute("href", "/ops/finished-work");
       expect(
         screen.getByRole("menuitem", { name: "Listing reviews, 1 waiting for review" }),
       ).toHaveAttribute("href", "/ops/listing-reviews");
@@ -1042,7 +1103,9 @@ describe("AppShell chrome", () => {
       cleanup();
       countMocks.listJobs.mockClear();
       renderShell("/admin/overview");
-      await vi.waitFor(() => expect(countMocks.listSupportChatThreads).toHaveBeenCalled());
+      await vi.waitFor(() =>
+        expect(countMocks.listSupportChatThreads).toHaveBeenCalled(),
+      );
       // Once, shared by the Orders and Finished work counts.
       await vi.waitFor(() => expect(listOrdersMock).toHaveBeenCalledTimes(1));
       await vi.waitFor(() => expect(countMocks.listEscalations).toHaveBeenCalled());

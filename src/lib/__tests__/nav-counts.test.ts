@@ -34,7 +34,8 @@ describe("rail section headings", () => {
       ]);
     expect(shape("ops_admin")).toEqual([
       ["Desk", ["ops-top"]],
-      ["Work", ["Queue", "Field", "Money", "Legal & privacy"]],
+      ["Work", ["Work queue", "Field & delivery"]],
+      ["Manage", ["People & shops", "Money", "Marketing", "Legal & privacy"]],
     ]);
     expect(shape("super_admin")).toEqual([
       ["Desk", ["admin-top"]],
@@ -82,16 +83,16 @@ describe("rail counts", () => {
     expect(counted).toEqual({
       supplier: ["supplier-jobs:jobs-need-action"],
       ops_admin: [
+        "ops-orders:orders-waiting",
         "ops-chat:chat-unread",
         "ops-order-chats:order-chats-unread",
-        "ops-issue-reports:issue-reports-new",
-        "ops-orders:orders-waiting",
         "ops-quotes:quotes-waiting",
         "ops-finished-work:finished-work-waiting",
         "ops-listing-reviews:listing-reviews-waiting",
         "ops-colour-price-checks:colour-price-checks-waiting",
-        "ops-shop-changes:shop-changes-needs-ops",
+        "ops-issue-reports:issue-reports-new",
         "ops-escalations:escalations-open",
+        "ops-shop-changes:shop-changes-needs-ops",
         "ops-refunds:refunds-waiting",
         "ops-claims:claims-open",
         "ops-privacy-requests:privacy-requests-open",
@@ -117,7 +118,10 @@ describe("rail counts", () => {
 
   it("sums a group's pages and marks it yellow only for order-blocking work", () => {
     const queue = group("ops_admin", "ops-queue");
-    const counts: NavCounts = { "orders-waiting": 3, "listing-reviews-waiting": 2 };
+    const counts: NavCounts = {
+      "finished-work-waiting": 3,
+      "listing-reviews-waiting": 2,
+    };
     expect(groupCount(queue, counts)).toBe(5);
     expect(groupNeedsAttention(queue, counts)).toBe(true);
     expect(groupCountPhrase(queue, counts)).toBe("5 need action");
@@ -132,18 +136,30 @@ describe("rail counts", () => {
   it("keeps an open group's total only when it sums more than one row", () => {
     const queue = group("ops_admin", "ops-queue");
     expect(
-      showOpenGroupTotal(queue, { "orders-waiting": 3, "listing-reviews-waiting": 2 }),
+      showOpenGroupTotal(queue, {
+        "finished-work-waiting": 3,
+        "listing-reviews-waiting": 2,
+      }),
     ).toBe(true);
-    expect(showOpenGroupTotal(queue, { "orders-waiting": 3 })).toBe(false);
+    expect(showOpenGroupTotal(queue, { "finished-work-waiting": 3 })).toBe(false);
     expect(
-      showOpenGroupTotal(queue, { "orders-waiting": 3, "listing-reviews-waiting": 0 }),
+      showOpenGroupTotal(queue, {
+        "finished-work-waiting": 3,
+        "listing-reviews-waiting": 0,
+      }),
     ).toBe(false);
   });
 
   it("hides zero: no count, no phrase, the bare label", () => {
     const queue = group("ops_admin", "ops-queue");
-    const orders = queue.items[0]!;
-    const zero: NavCounts = { "orders-waiting": 0, "listing-reviews-waiting": 0 };
+    const orders = group("ops_admin", "ops-top").items.find(
+      (item) => item.id === "ops-orders",
+    )!;
+    const zero: NavCounts = {
+      "orders-waiting": 0,
+      "finished-work-waiting": 0,
+      "listing-reviews-waiting": 0,
+    };
     expect(itemCount(orders, zero)).toBe(0);
     expect(itemCountPhrase(orders, zero)).toBeNull();
     expect(groupCountPhrase(queue, zero)).toBeNull();
@@ -155,9 +171,12 @@ describe("rail counts", () => {
   it("caps the figure at 99+ and names the count after the label", () => {
     expect(compactCount(99)).toBe("99");
     expect(compactCount(100)).toBe("99+");
-    const items = group("ops_admin", "ops-queue").items;
-    const orders = items.find((item) => item.id === "ops-orders");
-    const approvals = items.find((item) => item.id === "ops-listing-reviews");
+    const orders = group("ops_admin", "ops-top").items.find(
+      (item) => item.id === "ops-orders",
+    );
+    const approvals = group("ops_admin", "ops-queue").items.find(
+      (item) => item.id === "ops-listing-reviews",
+    );
     expect(countedName("Orders", itemCountPhrase(orders!, { "orders-waiting": 3 }))).toBe(
       "Orders, 3 need action",
     );

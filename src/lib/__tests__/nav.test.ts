@@ -57,43 +57,43 @@ describe("ROLE_NAV", () => {
     const hrefs = ROLE_NAV.ops_admin.map((n) => n.href);
     expect(hrefs).toEqual([
       "/ops/overview",
+      "/ops/orders",
       "/ops/chat",
       "/ops/order-chats",
-      "/ops/account-deletion",
-      "/ops/issue-reports",
-      "/ops/orders",
       "/ops/quotes",
       "/ops/sample-batches",
       "/ops/finished-work",
       "/ops/service-lines",
       "/ops/listing-reviews",
       "/ops/colour-price-checks",
-      "/ops/featured-prints",
+      "/ops/issue-reports",
+      "/ops/recovery",
       "/ops/dispatch",
       "/ops/riders",
       "/ops/handoff-reminders",
+      "/ops/escalations",
+      "/ops/hub",
+      "/ops/schedule",
       "/ops/rankings",
       "/ops/shop-hours",
-      "/ops/late-production",
       "/ops/shop-performance",
+      "/ops/late-production",
       "/ops/shop-changes",
-      "/ops/hub",
-      "/ops/escalations",
-      "/ops/schedule",
+      "/ops/organizations",
+      "/ops/founding-testers",
+      "/ops/play-testers",
       "/ops/payouts",
       "/ops/supplier-invoices",
       "/ops/refunds",
-      "/ops/organizations",
-      "/ops/vouchers",
-      "/ops/promotions",
-      "/ops/home-promos",
-      "/ops/founding-testers",
-      "/ops/play-testers",
       "/ops/claims",
-      "/ops/recovery",
+      "/ops/promotions",
+      "/ops/vouchers",
+      "/ops/home-promos",
+      "/ops/featured-prints",
       "/ops/legal",
       "/ops/acceptance-log",
       "/ops/privacy-requests",
+      "/ops/account-deletion",
     ]);
   });
 
@@ -150,14 +150,20 @@ describe("ROLE_NAV", () => {
     ]);
   });
 
-  it("puts every top-level Super Admin page on the rail", () => {
-    const appAdmin = join(process.cwd(), "src/app/admin");
-    const pages = readdirSync(appAdmin, { withFileTypes: true })
+  it.each([
+    ["super_admin", "admin", []],
+    // Settings and audit render "Super Admin only"; /ops/approvals is the old
+    // address for service lines and sign-ups, kept for links already sent.
+    ["ops_admin", "ops", ["settings", "audit", "approvals"]],
+  ] as const)("puts every top-level %s page on the rail", (role, tree, offRail) => {
+    const root = join(process.cwd(), "src/app", tree);
+    const pages = readdirSync(root, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
-      .filter((entry) => existsSync(join(appAdmin, entry.name, "page.tsx")))
-      .map((entry) => `/admin/${entry.name}`)
+      .filter((entry) => !(offRail as readonly string[]).includes(entry.name))
+      .filter((entry) => existsSync(join(root, entry.name, "page.tsx")))
+      .map((entry) => `/${tree}/${entry.name}`)
       .sort();
-    const rail = ROLE_NAV.super_admin.map((item) => item.href).sort();
+    const rail = ROLE_NAV[role].map((item) => item.href).sort();
     expect(rail).toEqual(pages);
   });
 
@@ -303,10 +309,17 @@ describe("ROLE_NAV", () => {
   it("keeps group membership as the rail source of truth", () => {
     expect(ROLE_NAV_GROUPS.ops_admin.map((g) => g.label ?? g.id)).toEqual([
       "ops-top",
-      "Queue",
-      "Field",
+      "Work queue",
+      "Field & delivery",
+      "People & shops",
       "Money",
+      "Marketing",
       "Legal & privacy",
+    ]);
+    expect(navSectionsForRole("ops_admin").map((section) => section.label)).toEqual([
+      "Desk",
+      "Work",
+      "Manage",
     ]);
     expect(ROLE_NAV_GROUPS.super_admin.map((g) => g.label ?? g.id)).toEqual([
       "admin-top",
@@ -332,67 +345,61 @@ describe("ROLE_NAV", () => {
     ]);
 
     expect(ROLE_NAV_GROUPS.ops_admin[0]?.label).toBeUndefined();
-    expect(ROLE_NAV_GROUPS.ops_admin[0]?.items.map((n) => n.href)).toEqual([
-      "/ops/overview",
-      "/ops/chat",
-      "/ops/order-chats",
-      "/ops/account-deletion",
-      "/ops/issue-reports",
-    ]);
-    expect(
-      ROLE_NAV_GROUPS.ops_admin
-        .find((g) => g.id === "ops-queue")
-        ?.items.map((n) => n.href),
-    ).toEqual([
-      "/ops/orders",
-      "/ops/quotes",
-      "/ops/sample-batches",
-      "/ops/finished-work",
-      "/ops/service-lines",
-      "/ops/listing-reviews",
-      "/ops/colour-price-checks",
-      "/ops/featured-prints",
-    ]);
-    expect(
-      ROLE_NAV_GROUPS.ops_admin
-        .find((g) => g.id === "ops-field")
-        ?.items.map((n) => n.href),
-    ).toEqual([
-      "/ops/dispatch",
-      "/ops/riders",
-      "/ops/handoff-reminders",
-      "/ops/rankings",
-      "/ops/shop-hours",
-      "/ops/late-production",
-      "/ops/shop-performance",
-      "/ops/shop-changes",
-      "/ops/hub",
-      "/ops/escalations",
-      "/ops/schedule",
-    ]);
-    expect(
-      ROLE_NAV_GROUPS.ops_admin
-        .find((g) => g.id === "ops-money")
-        ?.items.map((n) => n.href),
-    ).toEqual([
-      "/ops/payouts",
-      "/ops/supplier-invoices",
-      "/ops/refunds",
-      "/ops/organizations",
-      "/ops/vouchers",
-      "/ops/promotions",
-      "/ops/home-promos",
-      "/ops/founding-testers",
-      "/ops/play-testers",
-      "/ops/claims",
-      "/ops/recovery",
-    ]);
 
-    expect(
-      ROLE_NAV_GROUPS.ops_admin
-        .find((g) => g.id === "ops-legal")
-        ?.items.map((n) => n.href),
-    ).toEqual(["/ops/legal", "/ops/acceptance-log", "/ops/privacy-requests"]);
+    const opsGroups: Record<string, string[]> = {
+      "ops-top": ["/ops/overview", "/ops/orders", "/ops/chat", "/ops/order-chats"],
+      "ops-queue": [
+        "/ops/quotes",
+        "/ops/sample-batches",
+        "/ops/finished-work",
+        "/ops/service-lines",
+        "/ops/listing-reviews",
+        "/ops/colour-price-checks",
+        "/ops/issue-reports",
+        "/ops/recovery",
+      ],
+      "ops-field": [
+        "/ops/dispatch",
+        "/ops/riders",
+        "/ops/handoff-reminders",
+        "/ops/escalations",
+        "/ops/hub",
+        "/ops/schedule",
+      ],
+      "ops-people": [
+        "/ops/rankings",
+        "/ops/shop-hours",
+        "/ops/shop-performance",
+        "/ops/late-production",
+        "/ops/shop-changes",
+        "/ops/organizations",
+        "/ops/founding-testers",
+        "/ops/play-testers",
+      ],
+      "ops-money": [
+        "/ops/payouts",
+        "/ops/supplier-invoices",
+        "/ops/refunds",
+        "/ops/claims",
+      ],
+      "ops-marketing": [
+        "/ops/promotions",
+        "/ops/vouchers",
+        "/ops/home-promos",
+        "/ops/featured-prints",
+      ],
+      "ops-legal": [
+        "/ops/legal",
+        "/ops/acceptance-log",
+        "/ops/privacy-requests",
+        "/ops/account-deletion",
+      ],
+    };
+    for (const [id, hrefs] of Object.entries(opsGroups)) {
+      expect(
+        ROLE_NAV_GROUPS.ops_admin.find((g) => g.id === id)?.items.map((n) => n.href),
+      ).toEqual(hrefs);
+    }
     const adminGroups: Record<string, string[]> = {
       "admin-top": [
         "/admin/overview",
@@ -611,17 +618,17 @@ describe("test operations rail", () => {
   it("keeps only the pages a test order runs through", () => {
     expect(hrefs).toEqual([
       "/ops/overview",
+      "/ops/orders",
       "/ops/chat",
       "/ops/order-chats",
-      "/ops/orders",
       "/ops/finished-work",
       "/ops/service-lines",
       "/ops/listing-reviews",
       "/ops/colour-price-checks",
       "/ops/dispatch",
       "/ops/riders",
-      "/ops/hub",
       "/ops/escalations",
+      "/ops/hub",
     ]);
   });
 

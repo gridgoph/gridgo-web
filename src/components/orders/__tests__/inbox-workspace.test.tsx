@@ -240,12 +240,11 @@ it.each([
         name: role === "super_admin" ? "Back to orders" : "Back to queue",
       }),
     ).toHaveAttribute("href", home);
-    if (role === "ops_admin")
-      // The Queue group opens itself around an order page.
-      expect(screen.getByRole("link", { name: "Service lines" })).toHaveAttribute(
-        "href",
-        "/ops/service-lines",
-      );
+    // The top-level Orders row stays current around an order page.
+    expect(screen.getByRole("link", { name: /^Orders/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
     expect(row.read).toBe(true);
     expect(requests).toContainEqual({
       path: `/notifications/${row.id}`,
