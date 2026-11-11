@@ -194,6 +194,7 @@ describe("Preview", () => {
     key: "p1",
     name: "DavaoGo",
     logoUrl: null,
+    cardImageUrl: null,
     imageUrl: null,
     description: "Rides around Davao.",
     tag: "partner" as const,
@@ -342,7 +343,7 @@ describe("Card hairline after a theme switch", () => {
     document.documentElement.classList.add("light");
     render(
       <PromoPreview
-        promos={[{ key: "p1", name: "DavaoGo", logoUrl: null, imageUrl: null, description: "", tag: "partner", linkText: "Visit", linkUrl: "https://davaogo.app/", tapAction: "sheet", color: "#000000" }]}
+        promos={[{ key: "p1", name: "DavaoGo", logoUrl: null, cardImageUrl: null, imageUrl: null, description: "", tag: "partner", linkText: "Visit", linkUrl: "https://davaogo.app/", tapAction: "sheet", color: "#000000" }]}
       />,
     );
     const tile = screen.getByTestId("preview-promo-tile");
@@ -530,5 +531,211 @@ describe("Signed media links", () => {
     await act(() => vi.advanceTimersByTimeAsync(5 * 60_000));
     expect(getFileDownloadUrl).toHaveBeenCalledWith("f1");
     expect(screen.getByTestId("url")).toHaveTextContent("signed.png");
+  });
+});
+
+describe("Three pictures (gridgo-client#425)", () => {
+  const cardFile = {
+    fileId: "file_card",
+    contentType: "image/jpeg",
+    downloadUrl: "https://files.example/card.jpg",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  };
+  const coverFile = {
+    fileId: "file_cover",
+    contentType: "image/png",
+    downloadUrl: "https://files.example/cover.png",
+    expiresAt: "2099-01-01T00:00:00.000Z",
+  };
+  const withPictures = () => readHomePromo(rawHomePromo({ cardImage: cardFile, image: coverFile, color: "#FFDE58" }));
+
+  /** jsdom never loads pictures: give the slot's image a pixel size and fire its load. */
+  function loadAs(img: HTMLElement, width: number, height: number) {
+    Object.defineProperty(img, "naturalWidth", { configurable: true, value: width });
+    Object.defineProperty(img, "naturalHeight", { configurable: true, value: height });
+    fireEvent.load(img);
+  }
+
+  it("labels the logo, card image and cover with where each shows and the size to upload", async () => {
+    api.listHomePromos.mockResolvedValue([]);
+    render(<HomePromoEditor tree="ops" promoId="new" />);
+    const logo = await screen.findByTestId("picture-logo");
+    expect(logo).toHaveTextContent("Required");
+    expect(logo).toHaveTextContent("512 × 512 px, square");
+    expect(logo).toHaveTextContent("up to 5 MB");
+    const card = screen.getByTestId("picture-cardImage");
+    expect(card).toHaveTextContent("Optional");
+    expect(card).toHaveTextContent("1200 × 900 px (4:3)");
+    expect(card).toHaveTextContent("Without one, the card is its colour.");
+    const cover = screen.getByTestId("picture-image");
+    expect(cover).toHaveTextContent("1600 × 900 px (16:9)");
+    expect(cover).toHaveTextContent("Never on the Home card.");
+    expect(screen.getByLabelText("Card image", { selector: "input" })).toHaveAccessibleDescription(/1200 × 900 px/);
+    // The logo is required: no Remove.
+    expect(within(logo).queryByRole("button", { name: /Remove/ })).toBeNull();
+  });
+
+  it("uploads each picture with its own purpose and adds the promo with all three", async () => {
+    api.listHomePromos.mockResolvedValue([]);
+    api.uploadHomePromoFile.mockImplementation(async (purpose: string) => ({ fileId: `file_${purpose}` }));
+    api.createHomePromo.mockResolvedValue(readHomePromo(rawHomePromo({ id: "promo_new" })));
+    render(<HomePromoEditor tree="ops" promoId="new" />);
+    const png = (name: string) => ({ target: { files: [new File(["x"], name, { type: "image/png" })] } });
+    fireEvent.change(await screen.findByLabelText("Business name"), { target: { value: "Lovis Print" } });
+    fireEvent.change(screen.getByLabelText("Logo", { selector: "input" }), png("logo.png"));
+    await waitFor(() => expect(api.uploadHomePromoFile).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText("Card image", { selector: "input" }), png("card.png"));
+    await waitFor(() => expect(api.uploadHomePromoFile).toHaveBeenCalledTimes(2));
+    fireEvent.change(screen.getByLabelText("Cover image", { selector: "input" }), png("cover.png"));
+    await waitFor(() => expect(api.uploadHomePromoFile).toHaveBeenCalledTimes(3));
+    expect(api.uploadHomePromoFile.mock.calls.map((c) => c[0])).toEqual([
+      "promotion_logo",
+      "promotion_card_image",
+      "promotion_image",
+    ]);
+    fireEvent.change(screen.getByLabelText("Button words"), { target: { value: "See the offer" } });
+    fireEvent.change(screen.getByLabelText("Link"), { target: { value: "https://lovis.example/" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add promo" }));
+    await waitFor(() => expect(api.createHomePromo).toHaveBeenCalled());
+    expect(api.createHomePromo.mock.calls[0][0]).toMatchObject({
+      logo: { fileId: "file_promotion_logo" },
+      cardImage: { fileId: "file_promotion_card_image" },
+      image: { fileId: "file_promotion_image" },
+    });
+  });
+
+  it("draws the card image on the card under a scrim in white ink, and the cover only in the sheet", async () => {
+    api.listHomePromos.mockResolvedValue([]);
+    api.getHomePromo.mockResolvedValue(withPictures());
+    render(<HomePromoEditor tree="admin" promoId="promo_davaogo" />);
+    const tile = await screen.findByTestId("preview-promo-tile");
+    await waitFor(() => expect(within(tile).getByTestId("preview-card-image")).toHaveAttribute("src", "https://files.example/card.jpg"));
+    expect(within(tile).getByTestId("preview-card-scrim")).toBeInTheDocument();
+    expect(tile).toHaveAttribute("data-ink", "#FFFFFF");
+    // The colour stays behind the picture while it loads.
+    expect(tile).toHaveStyle({ backgroundColor: "#FFDE58" });
+    expect(within(tile).queryByRole("img")).toBeNull();
+    expect(tile.innerHTML).not.toContain("cover.png");
+
+    fireEvent.click(screen.getByRole("button", { name: "Bottom sheet" }));
+    const sheet = screen.getByTestId("preview-sheet");
+    expect(within(sheet).getByTestId("preview-sheet-cover")).toHaveAttribute("src", "https://files.example/cover.png");
+    expect(within(sheet).getByTestId("preview-sheet-cover")).toHaveClass("aspect-video", "object-contain");
+    expect(sheet.innerHTML).not.toContain("card.jpg");
+  });
+
+  it("goes back to the colour card when the card image is removed, and saves the clear as null", async () => {
+    api.listHomePromos.mockResolvedValue([]);
+    api.getHomePromo.mockResolvedValue(withPictures());
+    api.updateHomePromo.mockResolvedValue(readHomePromo(rawHomePromo({ image: coverFile, color: "#FFDE58" })));
+    render(<HomePromoEditor tree="ops" promoId="promo_davaogo" />);
+    const card = await screen.findByTestId("picture-cardImage");
+    fireEvent.click(within(card).getByRole("button", { name: "Remove card image" }));
+    const tile = screen.getByTestId("preview-promo-tile");
+    expect(within(tile).queryByTestId("preview-card-image")).toBeNull();
+    expect(tile).toHaveAttribute("data-ink", "#1A1A1A");
+    expect(within(card).getByRole("button", { name: "Upload card image" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(api.updateHomePromo).toHaveBeenCalledWith("promo_davaogo", { cardImage: null }));
+  });
+
+  it("clears the cover alone, keeping the card image", async () => {
+    api.listHomePromos.mockResolvedValue([]);
+    api.getHomePromo.mockResolvedValue(withPictures());
+    api.updateHomePromo.mockResolvedValue(readHomePromo(rawHomePromo({ cardImage: cardFile })));
+    render(<HomePromoEditor tree="admin" promoId="promo_davaogo" />);
+    const cover = await screen.findByTestId("picture-image");
+    fireEvent.click(within(cover).getByRole("button", { name: "Remove cover image" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(api.updateHomePromo).toHaveBeenCalledWith("promo_davaogo", { image: null }));
+  });
+
+  it("replaces the card image with a new upload and patches only it", async () => {
+    api.listHomePromos.mockResolvedValue([]);
+    api.getHomePromo.mockResolvedValue(withPictures());
+    api.uploadHomePromoFile.mockResolvedValue({ fileId: "file_card2" });
+    api.updateHomePromo.mockResolvedValue(withPictures());
+    render(<HomePromoEditor tree="ops" promoId="promo_davaogo" />);
+    const card = await screen.findByTestId("picture-cardImage");
+    expect(within(card).getByRole("button", { name: "Replace card image" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Card image", { selector: "input" }), {
+      target: { files: [new File(["x"], "card2.webp", { type: "image/webp" })] },
+    });
+    await waitFor(() => expect(api.uploadHomePromoFile).toHaveBeenCalledWith("promotion_card_image", expect.any(File)));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(api.updateHomePromo).toHaveBeenCalledWith("promo_davaogo", { cardImage: { fileId: "file_card2" } }),
+    );
+  });
+
+  it("previews each crop: the logo whole on a white disc, the card's part of the picture, the cover at 16:9", async () => {
+    api.listHomePromos.mockResolvedValue([]);
+    api.getHomePromo.mockResolvedValue(withPictures());
+    render(<HomePromoEditor tree="ops" promoId="promo_davaogo" />);
+    const logo = await screen.findByTestId("picture-logo-frame");
+    const disc = within(logo).getByTestId("promo-logo-disc");
+    expect(disc).toHaveClass("rounded-pill", "bg-white");
+    expect(within(disc).getByTestId("promo-logo-image")).toHaveClass("object-contain");
+
+    const cardFrame = screen.getByTestId("picture-cardImage-frame");
+    // A wide 1800 × 600 picture: the card keeps the middle, so the bright window is centred and narrower.
+    loadAs(within(cardFrame).getByTestId("picture-cardImage-preview"), 1800, 600);
+    const crop = within(cardFrame).getByTestId("picture-cardImage-crop");
+    expect(crop.style.top).toBe("0%");
+    expect(parseFloat(crop.style.left)).toBeGreaterThan(25);
+    expect(parseFloat(crop.style.left) * 2 + parseFloat(crop.style.width)).toBeCloseTo(100);
+    expect(cardFrame.style.aspectRatio).toBe("1800 / 600");
+
+    const coverFrame = screen.getByTestId("picture-image-frame");
+    expect(coverFrame).toHaveClass("aspect-video");
+    expect(within(coverFrame).getByTestId("picture-image-preview")).toHaveClass("object-contain");
+  });
+
+  it("warns, without blocking, about a small or odd-shaped upload", async () => {
+    api.listHomePromos.mockResolvedValue([]);
+    api.getHomePromo.mockResolvedValue(withPictures());
+    api.updateHomePromo.mockResolvedValue(withPictures());
+    render(<HomePromoEditor tree="ops" promoId="promo_davaogo" />);
+    const cardFrame = await screen.findByTestId("picture-cardImage-frame");
+    loadAs(within(cardFrame).getByTestId("picture-cardImage-preview"), 1800, 600);
+    expect(await screen.findByTestId("picture-cardImage-note")).toHaveTextContent(
+      "much wider than 4:3, so the card trims its sides. You can still save it.",
+    );
+    loadAs(within(screen.getByTestId("picture-logo-frame")).getByTestId("promo-logo-image"), 120, 120);
+    expect(await screen.findByTestId("picture-logo-note")).toHaveTextContent("120 × 120 px, much smaller than 512 × 512");
+    loadAs(within(screen.getByTestId("picture-image-frame")).getByTestId("picture-image-preview"), 1600, 900);
+    expect(screen.queryByTestId("picture-image-note")).toBeNull();
+    expect(screen.getByLabelText("Card image", { selector: "input" })).toHaveAccessibleDescription(/trims its sides/);
+
+    fireEvent.change(screen.getByLabelText("Business name"), { target: { value: "DavaoGO" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(api.updateHomePromo).toHaveBeenCalledWith("promo_davaogo", { name: "DavaoGO" }));
+  });
+
+  it("names the upload that failed, in that slot", async () => {
+    api.listHomePromos.mockResolvedValue([]);
+    api.uploadHomePromoFile.mockRejectedValue(new ApiError(413, { error: "file_too_large", maxMiB: 15 }));
+    render(<HomePromoEditor tree="ops" promoId="new" />);
+    fireEvent.change(await screen.findByLabelText("Card image", { selector: "input" }), {
+      target: { files: [new File(["x"], "big.png", { type: "image/png" })] },
+    });
+    const card = screen.getByTestId("picture-cardImage");
+    expect(await within(card).findByText(/This card image is larger than 15 MB/)).toBeInTheDocument();
+    expect(within(screen.getByTestId("picture-image")).queryByText(/larger than/)).toBeNull();
+  });
+
+  it("says plainly when the server does not take card images yet", async () => {
+    api.listHomePromos.mockResolvedValue([]);
+    api.getHomePromo.mockResolvedValue(davaogo());
+    api.uploadHomePromoFile.mockResolvedValue({ fileId: "file_card" });
+    api.updateHomePromo.mockRejectedValue(new ApiError(400, { error: "invalid_promotion", field: "body" }));
+    render(<HomePromoEditor tree="ops" promoId="promo_davaogo" />);
+    fireEvent.change(await screen.findByLabelText("Card image", { selector: "input" }), {
+      target: { files: [new File(["x"], "card.png", { type: "image/png" })] },
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByText(/The server does not take card images yet/)).toBeInTheDocument();
   });
 });

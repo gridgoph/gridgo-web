@@ -12,6 +12,8 @@ const WHITE = "#FFFFFF";
 const YELLOW = "#FFDE58";
 /** Closer than this in relative luminance and the card would melt into the screen. */
 const NEAR_SURFACE = 0.1;
+/** Over a card image the tag chip is a dark wash, so the tag reads on any picture. */
+const ON_IMAGE_CHIP = "#00000073";
 
 /** The three suggested card colours, in the order the form shows them. */
 export const PROMO_SWATCHES = [
@@ -21,6 +23,8 @@ export const PROMO_SWATCHES = [
 ] as const;
 
 export const DEFAULT_PROMO_COLOR = WHITE;
+/** The initial drawn on the logo's white disc when there is no logo. */
+export const PROMO_LOGO_INITIAL_INK = INK;
 
 export function isHexColor(value: unknown): value is string {
   return typeof value === "string" && /^#[0-9A-Fa-f]{6}$/.test(value);
@@ -79,17 +83,25 @@ export type PromoCardColors = {
 /**
  * `screen` is the theme's colour behind the card (`#RRGGBB`, or null when
  * unknown); `outline` is the hairline drawn when the two are too close.
+ * `onImage` is true while the card draws its card image (gridgo-client#425):
+ * the colour stays behind it while it loads, and the ink is white over the
+ * bottom scrim.
  */
-export function promoCardColors(color: string, screen: string | null, outline: string): PromoCardColors {
+export function promoCardColors(
+  color: string,
+  screen: string | null,
+  outline: string,
+  onImage = false,
+): PromoCardColors {
   const background = isHexColor(color) ? color.toUpperCase() : DEFAULT_PROMO_COLOR;
-  const ink = readableInk(background);
+  const ink = onImage ? WHITE : readableInk(background);
   const near = isHexColor(screen) && Math.abs(luminance(background) - luminance(screen)) < NEAR_SURFACE;
   return {
     background,
     ink,
-    muted: alpha(ink, 0.72),
-    chip: alpha(ink, 0.1),
-    border: near ? outline : background,
+    muted: alpha(ink, onImage ? 0.85 : 0.72),
+    chip: onImage ? ON_IMAGE_CHIP : alpha(ink, 0.1),
+    border: near && !onImage ? outline : background,
   };
 }
 
