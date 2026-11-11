@@ -21,8 +21,9 @@ import {
   OPERATIONS_ACTIONS,
   operationsAction,
   ordersForAction,
-  stageOf,
+  pendingInstallment,
   type OperationsAction,
+  type QueueContext,
 } from "@/app/ops/_lib/pipeline";
 import { AssignRiderDialog } from "@/components/orders/AssignRiderDialog";
 import { ConfirmPaymentSheet } from "@/components/orders/ConfirmPaymentSheet";
@@ -43,32 +44,40 @@ import { formatPhp } from "@/lib/format";
 import type { OperatingHours, Order } from "@/lib/api/types";
 import { basketShopCounts } from "@/lib/baskets";
 import { pinDispatchBlocker } from "@/lib/delivery-pin";
-import { paymentOf } from "@/lib/payments";
 
 type Props = {
   orders: Order[];
   hours: OperatingHours | null;
+  /** The same context the stage counts and the rail use. */
+  context?: QueueContext;
   onRefresh: () => void;
 };
 
-/** The order's own downpayment, which the sheet can decide. A pin or change payment is not one. */
-function ownDownpayment(order: Order): boolean {
-  return (
-    stageOf(order) === "payment" &&
-    paymentOf(order, "downpayment")?.status === "pending_confirmation"
-  );
+/**
+ * The order's own installment, downpayment or balance, at any stage: the sheet
+ * decides either. A pin or change payment is decided on the order.
+ */
+function ownInstallmentPending(order: Order): boolean {
+  return pendingInstallment(order) !== null;
 }
 
-export function NeedsActionQueue({ orders, hours, onRefresh }: Props) {
+export function NeedsActionQueue({ orders, hours, context, onRefresh }: Props) {
   const [paying, setPaying] = useState<Order | null>(null);
   const [dispatching, setDispatching] = useState<Order | null>(null);
   const shopCounts = useMemo(() => basketShopCounts(orders), [orders]);
+  const queueContext = useMemo<QueueContext>(
+    () => context ?? { hours },
+    [context, hours],
+  );
   const groups = useMemo(
     () =>
       Object.fromEntries(
-        OPERATIONS_ACTIONS.map((action) => [action, ordersForAction(orders, action)]),
+        OPERATIONS_ACTIONS.map((action) => [
+          action,
+          ordersForAction(orders, action, queueContext),
+        ]),
       ) as Record<OperationsAction, Order[]>,
-    [orders],
+    [orders, queueContext],
   );
 
   const columns = useMemo<DataTableColumn<Order>[]>(
@@ -84,11 +93,11 @@ export function NeedsActionQueue({ orders, hours, onRefresh }: Props) {
         id: "waiting",
         header: "Waiting on",
         filterValue: (order) => {
-          const action = operationsAction(order);
+          const action = operationsAction(order, queueContext);
           return action ? OPERATIONS_ACTION_LABEL[action] : "";
         },
         cell: (order) => {
-          const action = operationsAction(order);
+          const action = operationsAction(order, queueContext);
           return (
             <span
               className="text-body text-text-primary whitespace-nowrap"
@@ -121,7 +130,7 @@ export function NeedsActionQueue({ orders, hours, onRefresh }: Props) {
         ),
       },
     ],
-    [shopCounts],
+    [shopCounts, queueContext],
   );
 
   return (
@@ -159,7 +168,7 @@ export function NeedsActionQueue({ orders, hours, onRefresh }: Props) {
                 rowActionsDensity="labeled"
                 rowActions={(order) => (
                   <>
-                    {action === "confirm_payment" && ownDownpayment(order) ? (
+                    {action === "confirm_payment" && ownInstallmentPending(order) ? (
                       <DataTableRowAction
                         label="Confirm payment"
                         icon={Wallet}

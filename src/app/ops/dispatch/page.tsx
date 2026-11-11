@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
+import { SampleTagChip } from "@/components/orders/SampleFirst";
 import { TestOrderChip } from "@/components/orders/TestOrders";
 import { ExpressChip } from "@/components/ui/ExpressChip";
 import { StatusChip } from "@/components/ui/StatusChip";
@@ -66,6 +67,7 @@ import {
   pinReceiverLine,
   presentPinForDispatch,
 } from "@/lib/delivery-pin";
+import { deliveryPositionLabel } from "@/lib/baskets";
 
 /** The Location cell for one order: the rider's freshness, or why there is none. */
 type LocationCell = {
@@ -242,9 +244,13 @@ export default function OpsDispatchPage() {
                 {o.title}
               </p>
               {isExpressOrder(o) ? <ExpressChip /> : null}
+              <SampleTagChip order={o} />
               <TestOrderChip order={o} />
             </div>
-            <p className="text-caption text-text-muted m-0 mt-0.5">Order {o.id}</p>
+            <p className="text-caption text-text-muted m-0 mt-0.5">
+              {deliveryPositionLabel(o) ? `${deliveryPositionLabel(o)} · ` : ""}
+              Order {o.id}
+            </p>
             <p className="text-caption text-text-muted m-0 mt-0.5">
               {presentZone(o.zone)}
               {focusOrder === o.id ? " · focused" : ""}
@@ -444,7 +450,10 @@ export default function OpsDispatchPage() {
               >
                 <span className="min-w-0">
                   <span className="text-body text-text-primary block">{o.title}</span>
-                  <span className="text-caption text-text-muted">Order {o.id}</span>
+                  <span className="text-caption text-text-muted">
+                    {deliveryPositionLabel(o) ? `${deliveryPositionLabel(o)} · ` : ""}
+                    Order {o.id}
+                  </span>
                 </span>
                 {isExpressOrder(o) ? (
                   <span className="ml-auto">

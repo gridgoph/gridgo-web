@@ -11,7 +11,8 @@ import {
 } from "react";
 
 import { needsDecisionCount } from "@/app/admin/_lib/tracker";
-import { waitingOnOperationsCount } from "@/app/ops/_lib/pipeline";
+import { waitingOnOperationsCount, type QueueContext } from "@/app/ops/_lib/pipeline";
+import { useQueueContext } from "@/lib/live/useQueueContext";
 import { isAwaitingSignupReview } from "@/components/approvals/signup-queue";
 import {
   getTracker,
@@ -48,6 +49,8 @@ import { buildNeedsOperations } from "@/lib/shop-changes";
 import { needsSupplierAction } from "@/lib/supplier-actions";
 import { useAcceptDeadlines } from "@/lib/use-accept-clock";
 import { readColourPriceChecks } from "@/lib/colour-pricing";
+import { listQuoteRequests } from "@/lib/api/quote-requests";
+import { quotesWaitingOnOperations } from "@/lib/quote-requests";
 
 type CountSource = {
   /** Live-stream resources that make this count stale. */
@@ -58,7 +61,7 @@ type CountSource = {
    */
   refreshOnNavigate?: boolean;
   /** Re-read when a staff inbox notice of this kind arrives. */
-  inboxPrefix?: "privacy." | "colour_price_check";
+  inboxPrefix?: "privacy." | "colour_price_check" | "ops_quote_";
   load: () => Promise<number>;
 };
 
@@ -67,12 +70,27 @@ type CountSource = {
  * the list once and reduces it for each.
  */
 const ORDER_COUNTS = {
-  "orders-waiting": { resources: ["orders"], reduce: waitingOnOperationsCount },
+  // The queue's own count, with the queue's context: a dispatch the API does
+  // not offer yet is not counted until it does.
+  "orders-waiting": {
+    resources: ["orders"],
+    reduce: waitingOnOperationsCount,
+    hours: true,
+  },
   // The Finished work desk's Waiting tab.
-  "finished-work-waiting": { resources: ["orders", "jobs"], reduce: finishedReviewWaitingCount },
+  "finished-work-waiting": {
+    resources: ["orders", "jobs"],
+    reduce: finishedReviewWaitingCount,
+    hours: false,
+  },
 } satisfies Record<
   string,
-  { resources: readonly InvalidateResource[]; reduce: (orders: Order[]) => number }
+  {
+    resources: readonly InvalidateResource[];
+    reduce: (orders: Order[], context: QueueContext) => number;
+    /** Also read the queue context (hours, dispatch offers, the clock). */
+    hours: boolean;
+  }
 >;
 
 type OrderCountKey = keyof typeof ORDER_COUNTS;
@@ -195,7 +213,16 @@ const NAV_COUNT_SOURCES: Record<Exclude<NavCountKey, OrderCountKey>, CountSource
     inboxPrefix: "colour_price_check",
     load: async () => readColourPriceChecks(await listColourPriceChecks()).length,
   },
-  // New and in-progress privacy requests, one page of each (100): past that
+  // The Quotes desk's new briefs and ones with replies not yet published
+  // (newest 200 open requests). No stream resource covers quote requests, so
+  // it is re-read on each page move and when an `ops_quote_*` notice arrives.
+  "quotes-waiting": {
+    resources: [],
+    refreshOnNavigate: true,
+    inboxPrefix: "ops_quote_",
+    load: async () => quotesWaitingOnOperations(await listQuoteRequests("open")),
+  },
+    // New and in-progress privacy requests, one page of each (100): past that
   // the badge is a floor and the queue has the rest. The API's live stream
   // carries no privacy resource, so it is re-read on each page move and when
   // a privacy inbox notice arrives.
@@ -312,18 +339,27 @@ function OrderCountsSource({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [key],
   );
+  const keys = useMemo(() => key.split(",") as OrderCountKey[], [key]);
+  // The queue's own context and minute clock, shared with the orders page.
+  // A minute passing recomputes from these orders; it never refetches them.
+  const context = useQueueContext(keys.some((source) => ORDER_COUNTS[source].hours));
+  const [orders, setOrders] = useState<Order[] | null>(null);
   const load = useSerializedLoad(
     useCallback(async () => {
       try {
-        const orders = await listOrders();
-        for (const source of key.split(",") as OrderCountKey[]) {
-          onCount(source, ORDER_COUNTS[source].reduce(orders));
-        }
+        setOrders(await listOrders());
       } catch {
         /* Keep the last good counts. */
       }
-    }, [key, onCount]),
+    }, []),
   );
+
+  useEffect(() => {
+    if (!orders) return;
+    for (const source of keys) {
+      onCount(source, ORDER_COUNTS[source].reduce(orders, context));
+    }
+  }, [orders, context, keys, onCount]);
 
   useLiveReload(resources, load);
   useEffect(() => {

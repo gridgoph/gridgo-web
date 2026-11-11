@@ -145,6 +145,29 @@ const { ordersRef, listOrdersMock, countMocks } = vi.hoisted(() => {
         fetchedAt: "2026-09-25T00:00:00.000Z",
         items: [] as Array<{ status: string }>,
       })),
+      // The Orders count reads the queue context: GRIDGO's default week
+      // (Mon–Sat 08:00–17:00 Manila) and the API's dispatch offers, which
+      // offer every ready order here, as the API does for one with no stop.
+      getSettings: vi.fn(async () => ({
+        operatingHours: {
+          timeZone: "Asia/Manila",
+          schedule: {
+            utcOffsetMinutes: 480,
+            week: [1, 2, 3, 4, 5, 6].map((weekday) => ({
+              weekday,
+              opensMinute: 480,
+              closesMinute: 1020,
+            })),
+            closures: [],
+          },
+          artworkReviewMinutes: 60,
+        },
+      })),
+      listDispatchOffers: vi.fn(async () =>
+        ordersRef.current.filter(
+          (order: { state?: string }) => order.state === "ready_for_dispatch",
+        ),
+      ),
     },
   };
 });
@@ -160,6 +183,8 @@ vi.mock("@/lib/api/client", () => ({
   listIssueReports: countMocks.listIssueReports,
   listJobs: countMocks.listJobs,
   getTracker: countMocks.getTracker,
+  getSettings: countMocks.getSettings,
+  listDispatchOffers: countMocks.listDispatchOffers,
   onForbidden: forbiddenRef.subscribe,
 }));
 

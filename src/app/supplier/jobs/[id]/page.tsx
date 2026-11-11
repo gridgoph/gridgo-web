@@ -1,6 +1,7 @@
 "use client";
 
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+import { useShopAccess } from "@/lib/auth/shop-access";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -9,6 +10,7 @@ import {
   Camera,
   Check,
   History,
+  UsersRound,
   ListChecks,
   Package,
   Scale,
@@ -33,6 +35,7 @@ import { MilestoneList } from "@/components/orders/MilestoneList";
 import { OrderMeta } from "@/components/orders/OrderMeta";
 import { ProgressGallery, WaitingForPhoto } from "@/components/orders/ProductionProgress";
 import { Timeline } from "@/components/orders/Timeline";
+import { OrderActions } from "@/components/orders/OrderActions";
 import { Confirmation } from "@/components/refunds/dialogs";
 import { Button } from "@/components/ui/button";
 import { TakePhotoButton } from "@/components/ui/TakePhotoButton";
@@ -112,6 +115,7 @@ import {
 } from "@/lib/supplier-actions";
 import { useAcceptClock } from "@/lib/use-accept-clock";
 import { jobActivity, relativeTime } from "@/app/supplier/_lib/job-activity";
+import { deliveryPositionLabel } from "@/lib/baskets";
 
 /** The two shop photos a job takes before packing, each with its own words. */
 type PhotoKind = "progress" | "packing";
@@ -171,6 +175,7 @@ export default function SupplierJobDetailPage() {
   const router = useRouter();
   const orderId = params.id;
 
+  const { staff: shopStaff } = useShopAccess();
   const [job, setJob] = useState<Order | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -463,7 +468,9 @@ export default function SupplierJobDetailPage() {
   const photoWords = PHOTO_WORDS[photoKind];
   const notes = itemInstructions(job);
   const needsTick = primary?.kind === "accept" && hasSpecialInstructions(job);
-  const changeAllowed = canRequestChange(job) && !stopped;
+  // Price changes, leaving a job and deadline requests are the Owner's
+  // (gridgo-api docs/SHOP_TEAM_API.md); Staff never see those controls.
+  const changeAllowed = !shopStaff && canRequestChange(job) && !stopped;
   const changeRequest = currentChangeRequest(job);
   const earlierChanges = changeRequestsOf(job).filter((row) => row.id !== changeRequest?.id);
 
@@ -473,7 +480,10 @@ export default function SupplierJobDetailPage() {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-h2 text-text-primary m-0">{job.title}</h2>
-            <p className="text-caption text-text-muted m-0 mt-1">Order {job.id}</p>
+            <p className="text-caption text-text-muted m-0 mt-1">
+              {deliveryPositionLabel(job) ? `${deliveryPositionLabel(job)} · ` : ""}
+              Order {job.id}
+            </p>
             {isExpressOrder(job) ? (
               <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
                 <ExpressChip />
@@ -527,13 +537,17 @@ export default function SupplierJobDetailPage() {
         <SupplierForcedNotice order={job} />
         <HandoverTimeline order={job} audience="shop" />
         <ShopPickup order={job} stopped={stopped} onJobChanged={() => void load()} />
-        <ShopLeaveJob order={job} onChanged={() => void load()} />
-        <Link
-          href={`/supplier/report?orderId=${encodeURIComponent(job.id)}&title=${encodeURIComponent(job.title)}`}
-          className="text-body text-text-primary min-h-11 underline"
-        >
-          Report a problem
-        </Link>
+        {shopStaff ? null : (
+          <>
+            <ShopLeaveJob order={job} onChanged={() => void load()} />
+            <Link
+              href={`/supplier/report?orderId=${encodeURIComponent(job.id)}&title=${encodeURIComponent(job.title)}`}
+              className="text-body text-text-primary min-h-11 underline"
+            >
+              Report a problem
+            </Link>
+          </>
+        )}
 
         <div className="flex flex-col gap-2 border-t border-outline-subtle pt-3">
           <div
@@ -861,6 +875,19 @@ export default function SupplierJobDetailPage() {
               presentState={(state) => shopTimelineState(job, state)}
             />
           </section>
+
+          {job.actions?.length ? (
+            <section className="gg-card p-3" aria-labelledby="who-heading">
+              <h3
+                id="who-heading"
+                className="text-h3 text-text-primary m-0 mb-1 flex items-center gap-2"
+              >
+                <UsersRound size={18} strokeWidth={1.75} aria-hidden />
+                Who did what
+              </h3>
+              <OrderActions actions={job.actions} />
+            </section>
+          ) : null}
         </div>
 
         {job.payoutMilestones?.length ? (

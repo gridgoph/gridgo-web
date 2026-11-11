@@ -1,4 +1,7 @@
 import { withRequestDeadline } from "@/lib/api/requestDeadline";
+import { sendMultipart, UploadInterrupted } from "@/lib/api/multipart";
+import { beginUpload } from "@/lib/upload-activity";
+import { clearSharedReads, sharedRead } from "@/lib/api/sharedReads";
 /**
  * Typed GRIDGO demo API client.
  *
@@ -149,6 +152,7 @@ import type {
   ShopHours,
   ShopHoursPatch,
   ShopRecovery,
+  ShopRecoveryCause,
   SupplierProductionLapses,
   SupplierInvoiceEnvelope,
   SupplierInvoiceMonth,
@@ -292,6 +296,7 @@ let tokenProvider: TokenProvider = () => null;
 
 /** Wire the client to Clerk's rotating session token (called once from AuthProvider). */
 export function setTokenProvider(provider: TokenProvider): void {
+  if (tokenProvider !== provider) clearSharedReads();
   tokenProvider = provider;
 }
 
@@ -336,6 +341,7 @@ let testOperationsSession = false;
  * it for every other tree.
  */
 export function setTestOperationsSession(on: boolean): void {
+  if (testOperationsSession !== on) clearSharedReads();
   testOperationsSession = on;
 }
 
@@ -359,6 +365,18 @@ async function send(
   ) {
     path = withReviewData(path);
   }
+  const headers = await authorizedHeaders(path, init, signal, accept, tokenOptions);
+  return fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
+}
+
+async function authorizedHeaders(
+  path: string,
+  init: RequestInit,
+  signal: AbortSignal,
+  accept: string,
+  tokenOptions?: TokenProviderOptions,
+): Promise<Record<string, string>> {
+  const role = path.startsWith("/auth/") ? null : getWorkspaceRole();
   const headers: Record<string, string> = {
     Accept: accept,
     ...(role ? { "X-GRIDGO-Role": role } : {}),
@@ -372,7 +390,7 @@ async function send(
   const token = await tokenProvider(tokenOptions);
   signal.throwIfAborted();
   if (token) headers.Authorization = `Bearer ${token}`;
-  return fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
+  return headers;
 }
 
 function parseBody(text: string): unknown {
@@ -395,12 +413,103 @@ async function request<T>(
   init: RequestInit = {},
   tokenOptions?: TokenProviderOptions,
 ): Promise<T> {
-  return withRequestDeadline(init.signal, async (signal) => {
-    const res = await send(path, init, signal, "application/json", tokenOptions);
-    const data = parseBody(await res.text());
-    if (!res.ok) throw failed(path, res.status, data);
-    return data as T;
+  if (typeof FormData !== "undefined" && init.body instanceof FormData) {
+    return multipartRequest<T>(path, init.body, init, tokenOptions);
+  }
+  const read = () =>
+    withRequestDeadline(init.signal, async (signal) => {
+      const res = await send(path, init, signal, "application/json", tokenOptions);
+      const data = parseBody(await res.text());
+      if (!res.ok) throw failed(path, res.status, data);
+      return data as T;
+    });
+  if ((init.method ?? "GET").toUpperCase() !== "GET") {
+    clearSharedReads();
+    try {
+      return await read();
+    } finally {
+      clearSharedReads();
+    }
+  }
+  // A caller-owned abort signal/deadline or token refresh stays independent.
+  if (init.signal || tokenOptions || init.headers) return read();
+  return shareRoleRead(path, read);
+}
+
+// Lists read by both the shell and its desks. Query strings (including page
+// cursors) stay part of the key. Never replace complete lists with one page.
+const SHARED_LIST_PATHS = new Set([
+  "/orders",
+  "/jobs",
+  "/users",
+  "/claims",
+  "/escalations",
+  "/approval-cases",
+  "/ops/issue-reports",
+  "/ops/shop-failures",
+  "/ops/reschedule-requests",
+  "/refund-requests",
+  "/ops/catalog-reviews",
+  "/ops/product-type-requests",
+  "/ops/colour-price-checks",
+  "/ops/quote-requests",
+  "/admin/privacy-requests",
+  "/ops/client-shop-chats",
+  "/support-chat/threads",
+  "/credits/balance",
+  "/admin/tracker",
+]);
+
+/** Also used by the support-chat transport, which owns its own HTTP errors. */
+export function shareRoleRead<T>(path: string, read: () => Promise<T>): Promise<T> {
+  if (typeof window === "undefined" || !SHARED_LIST_PATHS.has(path.split("?")[0])) {
+    return read();
+  }
+  const role = getWorkspaceRole();
+  const scopedPath =
+    testOperationsSession && role === "ops_admin" && acceptsReviewData(path)
+      ? withReviewData(path)
+      : path;
+  return sharedRead(JSON.stringify([getApiBase(), role, scopedPath]), read);
+}
+
+async function multipartRequest<T>(
+  path: string,
+  body: FormData,
+  init: RequestInit,
+  tokenOptions?: TokenProviderOptions,
+): Promise<T> {
+  const controller = new AbortController();
+  const cancel = () => controller.abort(init.signal?.reason);
+  if (init.signal?.aborted) cancel();
+  else init.signal?.addEventListener("abort", cancel, { once: true });
+  const file = body.get("file");
+  const update = beginUpload(file instanceof File ? file.name : "File", () => {
+    controller.abort(new UploadInterrupted("upload_cancelled", "Upload cancelled."));
   });
+  try {
+    // A stuck Clerk token still times out in 20s, before any bytes are sent.
+    const headers = await withRequestDeadline(controller.signal, (signal) =>
+      authorizedHeaders(path, init, signal, "application/json", tokenOptions),
+    );
+    const response = await sendMultipart(
+      `${getApiBase()}${path}`,
+      body,
+      headers,
+      controller.signal,
+      update,
+    );
+    const data = parseBody(response.text);
+    if (response.status < 200 || response.status >= 300)
+      throw failed(path, response.status, data);
+    update({ phase: "stored" });
+    return data as T;
+  } catch (error) {
+    update({ phase: "failed", error });
+    throw error;
+  } finally {
+    init.signal?.removeEventListener("abort", cancel);
+  }
 }
 
 /** Shared JSON transport for endpoint modules, including workspace revocation checks. */
@@ -557,6 +666,21 @@ export async function transitionOrder(
     body: JSON.stringify({ state, ...extra }),
   });
   return normalizeOrder(result.order);
+}
+
+/**
+ * Super Admin only. Takes the order off every list and app; the record and the
+ * reason stay on the audit log and no money moves. `confirmEmail` is the
+ * client's exact email, which the API checks itself.
+ */
+export async function removeOrder(
+  orderId: string,
+  input: { reason: string; confirmEmail: string },
+): Promise<{ id: string; removedAt: string }> {
+  return request<{ id: string; removedAt: string }>(
+    `/ops/orders/${encodeURIComponent(orderId)}/remove`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
 }
 
 /** One quality-check tick, written to the audit log as it is ticked. */
@@ -1459,6 +1583,22 @@ export async function listShopFailures(
 export async function getShopRecovery(orderId: string): Promise<ShopRecovery | null> {
   const result = await request<{ recovery: ShopRecovery | null }>(
     `/orders/${encodeURIComponent(orderId)}/shop-recovery`,
+  );
+  return result.recovery ?? null;
+}
+
+/**
+ * Ops / Super Admin. Opens a recovery for a late shop, a GRIDGO-caused move or
+ * a client-caused move (gridgo-api#225). It never moves the order: the client
+ * chooses. The reason (1–2,000 characters) is audited.
+ */
+export async function startShopRecovery(
+  orderId: string,
+  body: { cause: ShopRecoveryCause; reason: string },
+): Promise<ShopRecovery | null> {
+  const result = await request<{ recovery: ShopRecovery | null }>(
+    `/orders/${encodeURIComponent(orderId)}/shop-recovery/start`,
+    { method: "POST", body: JSON.stringify(body) },
   );
   return result.recovery ?? null;
 }
@@ -3330,6 +3470,19 @@ export async function updateIssueReport(
   return request<IssueReport>(`/ops/issue-reports/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify(input),
+  });
+}
+
+/**
+ * Staff confirm a real bug (Operations and Super Admin). Idempotent; the
+ * first call marks it valid and a bug and decides the reporter's one-time
+ * voucher. `409 issue_report_not_confirmable` (spam or duplicate),
+ * `403 issue_report_self_confirmation` (the confirmer sent it).
+ */
+export async function confirmIssueReportBug(id: string): Promise<IssueReport> {
+  return request<IssueReport>(`/ops/issue-reports/${encodeURIComponent(id)}/confirm-bug`, {
+    method: "POST",
+    body: JSON.stringify({}),
   });
 }
 

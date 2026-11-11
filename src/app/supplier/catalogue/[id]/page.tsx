@@ -178,6 +178,10 @@ type Draft = {
   oneColour: boolean;
   /** The tier table as typed; blank prices are tiers not offered. */
   colour: ColourDraft;
+  /** Sample First switch. Null on an API without samples: nothing is shown or sent. */
+  sampleOn: boolean | null;
+  /** The sample price as typed, in pesos. Kept while the offer is off. */
+  samplePrice: string;
   measureUnit: MeasureUnit | null;
   /** Typed in `measureUnit` as text, stored as thousandths. */
   minimumWidth: string;
@@ -278,6 +282,9 @@ function draftFrom(listing: Listing): Draft {
     pricedByColour: listing.colourSupported ? listing.pricedByColour : null,
     oneColour: listing.oneColour,
     colour: colourDraftFrom(listing.colourPricing),
+    sampleOn: listing.sampleAvailable,
+    samplePrice:
+      listing.samplePriceMinor != null ? minorToPesosInput(listing.samplePriceMinor) : "",
     measureUnit: listing.measureUnit,
     minimumWidth: sizeText(listing.minimumWidthMilli),
     minimumHeight: sizeText(listing.minimumHeightMilli),
@@ -332,6 +339,20 @@ function colourPayload(draft: Draft): Record<string, unknown> {
     pricedByColour: on,
     oneColour: on ? false : draft.oneColour,
     ...(on ? { colourPricing: read.ok ? read.pricing : { unreadable: draft.colour } } : {}),
+  };
+}
+
+/**
+ * The sample fields a save sends (SAMPLE_FIRST_API.md). They apply at once,
+ * without listing review. Nothing goes on an API without samples, and an
+ * unreadable price is held by `holdReason`, never sent.
+ */
+function samplePayload(draft: Draft): Record<string, unknown> {
+  if (draft.sampleOn == null) return {};
+  const money = parseCatalogMoney(draft.samplePrice);
+  return {
+    sampleAvailable: draft.sampleOn,
+    samplePriceMinor: money.ok ? money.minor : null,
   };
 }
 
@@ -426,6 +447,7 @@ function payloadOf(draft: Draft) {
     ),
     ...(draft.printLayouts ? { printLayouts: draft.printLayouts } : {}),
     ...colourPayload(draft),
+    ...samplePayload(draft),
     ...billablePayload(draft),
   };
 }
@@ -443,6 +465,13 @@ function savePayload(draft: Draft, listing: Listing) {
   // The set is replaced whole and a change opens review, so it is sent only
   // when the shop changed it.
   if (sameLayouts(draft.printLayouts, listing.printLayouts)) delete payload.printLayouts;
+  // Sample fields apply at once: send only what moved, like any other field.
+  const sampleBefore = samplePayload(draftFrom(listing));
+  for (const key of ["sampleAvailable", "samplePriceMinor"]) {
+    if (key in payload && JSON.stringify(payload[key]) === JSON.stringify(sampleBefore[key])) {
+      delete payload[key];
+    }
+  }
   // Colour fields go through review too: send only what moved.
   const before = colourPayload(draftFrom(listing));
   for (const key of ["pricedByColour", "oneColour", "colourPricing"]) {
@@ -465,6 +494,16 @@ function holdReason(draft: Draft, listing: Listing): string | null {
     const money = parseCatalogMoney(draft.price);
     if (!money.ok) return money.error;
     if (money.minor == null) return "enter a price in pesos, like 400.00.";
+  }
+  if (draft.sampleOn != null) {
+    const sample = parseCatalogMoney(draft.samplePrice);
+    if (!sample.ok) return `sample price: ${sample.error.charAt(0).toLowerCase()}${sample.error.slice(1)}`;
+    if (draft.sampleOn && (sample.minor == null || sample.minor < 1)) {
+      return "enter a sample price before offering a sample.";
+    }
+    if (draft.sampleOn && colourOn(draft)) {
+      return "a listing priced by colour cannot offer a sample. Turn Sample available off first.";
+    }
   }
   const pack = packProblem(
     draft.pricingUnit,
@@ -839,6 +878,10 @@ export default function ListingEditorPage() {
             pesosToMinor(current.price) === saved.basePriceMinor
               ? current.price
               : next.price,
+          samplePrice:
+            pesosToMinor(current.samplePrice) === saved.samplePriceMinor
+              ? current.samplePrice
+              : next.samplePrice,
           // Rows keep their keys (and the cursor its field) when the server
           // kept exactly the prices typed.
           colour:
@@ -1861,6 +1904,15 @@ export default function ListingEditorPage() {
                       </div>
                     </div>
                   ) : null}
+                  {working.sampleOn != null ? (
+                    <SampleOffer
+                      on={working.sampleOn}
+                      price={working.samplePrice}
+                      colourPriced={colourOn(working)}
+                      onToggle={(sampleOn) => setDraft({ ...working, sampleOn })}
+                      onPrice={(samplePrice) => setDraft({ ...working, samplePrice })}
+                    />
+                  ) : null}
                 </FieldGroup>
               </Section>
             ) : null}
@@ -2585,5 +2637,87 @@ function OptionPriceInput({
         });
       }}
     />
+  );
+}
+
+/**
+ * Sample First (SAMPLE_FIRST_API.md): the shop offers one paid sample piece
+ * before the batch, at its own price. It changes at once, with no review. A
+ * listing priced by colour cannot offer one; the switch then only turns off.
+ */
+function SampleOffer({
+  on,
+  price,
+  colourPriced,
+  onToggle,
+  onPrice,
+}: {
+  on: boolean;
+  price: string;
+  colourPriced: boolean;
+  onToggle: (on: boolean) => void;
+  onPrice: (price: string) => void;
+}) {
+  const money = parseCatalogMoney(price);
+  const missing = on && money.ok && money.minor == null;
+  const invalid = !money.ok || missing;
+  return (
+    <div className="flex flex-col gap-3" data-testid="sample-offer">
+      <div className="flex items-start gap-3">
+        <Switch
+          id="sample-available"
+          checked={on}
+          disabled={colourPriced && !on}
+          onCheckedChange={onToggle}
+          aria-describedby="sample-available-hint"
+        />
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <label
+            htmlFor="sample-available"
+            className="text-body text-text-primary"
+            style={{ fontFamily: "var(--font-medium)" }}
+          >
+            Sample available
+          </label>
+          <span id="sample-available-hint" className="text-caption text-text-secondary max-w-prose">
+            {colourPriced
+              ? "Not offered for listings priced by colour."
+              : "Clients can pay for one piece first. If they approve it, they can order the batch at your prices from that day for a limited time. It changes at once, with no review."}
+          </span>
+        </div>
+      </div>
+      {on || price.trim() ? (
+        <Field className="max-w-sm" data-invalid={invalid || undefined}>
+          <FieldLabel htmlFor="sample-price">Sample price</FieldLabel>
+          <div className="relative">
+            <span
+              aria-hidden
+              className="text-body text-text-secondary pointer-events-none absolute top-1/2 left-3 -translate-y-1/2"
+            >
+              ₱
+            </span>
+            <Input
+              id="sample-price"
+              inputMode="decimal"
+              className="pr-24 pl-7"
+              value={price}
+              aria-invalid={invalid || undefined}
+              aria-describedby="sample-price-help"
+              onChange={(event) => onPrice(event.target.value)}
+            />
+            <span className="text-caption text-text-muted pointer-events-none absolute top-1/2 right-3 -translate-y-1/2">
+              for 1 piece
+            </span>
+          </div>
+          <FieldDescription id="sample-price-help">
+            {!money.ok
+              ? money.error
+              : missing
+                ? "Enter your price for one sample piece."
+                : "Your price for one piece. It is not taken off the batch."}
+          </FieldDescription>
+        </Field>
+      ) : null}
+    </div>
   );
 }

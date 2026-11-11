@@ -48,10 +48,13 @@ import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import {
   STAFF_REASON_MAX,
   dayLengthLabel,
+  dayWindow,
+  effectiveWeek,
   extensionToday,
   manilaClock,
   timeLabel,
   weekDraftOf,
+  weekLabel,
 } from "@/lib/shop-hours";
 import { shopHoursErrorMessage, shopHoursRouteMissing } from "@/lib/shop-hours-errors";
 
@@ -143,8 +146,8 @@ export function ShopHoursDetail({
   const shopLabel = data.shopName ?? "This shop";
   const clock = manilaClock(now);
   const extension = extensionToday(hours, now);
-  const usual = hours.week.find((row) => row.weekday === clock.weekday) ?? null;
-  const week = weekDraftOf(hours.week);
+  const usual = dayWindow(hours, clock.weekday);
+  const week = weekDraftOf(hours.week, hours.overrides);
 
   return (
     <div className="flex flex-col gap-4">
@@ -237,7 +240,9 @@ export function ShopHoursDetail({
               <h3 id="staff-week-heading" className="text-h3 text-text-primary m-0">
                 Weekly hours
               </h3>
-              {hours.week.length && !week.uneven ? (
+              {hours.week.length && !week.uneven && week.draft.own ? (
+                <p className="text-body text-text-secondary m-0">{weekLabel(effectiveWeek(hours))}.</p>
+              ) : hours.week.length && !week.uneven ? (
                 <p className="text-body text-text-secondary m-0">
                   {dayLengthLabel(week.draft.closesMinute - week.draft.opensMinute)} on each open day.
                 </p>
@@ -248,7 +253,7 @@ export function ShopHoursDetail({
                 </p>
               ) : null}
             </div>
-            <WeekStrip week={hours.week} todayWeekday={clock.weekday} />
+            <WeekStrip week={effectiveWeek(hours)} todayWeekday={clock.weekday} />
           </section>
 
           <section

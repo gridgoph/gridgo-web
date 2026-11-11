@@ -9,7 +9,6 @@ import { Eye, Zap } from "lucide-react";
 
 import {
   OPERATIONS_ACTION_LABEL,
-  OPERATIONS_ACTIONS,
   STAGES,
   actionableCount,
   operationsAction,
@@ -17,11 +16,13 @@ import {
   stageCounts,
   stageOf,
   waitingOnOperationsCount,
-  type OperationsAction,
+  workHoldLabel,
+  workHoldOf,
   type Stage,
 } from "@/app/ops/_lib/pipeline";
 import { FileCheckQueue } from "@/components/orders/FileCheckQueue";
 import { NeedsActionQueue } from "@/components/orders/NeedsActionQueue";
+import { ReceiptScanMark } from "@/components/orders/ReceiptScan";
 import {
   QueueOrderCell,
   queueOrderFilterValue,
@@ -39,9 +40,12 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { SkeletonLines } from "@/components/ui/loading";
-import { ApiError, getSettings, listOrders } from "@/lib/api/client";
-import type { OperatingHours, Order } from "@/lib/api/types";
+import { ApiError, listOrders } from "@/lib/api/client";
+import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
+import { useQueueContext } from "@/lib/live/useQueueContext";
+import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
+import { receiptScanMarkValue } from "@/lib/receipt-scan";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { basketShopCounts } from "@/lib/baskets";
 import { isExpressOrder, ORDER_SPEED_OPTIONS, orderSpeed } from "@/lib/express";
@@ -67,7 +71,9 @@ import { finishedReviewWaitingCount } from "@/lib/shop-handover";
 export default function OpsOrdersPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const requested = params.get("stage") as View | null;
+  // A stage the queue does not know (an old or mistyped link) opens Needs action.
+  const raw = params.get("stage");
+  const requested = VIEWS.some((view) => view.id === raw) ? (raw as View) : null;
 
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -96,37 +102,29 @@ export default function OpsOrdersPage() {
   );
 
   useLiveReload("orders", load);
+  useLegalInboxReload("supplier_invoice_scanned", load);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  // The file check reads GRIDGO's operating hours. A failed read only drops
-  // the hours strip; each order still carries its own review time.
-  const [hours, setHours] = useState<OperatingHours | null>(null);
-  const loadHours = useCallback(async () => {
-    try {
-      setHours((await getSettings()).operatingHours ?? null);
-    } catch {
-      // Keep whatever was read last.
-    }
-  }, []);
-  useEffect(() => {
-    void loadHours();
-  }, [loadHours]);
-  useLiveReload("settings", loadHours);
+  // GRIDGO's hours (the file check's strip, and when dispatch opens), the
+  // API's dispatch offers, and the minute clock the rail shares. A failed
+  // read only drops what it would have added.
+  const context = useQueueContext();
+  const hours = context.hours ?? null;
 
   const counts = useMemo(() => stageCounts(orders ?? []), [orders]);
   const waiting = useMemo(
     () =>
       Object.fromEntries(
-        STAGES.map((entry) => [entry.id, actionableCount(orders ?? [], entry.id)]),
+        STAGES.map((entry) => [entry.id, actionableCount(orders ?? [], entry.id, context)]),
       ) as Record<Stage, number>,
-    [orders],
+    [orders, context],
   );
   const needsActionTotal = useMemo(
-    () => waitingOnOperationsCount(orders ?? []),
-    [orders],
+    () => waitingOnOperationsCount(orders ?? [], context),
+    [orders, context],
   );
   const rows = useMemo(() => {
     if (stage === NEEDS_ACTION) return [];
@@ -185,9 +183,10 @@ export default function OpsOrdersPage() {
       {
         id: "waiting",
         header: "Waiting on",
-        sortValue: (order) => (operationsAction(order) ? 0 : 1),
+        sortValue: (order) => (operationsAction(order, context) ? 0 : 1),
         cell: (order) => {
-          const action = operationsAction(order);
+          const action = operationsAction(order, context);
+          const hold = action ? null : workHoldOf(order, context);
           return (
             <span
               className="text-body whitespace-nowrap"
@@ -196,10 +195,23 @@ export default function OpsOrdersPage() {
                 fontFamily: action ? "var(--font-medium)" : undefined,
               }}
             >
-              {action ? OPERATIONS_ACTION_LABEL[action] : waitingOn(order.state)}
+              {action
+                ? OPERATIONS_ACTION_LABEL[action]
+                : hold
+                  ? workHoldLabel(hold, context)
+                  : waitingOn(order.state)}
             </span>
           );
         },
+      },
+      {
+        // The shop's receipt scan, sent before it calls a rider. Blank until a
+        // shop has the job; the order's Receipt scan row has the scans.
+        id: "receipt-scan",
+        header: "Receipt scan",
+        sortValue: receiptScanMarkValue,
+        filterValue: receiptScanMarkValue,
+        cell: (order) => <ReceiptScanMark order={order} />,
       },
       {
         id: "value",
@@ -222,7 +234,7 @@ export default function OpsOrdersPage() {
         ),
       },
     ],
-    [shopCounts],
+    [shopCounts, context],
   );
 
   if (loading && !orders) return <SkeletonLines lines={6} />;
@@ -312,13 +324,14 @@ export default function OpsOrdersPage() {
           <NeedsActionQueue
             orders={orders ?? []}
             hours={hours}
+            context={context}
             onRefresh={() => void load()}
           />
           {STAGES.map((entry) => {
             const resting = (orders ?? [])
               .filter(
                 (order) =>
-                  stageOf(order) === entry.id && operationsAction(order) === null,
+                  stageOf(order) === entry.id && operationsAction(order, context) === null,
               )
               .sort((a, b) => (a.updatedAt || "").localeCompare(b.updatedAt || ""));
             if (resting.length === 0) return null;

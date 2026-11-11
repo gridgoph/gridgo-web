@@ -16,7 +16,7 @@ import {
   type SupplierProfile,
 } from "@/lib/api/client";
 import type { ShopHours } from "@/lib/api/types";
-import { timeLabel } from "@/lib/shop-hours";
+import { effectiveWeek, weekLabel } from "@/lib/shop-hours";
 import {
   CLOSING_DOES_NOT_CANCEL,
   draftFromProfile,
@@ -27,23 +27,11 @@ import {
   type ShopDetailDraft,
 } from "@/lib/supplier-profile";
 
-const WEEKDAYS = [
-  "Sunday",
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-];
-
 function hoursLine(hours: ShopHours | null): string {
   if (!hours) return "Shop hours are not available yet.";
   if (hours.temporarilyClosed) return "Temporarily closed.";
   if (hours.week.length === 0) return "No open days yet.";
-  const first = hours.week[0];
-  const day = WEEKDAYS[first.weekday] ?? "Open day";
-  return `${hours.isOpenNow ? "Open now" : "Closed now"}. ${day} ${timeLabel(first.opensMinute)}–${timeLabel(first.closesMinute)}.`;
+  return `${hours.isOpenNow ? "Open now" : "Closed now"}. ${weekLabel(effectiveWeek(hours))}.`;
 }
 
 export default function SupplierShopPage() {

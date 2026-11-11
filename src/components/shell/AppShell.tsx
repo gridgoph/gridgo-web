@@ -1,5 +1,14 @@
 "use client";
-import { Award, Gift, SwatchBook, TicketPercent, UserRoundMinus } from "lucide-react";
+import {
+  Award,
+  CalendarCheck,
+  Calculator,
+  Gift,
+  SwatchBook,
+  TestTubes,
+  TicketPercent,
+  UserRoundMinus,
+} from "lucide-react";
 
 import {
   useCallback,
@@ -39,6 +48,7 @@ import {
   Clock3,
   Coins,
   GalleryHorizontal,
+  GalleryHorizontalEnd,
   Gauge,
   HandCoins,
   Handshake,
@@ -70,6 +80,7 @@ import {
   Contact,
   Truck,
   UserRoundCheck,
+  UsersRound,
   UserSearch,
   Users,
   Wallet,
@@ -146,6 +157,9 @@ import {
 import { ThemeToggle } from "@/components/shell/ThemeToggle";
 import { onForbidden } from "@/lib/api/client";
 import { TestOperationsProvider, useTestOperations } from "@/lib/auth/test-operations";
+import { useShopAccess, type ShopAccess } from "@/lib/auth/shop-access";
+import { shopRoleLabel } from "@/lib/shop-team";
+import { ShopOwnerOnly } from "@/components/shop-team/ShopOwnerOnly";
 import { TEST_OPERATIONS_FORBIDDEN } from "@/lib/review-data";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { LiveProvider } from "@/lib/live/LiveProvider";
@@ -165,6 +179,9 @@ import {
   navItemForPath,
   navSectionsForRole,
   testOperationsAllowsPath,
+  shopStaffAllowsPath,
+  SHOP_STAFF_HOME,
+  type NavScope,
   type NavCountKey,
   type NavGroup,
   type NavIconKey,
@@ -234,7 +251,9 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   "featured-prints": GalleryHorizontal,
   vouchers: TicketPercent,
   promotions: Gift,
+  "home-promos": GalleryHorizontalEnd,
   "founding-testers": Award,
+  "play-testers": CalendarCheck,
   legal: BookText,
   acceptances: Signature,
   privacy: UserLock,
@@ -242,6 +261,9 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   invoices: ReceiptText,
   "finished-work": PackageCheck,
   "shop-hours": Clock3,
+  quotes: Calculator,
+  "sample-batches": TestTubes,
+  team: UsersRound,
   "group-shop": Store,
   "group-money": HandCoins,
   "group-queue": Inbox,
@@ -253,9 +275,9 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
 };
 
 /** Each count source this rail shows, once — read once for the whole rail. */
-function railCountSources(role: Role, testOperations: boolean): NavCountKey[] {
+function railCountSources(role: Role, scope: NavScope): NavCountKey[] {
   const sources = new Set<NavCountKey>();
-  for (const group of navGroupsForRole(role, { testOperations })) {
+  for (const group of navGroupsForRole(role, scope)) {
     for (const item of group.items) if (item.count) sources.add(item.count);
   }
   return [...sources];
@@ -296,8 +318,21 @@ function AccountAvatar({
 }
 
 /** Footer identity is the Clerk person; the menu still owns GRIDGO settings and sign-out. */
+/**
+ * The line under the account name. A shop's Staff reads their shop and role,
+ * so a shared counter computer says whose login is open; an Owner's own
+ * account keeps the plain workspace name it always had.
+ */
+function workspaceLabel(role: Role, access: ShopAccess): string {
+  if (role === "supplier" && access.staff && access.shop) {
+    return `${access.shop.name} · ${shopRoleLabel(access.shop.role)}`;
+  }
+  return roleLabel(role);
+}
+
 function NavUser({ role }: { role: Role }) {
   const { user, memberships, signOut } = useAuth();
+  const shopAccess = useShopAccess();
   const { user: clerkUser } = useUser();
   const { openUserProfile } = useClerk();
   const { state } = useSidebar();
@@ -331,7 +366,7 @@ function NavUser({ role }: { role: Role }) {
                 {name}
               </span>
               <span className="text-muted-foreground truncate text-xs">
-                {roleLabel(role)}
+                {workspaceLabel(role, shopAccess)}
               </span>
             </div>
             <ChevronsUpDown className="ml-auto group-data-[collapsible=icon]:hidden" />
@@ -741,8 +776,9 @@ function RailNavGroups({
   // The mobile sheet is always the full rail, whatever the desktop fold says.
   const iconRail = state === "collapsed" && !isMobile;
   const testOperations = useTestOperations();
-  const sections = navSectionsForRole(role, { testOperations });
-  const parents = navGroupsForRole(role, { testOperations }).filter(
+  const { staff: shopStaff } = useShopAccess();
+  const sections = navSectionsForRole(role, { testOperations, shopStaff });
+  const parents = navGroupsForRole(role, { testOperations, shopStaff }).filter(
     (group) => group.label,
   );
 
@@ -835,7 +871,13 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
   const pathname = usePathname();
   const { setOpenMobile } = useSidebar();
   const closeMobile = () => setOpenMobile(false);
-  const countSources = railCountSources(role, useTestOperations());
+  const testOperations = useTestOperations();
+  const shopAccess = useShopAccess();
+  const countSources = railCountSources(role, {
+    testOperations,
+    shopStaff: shopAccess.staff,
+  });
+  const home = shopAccess.staff ? SHOP_STAFF_HOME : homeForRole(role);
 
   return (
     <Sidebar collapsible="icon">
@@ -847,7 +889,7 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
             <SidebarMenuButton
               size="lg"
               className={cn("[&_svg]:size-6", ICON_CELL)}
-              render={<Link href={homeForRole(role)} />}
+              render={<Link href={home} />}
               tooltip="GRIDGO home"
               onClick={closeMobile}
             >
@@ -862,7 +904,7 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
                   GRIDGO
                 </span>
                 <span className="text-caption text-text-muted truncate">
-                  {roleLabel(role)}
+                  {workspaceLabel(role, shopAccess)}
                 </span>
               </div>
             </SidebarMenuButton>
@@ -893,6 +935,14 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
 
 export function AppShell({ role, testOperations = false, children }: Props) {
   const pathname = usePathname();
+  // A shop's Staff opens only the work pages. Any other supplier address
+  // says "Owner only" without mounting the page, so it never reads; the API
+  // refuses those routes on its own (`403 shop_owner_required`).
+  const { staff: shopStaff } = useShopAccess();
+  const staffLanding =
+    shopStaff && (pathname === "/supplier/dashboard" || pathname === "/supplier");
+  const ownerOnly =
+    shopStaff && pathname.startsWith("/supplier") && !shopStaffAllowsPath(pathname);
   // A test operations login opens only the test desk's pages; anything else
   // in the tree says so instead of reading. A refusal on an allowed page
   // (`403 test_operations_forbidden`) adds one calm line for that page.
@@ -914,9 +964,12 @@ export function AppShell({ role, testOperations = false, children }: Props) {
     writeRailOpen(open);
   }, []);
   const router = useRouter();
-  const title = contextTitleForPath(pathname, role);
+  useEffect(() => {
+    if (staffLanding) router.replace(SHOP_STAFF_HOME);
+  }, [staffLanding, router]);
+  const title = ownerOnly ? "Owner only" : contextTitleForPath(pathname, role);
   const parentItem = navItemForPath(pathname, role);
-  const isNested = Boolean(parentItem && pathname !== parentItem.href);
+  const isNested = Boolean(!ownerOnly && parentItem && pathname !== parentItem.href);
 
   // A shop's phone keeps its push subscription current with the API; this
   // never asks for permission (`src/lib/pwa/webPush.ts`).
@@ -998,7 +1051,9 @@ export function AppShell({ role, testOperations = false, children }: Props) {
             {testOperations ? <TestOperationsBanner /> : null}
 
             <div id="main-content" className="flex-1 p-3 md:px-4 md:py-3">
-              {fenced ? (
+              {staffLanding ? null : ownerOnly ? (
+                <ShopOwnerOnly />
+              ) : fenced ? (
                 <TestOperationsUnavailable />
               ) : (
                 <>

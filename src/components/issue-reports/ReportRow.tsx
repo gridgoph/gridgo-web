@@ -3,6 +3,7 @@
 import { Pin } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { reportTitleLine } from "@/components/issue-reports/report-text";
 import {
   aiRowLabel,
   reportReference,
@@ -20,8 +21,8 @@ import type { IssueReport } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-function firstLine(text: string): string {
-  const line = text.split("\n").find((part) => part.trim()) ?? text;
+function titleLine(text: string): string {
+  const line = reportTitleLine(text);
   return line.length > 120 ? `${line.slice(0, 117)}…` : line;
 }
 
@@ -132,7 +133,7 @@ export function ReportRow({
             className={cn("text-body line-clamp-2", triage.validity === "spam" ? "text-text-muted" : "text-text-primary")}
             style={{ fontFamily: "var(--font-medium)" }}
           >
-            {firstLine(trackerLinks ? report.issue : withoutGithubLinks(report.issue))}
+            {titleLine(trackerLinks ? report.issue : withoutGithubLinks(report.issue))}
           </span>
           <span className="text-caption text-text-muted">{meta.join(" · ")}</span>
           {sorted.length ? (

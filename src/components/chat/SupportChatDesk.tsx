@@ -50,6 +50,7 @@ import {
   groupSupportChatThreads,
   mergeSupportChatMessages,
   supportChatCounterpartUserId,
+  upsertSupportChatThread,
 } from "@/components/chat/conversations";
 import { formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -120,15 +121,22 @@ export function chatOpenWith(
   return { userId, role };
 }
 
+/** `?thread=<id>` from a link to one conversation (an issue report's Open chat), or null. */
+export function chatOpenThread(params: Pick<URLSearchParams, "get">): string | null {
+  return params.get("thread")?.trim() || null;
+}
+
 type Props = {
   /**
    * Open (or create) the thread with this person on arrival, e.g. a stale
    * rider's Message action (`?with=<userId>&role=rider`).
    */
   openWith?: { userId: string; role: SupportChatThreadRole } | null;
+  /** Open this existing thread's conversation on arrival. It only reads, so it never starts a chat. */
+  openThreadId?: string | null;
 };
 
-export function SupportChatDesk({ openWith = null }: Props = {}) {
+export function SupportChatDesk({ openWith = null, openThreadId = null }: Props = {}) {
   const [threads, setThreads] = useState<SupportChatThread[] | null>(null);
   const [messages, setMessages] = useState<SupportChatMessage[]>([]);
   /** The selected person (counterpart user id): their threads read as one conversation. */
@@ -336,14 +344,17 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
     return () => stream.close();
   }, [selectedKey]);
 
+  // threadOpen too: below the desktop breakpoint messages can load while the
+  // conversation is still hidden, and a hidden pane cannot scroll.
   useEffect(() => {
     endRef.current?.scrollIntoView?.({ block: "end" });
-  }, [messages.length, selectedKey]);
+  }, [messages.length, selectedKey, threadOpen]);
 
   async function send() {
     if (!replyThread || sending) return;
     if (!draft.trim() && !pendingFiles.length) return;
     setSending(true);
+    setError(null);
     try {
       const uploadedIds: string[] = [];
       for (const file of pendingFiles) {
@@ -450,6 +461,36 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
     void startWithRef.current(openWith);
   }, [openWith, openWithKey, inboxLoaded]);
 
+  async function openExistingThread(threadId: string) {
+    try {
+      const { thread } = await getSupportChatThread(threadId);
+      const key = supportChatCounterpartUserId(thread);
+      setThreads((current) => upsertSupportChatThread(current ?? [], thread));
+      setSelectedKey(key);
+      if (!sideBySide()) setThreadOpen(true);
+      // Its row may sit on a later page of the inbox.
+      const at = groupSupportChatThreads(upsertSupportChatThread(threads ?? [], thread)).findIndex(
+        (conversation) => conversation.key === key,
+      );
+      setInboxPage(Math.floor(Math.max(0, at) / inboxPageSize));
+    } catch (err) {
+      setError(
+        err instanceof ApiError && err.kind === "not_found"
+          ? "That conversation is no longer on the desk. It may have been deleted."
+          : "Could not open that conversation. Try the link again.",
+      );
+    }
+  }
+
+  const openedThread = useRef<string | null>(null);
+  const openExistingThreadRef = useRef(openExistingThread);
+  openExistingThreadRef.current = openExistingThread;
+  useEffect(() => {
+    if (!openThreadId || !inboxLoaded || openedThread.current === openThreadId) return;
+    openedThread.current = openThreadId;
+    void openExistingThreadRef.current(openThreadId);
+  }, [openThreadId, inboxLoaded]);
+
   if (error && !threads) {
     return (
       <ErrorState
@@ -465,6 +506,11 @@ export function SupportChatDesk({ openWith = null }: Props = {}) {
 
   return (
     <>
+    {error ? (
+      <p role="alert" className="text-caption text-error m-0 shrink-0">
+        {error}
+      </p>
+    ) : null}
     <div
       className={`grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] gap-4 overflow-hidden ${
         detailsOpen

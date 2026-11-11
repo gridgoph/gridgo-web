@@ -3,6 +3,8 @@
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { useLiveReload } from "@/lib/live/useLiveReload";
+import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
+import { receiptScanMarkValue } from "@/lib/receipt-scan";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -29,6 +31,8 @@ import { ErrorState } from "@/components/ui/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { SupplierInvoicesSummary } from "@/components/supplier-invoices/SupplierInvoicesSummary";
+import { ReceiptScanMark } from "@/components/orders/ReceiptScan";
+import { ReceiptScanSetting } from "@/components/settings/ReceiptScanSetting";
 import { listClaims, listOrders } from "@/lib/api/client";
 import { basketShopCounts, groupPositionLabel } from "@/lib/baskets";
 import { orderDeliverySplit } from "@/lib/delivery-split";
@@ -114,6 +118,7 @@ export default function AdminFinancePage() {
   );
 
   useLiveReload(["orders", "claims", "payouts", "credits"], load);
+  useLegalInboxReload("supplier_invoice_scanned", load);
 
   useEffect(() => {
     void load();
@@ -166,6 +171,13 @@ export default function AdminFinancePage() {
           const p = presentOrderState(o.state, o);
           return <StatusChip tone={p.tone} label={p.label} icon={p.icon} />;
         },
+      },
+      {
+        // The shop's receipt scan, beside the status so it is read without scrolling.
+        id: "receipt-scan",
+        header: "Receipt scan",
+        sortValue: receiptScanMarkValue,
+        cell: (o) => <ReceiptScanMark order={o} />,
       },
       {
         id: "payment",
@@ -459,6 +471,8 @@ export default function AdminFinancePage() {
           />
         </div>
       </section>
+
+      <ReceiptScanSetting canEdit />
 
       <SupplierInvoicesSummary tree="admin" />
 

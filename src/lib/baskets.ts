@@ -46,16 +46,64 @@ export function shopModeLabel(mode: ShopMode): string {
   return mode.kind === "single" ? "Single-Shop" : `Grouped order, ${mode.shops} groups`;
 }
 
+/** Where a shop's split delivery sits among that shop's deliveries. */
+export type DeliveryPosition = {
+  deliveryNumber?: number | null;
+  shopDeliveryCount?: number | null;
+};
+
+/**
+ * "Delivery 1 of 2" for one of a shop's separate deliveries (gridgo-api#275,
+ * SHOP_DELIVERIES_API.md), so staff and the shop can tell them apart. Null
+ * for a single delivery, an older API, or numbers that do not make sense.
+ */
+export function deliveryPositionLabel(
+  source: DeliveryPosition | null | undefined,
+): string | null {
+  const number = source?.deliveryNumber;
+  const count = source?.shopDeliveryCount;
+  if (!Number.isInteger(number) || !Number.isInteger(count)) return null;
+  if (
+    (count as number) < 2 ||
+    (number as number) < 1 ||
+    (number as number) > (count as number)
+  ) {
+    return null;
+  }
+  return `Delivery ${number} of ${count}`;
+}
+
+/** A basket group's position: its own fields, else its order's. */
+export function groupDeliveryPosition(
+  group: DeliveryPosition & { order?: DeliveryPosition | null },
+): DeliveryPosition {
+  return group.deliveryNumber != null && group.shopDeliveryCount != null
+    ? group
+    : (group.order ?? group);
+}
+
+/**
+ * A group's name in a sentence or total: "Shop A", or "Shop A, delivery 1 of 2"
+ * when the shop delivers in parts (both parts share the letter).
+ */
+export function groupName(
+  label: string,
+  source: DeliveryPosition | null | undefined,
+): string {
+  const delivery = deliveryPositionLabel(source);
+  return delivery ? `${label}, ${delivery.toLowerCase()}` : label;
+}
+
 /** The anonymous shop label and number of independently fulfilled groups. */
 export function groupPositionLabel(
-  order: Pick<Order, "groupLabel" | "basketId">,
+  order: Pick<Order, "groupLabel" | "basketId" | "deliveryNumber" | "shopDeliveryCount">,
   counts?: ReadonlyMap<string, number>,
 ): string | null {
   if (!order.basketId || !order.groupLabel) return null;
   const mode = shopModeOf(order, counts);
-  return mode.kind === "multi"
-    ? `${order.groupLabel} · ${mode.shops} groups`
-    : order.groupLabel;
+  const delivery = deliveryPositionLabel(order);
+  const name = delivery ? `${order.groupLabel} · ${delivery}` : order.groupLabel;
+  return mode.kind === "multi" ? `${name} · ${mode.shops} groups` : name;
 }
 
 /** One group's money, part by part, as the workspace prints it. */
@@ -98,7 +146,7 @@ export function reconcileBasket(
   basket: Pick<Basket, "groups" | "totalMinor" | "payment">,
 ): BasketReconciliation {
   const parts = basket.groups.map((group) => ({
-    label: group.label,
+    label: groupName(group.label, groupDeliveryPosition(group)),
     totalMinor: group.totalMinor,
   }));
   const groupsMinor = parts.reduce((sum, part) => sum + part.totalMinor, 0);
@@ -175,14 +223,15 @@ export function cancelledShare(
   const paid = status === "confirmed" || status === "legacy_confirmed";
   if (!paid && status !== "pending_confirmation") return null;
   const amount = formatPhp(group.totalMinor);
+  const name = groupName(group.label, groupDeliveryPosition(group));
   return {
-    label: group.label,
+    label: name,
     orderId: group.orderId,
     amountMinor: group.totalMinor,
     paid,
     sentence: paid
-      ? `${amount} of the client's payment is for ${group.label}, which was cancelled. Refund it from ${group.label}'s order.`
-      : `${amount} of this payment is for ${group.label}, which was cancelled. After confirming, refund it from ${group.label}'s order.`,
+      ? `${amount} of the client's payment is for ${name}, which was cancelled. Refund it from ${name}'s order.`
+      : `${amount} of this payment is for ${name}, which was cancelled. After confirming, refund it from ${name}'s order.`,
   };
 }
 

@@ -6,7 +6,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { chatOpenWith, SupportChatDesk } from "@/components/chat/SupportChatDesk";
+import { chatOpenThread, chatOpenWith, SupportChatDesk } from "@/components/chat/SupportChatDesk";
 import * as apiClient from "@/lib/api/client";
 import { formatDate, formatDateTime } from "@/lib/format";
 
@@ -113,6 +113,57 @@ beforeEach(() => {
 });
 
 describe("SupportChatDesk", () => {
+  it("opens an existing thread from a link without starting a chat", async () => {
+    const reported = {
+      ...thread,
+      id: "350e0593-047f-4269-968c-179b957835f5",
+      partyUserId: "user_reporter",
+      partyName: "Rina Reporter",
+    };
+    getSupportChatThread.mockImplementation(async (id: string) => ({
+      thread: id === reported.id ? reported : thread,
+      messages: [],
+    }));
+    const openThreadId = chatOpenThread(new URLSearchParams(`thread=${reported.id}`));
+    expect(openThreadId).toBe(reported.id);
+    const view = render(<SupportChatDesk openThreadId={openThreadId} />);
+    expect((await screen.findAllByRole("heading", { name: "Rina Reporter" })).length).toBeGreaterThan(0);
+    expect(openSupportChatThread).not.toHaveBeenCalled();
+    view.rerender(<SupportChatDesk openThreadId={reported.id} />);
+    expect(screen.getAllByRole("heading", { name: "Rina Reporter" }).length).toBeGreaterThan(0);
+  });
+
+  it("selects the person when the linked thread is already in the inbox", async () => {
+    const second = {
+      ...thread,
+      id: "thread-2",
+      partyUserId: "user_second",
+      partyName: "Ben Second",
+    };
+    listSupportChatThreads.mockResolvedValue([thread, second]);
+    getSupportChatThread.mockImplementation(async (id: string) => ({
+      thread: id === second.id ? second : thread,
+      messages: [],
+    }));
+    render(<SupportChatDesk openThreadId="thread-2" />);
+    expect((await screen.findAllByRole("heading", { name: "Ben Second" })).length).toBeGreaterThan(0);
+  });
+
+  it("says so when the linked thread is gone, and keeps the inbox", async () => {
+    getSupportChatThread.mockImplementation(async (id: string) => {
+      if (id === "missing-thread") throw new apiClient.ApiError(404, { error: "not_found" });
+      return { thread, messages: [] };
+    });
+    render(<SupportChatDesk openThreadId="missing-thread" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/no longer on the desk/);
+    expect(screen.getByRole("heading", { name: "Inbox" })).toBeInTheDocument();
+  });
+
+  it("reads no thread link from an empty parameter", () => {
+    expect(chatOpenThread(new URLSearchParams(""))).toBeNull();
+    expect(chatOpenThread(new URLSearchParams("thread=%20"))).toBeNull();
+  });
+
   it("opens the rider's thread when arriving from a Message link, once", async () => {
     const riderThread = {
       ...thread,

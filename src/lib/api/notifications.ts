@@ -124,6 +124,11 @@ export function readNotificationEvent(event: SseEvent): Notification | null {
   }
 }
 
+/** The shop-team removal event (gridgo-api docs/SHOP_TEAM_API.md). */
+export function isAccessRevokedEvent(event: SseEvent): boolean {
+  return event.event === "access_revoked";
+}
+
 export function readInvalidateEvent(event: SseEvent): InvalidatePing | null {
   if (event.event !== "invalidate" || !event.data) return null;
   try {
@@ -149,6 +154,11 @@ export type NotificationStreamHandlers = {
   role?: Role;
   onNotification: (notification: Notification) => void;
   onInvalidate: (ping: InvalidatePing) => void;
+  /**
+   * `event: access_revoked`: an Owner or Operations removed this person from
+   * the shop. The API closes the stream right after it.
+   */
+  onAccessRevoked?: () => void;
   onStatus?: (live: boolean) => void;
   getResumeFrom?: () => string | null;
   onResumeUnavailable?: () => void | Promise<void>;
@@ -261,6 +271,14 @@ export function openNotificationStream(
       scheduleRetry(null);
       return;
     }
+    if (res.status === 403) {
+      // A refused stream (a removed shop login, a held account): the identity
+      // check decides what this tab may still show. Keep retrying slowly.
+      setStatus(false);
+      handlers.onAccessRevoked?.();
+      scheduleRetry(null);
+      return;
+    }
     if (res.status === 409) {
       lastEventId = null;
       refreshed401 = false;
@@ -301,6 +319,7 @@ export function openNotificationStream(
           if (notification) handlers.onNotification(notification);
           const ping = readInvalidateEvent(event);
           if (ping) handlers.onInvalidate(ping);
+          if (isAccessRevokedEvent(event)) handlers.onAccessRevoked?.();
         }
       }
     } catch {

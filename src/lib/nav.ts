@@ -71,7 +71,9 @@ export type NavIconKey =
   | "featured-prints"
   | "vouchers"
   | "promotions"
+  | "home-promos"
   | "founding-testers"
+  | "play-testers"
   | "legal"
   | "acceptances"
   | "privacy"
@@ -79,6 +81,9 @@ export type NavIconKey =
   | "invoices"
   | "finished-work"
   | "shop-hours"
+  | "quotes"
+  | "sample-batches"
+  | "team"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-money"
@@ -132,7 +137,8 @@ export type NavCountKey =
   | "listing-reviews-waiting"
   | "colour-price-checks-waiting"
   | "privacy-requests-open"
-  | "finished-work-waiting";
+  | "finished-work-waiting"
+  | "quotes-waiting";
 
 /**
  * One rail section. A missing `label` is a top-level cluster (Overview / Jobs)
@@ -202,6 +208,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Shop details",
           title: "Shop details",
           icon: "verification",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "supplier-team",
+          href: "/supplier/team",
+          label: "Team",
+          title: "Team",
+          icon: "team",
           ready: true,
           placeholderBody: "",
         },
@@ -403,6 +418,30 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "orders-waiting",
+        },
+        {
+          // Custom signage and 3D printing briefs: Operations gathers shop
+          // prices and publishes up to three anonymous options
+          // (QUOTE_REQUESTS_API.md in gridgo-api).
+          id: "ops-quotes",
+          href: "/ops/quotes",
+          label: "Quotes",
+          title: "Quotes",
+          icon: "quotes",
+          ready: true,
+          placeholderBody: "",
+          count: "quotes-waiting",
+        },
+        {
+          // Sample First: a paid sample, then the batch at a held price
+          // (SAMPLE_FIRST_API.md in gridgo-api). Read-only; clients decide.
+          id: "ops-sample-batches",
+          href: "/ops/sample-batches",
+          label: "Sample batches",
+          title: "Sample batches",
+          icon: "sample-batches",
+          ready: true,
+          placeholderBody: "",
         },
         {
           // Rider-packs orders stop here until GRIDGO approves the shop's
@@ -630,11 +669,31 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          // Partner cards rotating with Reorder on the client's Home (gridgo-client#402).
+          id: "ops-home-promos",
+          href: "/ops/home-promos",
+          label: "Home promos",
+          title: "Home promos",
+          icon: "home-promos",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "ops-founding-testers",
           href: "/ops/founding-testers",
           label: "Founding Testers",
           title: "Founding Testers",
           icon: "founding-testers",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          // Google Play's 14-day closed test (gridgo-api docs/TESTER_PROGRAM_API.md).
+          id: "ops-play-testers",
+          href: "/ops/play-testers",
+          label: "Play testers",
+          title: "Google Play testers",
+          icon: "play-testers",
           ready: true,
           placeholderBody: "",
         },
@@ -818,6 +877,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          // Google Play's 14-day closed test (gridgo-api docs/TESTER_PROGRAM_API.md).
+          id: "admin-play-testers",
+          href: "/admin/play-testers",
+          label: "Play testers",
+          title: "Google Play testers",
+          icon: "play-testers",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "admin-staff",
           href: "/admin/staff",
           label: "Staff",
@@ -880,6 +949,27 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "colour-price-checks-waiting",
+        },
+        {
+          id: "admin-quotes",
+          href: "/admin/quotes",
+          label: "Quotes",
+          title: "Quotes",
+          icon: "quotes",
+          ready: true,
+          placeholderBody: "",
+          count: "quotes-waiting",
+        },
+        {
+          // Sample First: a paid sample, then the batch at a held price
+          // (SAMPLE_FIRST_API.md in gridgo-api). Read-only; clients decide.
+          id: "admin-sample-batches",
+          href: "/admin/sample-batches",
+          label: "Sample batches",
+          title: "Sample batches",
+          icon: "sample-batches",
+          ready: true,
+          placeholderBody: "",
         },
         {
           id: "admin-featured-prints",
@@ -949,6 +1039,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Promotions",
           title: "Promotions",
           icon: "promotions",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          // Partner cards rotating with Reorder on the client's Home (gridgo-client#402).
+          id: "admin-home-promos",
+          href: "/admin/home-promos",
+          label: "Home promos",
+          title: "Home promos",
+          icon: "home-promos",
           ready: true,
           placeholderBody: "",
         },
@@ -1170,7 +1270,42 @@ export function isPortalRole(role: Role | string): role is PortalRole {
  * Operations membership the API fences to test data
  * (`gridgoph/gridgo-api` docs/REVIEW_DATA_API.md).
  */
-export type NavScope = { testOperations?: boolean };
+export type NavScope = {
+  testOperations?: boolean;
+  /**
+   * A shop Staff login (`shop.role === "staff"` on `/auth/me/supplier`). The
+   * API refuses every Owner-only route (`403 shop_owner_required`); this keeps
+   * the rail and the address bar from leading there.
+   */
+  shopStaff?: boolean;
+};
+
+/**
+ * Everything a shop's Staff may open: receiving and processing orders. Prices,
+ * products, production times, hours, profile, payouts, earnings, reports and
+ * the team stay with the Owner (gridgo-api docs/SHOP_TEAM_API.md).
+ */
+export const SHOP_STAFF_NAV_IDS: ReadonlySet<string> = new Set(["supplier-jobs"]);
+
+/** Pages outside the rail that Staff may still open. */
+const SHOP_STAFF_EXTRA_PATHS: readonly string[] = ["/supplier/phone-app", "/supplier/notice"];
+
+/** Where a Staff login lands, and where the logo and refusals send them. */
+export const SHOP_STAFF_HOME = "/supplier/jobs";
+
+/**
+ * Whether a Staff login may open `pathname`. Anything else in the supplier
+ * tree shows "Owner only" without reading, so a typed address does nothing.
+ */
+export function shopStaffAllowsPath(pathname: string): boolean {
+  const path = pathname.replace(/\/+$/, "");
+  if (path === "/supplier") return true;
+  const allowed = [
+    ...navForRole("supplier", { shopStaff: true }).map((item) => item.href),
+    ...SHOP_STAFF_EXTRA_PATHS,
+  ];
+  return allowed.some((href) => path === href || path.startsWith(`${href}/`));
+}
 
 /**
  * The Operations pages a test operations login needs to run a test order end
@@ -1200,6 +1335,14 @@ export function navGroupsForRole(
 ): readonly NavGroup[] {
   if (!isPortalRole(role)) return [];
   const groups = ROLE_NAV_GROUPS[role];
+  if (scope.shopStaff && role === "supplier") {
+    return groups
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => SHOP_STAFF_NAV_IDS.has(item.id)),
+      }))
+      .filter((group) => group.items.length > 0);
+  }
   if (!scope.testOperations || role !== "ops_admin") return groups;
   return groups
     .map((group) => ({
@@ -1265,7 +1408,11 @@ export function contextTitleForPath(
     return "Refund case";
   }
   if (/^\/(ops|admin)\/supplier-products\/[^/]+/.test(pathname)) return "Supplier product";
+  if (/^\/(ops|admin)\/quotes\/[^/]+/.test(pathname)) return "Quote request";
+  if (/^\/(ops|admin)\/sample-batches\/[^/]+/.test(pathname)) return "Sample batch";
   if (pathname.startsWith("/admin/vouchers/")) return "Voucher campaign";
+  if (/^\/(ops|admin)\/home-promos\/new$/.test(pathname)) return "New Home promo";
+  if (/^\/(ops|admin)\/home-promos\/[^/]+/.test(pathname)) return "Home promo";
   if (/^\/(ops|admin)\/founding-testers\/[^/]+/.test(pathname)) return "Client account";
   if (/^\/(ops|admin)\/legal\/[^/]+/.test(pathname)) return "Legal document";
   if (/^\/(ops|admin)\/organizations\/[^/]+\/statement$/.test(pathname)) {
