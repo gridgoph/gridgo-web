@@ -45,11 +45,13 @@ type Props = {
   onClose: () => void;
   /** A decision went through: re-read the queue. */
   onDecided: () => void;
+  /** Which tree "Open the whole order" stays in. */
+  tree?: "ops" | "admin";
 };
 
 const FAILED = "That did not go through. Refresh the order and try again.";
 
-export function ConfirmPaymentSheet({ order, onClose, onDecided }: Props) {
+export function ConfirmPaymentSheet({ order, onClose, onDecided, tree = "ops" }: Props) {
   const [fresh, setFresh] = useState<Order | null>(null);
   const [basket, setBasket] = useState<Basket | null>(null);
   const [basketError, setBasketError] = useState<string | null>(null);
@@ -186,7 +188,7 @@ export function ConfirmPaymentSheet({ order, onClose, onDecided }: Props) {
           ) : null}
           {order ? (
             <Link
-              href={`/ops/orders/${order.id}`}
+              href={`/${tree}/orders/${order.id}`}
               className={buttonVariants({ variant: "ghost" })}
             >
               Open the whole order
