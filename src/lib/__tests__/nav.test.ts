@@ -1,3 +1,6 @@
+import { existsSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -5,6 +8,7 @@ import {
   navForRole,
   navGroupsForRole,
   navItemForPath,
+  navSectionsForRole,
   ROLE_NAV,
   ROLE_NAV_GROUPS,
   testOperationsAllowsPath,
@@ -53,43 +57,43 @@ describe("ROLE_NAV", () => {
     const hrefs = ROLE_NAV.ops_admin.map((n) => n.href);
     expect(hrefs).toEqual([
       "/ops/overview",
+      "/ops/orders",
       "/ops/chat",
       "/ops/order-chats",
-      "/ops/account-deletion",
-      "/ops/issue-reports",
-      "/ops/orders",
       "/ops/quotes",
       "/ops/sample-batches",
       "/ops/finished-work",
       "/ops/service-lines",
       "/ops/listing-reviews",
       "/ops/colour-price-checks",
-      "/ops/featured-prints",
+      "/ops/issue-reports",
+      "/ops/recovery",
       "/ops/dispatch",
       "/ops/riders",
       "/ops/handoff-reminders",
+      "/ops/escalations",
+      "/ops/hub",
+      "/ops/schedule",
       "/ops/rankings",
       "/ops/shop-hours",
-      "/ops/late-production",
       "/ops/shop-performance",
+      "/ops/late-production",
       "/ops/shop-changes",
-      "/ops/hub",
-      "/ops/escalations",
-      "/ops/schedule",
+      "/ops/organizations",
+      "/ops/founding-testers",
+      "/ops/play-testers",
       "/ops/payouts",
       "/ops/supplier-invoices",
       "/ops/refunds",
-      "/ops/organizations",
-      "/ops/vouchers",
-      "/ops/promotions",
-      "/ops/home-promos",
-      "/ops/founding-testers",
-      "/ops/play-testers",
       "/ops/claims",
-      "/ops/recovery",
+      "/ops/promotions",
+      "/ops/vouchers",
+      "/ops/home-promos",
+      "/ops/featured-prints",
       "/ops/legal",
       "/ops/acceptance-log",
       "/ops/privacy-requests",
+      "/ops/account-deletion",
     ]);
   });
 
@@ -97,51 +101,70 @@ describe("ROLE_NAV", () => {
     const hrefs = ROLE_NAV.super_admin.map((n) => n.href);
     expect(hrefs).toEqual([
       "/admin/overview",
+      "/admin/orders",
       "/admin/chat",
       "/admin/order-chats",
-      "/admin/account-deletion",
+      "/admin/quotes",
+      "/admin/sample-batches",
+      "/admin/finished-work",
+      "/admin/colour-price-checks",
+      "/admin/shop-changes",
       "/admin/issue-reports",
       "/admin/survey-responses",
       "/admin/riders",
       "/admin/handoff-reminders",
+      "/admin/escalations",
       "/admin/hub",
+      "/admin/zones",
       "/admin/verification",
       "/admin/roles",
+      "/admin/staff",
+      "/admin/organizations",
       "/admin/founding-testers",
       "/admin/play-testers",
-      "/admin/staff",
-      "/admin/supplier-products",
       "/admin/shop-hours",
+      "/admin/shop-performance",
+      "/admin/late-production",
       "/admin/catalogue",
       "/admin/listing-reviews",
-      "/admin/colour-price-checks",
-      "/admin/quotes",
-      "/admin/sample-batches",
-      "/admin/featured-prints",
-      "/admin/zones",
+      "/admin/supplier-products",
       "/admin/finance",
       "/admin/pricing",
       "/admin/supplier-invoices",
-      "/admin/vouchers",
-      "/admin/promotions",
-      "/admin/home-promos",
       "/admin/refunds",
-      "/admin/organizations",
-      "/admin/finished-work",
-      "/admin/late-production",
-      "/admin/shop-performance",
-      "/admin/shop-changes",
+      "/admin/promotions",
+      "/admin/vouchers",
+      "/admin/home-promos",
+      "/admin/featured-prints",
+      "/admin/broadcast",
       "/admin/legal",
       "/admin/acceptance-log",
       "/admin/privacy-requests",
+      "/admin/account-deletion",
       "/admin/settings",
       "/admin/audit",
       "/admin/planning",
       "/admin/season-windows",
       "/admin/tracker",
       "/admin/file-retention",
-      "/admin/broadcast",
     ]);
+  });
+
+  it.each([
+    ["super_admin", "admin", []],
+    // Settings and audit render "Super Admin only"; /ops/approvals is the old
+    // address for service lines and sign-ups, kept for links already sent.
+    ["ops_admin", "ops", ["settings", "audit", "approvals"]],
+  ] as const)("puts every top-level %s page on the rail", (role, tree, offRail) => {
+    const root = join(process.cwd(), "src/app", tree);
+    const pages = readdirSync(root, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
+      .filter((entry) => !(offRail as readonly string[]).includes(entry.name))
+      .filter((entry) => existsSync(join(root, entry.name, "page.tsx")))
+      .map((entry) => `/${tree}/${entry.name}`)
+      .sort();
+    const rail = ROLE_NAV[role].map((item) => item.href).sort();
+    expect(rail).toEqual(pages);
   });
 
   it("keeps File retention off the Operations and supplier rails", () => {
@@ -164,6 +187,7 @@ describe("ROLE_NAV", () => {
       "/admin/catalogue",
       "/admin/chat",
       "/admin/colour-price-checks",
+      "/admin/escalations",
       "/admin/featured-prints",
       "/admin/file-retention",
       "/admin/finance",
@@ -177,6 +201,7 @@ describe("ROLE_NAV", () => {
       "/admin/legal",
       "/admin/listing-reviews",
       "/admin/order-chats",
+      "/admin/orders",
       "/admin/organizations",
       "/admin/overview",
       "/admin/planning",
@@ -284,18 +309,34 @@ describe("ROLE_NAV", () => {
   it("keeps group membership as the rail source of truth", () => {
     expect(ROLE_NAV_GROUPS.ops_admin.map((g) => g.label ?? g.id)).toEqual([
       "ops-top",
-      "Queue",
-      "Field",
+      "Work queue",
+      "Field & delivery",
+      "People & shops",
       "Money",
+      "Marketing",
       "Legal & privacy",
+    ]);
+    expect(navSectionsForRole("ops_admin").map((section) => section.label)).toEqual([
+      "Desk",
+      "Work",
+      "Manage",
     ]);
     expect(ROLE_NAV_GROUPS.super_admin.map((g) => g.label ?? g.id)).toEqual([
       "admin-top",
-      "People",
-      "Catalog",
+      "Work queue",
+      "Field & delivery",
+      "People & shops",
+      "Catalogue",
       "Money",
+      "Marketing",
       "Legal & privacy",
       "System",
+    ]);
+    expect(navSectionsForRole("super_admin").map((section) => section.label)).toEqual([
+      "Desk",
+      "Work",
+      "Manage",
+      "Platform",
     ]);
     expect(ROLE_NAV_GROUPS.supplier.map((g) => g.label ?? g.id)).toEqual([
       "supplier-top",
@@ -304,140 +345,133 @@ describe("ROLE_NAV", () => {
     ]);
 
     expect(ROLE_NAV_GROUPS.ops_admin[0]?.label).toBeUndefined();
-    expect(ROLE_NAV_GROUPS.ops_admin[0]?.items.map((n) => n.href)).toEqual([
-      "/ops/overview",
-      "/ops/chat",
-      "/ops/order-chats",
-      "/ops/account-deletion",
-      "/ops/issue-reports",
-    ]);
-    expect(
-      ROLE_NAV_GROUPS.ops_admin
-        .find((g) => g.id === "ops-queue")
-        ?.items.map((n) => n.href),
-    ).toEqual([
-      "/ops/orders",
-      "/ops/quotes",
-      "/ops/sample-batches",
-      "/ops/finished-work",
-      "/ops/service-lines",
-      "/ops/listing-reviews",
-      "/ops/colour-price-checks",
-      "/ops/featured-prints",
-    ]);
-    expect(
-      ROLE_NAV_GROUPS.ops_admin
-        .find((g) => g.id === "ops-field")
-        ?.items.map((n) => n.href),
-    ).toEqual([
-      "/ops/dispatch",
-      "/ops/riders",
-      "/ops/handoff-reminders",
-      "/ops/rankings",
-      "/ops/shop-hours",
-      "/ops/late-production",
-      "/ops/shop-performance",
-      "/ops/shop-changes",
-      "/ops/hub",
-      "/ops/escalations",
-      "/ops/schedule",
-    ]);
-    expect(
-      ROLE_NAV_GROUPS.ops_admin
-        .find((g) => g.id === "ops-money")
-        ?.items.map((n) => n.href),
-    ).toEqual([
-      "/ops/payouts",
-      "/ops/supplier-invoices",
-      "/ops/refunds",
-      "/ops/organizations",
-      "/ops/vouchers",
-      "/ops/promotions",
-      "/ops/home-promos",
-      "/ops/founding-testers",
-      "/ops/play-testers",
-      "/ops/claims",
-      "/ops/recovery",
-    ]);
 
-    expect(
-      ROLE_NAV_GROUPS.super_admin
-        .find((g) => g.id === "admin-top")
-        ?.items.map((n) => n.href),
-    ).toEqual([
-      "/admin/overview",
-      "/admin/chat",
-      "/admin/order-chats",
-      "/admin/account-deletion",
-      "/admin/issue-reports",
-      "/admin/survey-responses",
-      "/admin/riders",
-      "/admin/handoff-reminders",
-      "/admin/hub",
-    ]);
-    expect(
-      ROLE_NAV_GROUPS.super_admin
-        .find((g) => g.id === "admin-people")
-        ?.items.map((n) => n.href),
-    ).toEqual([
-      "/admin/verification",
-      "/admin/roles",
-      "/admin/founding-testers",
-      "/admin/play-testers",
-      "/admin/staff",
-      "/admin/supplier-products",
-      "/admin/shop-hours",
-    ]);
-    expect(
-      ROLE_NAV_GROUPS.super_admin
-        .find((g) => g.id === "admin-catalog")
-        ?.items.map((n) => n.href),
-    ).toEqual([
-      "/admin/catalogue",
-      "/admin/listing-reviews",
-      "/admin/colour-price-checks",
-      "/admin/quotes",
-      "/admin/sample-batches",
-      "/admin/featured-prints",
-      "/admin/zones",
-    ]);
-    expect(
-      ROLE_NAV_GROUPS.super_admin
-        .find((g) => g.id === "admin-money")
-        ?.items.map((n) => n.href),
-    ).toEqual([
-      "/admin/finance",
-      "/admin/pricing",
-      "/admin/supplier-invoices",
-      "/admin/vouchers",
-      "/admin/promotions",
-      "/admin/home-promos",
-      "/admin/refunds",
-      "/admin/organizations",
-      "/admin/finished-work",
-      "/admin/late-production",
-      "/admin/shop-performance",
-      "/admin/shop-changes",
-    ]);
-    for (const tree of ["ops", "admin"] as const) {
-      const role = tree === "ops" ? "ops_admin" : "super_admin";
+    const opsGroups: Record<string, string[]> = {
+      "ops-top": ["/ops/overview", "/ops/orders", "/ops/chat", "/ops/order-chats"],
+      "ops-queue": [
+        "/ops/quotes",
+        "/ops/sample-batches",
+        "/ops/finished-work",
+        "/ops/service-lines",
+        "/ops/listing-reviews",
+        "/ops/colour-price-checks",
+        "/ops/issue-reports",
+        "/ops/recovery",
+      ],
+      "ops-field": [
+        "/ops/dispatch",
+        "/ops/riders",
+        "/ops/handoff-reminders",
+        "/ops/escalations",
+        "/ops/hub",
+        "/ops/schedule",
+      ],
+      "ops-people": [
+        "/ops/rankings",
+        "/ops/shop-hours",
+        "/ops/shop-performance",
+        "/ops/late-production",
+        "/ops/shop-changes",
+        "/ops/organizations",
+        "/ops/founding-testers",
+        "/ops/play-testers",
+      ],
+      "ops-money": [
+        "/ops/payouts",
+        "/ops/supplier-invoices",
+        "/ops/refunds",
+        "/ops/claims",
+      ],
+      "ops-marketing": [
+        "/ops/promotions",
+        "/ops/vouchers",
+        "/ops/home-promos",
+        "/ops/featured-prints",
+      ],
+      "ops-legal": [
+        "/ops/legal",
+        "/ops/acceptance-log",
+        "/ops/privacy-requests",
+        "/ops/account-deletion",
+      ],
+    };
+    for (const [id, hrefs] of Object.entries(opsGroups)) {
       expect(
-        ROLE_NAV_GROUPS[role].find((g) => g.id === `${tree}-legal`)?.items.map((n) => n.href),
-      ).toEqual([`/${tree}/legal`, `/${tree}/acceptance-log`, `/${tree}/privacy-requests`]);
+        ROLE_NAV_GROUPS.ops_admin.find((g) => g.id === id)?.items.map((n) => n.href),
+      ).toEqual(hrefs);
     }
-    expect(
-      ROLE_NAV_GROUPS.super_admin
-        .find((g) => g.id === "admin-system")
-        ?.items.map((n) => n.href),
-    ).toEqual([
-      "/admin/settings",
-      "/admin/audit",
-      "/admin/planning",
-      "/admin/season-windows",
-      "/admin/tracker",
-      "/admin/file-retention",
-      "/admin/broadcast",
-    ]);
+    const adminGroups: Record<string, string[]> = {
+      "admin-top": [
+        "/admin/overview",
+        "/admin/orders",
+        "/admin/chat",
+        "/admin/order-chats",
+      ],
+      "admin-work": [
+        "/admin/quotes",
+        "/admin/sample-batches",
+        "/admin/finished-work",
+        "/admin/colour-price-checks",
+        "/admin/shop-changes",
+        "/admin/issue-reports",
+        "/admin/survey-responses",
+      ],
+      "admin-field": [
+        "/admin/riders",
+        "/admin/handoff-reminders",
+        "/admin/escalations",
+        "/admin/hub",
+        "/admin/zones",
+      ],
+      "admin-people": [
+        "/admin/verification",
+        "/admin/roles",
+        "/admin/staff",
+        "/admin/organizations",
+        "/admin/founding-testers",
+        "/admin/play-testers",
+        "/admin/shop-hours",
+        "/admin/shop-performance",
+        "/admin/late-production",
+      ],
+      "admin-catalog": [
+        "/admin/catalogue",
+        "/admin/listing-reviews",
+        "/admin/supplier-products",
+      ],
+      "admin-money": [
+        "/admin/finance",
+        "/admin/pricing",
+        "/admin/supplier-invoices",
+        "/admin/refunds",
+      ],
+      "admin-marketing": [
+        "/admin/promotions",
+        "/admin/vouchers",
+        "/admin/home-promos",
+        "/admin/featured-prints",
+        "/admin/broadcast",
+      ],
+      "admin-legal": [
+        "/admin/legal",
+        "/admin/acceptance-log",
+        "/admin/privacy-requests",
+        "/admin/account-deletion",
+      ],
+      "admin-system": [
+        "/admin/settings",
+        "/admin/audit",
+        "/admin/planning",
+        "/admin/season-windows",
+        "/admin/tracker",
+        "/admin/file-retention",
+      ],
+    };
+    for (const [id, hrefs] of Object.entries(adminGroups)) {
+      expect(
+        ROLE_NAV_GROUPS.super_admin.find((g) => g.id === id)?.items.map((n) => n.href),
+      ).toEqual(hrefs);
+    }
 
     expect(
       ROLE_NAV_GROUPS.supplier
@@ -543,7 +577,9 @@ describe("nav helpers", () => {
       "Pickup escalations",
     );
     expect(contextTitleForPath("/admin/zones", "super_admin")).toBe("Delivery zones");
-    expect(contextTitleForPath("/ops/shop-hours/user_a", "ops_admin")).toBe("Shop's hours");
+    expect(contextTitleForPath("/ops/shop-hours/user_a", "ops_admin")).toBe(
+      "Shop's hours",
+    );
     expect(contextTitleForPath("/admin/shop-hours", "super_admin")).toBe("Shop hours");
     expect(contextTitleForPath("/admin/supplier-products", "super_admin")).toBe(
       "Supplier products",
@@ -575,22 +611,24 @@ describe("nav helpers", () => {
 });
 
 describe("test operations rail", () => {
-  const hrefs = navForRole("ops_admin", { testOperations: true }).map((item) => item.href);
+  const hrefs = navForRole("ops_admin", { testOperations: true }).map(
+    (item) => item.href,
+  );
 
   it("keeps only the pages a test order runs through", () => {
     expect(hrefs).toEqual([
       "/ops/overview",
+      "/ops/orders",
       "/ops/chat",
       "/ops/order-chats",
-      "/ops/orders",
       "/ops/finished-work",
       "/ops/service-lines",
       "/ops/listing-reviews",
       "/ops/colour-price-checks",
       "/ops/dispatch",
       "/ops/riders",
-      "/ops/hub",
       "/ops/escalations",
+      "/ops/hub",
     ]);
   });
 
@@ -644,7 +682,9 @@ describe("rider handoff reminders", () => {
         "Rider handoff reminders",
       );
     }
-    expect(navForRole("supplier").some((item) => item.href.includes("handoff"))).toBe(false);
+    expect(navForRole("supplier").some((item) => item.href.includes("handoff"))).toBe(
+      false,
+    );
   });
 
   it("stay off a test operations login, which runs test orders only", () => {

@@ -28,6 +28,7 @@ import {
   BadgePercent,
   BookText,
   Landmark,
+  Sparkles,
   Signature,
   UserLock,
   Banknote,
@@ -272,6 +273,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   "group-people": Contact,
   "group-catalog": Library,
   "group-legal": Landmark,
+  "group-marketing": Sparkles,
 };
 
 /** Each count source this rail shows, once — read once for the whole rail. */
