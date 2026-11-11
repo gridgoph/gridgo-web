@@ -117,10 +117,120 @@ export function rotationOrder(promos: HomePromo[], now: number = Date.now()): Ho
     .sort((a, b) => a.displayOrder - b.displayOrder || Date.parse(a.startsAt) - Date.parse(b.startsAt) || a.id.localeCompare(b.id));
 }
 
+/**
+ * The promo's three pictures (gridgo-client#425, contract
+ * firstmate/data/promo-images/contract.md): where each shows, the size to
+ * upload and how the client app fits it.
+ */
+export type PromoPictureSlot = "logo" | "cardImage" | "image";
+
+export const PROMO_PICTURES: Record<
+  PromoPictureSlot,
+  {
+    purpose: "promotion_logo" | "promotion_card_image" | "promotion_image";
+    label: string;
+    /** "this logo" in an upload error. */
+    what: string;
+    required: boolean;
+    width: number;
+    height: number;
+    /** The recommended size as staff read it. */
+    size: string;
+    maxMb: number;
+    /** Where it shows and how it is fitted. */
+    where: string;
+  }
+> = {
+  logo: {
+    purpose: "promotion_logo",
+    label: "Logo",
+    what: "this logo",
+    required: true,
+    width: 512,
+    height: 512,
+    size: "512 × 512 px, square",
+    maxMb: 5,
+    where: "In the round frame on the card and the sheet, always whole on a white disc.",
+  },
+  cardImage: {
+    purpose: "promotion_card_image",
+    label: "Card image",
+    what: "this card image",
+    required: false,
+    width: 1200,
+    height: 900,
+    size: "1200 × 900 px (4:3)",
+    maxMb: 15,
+    where: "Fills the Home card, trimmed to the card's shape. Without one, the card is its colour.",
+  },
+  image: {
+    purpose: "promotion_image",
+    label: "Cover image",
+    what: "this cover image",
+    required: false,
+    width: 1600,
+    height: 900,
+    size: "1600 × 900 px (16:9)",
+    maxMb: 15,
+    where: "Top of the sheet, shown whole at 16:9. Never on the Home card.",
+  },
+};
+
+/** Below this share of the recommended width or height, a picture is much smaller. */
+const SMALL_SHARE = 0.5;
+/** Past this ratio between the picture's shape and the slot's, it is a very different shape. */
+const SHAPE_TOLERANCE = 1.3;
+
+/**
+ * A gentle note when an upload is much smaller than recommended or a very
+ * different shape, in what it means for that slot; null when it fits.
+ * Never blocks saving.
+ */
+export function pictureFitNote(slot: PromoPictureSlot, size: { width: number; height: number }): string | null {
+  const spec = PROMO_PICTURES[slot];
+  const { width, height } = size;
+  if (!(width > 0 && height > 0)) return null;
+  const notes: string[] = [];
+  if (width < spec.width * SMALL_SHARE || height < spec.height * SMALL_SHARE)
+    notes.push(`It is ${width} × ${height} px, much smaller than ${spec.width} × ${spec.height}, so it may look blurry.`);
+  const shape = width / height / (spec.width / spec.height);
+  if (shape > SHAPE_TOLERANCE || shape < 1 / SHAPE_TOLERANCE) {
+    const wider = shape > 1;
+    if (slot === "logo")
+      notes.push(`It is ${wider ? "wide" : "tall"}, not square, so it shows small in the round frame with space ${wider ? "above and below" : "at the sides"}.`);
+    else if (slot === "cardImage")
+      notes.push(`It is much ${wider ? "wider" : "taller"} than 4:3, so the card trims its ${wider ? "sides" : "top and bottom"}.`);
+    else
+      notes.push(`It is much ${wider ? "wider" : "taller"} than 16:9, so the sheet shows it whole with bands ${wider ? "above and below" : "at the sides"}.`);
+  }
+  return notes.length ? notes.join(" ") : null;
+}
+
+/**
+ * The part of a `width` × `height` picture a frame of `frameAspect`
+ * (width / height) shows when the picture fills it centred (`cover`), as
+ * shares of the picture's width and height.
+ */
+export function coverCrop(
+  size: { width: number; height: number },
+  frameAspect: number,
+): { left: number; top: number; width: number; height: number } {
+  const aspect = size.width / size.height;
+  if (!(aspect > 0) || !(frameAspect > 0)) return { left: 0, top: 0, width: 1, height: 1 };
+  if (aspect > frameAspect) {
+    const width = frameAspect / aspect;
+    return { left: (1 - width) / 2, top: 0, width, height: 1 };
+  }
+  const height = aspect / frameAspect;
+  return { left: 0, top: (1 - height) / 2, width: 1, height };
+}
+
 /** The form's state: every value as typed, dates in Manila wall time. */
 export type HomePromoDraft = {
   name: string;
   logo: HomePromoFile | null;
+  cardImage: HomePromoFile | null;
+  /** The About sheet's cover. */
   image: HomePromoFile | null;
   description: string;
   tag: HomePromoTag;
@@ -137,7 +247,7 @@ export type HomePromoDraft = {
   displayOrder: string;
 };
 
-export type HomePromoField = Exclude<keyof HomePromoDraft, "image" | "tag" | "tapAction" | "enabled">;
+export type HomePromoField = Exclude<keyof HomePromoDraft, "cardImage" | "image" | "tag" | "tapAction" | "enabled">;
 export type HomePromoErrors = Partial<Record<HomePromoField, string>>;
 
 export function emptyHomePromoDraft(now: number = Date.now(), nextOrder = 1): HomePromoDraft {
@@ -146,6 +256,7 @@ export function emptyHomePromoDraft(now: number = Date.now(), nextOrder = 1): Ho
   return {
     name: "",
     logo: null,
+    cardImage: null,
     image: null,
     description: "",
     tag: "partner",
@@ -164,6 +275,7 @@ export function draftFromHomePromo(promo: HomePromo): HomePromoDraft {
   return {
     name: promo.name,
     logo: promo.logo,
+    cardImage: promo.cardImage,
     image: promo.image,
     description: promo.description,
     tag: promo.tag,
@@ -232,6 +344,8 @@ export function inputFromHomePromoDraft(draft: HomePromoDraft): HomePromoInput {
   return {
     name: draft.name.trim(),
     logo: { fileId: draft.logo?.fileId ?? "" },
+    // No card image is the API's default, so a new promo without one leaves the field out.
+    ...(draft.cardImage ? { cardImage: { fileId: draft.cardImage.fileId } } : {}),
     image: draft.image ? { fileId: draft.image.fileId } : null,
     description: draft.description.trim(),
     tag: draft.tag,
@@ -259,6 +373,8 @@ export function patchFromDraft(origin: HomePromoDraft, draft: HomePromoDraft): P
   const changed = <K extends keyof HomePromoDraft>(key: K) => origin[key] !== draft[key];
   if (draft.name.trim() !== origin.name.trim()) patch.name = full.name;
   if ((draft.logo?.fileId ?? null) !== (origin.logo?.fileId ?? null)) patch.logo = full.logo;
+  if ((draft.cardImage?.fileId ?? null) !== (origin.cardImage?.fileId ?? null))
+    patch.cardImage = full.cardImage ?? null;
   if ((draft.image?.fileId ?? null) !== (origin.image?.fileId ?? null)) patch.image = full.image;
   if (draft.description.trim() !== origin.description.trim()) patch.description = full.description;
   if (changed("tag")) patch.tag = full.tag;
@@ -365,6 +481,10 @@ export function homePromoErrorText(err: unknown, fallback: string): string {
           return "Pick the start date and time.";
         case "logo":
           return "Add the logo.";
+        case "cardImage":
+          return "Upload the card image again.";
+        case "image":
+          return "Upload the cover image again.";
         case "color":
           return "Use a colour like #1A1A1A.";
         default:

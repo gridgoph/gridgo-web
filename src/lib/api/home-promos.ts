@@ -10,9 +10,11 @@
  *   DELETE /ops/promotions/:id          (soft delete)
  *   GET    /ops/promotions/:id/stats?from=YYYY-MM-DD&to=YYYY-MM-DD
  *
- * Contract: gridgo-api `docs/HOME_PROMOTIONS_API.md`. Logos and card images
- * ride the ordinary `/files` upload with the staff-only purposes
- * `promotion_logo` (5 MiB) and `promotion_image` (15 MiB); the promo write
+ * Contract: gridgo-api `docs/HOME_PROMOTIONS_API.md`. A promo has three
+ * pictures (gridgo-client#425): the logo (`promotion_logo`, 5 MiB), the card
+ * image behind the Home card (`cardImage`, `promotion_card_image`, 15 MiB) and
+ * the About sheet's cover (`image`, `promotion_image`, 15 MiB). They ride the
+ * ordinary `/files` upload with those staff-only purposes; the promo write
  * binds them, so never call `/files/:id/attach` for them. Responses carry a
  * five-minute signed `downloadUrl`.
  *
@@ -43,6 +45,9 @@ export type HomePromo = {
   id: string;
   name: string;
   logo: HomePromoFile | null;
+  /** Fills the Home card; null (or an API before it) draws the colour card. */
+  cardImage: HomePromoFile | null;
+  /** The About sheet's cover only; never drawn on the Home card. */
   image: HomePromoFile | null;
   description: string;
   tag: HomePromoTag;
@@ -66,6 +71,11 @@ export type HomePromo = {
 export type HomePromoInput = {
   name: string;
   logo: { fileId: string };
+  /**
+   * Left out of a create with no card image, so an API from before
+   * `cardImage` (which refuses unknown fields) still takes the promo.
+   */
+  cardImage?: { fileId: string } | null;
   image: { fileId: string } | null;
   description: string;
   tag: HomePromoTag;
@@ -124,6 +134,7 @@ export function readHomePromo(raw: unknown): HomePromo {
     id,
     name: str(raw.name) ?? "",
     logo: readFile(raw.logo ?? raw.logoFileId, raw.logoUrl),
+    cardImage: readFile(raw.cardImage ?? raw.cardImageFileId, raw.cardImageUrl),
     image: readFile(raw.image ?? raw.imageFileId, raw.imageUrl),
     description: typeof raw.description === "string" ? raw.description : "",
     tag,
@@ -219,7 +230,7 @@ export async function getHomePromoStats(
   );
 }
 
-export type HomePromoFilePurpose = "promotion_logo" | "promotion_image";
+export type HomePromoFilePurpose = "promotion_logo" | "promotion_card_image" | "promotion_image";
 
 export async function uploadHomePromoFile(
   purpose: HomePromoFilePurpose,

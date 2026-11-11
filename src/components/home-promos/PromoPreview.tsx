@@ -6,7 +6,7 @@ import { ArrowRight, ArrowUpRight, ExternalLink, Pause, Play, RefreshCw, Sparkle
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { HomePromoTag, HomePromoTapAction } from "@/lib/api/home-promos";
 import { ROTATE_MS, TAG_LABEL } from "@/lib/home-promos";
-import { hexFromCssColor, promoCardColors, type PromoCardColors } from "@/lib/promo-card-colors";
+import { PROMO_LOGO_INITIAL_INK, hexFromCssColor, promoCardColors, type PromoCardColors } from "@/lib/promo-card-colors";
 import { cn } from "@/lib/utils";
 
 /** What the preview draws: the form's values as the client app would. */
@@ -14,6 +14,9 @@ export type PreviewPromo = {
   key: string;
   name: string;
   logoUrl: string | null;
+  /** Fills the Home card when set; the colour card otherwise. */
+  cardImageUrl: string | null;
+  /** The sheet's cover only, never on the card. */
   imageUrl: string | null;
   description: string;
   tag: HomePromoTag;
@@ -26,8 +29,16 @@ export type PreviewPromo = {
 
 type Slide = { kind: "reorder" } | { kind: "promo"; promo: PreviewPromo };
 
-/** The client tile's height (gridgo-client `HOME_TILE_HEIGHT`), at phone scale. */
-const TILE_HEIGHT = 112;
+/** The client tile's height (gridgo-client `HOME_TILE_MIN_HEIGHT`), at phone scale. */
+export const TILE_HEIGHT = 112;
+/**
+ * The promo tile's width in this preview's phone: 320 wide, less its 6px
+ * frame, 16px margins and the 12px gap, halved. The card image's crop
+ * preview uses this shape, so the two agree.
+ */
+export const TILE_WIDTH = 132;
+/** gridgo-client `PROMO_LOGO_FIT`: the logo's share of its disc, so a square logo's corners stay inside the circle. */
+export const PROMO_LOGO_FIT = 0.64;
 /**
  * gridgo-client `TILE_SLOTS`: inside the 1px border and 12px padding, every
  * Home tile is a top row, a title line, a subtitle line and a footer, so the
@@ -113,7 +124,7 @@ export function PromoPreview({
   const focused = promos.find((p) => p.key === focusKey) ?? promos[0] ?? null;
   const focusIndex = focused ? promos.indexOf(focused) + 1 : 0;
   const signature = focused
-    ? [focused.name, focused.logoUrl, focused.imageUrl, focused.description, focused.tag, focused.color, focused.linkText, focused.tapAction].join("|")
+    ? [focused.name, focused.logoUrl, focused.cardImageUrl, focused.imageUrl, focused.description, focused.tag, focused.color, focused.linkText, focused.tapAction].join("|")
     : "";
 
   // Editing a field shows that promo, and holds there a moment.
@@ -170,7 +181,8 @@ export function PromoPreview({
   const sheetPromo = current.kind === "promo" ? current.promo : focused;
   const phone = useRef<HTMLDivElement>(null);
   const screenColor = useScreenColor(phone);
-  const cardColors = (promo: PreviewPromo) => promoCardColors(promo.color, screenColor, OUTLINE);
+  const cardColors = (promo: PreviewPromo) =>
+    promoCardColors(promo.color, screenColor, OUTLINE, !!promo.cardImageUrl);
   // The pager sits in the tile's footer slot, in the ink of the page it is on.
   const pageInk = current.kind === "promo" ? cardColors(current.promo) : null;
 
@@ -377,17 +389,40 @@ function ReorderTile() {
   );
 }
 
-function Logo({ url, name, size }: { url: string | null; name: string; size: number }) {
+/**
+ * gridgo-client `PromoLogo`: the logo on a white disc, always whole, scaled
+ * to fit the square the circle can hold, so a square logo's corners are never
+ * cut and a dark logo reads on any card.
+ */
+export function Logo({
+  url,
+  name,
+  size,
+  onLoad,
+}: {
+  url: string | null;
+  name: string;
+  size: number;
+  onLoad?: (img: HTMLImageElement) => void;
+}) {
   return (
     <span
-      className="flex shrink-0 items-center justify-center overflow-hidden rounded-pill border border-outline bg-surface-high"
+      className="flex shrink-0 items-center justify-center overflow-hidden rounded-pill border border-outline bg-white"
       style={{ width: size, height: size }}
+      data-testid="promo-logo-disc"
     >
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt="" className="size-full object-contain p-0.5" />
+        <img
+          src={url}
+          alt=""
+          className="object-contain"
+          style={{ width: size * PROMO_LOGO_FIT, height: size * PROMO_LOGO_FIT }}
+          onLoad={onLoad ? (e) => onLoad(e.currentTarget) : undefined}
+          data-testid="promo-logo-image"
+        />
       ) : (
-        <span className="text-caption text-text-muted" style={{ fontFamily: "var(--font-bold)" }}>
+        <span style={{ color: PROMO_LOGO_INITIAL_INK, fontFamily: "var(--font-bold)", fontSize: size * 0.42 }}>
           {name.trim().charAt(0).toUpperCase() || <Sparkles className="size-4" aria-hidden />}
         </span>
       )}
@@ -404,9 +439,25 @@ function TagChip({ tag }: { tag: HomePromoTag }) {
 }
 
 /**
+ * gridgo-client `CardScrim`: light at the top, dark from the name down through
+ * the link line and dots, so white ink reads on any card image.
+ */
+function CardScrim() {
+  return (
+    <span
+      aria-hidden
+      className="pointer-events-none absolute inset-0"
+      style={{ background: "linear-gradient(to bottom, rgb(0 0 0 / 0.15) 0%, rgb(0 0 0 / 0.45) 40%, rgb(0 0 0 / 0.75) 100%)" }}
+      data-testid="preview-card-scrim"
+    />
+  );
+}
+
+/**
  * gridgo-client `HomePromoTile`: logo and tag on the top row, the name on the
  * title line, the link text and an arrow under it, all in the ink that reads
- * on the promo's colour.
+ * on the promo's colour. With a card image, the picture fills the card under
+ * a dark bottom scrim and the ink is white; the cover never shows here.
  */
 function PromoTile({ promo, colors }: { promo: PreviewPromo; colors: PromoCardColors }) {
   return (
@@ -415,10 +466,19 @@ function PromoTile({ promo, colors }: { promo: PreviewPromo; colors: PromoCardCo
       style={{ backgroundColor: colors.background, borderColor: colors.border, color: colors.ink }}
       data-testid="preview-promo-tile"
       data-ink={colors.ink}
+      data-card-image={promo.cardImageUrl ? "true" : undefined}
     >
-      {promo.imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={promo.imageUrl} alt="" className="absolute inset-y-0 right-0 h-full w-[45%] object-cover opacity-90" />
+      {promo.cardImageUrl ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={promo.cardImageUrl}
+            alt=""
+            className="absolute inset-0 size-full object-cover"
+            data-testid="preview-card-image"
+          />
+          <CardScrim />
+        </>
       ) : null}
       <TileSlots
         top={
@@ -466,8 +526,14 @@ function PromoSheet({ promo, onClose }: { promo: PreviewPromo; onClose: () => vo
       <div className="relative flex flex-col items-center gap-3 rounded-t-[24px] bg-surface px-5 pt-3 pb-8">
         <span className="block h-1 w-10 rounded-pill bg-outline" aria-hidden />
         {promo.imageUrl ? (
+          // The cover, shown whole at 16:9; never the card image.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={promo.imageUrl} alt="" className="h-28 w-full rounded-card object-cover" />
+          <img
+            src={promo.imageUrl}
+            alt=""
+            className="aspect-video w-full rounded-card bg-surface-variant object-contain"
+            data-testid="preview-sheet-cover"
+          />
         ) : null}
         <Logo url={promo.logoUrl} name={promo.name} size={64} />
         <span className="flex flex-col items-center gap-1.5 text-center">

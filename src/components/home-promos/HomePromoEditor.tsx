@@ -10,11 +10,18 @@ import {
   Loader2,
   PanelBottomOpen,
   Trash2,
+  TriangleAlert,
   Upload,
   X,
 } from "lucide-react";
 
-import { PromoPreview, type PreviewPromo } from "@/components/home-promos/PromoPreview";
+import {
+  Logo,
+  PromoPreview,
+  TILE_HEIGHT,
+  TILE_WIDTH,
+  type PreviewPromo,
+} from "@/components/home-promos/PromoPreview";
 import { PromoStats } from "@/components/home-promos/PromoStats";
 import { useFileUrls } from "@/components/home-promos/useFileUrls";
 import { usePromoClock } from "@/components/home-promos/usePromoClock";
@@ -46,14 +53,15 @@ import {
   uploadHomePromoFile,
   type HomePromo,
   type HomePromoFile,
-  type HomePromoFilePurpose,
   type HomePromoTapAction,
 } from "@/lib/api/home-promos";
 import {
   HOME_PROMO_LIMITS,
+  PROMO_PICTURES,
   TAG_CHOICES,
   TAG_LABEL,
   TAP_COPY,
+  coverCrop,
   draftFromHomePromo,
   draftStatus,
   emptyHomePromoDraft,
@@ -62,19 +70,25 @@ import {
   nextDisplayOrder,
   presentHomePromoStatus,
   patchFromDraft,
+  pictureFitNote,
   rotationOrder,
   statusAt,
   validateHomePromoDraft,
   type HomePromoDraft,
   type HomePromoErrors,
+  type PromoPictureSlot,
 } from "@/lib/home-promos";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { DEFAULT_PROMO_COLOR, PROMO_SWATCHES, normalizeHexColor } from "@/lib/promo-card-colors";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import { uploadErrorMessage } from "@/lib/upload-errors";
+import { isApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
 const IMAGE_TYPES = "image/png,image/jpeg,image/webp";
+const PICTURE_SLOTS: PromoPictureSlot[] = ["logo", "cardImage", "image"];
+
+type PictureSize = { width: number; height: number };
 
 type Props = { tree: "ops" | "admin"; promoId: string | "new" };
 
@@ -140,7 +154,12 @@ export function HomePromoEditor({ tree, promoId }: Props) {
 
 /** A draft as compared for "changed": media by file id, not by link. */
 function plain(d: HomePromoDraft): string {
-  return JSON.stringify({ ...d, logo: d.logo?.fileId ?? null, image: d.image?.fileId ?? null });
+  return JSON.stringify({
+    ...d,
+    logo: d.logo?.fileId ?? null,
+    cardImage: d.cardImage?.fileId ?? null,
+    image: d.image?.fileId ?? null,
+  });
 }
 
 function EditorBody({
@@ -170,8 +189,10 @@ function EditorBody({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
-  const [uploading, setUploading] = useState<HomePromoFilePurpose | null>(null);
-  const [uploadError, setUploadError] = useState<Partial<Record<HomePromoFilePurpose, string>>>({});
+  const [uploading, setUploading] = useState<PromoPictureSlot | null>(null);
+  const [uploadError, setUploadError] = useState<Partial<Record<PromoPictureSlot, string>>>({});
+  /** Each picture's pixel size, by file id, read when its preview loads. */
+  const [sizes, setSizes] = useState<Record<string, PictureSize>>({});
   const [removing, setRemoving] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
@@ -205,31 +226,36 @@ function EditorBody({
     setSavedAt(null);
   }
 
-  async function pick(purpose: HomePromoFilePurpose, file: File | undefined) {
+  async function pick(slot: PromoPictureSlot, file: File | undefined) {
     if (!file) return;
-    setUploading(purpose);
-    setUploadError((e) => ({ ...e, [purpose]: undefined }));
+    const spec = PROMO_PICTURES[slot];
+    setUploading(slot);
+    setUploadError((e) => ({ ...e, [slot]: undefined }));
     try {
-      const stored = await uploadHomePromoFile(purpose, file);
+      const stored = await uploadHomePromoFile(spec.purpose, file);
       const local = URL.createObjectURL(file);
       objectUrls.current.push(local);
       const ref: HomePromoFile = { fileId: stored.fileId, url: local };
-      set(purpose === "promotion_logo" ? "logo" : "image", ref);
+      set(slot, ref);
     } catch (err) {
-      setUploadError((e) => ({
-        ...e,
-        [purpose]: uploadErrorMessage(err, { what: purpose === "promotion_logo" ? "this logo" : "this image" }),
-      }));
+      setUploadError((e) => ({ ...e, [slot]: uploadErrorMessage(err, { what: spec.what }) }));
     } finally {
       setUploading(null);
     }
   }
+
+  const measure = useCallback((fileId: string, size: PictureSize) => {
+    setSizes((all) =>
+      all[fileId]?.width === size.width && all[fileId]?.height === size.height ? all : { ...all, [fileId]: size },
+    );
+  }, []);
 
   async function save() {
     setAttempted(true);
     if (Object.keys(validateHomePromoDraft(draft)).length) return;
     setSaving(true);
     setSaveError(null);
+    const sendsCardImage = !promo || !origin ? !!draft.cardImage : "cardImage" in patchFromDraft(origin, draft);
     try {
       if (!promo || !origin) {
         const created = await createHomePromo(inputFromHomePromoDraft(draft));
@@ -244,7 +270,14 @@ function EditorBody({
       setSavedAt(Date.now());
       onSaved(saved);
     } catch (err) {
-      setSaveError(homePromoErrorText(err, "Could not save. Try again."));
+      // A server from before card images refuses the unknown field as a whole body.
+      const olderServer =
+        sendsCardImage && isApiError(err) && err.code === "invalid_promotion" && err.detail<string>("field") === "body";
+      setSaveError(
+        olderServer
+          ? "The server does not take card images yet. Remove the card image to save the rest, then add it once the update is out."
+          : homePromoErrorText(err, "Could not save. Try again."),
+      );
     } finally {
       setSaving(false);
     }
@@ -264,7 +297,12 @@ function EditorBody({
   }
 
   // Preview: the other live promos plus this draft at its display order.
-  const urls = useFileUrls([draft.logo, draft.image, ...others.flatMap((p) => [p.logo, p.image])]);
+  const urls = useFileUrls([
+    draft.logo,
+    draft.cardImage,
+    draft.image,
+    ...others.flatMap((p) => [p.logo, p.cardImage, p.image]),
+  ]);
   const draftKey = promo?.id ?? "draft";
   const status = draftStatus(draft, now);
   const previews = useMemo(() => {
@@ -272,6 +310,7 @@ function EditorBody({
       key: p.id,
       name: p.name,
       logoUrl: p.logo ? urls[p.logo.fileId] ?? null : null,
+      cardImageUrl: p.cardImage ? urls[p.cardImage.fileId] ?? null : null,
       imageUrl: p.image ? urls[p.image.fileId] ?? null : null,
       description: p.description,
       tag: p.tag,
@@ -285,6 +324,7 @@ function EditorBody({
       key: draftKey,
       name: draft.name.trim(),
       logoUrl: draft.logo ? urls[draft.logo.fileId] ?? null : null,
+      cardImageUrl: draft.cardImage ? urls[draft.cardImage.fileId] ?? null : null,
       imageUrl: draft.image ? urls[draft.image.fileId] ?? null : null,
       description: draft.description.trim(),
       tag: draft.tag,
@@ -336,30 +376,30 @@ function EditorBody({
               {errors.name ? <FieldError>{errors.name}</FieldError> : null}
             </Field>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FilePicker
-                id="promo-logo"
-                label="Logo"
-                hint="Square. PNG, JPEG or WebP, up to 5 MB."
-                file={draft.logo}
-                url={draft.logo ? urls[draft.logo.fileId] ?? null : null}
-                round
-                busy={uploading === "promotion_logo"}
-                error={uploadError.promotion_logo ?? errors.logo}
-                onPick={(f) => void pick("promotion_logo", f)}
-              />
-              <FilePicker
-                id="promo-image"
-                label="Card image"
-                hint="Optional, fills the card. PNG, JPEG or WebP, up to 15 MB."
-                file={draft.image}
-                url={draft.image ? urls[draft.image.fileId] ?? null : null}
-                busy={uploading === "promotion_image"}
-                error={uploadError.promotion_image}
-                onPick={(f) => void pick("promotion_image", f)}
-                onClear={() => set("image", null)}
-              />
-            </div>
+            <fieldset className="flex flex-col gap-4">
+              <legend className="mb-1 text-body text-text-primary" style={{ fontFamily: "var(--font-medium)" }}>
+                Pictures
+              </legend>
+              {PICTURE_SLOTS.map((slot) => {
+                const file = draft[slot];
+                const size = file ? sizes[file.fileId] : undefined;
+                return (
+                  <PictureSlot
+                    key={slot}
+                    slot={slot}
+                    file={file}
+                    url={file ? urls[file.fileId] ?? null : null}
+                    name={draft.name}
+                    busy={uploading === slot}
+                    error={uploadError[slot] ?? (slot === "logo" ? errors.logo : undefined)}
+                    note={size ? pictureFitNote(slot, size) : null}
+                    onPick={(f) => void pick(slot, f)}
+                    onClear={PROMO_PICTURES[slot].required ? undefined : () => set(slot, null)}
+                    onMeasure={measure}
+                  />
+                );
+              })}
+            </fieldset>
 
             <Field data-invalid={errors.description ? true : undefined}>
               <FieldLabel htmlFor="promo-description">Description</FieldLabel>
@@ -715,64 +755,91 @@ function Pill({
   );
 }
 
-function FilePicker({
-  id,
-  label,
-  hint,
+/** The card's shape in the preview, width over height. */
+const CARD_ASPECT = TILE_WIDTH / TILE_HEIGHT;
+
+/**
+ * One of the promo's three pictures: what it is for, the size to upload, a
+ * preview of exactly what shows (the logo in its round frame, the card
+ * image's part that fills the card, the cover at 16:9), and a gentle note
+ * when the picture is much smaller than recommended or a very different shape.
+ */
+function PictureSlot({
+  slot,
   file,
   url,
-  round,
+  name,
   busy,
   error,
+  note,
   onPick,
   onClear,
+  onMeasure,
 }: {
-  id: string;
-  label: string;
-  hint: string;
+  slot: PromoPictureSlot;
   file: HomePromoFile | null;
   url: string | null;
-  round?: boolean;
+  name: string;
   busy: boolean;
   error?: string;
+  note: string | null;
   onPick: (file: File | undefined) => void;
   onClear?: () => void;
+  onMeasure: (fileId: string, size: PictureSize) => void;
 }) {
+  const spec = PROMO_PICTURES[slot];
+  const id = `promo-${slot === "image" ? "cover" : slot === "cardImage" ? "card-image" : "logo"}`;
   const input = useRef<HTMLInputElement>(null);
+  const hintId = `${id}-hint`;
+  const noteId = `${id}-note`;
+  const lower = spec.label.toLowerCase();
+  const onLoad = (img: HTMLImageElement) => {
+    if (file && img.naturalWidth > 0 && img.naturalHeight > 0)
+      onMeasure(file.fileId, { width: img.naturalWidth, height: img.naturalHeight });
+  };
   return (
-    <Field data-invalid={error ? true : undefined}>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <div className="flex items-center gap-3">
+    <Field data-invalid={error ? true : undefined} data-testid={`picture-${slot}`}>
+      <div className="flex items-baseline gap-2">
+        <FieldLabel htmlFor={id}>{spec.label}</FieldLabel>
+        <span className="text-caption text-text-muted">{spec.required ? "Required" : "Optional"}</span>
+      </div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
         <button
           type="button"
           onClick={() => input.current?.click()}
           disabled={busy}
-          aria-label={file ? `Replace ${label.toLowerCase()}` : `Upload ${label.toLowerCase()}`}
-          className={cn(
-            "flex size-16 shrink-0 items-center justify-center overflow-hidden border border-dashed border-outline bg-surface-variant text-text-secondary hover:border-text-secondary",
-            round ? "rounded-pill" : "rounded-card",
-            file && "border-solid",
-          )}
+          // The preview is a large target for the mouse; keyboards and screen readers use Upload or Replace.
+          tabIndex={-1}
+          aria-hidden
+          className="shrink-0 self-start rounded-card"
         >
-          {busy ? (
-            <Loader2 className="size-5 animate-spin" aria-hidden />
-          ) : url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={url} alt="" className={cn("size-full", round ? "object-contain p-1" : "object-cover")} />
-          ) : file ? (
-            <ImagePlus className="size-5" aria-hidden />
-          ) : (
-            <Upload className="size-5" aria-hidden />
-          )}
+          <PictureFrame slot={slot} url={busy ? null : url} file={file} busy={busy} name={name} onLoad={onLoad} />
         </button>
         <div className="flex min-w-0 flex-col gap-1">
-          <span className="text-caption text-text-secondary">{hint}</span>
-          {file && onClear ? (
-            <Button variant="ghost" size="sm" className="self-start" onClick={onClear}>
-              <X aria-hidden data-icon="inline-start" />
-              Remove
-            </Button>
+          <span id={hintId} className="text-caption text-text-secondary">
+            {spec.where} Upload {spec.size}. PNG, JPEG or WebP, up to {spec.maxMb} MB.
+          </span>
+          {slot === "cardImage" && url ? (
+            <span className="text-caption text-text-muted">The bright part shows on the card.</span>
           ) : null}
+          <div className="flex flex-wrap gap-2 pt-1">
+            <Button variant="outline" size="sm" onClick={() => input.current?.click()} disabled={busy}>
+              {busy ? (
+                <Loader2 className="animate-spin" aria-hidden data-icon="inline-start" />
+              ) : (
+                <Upload aria-hidden data-icon="inline-start" />
+              )}
+              {busy ? "Uploading" : file ? "Replace" : "Upload"}
+              <span className="sr-only"> {lower}</span>
+            </Button>
+            {file && onClear ? (
+              <Button variant="ghost" size="sm" onClick={onClear} disabled={busy}>
+                <X aria-hidden data-icon="inline-start" />
+                Remove
+                <span className="sr-only"> {lower}</span>
+              </Button>
+            ) : null}
+          </div>
         </div>
         <input
           ref={input}
@@ -781,6 +848,7 @@ function FilePicker({
           accept={IMAGE_TYPES}
           className="sr-only"
           tabIndex={-1}
+          aria-describedby={note ? `${hintId} ${noteId}` : hintId}
           onChange={(e) => {
             const picked = e.target.files?.[0];
             e.target.value = "";
@@ -788,7 +856,123 @@ function FilePicker({
           }}
         />
       </div>
+      {note && !busy ? (
+        <p id={noteId} className="flex items-start gap-1.5 text-caption text-text-secondary" data-testid={`picture-${slot}-note`}>
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+          <span>{note} You can still save it.</span>
+        </p>
+      ) : null}
       {error ? <FieldError>{error}</FieldError> : null}
     </Field>
+  );
+}
+
+/** The slot's preview, in the shape the client app draws it. */
+function PictureFrame({
+  slot,
+  url,
+  file,
+  busy,
+  name,
+  onLoad,
+}: {
+  slot: PromoPictureSlot;
+  url: string | null;
+  file: HomePromoFile | null;
+  busy: boolean;
+  name: string;
+  onLoad: (img: HTMLImageElement) => void;
+}) {
+  const [size, setSize] = useState<PictureSize | null>(null);
+  const empty = (
+    <span className="flex size-full items-center justify-center text-text-secondary">
+      {busy ? (
+        <Loader2 className="size-5 animate-spin" aria-hidden />
+      ) : file ? (
+        <ImagePlus className="size-5" aria-hidden />
+      ) : (
+        <Upload className="size-5" aria-hidden />
+      )}
+    </span>
+  );
+  const frame = cn(
+    "flex items-center justify-center overflow-hidden border bg-surface-variant hover:border-text-secondary",
+    url ? "border-outline" : "border-dashed border-outline",
+  );
+
+  if (slot === "logo") {
+    // The round frame at sheet size: white disc, logo whole.
+    return url ? (
+      <span className="block" data-testid="picture-logo-frame">
+        <Logo url={url} name={name} size={96} onLoad={onLoad} />
+      </span>
+    ) : (
+      <span className={cn(frame, "size-24 rounded-pill")} data-testid="picture-logo-frame">
+        {empty}
+      </span>
+    );
+  }
+
+  if (slot === "image") {
+    // The sheet's cover: shown whole at 16:9.
+    return (
+      <span className={cn(frame, "aspect-video w-44 rounded-card")} data-testid="picture-image-frame">
+        {url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={url}
+            alt=""
+            className="size-full object-contain"
+            onLoad={(e) => onLoad(e.currentTarget)}
+            data-testid="picture-image-preview"
+          />
+        ) : (
+          empty
+        )}
+      </span>
+    );
+  }
+
+  // The card image: the whole picture, with the part that fills the card bright.
+  const crop = size ? coverCrop(size, CARD_ASPECT) : null;
+  return (
+    <span
+      className={cn(frame, "relative w-44 rounded-card")}
+      style={{ aspectRatio: size ? `${size.width} / ${size.height}` : `${TILE_WIDTH} / ${TILE_HEIGHT}` }}
+      data-testid="picture-cardImage-frame"
+    >
+      {url ? (
+        <>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={url}
+            alt=""
+            className={cn("size-full", crop ? "object-fill" : "object-cover")}
+            onLoad={(e) => {
+              const img = e.currentTarget;
+              if (img.naturalWidth > 0 && img.naturalHeight > 0)
+                setSize({ width: img.naturalWidth, height: img.naturalHeight });
+              onLoad(img);
+            }}
+            data-testid="picture-cardImage-preview"
+          />
+          {crop ? (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute rounded-[6px] border-2 border-white shadow-[0_0_0_999px_rgb(0_0_0/0.55)]"
+              style={{
+                left: `${crop.left * 100}%`,
+                top: `${crop.top * 100}%`,
+                width: `${crop.width * 100}%`,
+                height: `${crop.height * 100}%`,
+              }}
+              data-testid="picture-cardImage-crop"
+            />
+          ) : null}
+        </>
+      ) : (
+        empty
+      )}
+    </span>
   );
 }
