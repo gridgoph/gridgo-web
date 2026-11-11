@@ -60,7 +60,7 @@ function capture(name: string, role: PortalRole) {
 
 it.each([
   ["ops_admin", "/ops/orders", OpsOrderPage],
-  ["super_admin", "/admin/overview", AdminOrderPage],
+  ["super_admin", "/admin/orders", AdminOrderPage],
 ] as const)(
   "opens a %s inbox slip into its real order page and refreshes it from SSE",
   async (role, home, Page) => {
@@ -237,7 +237,7 @@ it.each([
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole("link", {
-        name: role === "super_admin" ? "Back to overview" : "Back to queue",
+        name: role === "super_admin" ? "Back to orders" : "Back to queue",
       }),
     ).toHaveAttribute("href", home);
     if (role === "ops_admin")

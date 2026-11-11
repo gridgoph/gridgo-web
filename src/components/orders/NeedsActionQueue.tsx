@@ -51,6 +51,8 @@ type Props = {
   /** The same context the stage counts and the rail use. */
   context?: QueueContext;
   onRefresh: () => void;
+  /** Which tree the row links stay in (Super Admin mounts this queue too). */
+  tree?: "ops" | "admin";
 };
 
 /**
@@ -61,7 +63,14 @@ function ownInstallmentPending(order: Order): boolean {
   return pendingInstallment(order) !== null;
 }
 
-export function NeedsActionQueue({ orders, hours, context, onRefresh }: Props) {
+export function NeedsActionQueue({
+  orders,
+  hours,
+  context,
+  onRefresh,
+  tree = "ops",
+}: Props) {
+  const orderHref = (id: string) => `/${tree}/orders/${encodeURIComponent(id)}`;
   const [paying, setPaying] = useState<Order | null>(null);
   const [dispatching, setDispatching] = useState<Order | null>(null);
   const shopCounts = useMemo(() => basketShopCounts(orders), [orders]);
@@ -155,7 +164,12 @@ export function NeedsActionQueue({ orders, hours, context, onRefresh }: Props) {
             </h2>
             {action === "check_artwork" ? (
               rows.length > 0 ? (
-                <FileCheckQueue orders={rows} onChanged={onRefresh} hours={hours} />
+                <FileCheckQueue
+                  orders={rows}
+                  onChanged={onRefresh}
+                  hours={hours}
+                  orderHref={orderHref}
+                />
               ) : null
             ) : rows.length > 0 ? (
               <DataTable
@@ -188,8 +202,8 @@ export function NeedsActionQueue({ orders, hours, context, onRefresh }: Props) {
                       icon={Eye}
                       href={
                         action === "review_finished"
-                          ? `/ops/finished-work?order=${order.id}`
-                          : `/ops/orders/${order.id}`
+                          ? `/${tree}/finished-work?order=${order.id}`
+                          : `/${tree}/orders/${order.id}`
                       }
                     />
                   </>
@@ -204,6 +218,7 @@ export function NeedsActionQueue({ orders, hours, context, onRefresh }: Props) {
         order={paying}
         onClose={() => setPaying(null)}
         onDecided={onRefresh}
+        tree={tree}
       />
       <AssignRiderDialog
         order={dispatching}

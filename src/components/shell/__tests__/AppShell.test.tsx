@@ -558,7 +558,20 @@ describe("AppShell chrome", () => {
     renderShell("/admin/overview");
     const adminNav = screen.getByRole("navigation", { name: "Primary navigation" });
     expect(within(adminNav).getByRole("link", { name: "Overview" })).toBeInTheDocument();
-    for (const label of ["People", "Catalog", "Money", "System"]) {
+    expect(within(adminNav).getByRole("link", { name: "Orders" })).toHaveAttribute(
+      "href",
+      "/admin/orders",
+    );
+    for (const label of [
+      "Work queue",
+      "Field & delivery",
+      "People & shops",
+      "Catalogue",
+      "Money",
+      "Marketing",
+      "Legal & privacy",
+      "System",
+    ]) {
       expect(within(adminNav).getByRole("button", { name: label })).toBeInTheDocument();
     }
 
@@ -814,7 +827,7 @@ describe("AppShell chrome", () => {
       cleanup();
       renderShell("/admin/overview");
       nav = screen.getByRole("navigation", { name: "Primary navigation" });
-      expect(headings(nav)).toEqual(["Desk", "Manage", "Platform"]);
+      expect(headings(nav)).toEqual(["Desk", "Work", "Manage", "Platform"]);
 
       cleanup();
       renderShell("/supplier/dashboard");
@@ -1030,9 +1043,9 @@ describe("AppShell chrome", () => {
       countMocks.listJobs.mockClear();
       renderShell("/admin/overview");
       await vi.waitFor(() => expect(countMocks.listSupportChatThreads).toHaveBeenCalled());
-      // Once, for Finished work: Super Admin's rail has no Orders count.
+      // Once, shared by the Orders and Finished work counts.
       await vi.waitFor(() => expect(listOrdersMock).toHaveBeenCalledTimes(1));
-      expect(countMocks.listEscalations).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(countMocks.listEscalations).toHaveBeenCalled());
       expect(countMocks.listJobs).not.toHaveBeenCalled();
     });
   });

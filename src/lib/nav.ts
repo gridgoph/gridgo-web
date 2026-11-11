@@ -92,7 +92,8 @@ export type NavIconKey =
   | "group-system"
   | "group-people"
   | "group-catalog"
-  | "group-legal";
+  | "group-legal"
+  | "group-marketing";
 
 export type NavItem = {
   /** Stable id for tests / analytics. */
@@ -774,6 +775,18 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          // The same queue Operations works from (OrdersQueue); its rows open
+          // the order in /admin. Waiting-on-Operations count, like /ops.
+          id: "admin-orders",
+          href: "/admin/orders",
+          label: "Orders",
+          title: "Orders",
+          icon: "qa",
+          ready: true,
+          placeholderBody: "",
+          count: "orders-waiting",
+        },
+        {
           id: "admin-chat",
           href: "/admin/chat",
           label: "Chat",
@@ -793,7 +806,68 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
           count: "order-chats-unread",
         },
-        { id: "admin-account-deletion", href: "/admin/account-deletion", label: "Account deletion", title: "Account deletion", icon: "account-deletion", ready: true, placeholderBody: "" },
+      ],
+    },
+    {
+      // Order work that waits on a person, after the Orders queue itself.
+      id: "admin-work",
+      section: "Work",
+      label: "Work queue",
+      icon: "group-queue",
+      items: [
+        {
+          id: "admin-quotes",
+          href: "/admin/quotes",
+          label: "Quotes",
+          title: "Quotes",
+          icon: "quotes",
+          ready: true,
+          placeholderBody: "",
+          count: "quotes-waiting",
+        },
+        {
+          // Sample First: a paid sample, then the batch at a held price
+          // (SAMPLE_FIRST_API.md in gridgo-api). Read-only; clients decide.
+          id: "admin-sample-batches",
+          href: "/admin/sample-batches",
+          label: "Sample batches",
+          title: "Sample batches",
+          icon: "sample-batches",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          // The same desk as Operations': no rider is called until the
+          // shop's finished, unpacked work is approved.
+          id: "admin-finished-work",
+          href: "/admin/finished-work",
+          label: "Finished work",
+          title: "Finished work",
+          icon: "finished-work",
+          ready: true,
+          placeholderBody: "",
+          count: "finished-work-waiting",
+        },
+        {
+          id: "admin-colour-price-checks",
+          href: "/admin/colour-price-checks",
+          label: "Colour price checks",
+          title: "Colour price checks",
+          icon: "colour-price-checks",
+          ready: true,
+          placeholderBody: "",
+          count: "colour-price-checks-waiting",
+        },
+        {
+          id: "admin-shop-changes",
+          href: "/admin/shop-changes",
+          label: "Dropouts & delays",
+          title: "Shop dropouts and delays",
+          icon: "dropouts",
+          ready: true,
+          placeholderBody: "",
+          count: "shop-changes-needs-ops",
+        },
         {
           id: "admin-issue-reports",
           href: "/admin/issue-reports",
@@ -813,6 +887,14 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
         },
+      ],
+    },
+    {
+      id: "admin-field",
+      section: "Work",
+      label: "Field & delivery",
+      icon: "group-field",
+      items: [
         {
           id: "admin-riders",
           href: "/admin/riders",
@@ -832,6 +914,17 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          // Mounts the Operations page; its order links stay in /admin.
+          id: "admin-escalations",
+          href: "/admin/escalations",
+          label: "Escalations",
+          title: "Pickup escalations",
+          icon: "escalations",
+          ready: true,
+          placeholderBody: "",
+          count: "escalations-open",
+        },
+        {
           id: "admin-hub",
           href: "/admin/hub",
           label: "Hub pick-up",
@@ -840,12 +933,21 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
         },
+        {
+          id: "admin-zones",
+          href: "/admin/zones",
+          label: "Delivery zones",
+          title: "Delivery zones",
+          icon: "zones",
+          ready: true,
+          placeholderBody: "",
+        },
       ],
     },
     {
       id: "admin-people",
       section: "Manage",
-      label: "People",
+      label: "People & shops",
       icon: "group-people",
       items: [
         {
@@ -864,6 +966,24 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Roles",
           title: "Roles",
           icon: "roles",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-staff",
+          href: "/admin/staff",
+          label: "Staff",
+          title: "Staff",
+          icon: "staff",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-organizations",
+          href: "/admin/organizations",
+          label: "Organizations",
+          title: "Organizations",
+          icon: "organizations",
           ready: true,
           placeholderBody: "",
         },
@@ -887,24 +1007,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
-          id: "admin-staff",
-          href: "/admin/staff",
-          label: "Staff",
-          title: "Staff",
-          icon: "staff",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "admin-supplier-products",
-          href: "/admin/supplier-products",
-          label: "Supplier products",
-          title: "Supplier products",
-          icon: "products",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
           id: "admin-shop-hours",
           href: "/admin/shop-hours",
           label: "Shop hours",
@@ -913,12 +1015,30 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
         },
+        {
+          id: "admin-shop-performance",
+          href: "/admin/shop-performance",
+          label: "Shop performance",
+          title: "Shop performance",
+          icon: "performance",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-late-production",
+          href: "/admin/late-production",
+          label: "Late production",
+          title: "Late production",
+          icon: "lapses",
+          ready: true,
+          placeholderBody: "",
+        },
       ],
     },
     {
       id: "admin-catalog",
       section: "Manage",
-      label: "Catalog",
+      label: "Catalogue",
       icon: "group-catalog",
       items: [
         {
@@ -941,51 +1061,11 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           count: "listing-reviews-waiting",
         },
         {
-          id: "admin-colour-price-checks",
-          href: "/admin/colour-price-checks",
-          label: "Colour price checks",
-          title: "Colour price checks",
-          icon: "colour-price-checks",
-          ready: true,
-          placeholderBody: "",
-          count: "colour-price-checks-waiting",
-        },
-        {
-          id: "admin-quotes",
-          href: "/admin/quotes",
-          label: "Quotes",
-          title: "Quotes",
-          icon: "quotes",
-          ready: true,
-          placeholderBody: "",
-          count: "quotes-waiting",
-        },
-        {
-          // Sample First: a paid sample, then the batch at a held price
-          // (SAMPLE_FIRST_API.md in gridgo-api). Read-only; clients decide.
-          id: "admin-sample-batches",
-          href: "/admin/sample-batches",
-          label: "Sample batches",
-          title: "Sample batches",
-          icon: "sample-batches",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "admin-featured-prints",
-          href: "/admin/featured-prints",
-          label: "Featured Prints",
-          title: "Featured Prints",
-          icon: "featured-prints",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "admin-zones",
-          href: "/admin/zones",
-          label: "Delivery zones",
-          title: "Delivery zones",
-          icon: "zones",
+          id: "admin-supplier-products",
+          href: "/admin/supplier-products",
+          label: "Supplier products",
+          title: "Supplier products",
+          icon: "products",
           ready: true,
           placeholderBody: "",
         },
@@ -1025,20 +1105,39 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
-          id: "admin-vouchers",
-          href: "/admin/vouchers",
-          label: "Vouchers",
-          title: "Vouchers",
-          icon: "vouchers",
+          id: "admin-refunds",
+          href: "/admin/refunds",
+          label: "Client refunds",
+          title: "Client refunds",
+          icon: "refunds",
           ready: true,
           placeholderBody: "",
+          count: "refunds-waiting",
         },
+      ],
+    },
+    {
+      // What clients see promoted, and the push megaphone last.
+      id: "admin-marketing",
+      section: "Manage",
+      label: "Marketing",
+      icon: "group-marketing",
+      items: [
         {
           id: "admin-promotions",
           href: "/admin/promotions",
           label: "Promotions",
           title: "Promotions",
           icon: "promotions",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-vouchers",
+          href: "/admin/vouchers",
+          label: "Vouchers",
+          title: "Vouchers",
+          icon: "vouchers",
           ready: true,
           placeholderBody: "",
         },
@@ -1053,72 +1152,34 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
-          id: "admin-refunds",
-          href: "/admin/refunds",
-          label: "Client refunds",
-          title: "Client refunds",
-          icon: "refunds",
-          ready: true,
-          placeholderBody: "",
-          count: "refunds-waiting",
-        },
-        {
-          id: "admin-organizations",
-          href: "/admin/organizations",
-          label: "Organizations",
-          title: "Organizations",
-          icon: "organizations",
+          id: "admin-featured-prints",
+          href: "/admin/featured-prints",
+          label: "Featured Prints",
+          title: "Featured Prints",
+          icon: "featured-prints",
           ready: true,
           placeholderBody: "",
         },
+        // Last on purpose. This is the one control here that reaches outside the
+        // platform onto people's phones, and it cannot be undone — it should take
+        // a deliberate trip down the group, not sit under the cursor.
         {
-          // The same desk as Operations': no rider is called until the
-          // shop's finished, unpacked work is approved.
-          id: "admin-finished-work",
-          href: "/admin/finished-work",
-          label: "Finished work",
-          title: "Finished work",
-          icon: "finished-work",
+          id: "admin-broadcast",
+          href: "/admin/broadcast",
+          label: "Broadcast",
+          title: "Push broadcast",
+          icon: "broadcast",
           ready: true,
           placeholderBody: "",
-          count: "finished-work-waiting",
-        },
-        {
-          id: "admin-late-production",
-          href: "/admin/late-production",
-          label: "Late production",
-          title: "Late production",
-          icon: "lapses",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "admin-shop-performance",
-          href: "/admin/shop-performance",
-          label: "Shop performance",
-          title: "Shop performance",
-          icon: "performance",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "admin-shop-changes",
-          href: "/admin/shop-changes",
-          label: "Dropouts & delays",
-          title: "Shop dropouts and delays",
-          icon: "dropouts",
-          ready: true,
-          placeholderBody: "",
-          count: "shop-changes-needs-ops",
         },
       ],
     },
     {
       // Legal library, consent evidence and the manual privacy queue
       // (gridgo-api#202, LEGAL_API.md). Operations reads the library;
-      // only Super Admin edits and publishes.
+      // only Super Admin edits and publishes. Account deletion is a privacy request too.
       id: "admin-legal",
-      section: "Manage",
+      section: "Platform",
       label: "Legal & privacy",
       icon: "group-legal",
       items: [
@@ -1149,6 +1210,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "privacy-requests-open",
+        },
+        {
+          id: "admin-account-deletion",
+          href: "/admin/account-deletion",
+          label: "Account deletion",
+          title: "Account deletion",
+          icon: "account-deletion",
+          ready: true,
+          placeholderBody: "",
         },
       ],
     },
@@ -1210,18 +1280,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "File retention",
           title: "File retention",
           icon: "retention",
-          ready: true,
-          placeholderBody: "",
-        },
-        // Last on purpose. This is the one control here that reaches outside the
-        // platform onto people's phones, and it cannot be undone — it should take
-        // a deliberate trip down the rail, not sit under the cursor.
-        {
-          id: "admin-broadcast",
-          href: "/admin/broadcast",
-          label: "Broadcast",
-          title: "Push broadcast",
-          icon: "broadcast",
           ready: true,
           placeholderBody: "",
         },
@@ -1288,7 +1346,10 @@ export type NavScope = {
 export const SHOP_STAFF_NAV_IDS: ReadonlySet<string> = new Set(["supplier-jobs"]);
 
 /** Pages outside the rail that Staff may still open. */
-const SHOP_STAFF_EXTRA_PATHS: readonly string[] = ["/supplier/phone-app", "/supplier/notice"];
+const SHOP_STAFF_EXTRA_PATHS: readonly string[] = [
+  "/supplier/phone-app",
+  "/supplier/notice",
+];
 
 /** Where a Staff login lands, and where the logo and refusals send them. */
 export const SHOP_STAFF_HOME = "/supplier/jobs";
@@ -1352,7 +1413,10 @@ export function navGroupsForRole(
     .filter((group) => group.items.length > 0);
 }
 
-export function navForRole(role: Role | string, scope: NavScope = {}): readonly NavItem[] {
+export function navForRole(
+  role: Role | string,
+  scope: NavScope = {},
+): readonly NavItem[] {
   return flattenNavGroups(navGroupsForRole(role, scope));
 }
 
@@ -1407,7 +1471,8 @@ export function contextTitleForPath(
   if (pathname.startsWith("/ops/refunds/") || pathname.startsWith("/admin/refunds/")) {
     return "Refund case";
   }
-  if (/^\/(ops|admin)\/supplier-products\/[^/]+/.test(pathname)) return "Supplier product";
+  if (/^\/(ops|admin)\/supplier-products\/[^/]+/.test(pathname))
+    return "Supplier product";
   if (/^\/(ops|admin)\/quotes\/[^/]+/.test(pathname)) return "Quote request";
   if (/^\/(ops|admin)\/sample-batches\/[^/]+/.test(pathname)) return "Sample batch";
   if (pathname.startsWith("/admin/vouchers/")) return "Voucher campaign";
@@ -1428,7 +1493,8 @@ export function contextTitleForPath(
     return "Shop's late jobs";
   }
   if (/^\/(ops|admin)\/shop-hours\/[^/]+/.test(pathname)) return "Shop's hours";
-  if (/^\/(ops|admin)\/shop-performance\/[^/]+/.test(pathname)) return "Shop's performance";
+  if (/^\/(ops|admin)\/shop-performance\/[^/]+/.test(pathname))
+    return "Shop's performance";
   if (pathname === "/admin/escalations" || pathname.startsWith("/admin/escalations/")) {
     return "Pickup escalations";
   }

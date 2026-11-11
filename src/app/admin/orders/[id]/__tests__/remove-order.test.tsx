@@ -290,7 +290,7 @@ describe("Remove order dialog", () => {
     await user.type(email, EMAIL);
     await user.click(submit);
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith("/admin/overview"));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/admin/orders"));
     expect(posted).toEqual([
       {
         path: "/ops/orders/order1/remove",
