@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Eye, MousePointerClick, PanelBottomOpen, Pencil, Plus } from "lucide-react";
 
-import { PromoPreview, type PreviewPromo } from "@/components/home-promos/PromoPreview";
+import { Logo, PromoPreview, type PreviewPromo } from "@/components/home-promos/PromoPreview";
 import { useFileUrls } from "@/components/home-promos/useFileUrls";
 import { usePromoClock } from "@/components/home-promos/usePromoClock";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -97,11 +97,12 @@ export function HomePromosDesk({ tree }: { tree: "ops" | "admin" }) {
   // Status moves with the clock, not only when the list was read.
   const rows = useMemo(() => sortHomePromos(withStatusAt(promos ?? [], now)), [promos, now]);
   const live = useMemo(() => rotationOrder(promos ?? [], now), [promos, now]);
-  const urls = useFileUrls(live.flatMap((p) => [p.logo, p.image]));
+  const urls = useFileUrls(live.flatMap((p) => [p.logo, p.cardImage, p.image]));
   const previews: PreviewPromo[] = live.map((p) => ({
     key: p.id,
     name: p.name,
     logoUrl: p.logo ? urls[p.logo.fileId] ?? null : null,
+    cardImageUrl: p.cardImage ? urls[p.cardImage.fileId] ?? null : null,
     imageUrl: p.image ? urls[p.image.fileId] ?? null : null,
     description: p.description,
     tag: p.tag,
@@ -269,21 +270,11 @@ export function HomePromosDesk({ tree }: { tree: "ops" | "admin" }) {
   );
 }
 
+/** The row's logo, drawn as the client app draws it: whole, on a white disc. */
 function PromoLogo({ promo }: { promo: HomePromo }) {
   const urls = useFileUrls([promo.logo]);
-  const url = promo.logo ? urls[promo.logo.fileId] : null;
-  return (
-    <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-pill border border-outline bg-surface-high">
-      {url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt="" className="size-full object-contain p-0.5" />
-      ) : (
-        <span className="text-caption text-text-muted" style={{ fontFamily: "var(--font-bold)" }}>
-          {promo.name.charAt(0).toUpperCase()}
-        </span>
-      )}
-    </span>
-  );
+  const url = promo.logo ? urls[promo.logo.fileId] ?? null : null;
+  return <Logo url={url} name={promo.name} size={40} />;
 }
 
 function Metric({ icon: Icon, value, label }: { icon: typeof Eye; value: number; label: string }) {

@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import { readHomePromo } from "@/lib/api/home-promos";
-import { draftFromHomePromo, nextBoundary, patchFromDraft, statsRangeError, statusAt, withStatusAt } from "@/lib/home-promos";
+import {
+  coverCrop,
+  draftFromHomePromo,
+  nextBoundary,
+  patchFromDraft,
+  pictureFitNote,
+  statsRangeError,
+  statusAt,
+  withStatusAt,
+} from "@/lib/home-promos";
 import {
   draftStatus,
   emptyHomePromoDraft,
@@ -276,5 +285,86 @@ describe("statsRangeError", () => {
     expect(statsRangeError({ from: "2025-11-10", to: "2026-11-10" })).toBeNull();
     expect(statsRangeError({ from: "2025-11-09", to: "2026-11-10" })).toBe("Pick 366 days or fewer.");
     expect(statsRangeError({ from: "2026-11-11", to: "2026-11-10" })).toBe("From must be on or before To.");
+  });
+});
+
+describe("Card image (gridgo-client#425)", () => {
+  const withCard = () =>
+    readHomePromo(
+      rawHomePromo({
+        cardImage: {
+          fileId: "file_card",
+          contentType: "image/jpeg",
+          downloadUrl: "https://files.example/card.jpg",
+          expiresAt: "2026-11-10T00:05:00.000Z",
+        },
+        image: { fileId: "file_cover", contentType: "image/png", downloadUrl: "https://files.example/cover.png" },
+      }),
+    );
+
+  it("reads the card image beside the cover, and null from an API without it", () => {
+    const promo = withCard();
+    expect(promo.cardImage).toEqual({
+      fileId: "file_card",
+      url: "https://files.example/card.jpg",
+      expiresAt: "2026-11-10T00:05:00.000Z",
+    });
+    expect(promo.image?.fileId).toBe("file_cover");
+    expect(readHomePromo(rawHomePromo()).cardImage).toBeNull();
+    expect(draftFromHomePromo(promo).cardImage?.fileId).toBe("file_card");
+  });
+
+  it("sends a new promo's card image, and leaves the field out when there is none", () => {
+    expect(inputFromHomePromoDraft(filled({ cardImage: { fileId: "file_card", url: null } }))).toMatchObject({
+      cardImage: { fileId: "file_card" },
+      image: null,
+    });
+    expect(inputFromHomePromoDraft(filled())).not.toHaveProperty("cardImage");
+  });
+
+  it("patches a new, replaced or cleared card image by file id only", () => {
+    const origin = draftFromHomePromo(withCard());
+    expect(patchFromDraft(origin, { ...origin, cardImage: { fileId: "file_card", url: "blob:x" } })).toEqual({});
+    expect(patchFromDraft(origin, { ...origin, cardImage: { fileId: "file_card2", url: "blob:x" } })).toEqual({
+      cardImage: { fileId: "file_card2" },
+    });
+    expect(patchFromDraft(origin, { ...origin, cardImage: null })).toEqual({ cardImage: null });
+    expect(patchFromDraft(origin, { ...origin, image: null })).toEqual({ image: null });
+  });
+});
+
+describe("pictureFitNote", () => {
+  it("is quiet for the recommended sizes and anything near them", () => {
+    expect(pictureFitNote("logo", { width: 512, height: 512 })).toBeNull();
+    expect(pictureFitNote("logo", { width: 1024, height: 900 })).toBeNull();
+    expect(pictureFitNote("cardImage", { width: 1200, height: 900 })).toBeNull();
+    expect(pictureFitNote("cardImage", { width: 1600, height: 1000 })).toBeNull();
+    expect(pictureFitNote("image", { width: 1920, height: 1080 })).toBeNull();
+  });
+
+  it("warns when a picture is much smaller than recommended", () => {
+    expect(pictureFitNote("logo", { width: 200, height: 200 })).toMatch(/200 × 200 px, much smaller than 512 × 512/);
+    expect(pictureFitNote("image", { width: 640, height: 360 })).toMatch(/much smaller than 1600 × 900/);
+  });
+
+  it("says what a very different shape means in each slot", () => {
+    expect(pictureFitNote("logo", { width: 1200, height: 400 })).toMatch(/wide, not square.*above and below/);
+    expect(pictureFitNote("cardImage", { width: 1800, height: 600 })).toMatch(/wider than 4:3, so the card trims its sides/);
+    expect(pictureFitNote("cardImage", { width: 900, height: 1600 })).toMatch(/taller than 4:3.*top and bottom/);
+    expect(pictureFitNote("image", { width: 1080, height: 1080 })).toMatch(/taller than 16:9.*bands at the sides/);
+  });
+
+  it("names both when a picture is small and an odd shape", () => {
+    const note = pictureFitNote("cardImage", { width: 300, height: 600 });
+    expect(note).toMatch(/much smaller/);
+    expect(note).toMatch(/taller than 4:3/);
+  });
+});
+
+describe("coverCrop", () => {
+  it("keeps the middle of a wide picture and the middle of a tall one", () => {
+    expect(coverCrop({ width: 400, height: 100 }, 2)).toEqual({ left: 0.25, top: 0, width: 0.5, height: 1 });
+    expect(coverCrop({ width: 100, height: 400 }, 1)).toEqual({ left: 0, top: 0.375, width: 1, height: 0.25 });
+    expect(coverCrop({ width: 200, height: 100 }, 2)).toEqual({ left: 0, top: 0, width: 1, height: 1 });
   });
 });
