@@ -260,6 +260,17 @@ describe("notificationHref", () => {
     expect(notificationHref("rider", row)).toBeNull();
   });
 
+  it("opens early access sign-ups and grants in that role's tree", () => {
+    const signup = note({ type: "ops_early_access_signup" });
+    expect(notificationHref("ops_admin", signup)).toBe("/ops/early-access");
+    expect(notificationHref("super_admin", signup)).toBe("/admin/early-access");
+    expect(notificationHref("supplier", signup)).toBeNull();
+    const granted = note({ type: "ops_early_access_granted" });
+    expect(notificationHref("ops_admin", granted)).toBe("/ops/early-access?status=granted");
+    expect(notificationHref("super_admin", granted)).toBe("/admin/early-access?status=granted");
+    expect(notificationHref("client", granted)).toBeNull();
+  });
+
   it("opens a party support message on that role's chat desk", () => {
     const row = note({ type: "ops_support_message" });
     expect(notificationHref("ops_admin", row)).toBe("/ops/chat");
