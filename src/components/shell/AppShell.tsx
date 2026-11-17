@@ -8,6 +8,7 @@ import {
   TestTubes,
   TicketPercent,
   UserRoundMinus,
+  UserRoundPlus,
 } from "lucide-react";
 
 import {
@@ -255,6 +256,7 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   "home-promos": GalleryHorizontalEnd,
   "founding-testers": Award,
   "play-testers": CalendarCheck,
+  "early-access": UserRoundPlus,
   legal: BookText,
   acceptances: Signature,
   privacy: UserLock,

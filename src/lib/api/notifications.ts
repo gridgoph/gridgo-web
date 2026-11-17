@@ -26,6 +26,7 @@ const RESOURCES = new Set<InvalidateResource>([
   "location",
   "credits",
   "issue-reports",
+  "early-access",
   "account-deletion-requests",
   "chat",
 ]);

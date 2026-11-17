@@ -36,6 +36,7 @@ import {
 } from "@/lib/api/client";
 import { claimBlocksPayout } from "@/lib/api/constraints";
 import { normalizeProductTypeRequests, normalizeReviewPage } from "@/lib/listing-review";
+import { listEarlyAccess } from "@/lib/api/early-access";
 import { listSupportChatThreads } from "@/lib/api/support-chat";
 import type { InvalidateResource, Order } from "@/lib/api/types";
 import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
@@ -244,6 +245,11 @@ const NAV_COUNT_SOURCES: Record<Exclude<NavCountKey, OrderCountKey>, CountSource
     resources: [],
     refreshOnNavigate: true,
     load: async () => needsDecisionCount((await getTracker()).items),
+  },
+  // One row is enough: the counts come with every page.
+  "early-access-waiting": {
+    resources: ["early-access"],
+    load: async () => (await listEarlyAccess({ status: "pending", limit: 1 })).counts.pending,
   },
 };
 

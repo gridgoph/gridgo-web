@@ -29,6 +29,16 @@ export function notificationHref(role: Role, notification: Notification): string
       return "/supplier/jobs";
   }
 
+  // Early access sign-ups and grants (EARLY_ACCESS_API.md) name no person:
+  // a new sign-up is waiting work, a grant is history. Ahead of the account
+  // sign-up rule, which matches any type containing "signup".
+  if (type === "ops_early_access_signup" || type === "ops_early_access_granted") {
+    const filter = type === "ops_early_access_granted" ? "?status=granted" : "";
+    if (role === "super_admin") return `/admin/early-access${filter}`;
+    if (role === "ops_admin") return `/ops/early-access${filter}`;
+    return null;
+  }
+
   if (
     (type === "listing_suspended" || type === "listing_restored") &&
     role === "supplier"
@@ -78,7 +88,7 @@ export function notificationHref(role: Role, notification: Notification): string
       : `/${tree}/quotes`;
   }
 
-    // Someone saved the client Home row; staff land on the setting.
+  // Someone saved the client Home row; staff land on the setting.
   if (type === "featured_prints_updated") {
     if (role === "super_admin") return "/admin/featured-prints";
     if (role === "ops_admin") return "/ops/featured-prints";

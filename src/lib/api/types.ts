@@ -2087,6 +2087,7 @@ export type InvalidateResource =
   | "credits"
   | "account-deletion-requests"
   | "issue-reports"
+  | "early-access"
   | "chat";
 
 export type InvalidatePing = {

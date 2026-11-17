@@ -74,6 +74,7 @@ export type NavIconKey =
   | "home-promos"
   | "founding-testers"
   | "play-testers"
+  | "early-access"
   | "legal"
   | "acceptances"
   | "privacy"
@@ -139,7 +140,8 @@ export type NavCountKey =
   | "colour-price-checks-waiting"
   | "privacy-requests-open"
   | "finished-work-waiting"
-  | "quotes-waiting";
+  | "quotes-waiting"
+  | "early-access-waiting";
 
 /**
  * One rail section. A missing `label` is a top-level cluster (Overview / Jobs)
@@ -640,6 +642,17 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
         },
+        {
+          // The website's Android waitlist (gridgo-api docs/EARLY_ACCESS_API.md).
+          id: "ops-early-access",
+          href: "/ops/early-access",
+          label: "Early access",
+          title: "Early access",
+          icon: "early-access",
+          ready: true,
+          placeholderBody: "",
+          count: "early-access-waiting",
+        },
       ],
     },
     {
@@ -1020,6 +1033,17 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "play-testers",
           ready: true,
           placeholderBody: "",
+        },
+        {
+          // The website's Android waitlist (gridgo-api docs/EARLY_ACCESS_API.md).
+          id: "admin-early-access",
+          href: "/admin/early-access",
+          label: "Early access",
+          title: "Early access",
+          icon: "early-access",
+          ready: true,
+          placeholderBody: "",
+          count: "early-access-waiting",
         },
         {
           id: "admin-shop-hours",
