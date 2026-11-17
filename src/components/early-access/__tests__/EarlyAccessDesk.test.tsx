@@ -43,7 +43,8 @@ vi.mock("@/lib/live/useLiveReload", () => ({
     live.reload = load;
   },
 }));
-vi.mock("@/components/ui/toast", () => ({ toast: { add: vi.fn() } }));
+const toasts = vi.hoisted(() => ({ add: vi.fn() }));
+vi.mock("@/components/ui/toast", () => ({ toast: toasts }));
 
 import { EarlyAccessDesk } from "@/components/early-access/EarlyAccessDesk";
 
@@ -80,6 +81,7 @@ beforeEach(() => {
   api.listEarlyAccess.mockReset();
   api.grantEarlyAccess.mockReset();
   live.reload = null;
+  toasts.add.mockReset();
 });
 afterEach(cleanup);
 
@@ -129,7 +131,7 @@ describe("EarlyAccessDesk", () => {
     expect(screen.getAllByText("Direct").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Android").length).toBeGreaterThan(0);
     expect(
-      screen.getAllByText(/Nov 17, 2026, 7:00\sPM on the support desk/).length,
+      screen.getAllByText(/Nov 17, 2026, 7:00\sPM by GRIDGO staff/).length,
     ).toBeGreaterThan(0);
     // A granted sign-up has nothing to grant.
     expect(screen.getAllByRole("button", { name: "Grant access" })).toHaveLength(2); // desktop row + mobile card
@@ -275,5 +277,130 @@ describe("EarlyAccessDesk", () => {
     expect(await screen.findByText("Could not load sign-ups")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     await screen.findAllByText("tester1@example.com");
+  });
+});
+
+describe("EarlyAccessDesk review fixes", () => {
+  it("holds a grant until an in-flight Show more lands, so its counts stay right (R1)", async () => {
+    let releaseMore: (value: EarlyAccessPage) => void = () => {};
+    api.listEarlyAccess
+      .mockResolvedValueOnce(page(firstPage, 52))
+      .mockImplementationOnce(() => new Promise((resolve) => (releaseMore = resolve)));
+    api.grantEarlyAccess.mockResolvedValue(
+      signup(1, {
+        status: "granted",
+        grantedAt: "2026-11-17T11:00:00.000Z",
+        grantedBy: "staff-1",
+      }),
+    );
+    render(<EarlyAccessDesk />);
+    await screen.findAllByText("tester1@example.com");
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Grant access" })[0]);
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Grant access" }));
+    // The page read before the grant has not landed, so the grant waits.
+    await act(async () => {});
+    expect(api.grantEarlyAccess).not.toHaveBeenCalled();
+
+    // The server answered that page before the grant: 52 waiting, 0 granted.
+    await act(async () => releaseMore(page(secondPage, 52)));
+    await waitFor(() => expect(api.grantEarlyAccess).toHaveBeenCalledWith(signup(1).id));
+    await waitFor(() =>
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument(),
+    );
+
+    expect(screen.getByRole("button", { name: "Waiting, 51" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Granted, 1" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Showing 51 of 51, plus 1 granted just now"),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
+  });
+
+  it("keeps a filter chosen while a typed search is still waiting to run (R2)", async () => {
+    api.listEarlyAccess.mockResolvedValue(page([signup(1)], 1));
+    render(<EarlyAccessDesk />);
+    await screen.findAllByText("tester1@example.com");
+    fireEvent.change(
+      screen.getByRole("searchbox", { name: "Search sign-ups by email" }),
+      {
+        target: { value: "tester5" },
+      },
+    );
+    // Before the search's pause runs out.
+    fireEvent.click(screen.getByRole("button", { name: "Granted, 0" }));
+    expect(nav.replace).toHaveBeenLastCalledWith("/ops/early-access?status=granted", {
+      scroll: false,
+    });
+    await waitFor(() =>
+      expect(nav.replace).toHaveBeenLastCalledWith(
+        "/ops/early-access?status=granted&q=tester5",
+        { scroll: false },
+      ),
+    );
+  });
+
+  it("shows a failed Refresh list with Retry and keeps the rows (R4)", async () => {
+    let releaseRefresh: (value: EarlyAccessPage) => void = () => {};
+    api.listEarlyAccess
+      .mockResolvedValueOnce(page([signup(1)], 1))
+      .mockResolvedValueOnce(page([signup(2)], 2, { pending: 2, granted: 0 }))
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockImplementationOnce(() => new Promise((resolve) => (releaseRefresh = resolve)));
+    render(<EarlyAccessDesk />);
+    await screen.findAllByText("tester1@example.com");
+    await act(async () => {
+      await live.reload?.();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Refresh list" }));
+
+    const alert = await screen.findByText(/The list was not refreshed/);
+    expect(alert.closest("[role=alert]")).not.toBeNull();
+    expect(screen.getAllByText("tester1@example.com").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    // In progress: the control says so and cannot be pressed twice.
+    expect(
+      await screen.findAllByRole("button", { name: "Refreshing…" }),
+    ).not.toHaveLength(0);
+    for (const button of screen.getAllByRole("button", { name: "Refreshing…" })) {
+      expect(button).toBeDisabled();
+    }
+    await act(async () => releaseRefresh(page([signup(2), signup(1)], 2)));
+    await screen.findAllByText("tester2@example.com");
+    expect(screen.queryByText(/The list was not refreshed/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/since this list loaded/)).not.toBeInTheDocument();
+  });
+
+  it("names a grant someone else made first, without a timing guess (R6)", async () => {
+    api.listEarlyAccess.mockResolvedValue(page([signup(1)], 1));
+    api.grantEarlyAccess.mockResolvedValue(
+      signup(1, {
+        status: "granted",
+        grantedAt: new Date().toISOString(),
+        grantedBy: "user_0a1b2c3d4e5f",
+      }),
+    );
+    render(<EarlyAccessDesk />);
+    await screen.findAllByText("tester1@example.com");
+    fireEvent.click(screen.getAllByRole("button", { name: "Grant access" })[0]);
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Grant access" }));
+    await waitFor(() => expect(toasts.add).toHaveBeenCalled());
+    const shown = toasts.add.mock.calls[0][0];
+    expect(shown.title).toBe("Already granted");
+    expect(shown.description).toMatch(/once per sign-up/);
+    expect(shown.description).not.toMatch(/emailing|no second email/i);
+    expect(screen.getAllByText(/by GRIDGO staff/).length).toBeGreaterThan(0);
+  });
+
+  it("wraps a long source slug instead of clipping it (R7)", async () => {
+    const slug = `review${"x".repeat(58)}`;
+    api.listEarlyAccess.mockResolvedValue(page([signup(1, { source: slug })], 1));
+    render(<EarlyAccessDesk />);
+    const cells = await screen.findAllByText(slug);
+    for (const cell of cells) expect(cell).toHaveClass("break-all");
   });
 });

@@ -194,8 +194,9 @@ export function platformLabel(platform: string): string {
 }
 
 /**
- * Who granted it. Support desk grants carry a Clerk subject (`user_…`); a
- * GRIDGO staff grant carries the staff member's id.
+ * Who granted it. `grantedBy` is a GRIDGO staff id or the support desk's
+ * Clerk subject, and both can start `user_`, so only "you" is certain; any
+ * other grant reads as GRIDGO staff rather than guessing where it came from.
  */
 export function grantedByLabel(
   grantedBy: string | null,
@@ -203,16 +204,26 @@ export function grantedByLabel(
 ): string | null {
   if (!grantedBy) return null;
   if (myId && grantedBy === myId) return "by you";
-  if (grantedBy.startsWith("user_")) return "on the support desk";
   return "by GRIDGO staff";
 }
 
-/** A grant that came back with an earlier decision was already granted elsewhere. */
-export function wasAlreadyGranted(updated: EarlyAccessSignup, askedAt: number): boolean {
-  if (!updated.grantedAt) return false;
-  const at = Date.parse(updated.grantedAt);
-  // A little slack for the reader's clock running ahead of the server's.
-  return Number.isFinite(at) && at < askedAt - 60_000;
+/**
+ * The toast after a grant. The API answers a repeat with the first decision
+ * and sends the invite once per sign-up, so the copy says exactly that and
+ * never guesses from timing whether this press sent it. Only a grant by
+ * someone else is certain to be an earlier one.
+ */
+export function grantToast(
+  updated: EarlyAccessSignup,
+  myId: string | null | undefined,
+): { title: string; description: string } {
+  const byOther = Boolean(updated.grantedBy && myId && updated.grantedBy !== myId);
+  return {
+    title: byOther ? "Already granted" : "Access granted",
+    description: byOther
+      ? `${updated.email} was already granted ${formatManilaDateTime(updated.grantedAt)}. GRIDGO emails the Google Play invite once per sign-up.`
+      : `${updated.email} has early access. GRIDGO emails the Google Play invite once per sign-up.`,
+  };
 }
 
 export function listLoadError(err: unknown): string {
@@ -225,6 +236,14 @@ export function listLoadError(err: unknown): string {
       return "The list could not be read with these filters. Clear the search and try again.";
   }
   return "The sign-ups could not be loaded. Check your connection and try again.";
+}
+
+/** A refresh that failed while the rows already read stay on screen. */
+export function refreshLoadError(err: unknown): string {
+  if (isApiError(err) && (err.kind === "forbidden" || err.kind === "validation")) {
+    return `The list was not refreshed. ${listLoadError(err)}`;
+  }
+  return "The list was not refreshed. Check your connection and try again.";
 }
 
 export function grantError(err: unknown): string {

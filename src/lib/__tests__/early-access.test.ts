@@ -7,6 +7,7 @@ import {
   applyGrant,
   formatManilaDateTime,
   grantError,
+  grantToast,
   grantedByLabel,
   hasMore,
   listChangeNotice,
@@ -18,7 +19,6 @@ import {
   sourceLabel,
   viewFromSearch,
   viewKey,
-  wasAlreadyGranted,
 } from "@/lib/early-access";
 
 function signup(n: number, over: Partial<EarlyAccessSignup> = {}): EarlyAccessSignup {
@@ -165,19 +165,41 @@ describe("words on screen", () => {
     expect(sourceLabel(null)).toBe("Direct");
     expect(sourceLabel("booth")).toBe("booth");
     expect(grantedByLabel("staff-1", "staff-1")).toBe("by you");
-    expect(grantedByLabel("user_2abc", "staff-1")).toBe("on the support desk");
+    // Staff ids and the support desk's Clerk subjects can both start "user_".
+    expect(grantedByLabel("user_2abc", "staff-1")).toBe("by GRIDGO staff");
+    expect(grantedByLabel("user_0a1b2c3d4e5f", "staff-1")).toBe("by GRIDGO staff");
     expect(grantedByLabel("staff-2", "staff-1")).toBe("by GRIDGO staff");
     expect(grantedByLabel(null, "staff-1")).toBeNull();
   });
 
-  it("knows a grant answered with an earlier decision", () => {
-    const now = Date.parse("2026-11-17T12:00:00.000Z");
-    expect(
-      wasAlreadyGranted(signup(1, { grantedAt: "2026-11-17T09:00:00.000Z" }), now),
-    ).toBe(true);
-    expect(
-      wasAlreadyGranted(signup(1, { grantedAt: "2026-11-17T12:00:01.000Z" }), now),
-    ).toBe(false);
+  it("says the same truthful thing for a fresh grant or a repeat of my own", () => {
+    const mine = grantToast(
+      signup(1, {
+        status: "granted",
+        grantedAt: "2026-11-17T09:00:00.000Z",
+        grantedBy: "staff-1",
+      }),
+      "staff-1",
+    );
+    expect(mine.title).toBe("Access granted");
+    expect(mine.description).toBe(
+      "tester1@example.com has early access. GRIDGO emails the Google Play invite once per sign-up.",
+    );
+    expect(mine.description).not.toMatch(/emailing|no second email/i);
+  });
+
+  it("calls a grant by someone else already granted, whatever its time", () => {
+    // Granted a second before this press: no timing guess decides the copy.
+    const other = grantToast(
+      signup(1, {
+        status: "granted",
+        grantedAt: new Date().toISOString(),
+        grantedBy: "user_0a1b2c3d4e5f",
+      }),
+      "staff-1",
+    );
+    expect(other.title).toBe("Already granted");
+    expect(other.description).toMatch(/was already granted .*once per sign-up\.$/);
   });
 
   it("explains failures by kind, never with the API's message", () => {

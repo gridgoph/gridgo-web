@@ -43,19 +43,20 @@ import {
   countFor,
   formatManilaDateTime,
   grantError,
+  grantToast,
   grantedByLabel,
   hasMore,
   listChangeNotice,
   pagingSummary,
   listFromPage,
   listLoadError,
+  refreshLoadError,
   nextOffset,
   platformLabel,
   searchFromView,
   sourceLabel,
   viewFromSearch,
   viewKey,
-  wasAlreadyGranted,
   type EarlyAccessFilter,
   type EarlyAccessList,
   type EarlyAccessView,
@@ -88,7 +89,13 @@ export function EarlyAccessDesk() {
   const [granting, setGranting] = useState<EarlyAccessSignup | null>(null);
   const [grantBusy, setGrantBusy] = useState(false);
   const [grantErr, setGrantErr] = useState<string | null>(null);
-  const grantAskedAt = useRef(0);
+  const [refreshing, setRefreshing] = useState(false);
+  // A grant waits for a Show more already in flight, so the page's counts
+  // never land on top of the grant's (a modal confirm keeps the reverse
+  // from happening). `grants` counts grants applied here, so a counts check
+  // that started before one is not compared against it.
+  const moreFlight = useRef<Promise<void> | null>(null);
+  const grants = useRef(0);
 
   // Only the latest read for the view on screen may land.
   const generation = useRef(0);
@@ -96,11 +103,18 @@ export function EarlyAccessDesk() {
   activeKey.current = key;
   const listRef = useRef(list);
   listRef.current = list;
+  // The view as last chosen here: a search typed just before a filter click
+  // (or the reverse) builds on it before the URL has caught up.
+  const viewRef = useRef(view);
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
 
   const loadFirst = useCallback(async (forView: EarlyAccessView) => {
     const forKey = viewKey(forView);
     const mine = ++generation.current;
     setLoadError(null);
+    setRefreshing(true);
     try {
       const page = await listEarlyAccess({
         status: apiStatusOf(forView.filter),
@@ -113,7 +127,9 @@ export function EarlyAccessDesk() {
       setMoreError(null);
     } catch (err) {
       if (mine !== generation.current || activeKey.current !== forKey) return;
-      setLoadError(listLoadError(err));
+      setLoadError(listRef.current ? refreshLoadError(err) : listLoadError(err));
+    } finally {
+      if (mine === generation.current) setRefreshing(false);
     }
   }, []);
 
@@ -129,9 +145,16 @@ export function EarlyAccessDesk() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, loadFirst]);
 
-  async function showMore() {
+  function showMore() {
     const current = listRef.current;
-    if (!current || moreBusy || !hasMore(current)) return;
+    if (!current || moreFlight.current || !hasMore(current)) return;
+    const flight = readMore(current).finally(() => {
+      if (moreFlight.current === flight) moreFlight.current = null;
+    });
+    moreFlight.current = flight;
+  }
+
+  async function readMore(current: EarlyAccessList) {
     const forKey = current.key;
     const mine = generation.current;
     setMoreBusy(true);
@@ -139,7 +162,7 @@ export function EarlyAccessDesk() {
     try {
       const page = await listEarlyAccess({
         status: apiStatusOf(current.filter),
-        q: view.q,
+        q: viewRef.current.q,
         limit: EARLY_ACCESS_PAGE_SIZE,
         offset: nextOffset(current),
       });
@@ -162,19 +185,23 @@ export function EarlyAccessDesk() {
     const current = listRef.current;
     if (!current) return;
     const forKey = current.key;
+    const grantsBefore = grants.current;
     try {
-      const page = await listEarlyAccess({ q: view.q, limit: 1 });
+      const page = await listEarlyAccess({ q: viewRef.current.q, limit: 1 });
       const latest = listRef.current;
       if (!latest || latest.key !== forKey || activeKey.current !== forKey) return;
+      // A grant landed meanwhile; its own stream ping checks again.
+      if (grants.current !== grantsBefore) return;
       setChangeNotice(listChangeNotice(latest.counts, page.counts));
     } catch {
       /* The list on screen stays; the next change or Refresh tries again. */
     }
-  }, [view.q]);
+  }, []);
   useLiveReload("early-access", checkForChanges);
 
   const setView = useCallback(
     (next: EarlyAccessView) => {
+      viewRef.current = next;
       router.replace(`${pathname}${searchFromView(next)}`, { scroll: false });
     },
     [router, pathname],
@@ -187,21 +214,16 @@ export function EarlyAccessDesk() {
     setGrantBusy(true);
     setGrantErr(null);
     try {
+      if (moreFlight.current) await moreFlight.current;
       const updated = await grantEarlyAccess(row.id);
       if (activeKey.current === forKey) {
+        grants.current += 1;
         setList((latest) =>
           latest && latest.key === forKey ? applyGrant(latest, updated) : latest,
         );
       }
       setGranting(null);
-      const already = wasAlreadyGranted(updated, grantAskedAt.current);
-      toast.add({
-        type: "success",
-        title: already ? "Already granted" : "Access granted",
-        description: already
-          ? `${updated.email} was granted ${formatManilaDateTime(updated.grantedAt)}. No second email was sent.`
-          : `GRIDGO is emailing ${updated.email} the Google Play invite.`,
-      });
+      toast.add({ type: "success", ...grantToast(updated, myId) });
     } catch (err) {
       setGrantErr(grantError(err));
     } finally {
@@ -234,7 +256,7 @@ export function EarlyAccessDesk() {
           row.status === "granted" ? (
             <div className="flex flex-col items-start gap-1">
               <StatusChip tone="success" icon="circle-check" label="Granted" />
-              <span className="text-caption text-text-muted whitespace-nowrap">
+              <span className="text-caption text-text-secondary whitespace-nowrap">
                 {formatManilaDateTime(row.grantedAt)}
                 {grantedByLabel(row.grantedBy, myId)
                   ? ` ${grantedByLabel(row.grantedBy, myId)}`
@@ -260,7 +282,9 @@ export function EarlyAccessDesk() {
         cell: (row) => (
           <span
             className={
-              row.source ? "text-body text-text-primary" : "text-body text-text-muted"
+              row.source
+                ? "text-body text-text-primary block max-w-56 whitespace-normal break-all"
+                : "text-body text-text-secondary"
             }
           >
             {sourceLabel(row.source)}
@@ -297,13 +321,13 @@ export function EarlyAccessDesk() {
         <StatusFilter
           filter={view.filter}
           counts={counts}
-          onChange={(filter) => setView({ ...view, filter })}
+          onChange={(filter) => setView({ ...viewRef.current, filter })}
         />
-        <SearchBox q={view.q} onSearch={(q) => setView({ ...view, q })} />
+        <SearchBox q={view.q} onSearch={(q) => setView({ ...viewRef.current, q })} />
       </div>
 
       {searching && counts ? (
-        <p className="text-caption text-text-muted m-0" role="status">
+        <p className="text-caption text-text-secondary m-0" role="status">
           Counts and rows match &ldquo;{view.q.trim()}&rdquo;.
         </p>
       ) : null}
@@ -314,8 +338,29 @@ export function EarlyAccessDesk() {
           role="status"
         >
           <span className="text-body text-text-primary">{changeNotice}</span>
-          <Button variant="outline" onClick={() => void loadFirst(view)}>
-            Refresh list
+          <Button
+            variant="outline"
+            disabled={refreshing}
+            onClick={() => void loadFirst(viewRef.current)}
+          >
+            {refreshing ? "Refreshing…" : "Refresh list"}
+          </Button>
+        </div>
+      ) : null}
+
+      {loadError && list ? (
+        // A failed refresh keeps the rows already read and says so.
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-error bg-surface px-4 py-2"
+          role="alert"
+        >
+          <span className="text-body text-text-primary">{loadError}</span>
+          <Button
+            variant="outline"
+            disabled={refreshing}
+            onClick={() => void loadFirst(viewRef.current)}
+          >
+            {refreshing ? "Refreshing…" : "Retry"}
           </Button>
         </div>
       ) : null}
@@ -337,14 +382,18 @@ export function EarlyAccessDesk() {
           rowActionsDensity="labeled"
           // The API pages; every row read stays on one page here.
           pageSize={100_000}
-          empty={<EmptyFor view={view} onClear={() => setView({ ...view, q: "" })} />}
+          empty={
+            <EmptyFor
+              view={view}
+              onClear={() => setView({ ...viewRef.current, q: "" })}
+            />
+          }
           rowActions={(row) =>
             row.status === "pending" ? (
               <DataTableRowAction
                 label="Grant access"
                 icon={UserRoundCheck}
                 onClick={() => {
-                  grantAskedAt.current = Date.now();
                   setGrantErr(null);
                   setGranting(row);
                 }}
@@ -356,11 +405,14 @@ export function EarlyAccessDesk() {
 
       {list && rows.length > 0 ? (
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-caption text-text-muted tabular-nums" aria-live="polite">
+          <span
+            className="text-caption text-text-secondary tabular-nums"
+            aria-live="polite"
+          >
             {pagingSummary(list)}
           </span>
           {hasMore(list) ? (
-            <Button variant="outline" disabled={moreBusy} onClick={() => void showMore()}>
+            <Button variant="outline" disabled={moreBusy} onClick={showMore}>
               {moreBusy ? "Loading…" : "Show more"}
             </Button>
           ) : null}
@@ -379,7 +431,7 @@ export function EarlyAccessDesk() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Grant early access?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogDescription className="text-text-secondary">
               Check that this Google account is in the client app&rsquo;s Play closed
               test. Granting emails the Play invite now and cannot be undone.
             </AlertDialogDescription>
@@ -445,7 +497,7 @@ function StatusFilter({
             aria-label={count === null ? choice.label : `${choice.label}, ${count}`}
           >
             <span>{choice.label}</span>
-            <span className="text-text-muted tabular-nums" aria-hidden>
+            <span className="text-text-secondary tabular-nums" aria-hidden>
               {count === null ? "–" : count}
             </span>
           </ToggleGroupItem>
