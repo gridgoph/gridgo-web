@@ -261,7 +261,7 @@ function DataTableColumnHeader<T>({
   title: string;
 }) {
   if (!column.getCanSort()) {
-    return <span className="text-caption text-text-muted">{title}</span>;
+    return <span className="text-caption text-text-secondary">{title}</span>;
   }
 
   const sorted = column.getIsSorted();
@@ -271,7 +271,7 @@ function DataTableColumnHeader<T>({
       variant="ghost"
       size="sm"
       className={cn(
-        "-ml-3 gap-1 px-2 text-caption text-text-muted hover:text-foreground",
+        "-ml-3 gap-1 px-2 text-caption text-text-secondary hover:text-foreground",
         sorted && "text-text-primary",
       )}
       onClick={() => column.toggleSorting(sorted === "asc")}
@@ -734,7 +734,7 @@ export function DataTable<T>({
                     // rather than squeezing the title to a few letters.
                     <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0 flex-1 basis-40">
-                        <p className="text-caption text-text-muted m-0">
+                        <p className="text-caption text-text-secondary m-0">
                           {
                             (primaryCell.column.columnDef.meta as ColumnMeta<T>)
                               .gridgo.header
@@ -762,7 +762,7 @@ export function DataTable<T>({
                         key={cell.id}
                         className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3"
                       >
-                        <dt className="text-caption text-text-muted shrink-0">
+                        <dt className="text-caption text-text-secondary shrink-0">
                           {(cell.column.columnDef.meta as ColumnMeta<T>).gridgo.header}
                         </dt>
                         <dd className="text-body text-text-primary m-0 min-w-0 sm:text-right">
@@ -790,7 +790,7 @@ export function DataTable<T>({
                     return (
                       <TableHead
                         key={header.id}
-                        className={cn("text-caption text-text-muted", meta.gridgo.className)}
+                        className={cn("text-caption text-text-secondary", meta.gridgo.className)}
                         aria-sort={
                           !header.column.getCanSort()
                             ? undefined
@@ -809,7 +809,7 @@ export function DataTable<T>({
                     );
                   })}
                   {rowActions ? (
-                    <TableHead className="text-caption text-text-muted bg-surface border-outline-subtle sticky right-0 border-l text-center">
+                    <TableHead className="text-caption text-text-secondary bg-surface border-outline-subtle sticky right-0 border-l text-center">
                       Actions
                     </TableHead>
                   ) : null}

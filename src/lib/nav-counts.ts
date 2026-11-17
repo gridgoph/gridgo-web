@@ -77,6 +77,11 @@ export const NAV_COUNT_MEANING: Record<NavCountKey, CountMeaning> = {
     phrase: (count) => `${compactCount(count)} open`,
     attention: false,
   },
+  // No order waits on a tester sign-up: monochrome.
+  "early-access-waiting": {
+    phrase: (count) => `${compactCount(count)} waiting`,
+    attention: false,
+  },
   "tracker-needs-decision": {
     phrase: (count) => `${compactCount(count)} ${count === 1 ? "needs" : "need"} a decision`,
     attention: false,
