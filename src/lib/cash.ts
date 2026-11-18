@@ -135,6 +135,15 @@ export type CashRemedyCase = {
  * receiving QR; above PHP 1,000 of GRIDGO funding the decision waits for
  * Super Admin in the problem report.
  */
+/** Whether a remedy's stage still allows the step a dialog was opened for. */
+export function remedyStepOpen(
+  remedy: CashRemedyCase,
+  step: "reserve" | "pay" | "reconcile",
+): boolean {
+  if (step === "reserve") return remedy.stage === "ready";
+  return remedy.stage === "reserved" || remedy.stage === "unknown";
+}
+
 export function remedyCases(orders: Order[], issues: Issue[]): CashRemedyCase[] {
   const byId = new Map(orders.map((order) => [order.id, order]));
   const cases: CashRemedyCase[] = [];
@@ -206,13 +215,25 @@ export type RiderWalletRow = {
  * each `held:<order>` belongs to the rider who reserved it, and
  * `pending_topup:<rider>` carries submitted top-ups as a credit.
  */
-export function walletsFromLedger(recon: CashReconciliation): RiderWalletRow[] {
+/** Which rider each held order balance belongs to, from its reservation journal. */
+function holdersOf(recon: CashReconciliation): Map<string, string> {
   const holder = new Map<string, string>();
   for (const journal of recon.journals) {
     if (journal.kind === "wallet_reserved" && journal.order_id && journal.rider_id) {
       holder.set(journal.order_id, journal.rider_id);
     }
   }
+  return holder;
+}
+
+/**
+ * Rider wallets from the ledger. Pass only the WHOLE reconciliation (no rider
+ * or order filter): the API narrows journals by the filter but not every
+ * account, so a filtered read drops reservations and pending top-ups and the
+ * figures would no longer be the wallet's.
+ */
+export function walletsFromLedger(recon: CashReconciliation): RiderWalletRow[] {
+  const holder = holdersOf(recon);
   const rows = new Map<string, RiderWalletRow>();
   const row = (riderId: string) => {
     let current = rows.get(riderId);
@@ -258,6 +279,19 @@ export function walletsFromLedger(recon: CashReconciliation): RiderWalletRow[] {
     .sort(
       (a, b) => a.availableMinor - b.availableMinor || a.riderId.localeCompare(b.riderId),
     );
+}
+
+/**
+ * Money held for an order whose reservation names no rider. It cannot be put in
+ * any wallet, so the desk says so instead of leaving it out of every total.
+ */
+export function unattributedHeldMinor(recon: CashReconciliation): number {
+  const holder = holdersOf(recon);
+  return recon.accounts.reduce((total, account) => {
+    const [kind, owner] = splitAccount(account.id);
+    if (kind !== "held" || !owner || holder.has(owner)) return total;
+    return total + amount(account.balanceMinor);
+  }, 0);
 }
 
 function splitAccount(id: string): [string, string | null] {

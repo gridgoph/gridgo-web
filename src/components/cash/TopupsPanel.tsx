@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, X } from "lucide-react";
 
 import type { DeskContext, DeskData } from "@/components/cash/CashDesk";
@@ -206,6 +206,8 @@ function TopupDecisionDialog({
   const [reason, setReason] = useState("");
   const [found, setFound] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Set synchronously: a second click in the same turn sends nothing.
+  const inFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const open = decision !== null;
 
@@ -228,7 +230,8 @@ function TopupDecisionDialog({
   const ready = reason.trim().length > 0 && (!confirming || found);
 
   async function submit() {
-    if (!ready || busy) return;
+    if (!ready || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     const body = { reason: reason.trim() };
@@ -255,6 +258,7 @@ function TopupDecisionDialog({
       );
       if (cashErrorNeedsReload(err)) void ctx.reload();
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }

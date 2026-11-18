@@ -29,6 +29,7 @@ import {
   journalLabel,
   reconciliationProblems,
   sortJournals,
+  unattributedHeldMinor,
   walletsFromLedger,
   type RiderWalletRow,
 } from "@/lib/cash";
@@ -54,25 +55,36 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
   const riderId = search.get("rider");
   const orderId = search.get("order");
 
+  // The whole ledger: wallet figures and the reconciliation card always come
+  // from here, so narrowing the movements never changes what a wallet holds.
   const [recon, setRecon] = useState<CashReconciliation | null>(null);
+  // The rider/order filter's own read: its movements and checks only.
+  const [scoped, setScoped] = useState<CashReconciliation | null>(null);
   const [error, setError] = useState<string | null>(null);
   const generation = useRef(0);
+  const filtered = Boolean(riderId || orderId);
 
   const load = useCallback(async () => {
     const mine = ++generation.current;
     setError(null);
     try {
-      const next = await getCashReconciliation({ riderId, orderId });
-      if (mine === generation.current) setRecon(next);
+      const [whole, narrow] = await Promise.all([
+        getCashReconciliation({}),
+        filtered ? getCashReconciliation({ riderId, orderId }) : Promise.resolve(null),
+      ]);
+      if (mine === generation.current) {
+        setRecon(whole);
+        setScoped(narrow);
+      }
     } catch (err) {
       if (mine === generation.current) {
         setError(opsErrorMessage(err, "Could not read the cash ledger. Try again."));
       }
     }
-  }, [riderId, orderId]);
+  }, [riderId, orderId, filtered]);
 
   useEffect(() => {
-    setRecon(null);
+    setScoped(null);
     void load();
   }, [load]);
   // The desk reloads its lists on every change; read the ledger again then.
@@ -95,8 +107,16 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
     () => new Map<string, Order>(data.orders.map((o) => [o.id, o])),
     [data.orders],
   );
-  const wallets = useMemo(() => (recon ? walletsFromLedger(recon) : []), [recon]);
-  const journals = useMemo(() => (recon ? sortJournals(recon.journals) : []), [recon]);
+  const wallets = useMemo(() => {
+    const all = recon ? walletsFromLedger(recon) : [];
+    return riderId ? all.filter((wallet) => wallet.riderId === riderId) : all;
+  }, [recon, riderId]);
+  const unattributed = useMemo(() => (recon ? unattributedHeldMinor(recon) : 0), [recon]);
+  const movements = filtered ? scoped : recon;
+  const journals = useMemo(
+    () => (movements ? sortJournals(movements.journals) : []),
+    [movements],
+  );
 
   const walletColumns = useMemo<DataTableColumn<RiderWalletRow>[]>(
     () => [
@@ -284,7 +304,6 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
 
   const problems = reconciliationProblems(recon);
   const failedOrders = recon.orderChecks.filter((check) => !check.ok);
-  const filtered = Boolean(riderId || orderId);
 
   return (
     <div className="flex flex-col gap-6">
@@ -352,6 +371,12 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
             not match the held balance.
           </p>
         ) : null}
+        {unattributed ? (
+          <p className="text-body text-error m-0" role="alert">
+            {formatPhp(unattributed)} is held for orders whose reservation names no rider,
+            so it is in no wallet below.
+          </p>
+        ) : null}
       </section>
 
       {filtered ? (
@@ -359,8 +384,26 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
           <span className="text-body text-text-primary">
             Showing {riderId ? `${ctx.riderName(riderId)}'s movements` : null}
             {riderId && orderId ? " on " : null}
-            {orderId ? `order ${orderId}` : null}. The checks above cover only these.
+            {orderId ? `order ${orderId}` : null}. Wallet figures and the checks above
+            still cover the whole ledger.
           </span>
+          {scoped ? (
+            scoped.ok ? (
+              <StatusChip
+                tone="success"
+                icon="circle-check"
+                label="These movements reconcile"
+              />
+            ) : (
+              <StatusChip
+                tone="error"
+                icon="circle-x"
+                label={`${reconciliationProblems(scoped)} ${reconciliationProblems(scoped) === 1 ? "problem" : "problems"} in these movements`}
+              />
+            )
+          ) : (
+            <StatusChip tone="neutral" icon="clock" label="Reading these movements" />
+          )}
           <Button
             variant="outline"
             onClick={() => {
@@ -420,6 +463,7 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
         <DataTable
           columns={journalColumns}
           data={journals}
+          loading={filtered && !scoped}
           getRowId={(row) => row.id}
           caption="Cash ledger movements"
           itemLabel="movements"

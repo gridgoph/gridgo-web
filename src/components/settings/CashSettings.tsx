@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import {
@@ -67,6 +67,8 @@ export function CashSettings({
   const [draft, setDraft] = useState<CashDraft | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
+  // Set synchronously: a second click in the same turn saves nothing.
+  const inFlight = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -113,7 +115,8 @@ export function CashSettings({
   }
 
   async function save() {
-    if (!changes) return;
+    if (!changes || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     setOk(null);
@@ -152,6 +155,7 @@ export function CashSettings({
         setError(opsErrorMessage(err, "Could not save cash settings. Try again."));
       }
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }

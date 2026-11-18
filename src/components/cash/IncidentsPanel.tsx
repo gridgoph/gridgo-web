@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import type { DeskContext, DeskData } from "@/components/cash/CashDesk";
@@ -21,8 +21,8 @@ import {
   type DataTableColumn,
 } from "@/components/ui/data-table";
 import { StatusChip } from "@/components/ui/StatusChip";
+import { toast } from "@/components/ui/toast";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import type { CashIncident } from "@/lib/api/cash";
 import type { Order } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import {
@@ -35,7 +35,7 @@ import {
   remedyCases,
   repaymentWaiting,
   shopFailurePath,
-  type CashRemedyCase,
+  remedyStepOpen,
   type RemedyStage,
   type ShopFailurePath,
 } from "@/lib/cash";
@@ -186,25 +186,85 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
   const remedies = remedyCases(data.orders, data.issues ?? []);
   const openRemedies = remedies.filter((c) => c.stage !== "paid");
 
-  const [noShow, setNoShow] = useState<{
-    order: Order;
+  // An open dialog remembers WHAT it is about (ids), never a copy of the data:
+  // after a reload it reads the latest order, claim or remedy, so a version
+  // or amount someone else changed reaches the dialog instead of being resent.
+  const [noShowPick, setNoShow] = useState<{
+    orderId: string;
     action: "approve" | "reject";
   } | null>(null);
-  const [transfer, setTransfer] = useState<{
-    order: Order;
+  const [transferPick, setTransfer] = useState<{
+    orderId: string;
     kind: "repayment" | "redelivery";
     action: "confirm" | "reject";
   } | null>(null);
-  const [failure, setFailure] = useState<{ order: Order; path: ShopFailurePath } | null>(
-    null,
-  );
-  const [claim, setClaim] = useState<{ order: Order; incident: CashIncident } | null>(
-    null,
-  );
-  const [remedy, setRemedy] = useState<{
-    remedy: CashRemedyCase;
-    step: RemedyStep;
+  const [failurePick, setFailure] = useState<{
+    orderId: string;
+    path: ShopFailurePath;
   } | null>(null);
+  const [claimPick, setClaim] = useState<{ orderId: string; incidentId: string } | null>(
+    null,
+  );
+  const [remedyPick, setRemedy] = useState<{ issueId: string; step: RemedyStep } | null>(
+    null,
+  );
+
+  const noShowOrder = noShowPick ? byId.get(noShowPick.orderId) : undefined;
+  const noShow =
+    noShowPick && noShowOrder && noShowWaiting(noShowOrder)
+      ? { ...noShowPick, order: noShowOrder }
+      : null;
+  const transferOrder = transferPick ? byId.get(transferPick.orderId) : undefined;
+  const transfer =
+    transferPick &&
+    transferOrder &&
+    (transferPick.kind === "repayment" ? repaymentWaiting : redeliveryWaiting)(
+      transferOrder,
+    )
+      ? { ...transferPick, order: transferOrder }
+      : null;
+  const failureOrder = failurePick ? byId.get(failurePick.orderId) : undefined;
+  const failure =
+    failurePick && failureOrder && shopFailurePath(failureOrder) === failurePick.path
+      ? { ...failurePick, order: failureOrder }
+      : null;
+  const claimOrder = claimPick ? byId.get(claimPick.orderId) : undefined;
+  const claimIncident = claimPick
+    ? data.incidents.find((incident) => incident.id === claimPick.incidentId)
+    : undefined;
+  const claim =
+    claimPick && claimOrder && claimIncident?.status === "outstanding"
+      ? { order: claimOrder, incident: claimIncident }
+      : null;
+  const remedyCase = remedyPick
+    ? remedies.find((c) => c.issue.id === remedyPick.issueId)
+    : undefined;
+  const remedy =
+    remedyPick && remedyCase && remedyStepOpen(remedyCase, remedyPick.step)
+      ? { remedy: remedyCase, step: remedyPick.step }
+      : null;
+
+  // Someone else finished it (or it moved to another path) while the dialog was
+  // open: close it and say so, rather than act on what is no longer waiting.
+  const gone =
+    (noShowPick && !noShow) ||
+    (transferPick && !transfer) ||
+    (failurePick && !failure) ||
+    (claimPick && !claim) ||
+    (remedyPick && !remedy);
+  useEffect(() => {
+    if (!gone) return;
+    setNoShow(null);
+    setTransfer(null);
+    setFailure(null);
+    setClaim(null);
+    setRemedy(null);
+    toast.add({
+      type: "info",
+      title: "This changed while it was open",
+      description: "It is no longer waiting for this decision. Check the latest below.",
+    });
+  }, [gone]);
 
   const failureColumns = useMemo<
     DataTableColumn<{ order: Order; path: ShopFailurePath }>[]
@@ -307,13 +367,13 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
               />
               <Button
                 variant="outline"
-                onClick={() => setNoShow({ order, action: "approve" })}
+                onClick={() => setNoShow({ orderId: order.id, action: "approve" })}
               >
                 Approve no-show
               </Button>
               <Button
                 variant="outline"
-                onClick={() => setNoShow({ order, action: "reject" })}
+                onClick={() => setNoShow({ orderId: order.id, action: "reject" })}
               >
                 Reject report
               </Button>
@@ -360,13 +420,15 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
               ) : null}
               <Button
                 variant="outline"
-                onClick={() => setTransfer({ order, kind, action: "confirm" })}
+                onClick={() =>
+                  setTransfer({ orderId: order.id, kind, action: "confirm" })
+                }
               >
                 Confirm payment
               </Button>
               <Button
                 variant="outline"
-                onClick={() => setTransfer({ order, kind, action: "reject" })}
+                onClick={() => setTransfer({ orderId: order.id, kind, action: "reject" })}
               >
                 Reject payment
               </Button>
@@ -462,7 +524,9 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
                   {incident.status === "outstanding" ? (
                     <Button
                       variant="outline"
-                      onClick={() => setClaim({ order, incident })}
+                      onClick={() =>
+                        setClaim({ orderId: order.id, incidentId: incident.id })
+                      }
                     >
                       Record cash return
                     </Button>
@@ -506,7 +570,7 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
             <DataTableRowAction
               label="Shop cannot produce"
               icon={OctagonX}
-              onClick={() => setFailure(row)}
+              onClick={() => setFailure({ orderId: row.order.id, path: row.path })}
             />
           )}
         />
@@ -580,7 +644,7 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
               {c.stage === "ready" ? (
                 <Button
                   variant="outline"
-                  onClick={() => setRemedy({ remedy: c, step: "reserve" })}
+                  onClick={() => setRemedy({ issueId: c.issue.id, step: "reserve" })}
                 >
                   Reserve transfer
                 </Button>
@@ -589,13 +653,13 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
                 <>
                   <Button
                     variant="outline"
-                    onClick={() => setRemedy({ remedy: c, step: "pay" })}
+                    onClick={() => setRemedy({ issueId: c.issue.id, step: "pay" })}
                   >
                     Record transfer
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => setRemedy({ remedy: c, step: "reconcile" })}
+                    onClick={() => setRemedy({ issueId: c.issue.id, step: "reconcile" })}
                   >
                     Transfer did not go through
                   </Button>

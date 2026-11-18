@@ -6,7 +6,7 @@
  * or record a transfer, and none can be undone from the portal.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { DeskContext } from "@/components/cash/CashDesk";
 import {
@@ -34,6 +34,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -109,6 +110,16 @@ function CashActionDialog({
   const { keyFor, reset } = useCommandKeys();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set synchronously, so a second click in the same turn (before React has
+  // re-rendered the disabled button) never sends a second request.
+  const inFlight = useRef(false);
+  // The cash version the operator has looked at. The order prop is always the
+  // desk's latest read; when someone else moves the order on, the figures in
+  // the dialog change and submitting waits until the operator says they
+  // checked them.
+  const version = order.cash?.version ?? 1;
+  const [reviewed, setReviewed] = useState(version);
+  const changed = version !== reviewed;
 
   useEffect(() => {
     if (!open) return;
@@ -117,12 +128,13 @@ function CashActionDialog({
   }, [open, reset]);
 
   async function submit() {
-    if (!ready || busy) return;
+    if (!ready || changed || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
       await onSubmit(async (action, rest) => {
-        const body = { expectedVersion: order.cash?.version ?? 1, ...rest };
+        const body = { expectedVersion: version, ...rest };
         await cashOrderAction(
           order.id,
           action,
@@ -137,6 +149,7 @@ function CashActionDialog({
       setError(cashErrorMessage(err, failure));
       if (cashErrorNeedsReload(err)) void ctx.reload();
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -149,14 +162,35 @@ function CashActionDialog({
           <AlertDialogDescription>{description}</AlertDialogDescription>
         </AlertDialogHeader>
         {children(busy)}
-        <ErrorLine error={error} />
+        {changed ? (
+          <div
+            role="alert"
+            className="flex flex-col items-start gap-2 rounded-xl border border-warning p-3"
+          >
+            <p className="text-body text-text-primary m-0">
+              Someone else changed this cash order while it was open. The figures above
+              are now the latest; check the amount before you submit.
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setReviewed(version);
+                setError(null);
+              }}
+            >
+              I&rsquo;ve checked the new figures
+            </Button>
+          </div>
+        ) : (
+          <ErrorLine error={error} />
+        )}
         <AlertDialogFooter>
           <AlertDialogCancel variant="secondary" disabled={busy}>
             Cancel
           </AlertDialogCancel>
           <AlertDialogAction
             variant={variant}
-            disabled={busy || !ready}
+            disabled={busy || !ready || changed}
             onClick={() => void submit()}
           >
             {busy ? busyLabel : submitLabel}

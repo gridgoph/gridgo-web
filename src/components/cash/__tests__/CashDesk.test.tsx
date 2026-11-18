@@ -270,3 +270,226 @@ describe("CashDesk incidents", () => {
     });
   });
 });
+
+describe("CashDesk wallets and ledger", () => {
+  // Two accepted cash orders each hold ₱22.30 and a ₱500 top-up waits. The
+  // fake answers filters the way the API does: an order filter narrows the
+  // journals but not the accounts, and a rider filter drops the accounts that
+  // carry no rider (the pending top-up, GRIDGO's bank).
+  const journals = [
+    { id: "j1", kind: "wallet_reserved", rider_id: "rider-1", order_id: "o1" },
+    { id: "j2", kind: "wallet_reserved", rider_id: "rider-1", order_id: "o2" },
+    { id: "j3", kind: "topup_pending", rider_id: "rider-1", order_id: null },
+  ].map((j) => ({
+    ...j,
+    created_at: "2026-11-18T02:00:00.000Z",
+    evidence: { amountMinor: j.kind === "topup_pending" ? 50_000 : 2_230 },
+    difference: "0",
+  }));
+  const accounts = [
+    { id: "wallet:rider-1", balanceMinor: 177_320, derivedMinor: 177_320, rider: true },
+    { id: "held:o1", balanceMinor: 2_230, derivedMinor: 2_230, rider: true },
+    { id: "held:o2", balanceMinor: 2_230, derivedMinor: 2_230, rider: true },
+    { id: "pending_topup:rider-1", balanceMinor: -50_000, derivedMinor: -50_000, rider: false },
+    { id: "gridgo_bank", balanceMinor: 120_000, derivedMinor: 120_000, rider: false },
+  ];
+  const fakeReconciliation = ({
+    orderId,
+    riderId,
+  }: { orderId?: string | null; riderId?: string | null } = {}) => ({
+    ok: true,
+    orderChecks: [],
+    journalChecks: [],
+    invalidReservations: [],
+    journals: journals.filter(
+      (j) => (!orderId || j.order_id === orderId) && (!riderId || j.rider_id === riderId),
+    ),
+    accounts: accounts
+      .filter((a) => !riderId || a.rider)
+      .map(({ id, balanceMinor, derivedMinor }) => ({ id, balanceMinor, derivedMinor })),
+  });
+
+  it.each(["", "order=o1", "rider=rider-1"])(
+    "keeps the wallet's own figures whatever the movement filter (%s)",
+    async (filter) => {
+      nav.params = new URLSearchParams(`tab=ledger&${filter}`);
+      cash.getCashReconciliation.mockImplementation(async (q) => fakeReconciliation(q));
+      render(<CashDesk />);
+      const table = await screen.findByRole("table", { name: "Rider wallets" });
+      const row = await within(table).findByRole("row", { name: /Rider One/ });
+      await waitFor(() => expect(row).toHaveTextContent("₱1,773.20"));
+      expect(row).toHaveTextContent("₱44.60");
+      expect(row).toHaveTextContent("₱1,817.80");
+      expect(row).toHaveTextContent("₱500.00");
+      expect(row).not.toHaveTextContent("None");
+      // GRIDGO's bank is never narrowed away either.
+      expect(screen.getByText("₱1,200.00")).toBeInTheDocument();
+      if (filter) {
+        // The narrowed read still drives the movements.
+        expect(cash.getCashReconciliation).toHaveBeenCalledWith(
+          expect.objectContaining(
+            filter.startsWith("order") ? { orderId: "o1" } : { riderId: "rider-1" },
+          ),
+        );
+        expect(
+          await screen.findByText("These movements reconcile"),
+        ).toBeInTheDocument();
+      }
+    },
+  );
+
+  it("says so when held money names no rider instead of dropping it", async () => {
+    nav.params = new URLSearchParams("tab=ledger");
+    cash.getCashReconciliation.mockImplementation(async () => {
+      const recon = fakeReconciliation();
+      return { ...recon, journals: recon.journals.filter((j) => j.id !== "j2") };
+    });
+    render(<CashDesk />);
+    expect(
+      await screen.findByText(/₱22\.30 is held for orders whose reservation names no rider/),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("CashDesk stale and repeated submissions", () => {
+  const claimOrder = (version: number) =>
+    ({
+      ...noShowOrder,
+      id: "order-claim",
+      state: "picked_up",
+      cash: { method: "cash", version, status: "work_stopped" },
+      cashProgress: {
+        shopPaidAt: "t",
+        incident: {
+          id: "inc-1",
+          amountMinor: 1_000,
+          resolvedMinor: 0,
+          remainingMinor: 1_000,
+          status: "outstanding",
+        },
+      },
+    }) as unknown as Order;
+  const incident = (resolvedMinor: number, status = "outstanding") => ({
+    id: "inc-1",
+    orderId: "order-claim",
+    shopId: "shop-1",
+    riderId: "rider-1",
+    amountMinor: 1_000,
+    resolvedMinor,
+    remainingMinor: 1_000 - resolvedMinor,
+    status,
+    incidentVersion: 1,
+    createdAt: "2026-11-18T01:00:00.000Z",
+    reason: "Press broke",
+    evidenceFileId: "file-inc",
+  });
+
+  async function openClaimReturn() {
+    render(<CashDesk />);
+    fireEvent.click(await screen.findByRole("button", { name: "Record cash return" }));
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.change(within(dialog).getByLabelText("Rider's return receipt file ID"), {
+      target: { value: "file-receipt" },
+    });
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    return dialog;
+  }
+
+  it("never resends the old version after another return lands; the operator reviews the new amount", async () => {
+    nav.params = new URLSearchParams("tab=incidents");
+    client.listOrders.mockResolvedValue([claimOrder(3)]);
+    cash.listCashIncidents.mockResolvedValue([incident(0)]);
+    const { ApiError } = await import("@/lib/api/client");
+    // Meanwhile another operator records ₱2: the server is at version 4, ₱8 owed.
+    cash.cashOrderAction.mockImplementationOnce(async () => {
+      client.listOrders.mockResolvedValue([claimOrder(4)]);
+      cash.listCashIncidents.mockResolvedValue([incident(200)]);
+      throw new ApiError(409, { error: "cash_stale" });
+    });
+    const dialog = await openClaimReturn();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record ₱10.00" }));
+
+    // The dialog now shows the latest figures and holds the submit for review.
+    const notice = await within(dialog).findByText(/Someone else changed this cash order/);
+    expect(notice).toBeInTheDocument();
+    expect(within(dialog).getByTestId("money-plate")).toHaveTextContent("₱8.00");
+    expect(within(dialog).getByRole("button", { name: "Record ₱10.00" })).toBeDisabled();
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "I’ve checked the new figures" }),
+    );
+    // ₱10 is more than is still owed, so the old amount cannot go either.
+    expect(within(dialog).getByRole("button", { name: "Record ₱10.00" })).toBeDisabled();
+    fireEvent.change(within(dialog).getByLabelText("Amount returned (₱)"), {
+      target: { value: "8" },
+    });
+    cash.cashOrderAction.mockResolvedValue({ cash: { version: 5, status: "cancelled" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record ₱8.00" }));
+    await waitFor(() => expect(cash.cashOrderAction).toHaveBeenCalledTimes(2));
+    const [first, second] = cash.cashOrderAction.mock.calls;
+    expect(first[2]).toMatchObject({ expectedVersion: 3, amountMinor: 1_000 });
+    expect(second[2]).toMatchObject({ expectedVersion: 4, amountMinor: 800 });
+    // A different request gets a different idempotency key.
+    expect(second[3]).not.toBe(first[3]);
+  });
+
+  it("closes a dialog whose claim someone else settled, and says so", async () => {
+    nav.params = new URLSearchParams("tab=incidents");
+    client.listOrders.mockResolvedValue([claimOrder(3)]);
+    cash.listCashIncidents.mockResolvedValue([incident(0)]);
+    const { ApiError } = await import("@/lib/api/client");
+    cash.cashOrderAction.mockImplementationOnce(async () => {
+      cash.listCashIncidents.mockResolvedValue([incident(1_000, "resolved")]);
+      throw new ApiError(409, { error: "cash_stale" });
+    });
+    const dialog = await openClaimReturn();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Record ₱10.00" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(toasts.add).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "This changed while it was open" }),
+    );
+    expect(cash.cashOrderAction).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends one request for two clicks in the same turn", async () => {
+    let finish: (value: unknown) => void = () => undefined;
+    cash.confirmCashTopup.mockImplementation(
+      () => new Promise((resolve) => (finish = resolve)),
+    );
+    render(<CashDesk />);
+    await screen.findAllByText("GG1234");
+    fireEvent.click(screen.getAllByRole("button", { name: "Confirm" })[0]);
+    const dialog = await screen.findByRole("alertdialog");
+    fireEvent.change(within(dialog).getByLabelText("Bank check note"), {
+      target: { value: "Matched in bank" },
+    });
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    const submit = within(dialog).getByRole("button", { name: "Confirm ₱500.00" });
+    // Both clicks land before React re-renders the disabled button.
+    React.act(() => {
+      submit.click();
+      submit.click();
+    });
+    finish({ topup: { id: waiting.id, status: "confirmed" } });
+    await waitFor(() => expect(toasts.add).toHaveBeenCalledTimes(1));
+    expect(cash.confirmCashTopup).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends one cash order action for two clicks in the same turn", async () => {
+    nav.params = new URLSearchParams("tab=incidents");
+    client.listOrders.mockResolvedValue([claimOrder(3)]);
+    cash.listCashIncidents.mockResolvedValue([incident(0)]);
+    let finish: (value: unknown) => void = () => undefined;
+    cash.cashOrderAction.mockImplementation(
+      () => new Promise((resolve) => (finish = resolve)),
+    );
+    const dialog = await openClaimReturn();
+    const submit = within(dialog).getByRole("button", { name: "Record ₱10.00" });
+    React.act(() => {
+      submit.click();
+      submit.click();
+    });
+    finish({ cash: { version: 4, status: "cancelled" } });
+    await waitFor(() => expect(toasts.add).toHaveBeenCalledTimes(1));
+    expect(cash.cashOrderAction).toHaveBeenCalledTimes(1);
+  });
+});
