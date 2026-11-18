@@ -271,6 +271,16 @@ describe("notificationHref", () => {
     expect(notificationHref("client", granted)).toBeNull();
   });
 
+  it("opens cash on delivery notices on the cash desk in that role's tree", () => {
+    const topup = note({ type: "cash_topup_pending" });
+    expect(notificationHref("ops_admin", topup)).toBe("/ops/cash");
+    expect(notificationHref("super_admin", topup)).toBe("/admin/cash");
+    const noShow = note({ type: "cash_no_show_report", orderId: "order-1" });
+    expect(notificationHref("ops_admin", noShow)).toBe("/ops/cash?tab=incidents");
+    expect(notificationHref("super_admin", noShow)).toBe("/admin/cash?tab=incidents");
+    expect(notificationHref("supplier", noShow)).not.toContain("/cash");
+  });
+
   it("opens a party support message on that role's chat desk", () => {
     const row = note({ type: "ops_support_message" });
     expect(notificationHref("ops_admin", row)).toBe("/ops/chat");

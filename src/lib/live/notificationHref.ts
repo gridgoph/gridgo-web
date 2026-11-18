@@ -39,6 +39,13 @@ export function notificationHref(role: Role, notification: Notification): string
     return null;
   }
 
+  // Cash on delivery (CASH_ON_DELIVERY_API.md). Top-up notices name no
+  // order; every other cash notice opens the incidents the desk decides.
+  if (type.startsWith("cash_") && (role === "super_admin" || role === "ops_admin")) {
+    const tree = role === "super_admin" ? "/admin" : "/ops";
+    return type.startsWith("cash_topup_") ? `${tree}/cash` : `${tree}/cash?tab=incidents`;
+  }
+
   if (
     (type === "listing_suspended" || type === "listing_restored") &&
     role === "supplier"

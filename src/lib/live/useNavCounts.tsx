@@ -36,7 +36,9 @@ import {
 } from "@/lib/api/client";
 import { claimBlocksPayout } from "@/lib/api/constraints";
 import { normalizeProductTypeRequests, normalizeReviewPage } from "@/lib/listing-review";
+import { listCashTopups } from "@/lib/api/cash";
 import { listEarlyAccess } from "@/lib/api/early-access";
+import { waitingTopups } from "@/lib/cash";
 import { listSupportChatThreads } from "@/lib/api/support-chat";
 import type { InvalidateResource, Order } from "@/lib/api/types";
 import { useLegalInboxReload } from "@/lib/live/useLegalInboxReload";
@@ -250,6 +252,11 @@ const NAV_COUNT_SOURCES: Record<Exclude<NavCountKey, OrderCountKey>, CountSource
   "early-access-waiting": {
     resources: ["early-access"],
     load: async () => (await listEarlyAccess({ status: "pending", limit: 1 })).counts.pending,
+  },
+  // Top-up notices carry no order, so the inbox ping is the signal.
+  "cash-topups-waiting": {
+    resources: ["notifications"],
+    load: async () => waitingTopups(await listCashTopups()),
   },
 };
 
