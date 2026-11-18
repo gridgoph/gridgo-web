@@ -198,35 +198,3 @@ export function ErrorLine({ error }: { error: string | null }) {
     </p>
   ) : null;
 }
-
-/** A labelled id the person types because no screen lists it (see the PR note). */
-export function FileIdField({
-  id,
-  label,
-  value,
-  onChange,
-  disabled,
-  description,
-}: {
-  id: string;
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  disabled?: boolean;
-  description: string;
-}) {
-  return (
-    <Field>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Input
-        id={id}
-        value={value}
-        disabled={disabled}
-        autoComplete="off"
-        spellCheck={false}
-        onChange={(event) => onChange(event.target.value)}
-      />
-      <FieldDescription>{description}</FieldDescription>
-    </Field>
-  );
-}

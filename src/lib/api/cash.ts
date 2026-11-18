@@ -102,6 +102,35 @@ export async function listCashIncidents(
   return result.incidents ?? [];
 }
 
+/**
+ * One file the staff evidence picker offers for a cash order
+ * (`GET /ops/cash/orders/:id/evidence`, gridgo-api#401): evidence already
+ * bound to the order (`used`), plus the related rider's unused shop-return and
+ * incident photos. `previewUrl` is a short-lived signed image link: keep it in
+ * memory only and read the list again once `expiresAt` passes.
+ */
+export type CashEvidenceFile = {
+  fileId: string;
+  purpose: string;
+  /** The owner's current role, or null. */
+  ownerRole: string | null;
+  uploadedAt: string;
+  used: boolean;
+  previewUrl: string | null;
+  expiresAt: string | null;
+  /** The record exists but its picture cannot be shown. */
+  unavailable?: boolean;
+  error?: "storage_object_missing" | "storage_object_mismatch" | "minio_unavailable";
+};
+
+/** Operations and Super Admin only; newest first. */
+export async function listCashEvidence(orderId: string): Promise<CashEvidenceFile[]> {
+  const result = await apiRequest<{ files: CashEvidenceFile[] }>(
+    `/ops/cash/orders/${encodeURIComponent(orderId)}/evidence`,
+  );
+  return result.files ?? [];
+}
+
 /** The whole ledger, or one order's or one rider's movements. */
 export async function getCashReconciliation(
   filters: { orderId?: string | null; riderId?: string | null } = {},

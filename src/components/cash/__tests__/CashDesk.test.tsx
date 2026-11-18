@@ -35,6 +35,7 @@ const cash = vi.hoisted(() => ({
   rejectCashTopup: vi.fn(),
   cashOrderAction: vi.fn(),
   uploadCashEvidence: vi.fn(),
+  listCashEvidence: vi.fn(),
 }));
 const client = vi.hoisted(() => ({
   listOrders: vi.fn(),
@@ -111,6 +112,17 @@ const noShowOrder = {
   },
 } as unknown as Order;
 
+// The rider's photo of the shop's cash return, as the staff picker lists it.
+const returnPhoto = {
+  fileId: "file-receipt",
+  purpose: "cash_shop_return",
+  ownerRole: "rider",
+  uploadedAt: "2026-11-18T04:00:00.000Z",
+  used: false,
+  previewUrl: "https://storage.example.invalid/signed/file-receipt",
+  expiresAt: "2099-01-01T00:00:00.000Z",
+};
+
 beforeEach(() => {
   nav.params = new URLSearchParams();
   nav.path = "/ops/cash";
@@ -119,6 +131,7 @@ beforeEach(() => {
   });
   for (const fn of [...Object.values(cash), ...Object.values(client)]) fn.mockReset();
   toasts.add.mockReset();
+  cash.listCashEvidence.mockResolvedValue([returnPhoto]);
   cash.listCashTopups.mockResolvedValue([decided, waiting]);
   cash.listCashIncidents.mockResolvedValue([]);
   client.listOrders.mockResolvedValue([
@@ -388,9 +401,9 @@ describe("CashDesk stale and repeated submissions", () => {
     render(<CashDesk />);
     fireEvent.click(await screen.findByRole("button", { name: "Record cash return" }));
     const dialog = await screen.findByRole("alertdialog");
-    fireEvent.change(within(dialog).getByLabelText("Rider's return receipt file ID"), {
-      target: { value: "file-receipt" },
-    });
+    fireEvent.click(
+      await within(dialog).findByRole("radio", { name: /Rider One's photo uploaded/ }),
+    );
     fireEvent.click(within(dialog).getByRole("checkbox"));
     return dialog;
   }
@@ -491,5 +504,155 @@ describe("CashDesk stale and repeated submissions", () => {
     finish({ cash: { version: 4, status: "cancelled" } });
     await waitFor(() => expect(toasts.add).toHaveBeenCalledTimes(1));
     expect(cash.cashOrderAction).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("CashDesk rider evidence picker", () => {
+  const claimOrder = {
+    ...noShowOrder,
+    id: "order-claim",
+    state: "picked_up",
+    cash: { method: "cash", version: 3, status: "work_stopped" },
+    cashProgress: {
+      shopPaidAt: "t",
+      incident: {
+        id: "inc-1",
+        amountMinor: 1_000,
+        resolvedMinor: 0,
+        remainingMinor: 1_000,
+        status: "outstanding",
+      },
+    },
+  } as unknown as Order;
+  const claimIncident = {
+    id: "inc-1",
+    orderId: "order-claim",
+    shopId: "shop-1",
+    riderId: "rider-1",
+    amountMinor: 1_000,
+    resolvedMinor: 0,
+    remainingMinor: 1_000,
+    status: "outstanding",
+    incidentVersion: 1,
+    createdAt: "2026-11-18T01:00:00.000Z",
+    reason: "Press broke",
+    evidenceFileId: "file-inc",
+  };
+  beforeEach(() => {
+    nav.params = new URLSearchParams("tab=incidents");
+    client.listOrders.mockResolvedValue([claimOrder]);
+    cash.listCashIncidents.mockResolvedValue([claimIncident]);
+  });
+  const openReturn = async () => {
+    render(<CashDesk />);
+    fireEvent.click(await screen.findByRole("button", { name: "Record cash return" }));
+    return screen.findByRole("alertdialog");
+  };
+
+  it("offers only the rider's unused photos of the shop's return, with previews, and sends the one picked", async () => {
+    cash.listCashEvidence.mockResolvedValue([
+      returnPhoto,
+      { ...returnPhoto, fileId: "file-used", used: true },
+      { ...returnPhoto, fileId: "file-incident", purpose: "cash_incident_photo" },
+      {
+        ...returnPhoto,
+        fileId: "file-missing",
+        previewUrl: null,
+        expiresAt: null,
+        unavailable: true,
+        error: "storage_object_missing",
+      },
+    ]);
+    cash.cashOrderAction.mockResolvedValue({ cash: { version: 4, status: "cancelled" } });
+    const dialog = await openReturn();
+    await within(dialog).findAllByTestId("evidence-option");
+    expect(cash.listCashEvidence).toHaveBeenCalledWith("order-claim");
+    const options = within(dialog).getAllByTestId("evidence-option");
+    expect(options).toHaveLength(2);
+    expect(within(options[0]).getByRole("img")).toHaveAttribute(
+      "src",
+      returnPhoto.previewUrl,
+    );
+    // A picture missing from storage is listed, explained and cannot be picked.
+    expect(within(options[1]).getByRole("radio")).toHaveAttribute("aria-disabled", "true");
+    expect(within(options[1]).getByText(/missing from storage/)).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText(/file ID/)).not.toBeInTheDocument();
+
+    const submit = within(dialog).getByRole("button", { name: "Record ₱10.00" });
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    expect(submit).toBeDisabled();
+    fireEvent.click(within(options[0]).getByRole("radio"));
+    expect(submit).toBeEnabled();
+    fireEvent.click(submit);
+    await waitFor(() => expect(cash.cashOrderAction).toHaveBeenCalledTimes(1));
+    expect(cash.cashOrderAction.mock.calls[0][2]).toMatchObject({
+      expectedVersion: 3,
+      receiptFileId: "file-receipt",
+      amountMinor: 1_000,
+    });
+  });
+
+  it("says when the rider has not uploaded yet and finds the photo on Check again", async () => {
+    cash.listCashEvidence.mockResolvedValueOnce([]).mockResolvedValue([returnPhoto]);
+    const dialog = await openReturn();
+    expect(
+      await within(dialog).findByText(/No photo from Rider One yet/),
+    ).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Check again" }));
+    expect(
+      await within(dialog).findByRole("radio", { name: /Rider One's photo uploaded/ }),
+    ).toBeInTheDocument();
+  });
+
+  it("reads the list again before the signed previews expire, and drops a pick that is gone", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const soon = new Date(Date.now() + 40_000).toISOString();
+      cash.listCashEvidence
+        .mockResolvedValueOnce([{ ...returnPhoto, expiresAt: soon }])
+        .mockResolvedValue([]);
+      const dialog = await openReturn();
+      fireEvent.click(
+        await within(dialog).findByRole("radio", { name: /Rider One's photo uploaded/ }),
+      );
+      fireEvent.click(within(dialog).getByRole("checkbox"));
+      expect(within(dialog).getByRole("button", { name: "Record ₱10.00" })).toBeEnabled();
+      await React.act(async () => {
+        await vi.advanceTimersByTimeAsync(11_000);
+      });
+      await waitFor(() => expect(cash.listCashEvidence).toHaveBeenCalledTimes(2));
+      expect(await within(dialog).findByText(/No photo from Rider One yet/)).toBeInTheDocument();
+      expect(within(dialog).getByRole("button", { name: "Record ₱10.00" })).toBeDisabled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("cancels an assigned unpaid order with the rider's incident photo from the picker", async () => {
+    client.listOrders.mockResolvedValue([
+      { ...noShowOrder, id: "order-unpaid", state: "rider_assigned", cashProgress: {} },
+    ]);
+    cash.listCashIncidents.mockResolvedValue([]);
+    cash.listCashEvidence.mockResolvedValue([
+      { ...returnPhoto, fileId: "file-rider-incident", purpose: "cash_incident_photo" },
+      returnPhoto,
+    ]);
+    cash.cashOrderAction.mockResolvedValue({ cash: { version: 8, status: "cancelled" } });
+    render(<CashDesk />);
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: "Shop cannot produce" }))[0],
+    );
+    const dialog = await screen.findByRole("alertdialog");
+    const options = await within(dialog).findAllByTestId("evidence-option");
+    expect(options).toHaveLength(1);
+    fireEvent.click(within(options[0]).getByRole("radio"));
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel order" }));
+    await waitFor(() => expect(cash.cashOrderAction).toHaveBeenCalledTimes(1));
+    expect(cash.cashOrderAction.mock.calls[0][1]).toBe("cancel-unpaid");
+    expect(cash.cashOrderAction.mock.calls[0][2]).toMatchObject({
+      photoFileId: "file-rider-incident",
+    });
+    expect(cash.uploadCashEvidence).not.toHaveBeenCalled();
   });
 });

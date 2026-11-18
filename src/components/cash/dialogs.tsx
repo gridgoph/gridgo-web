@@ -12,7 +12,6 @@ import type { DeskContext } from "@/components/cash/CashDesk";
 import {
   EvidenceButton,
   ErrorLine,
-  FileIdField,
   MoneyPlate,
   ReasonField,
   type PlateLine,
@@ -34,6 +33,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { EvidencePicker } from "@/components/cash/EvidencePicker";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -491,7 +491,7 @@ export function ShopFailureDialog({
   >("supplier_failure");
   const [reason, setReason] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
-  const [riderPhotoId, setRiderPhotoId] = useState("");
+  const [riderPhotoId, setRiderPhotoId] = useState<string | null>(null);
   const [noCash, setNoCash] = useState(false);
   const upload = useStaffUpload("cash_incident_photo");
   const open = path !== null;
@@ -499,7 +499,7 @@ export function ShopFailureDialog({
     setReasonCode("supplier_failure");
     setReason("");
     setPhoto(null);
-    setRiderPhotoId("");
+    setRiderPhotoId(null);
     setNoCash(false);
   });
   const rider = order.riderId ? ctx.riderName(order.riderId) : null;
@@ -509,7 +509,7 @@ export function ShopFailureDialog({
   // Once a rider holds the order, the API takes the rider's own photo.
   const riderPhoto = cancelling && Boolean(order.riderId);
   const ready = cancelling
-    ? noCash && (riderPhoto ? riderPhotoId.trim().length > 0 : Boolean(photo))
+    ? noCash && (riderPhoto ? Boolean(riderPhotoId) : Boolean(photo))
     : reason.trim().length > 0 && Boolean(photo);
 
   return (
@@ -539,7 +539,7 @@ export function ShopFailureDialog({
       onSubmit={async (run) => {
         if (cancelling) {
           const photoFileId = riderPhoto
-            ? riderPhotoId.trim()
+            ? (riderPhotoId as string)
             : await upload(photo as File);
           await run("cancel-unpaid", {
             reasonCode,
@@ -607,13 +607,16 @@ export function ShopFailureDialog({
               />
             )}
             {riderPhoto ? (
-              <FileIdField
+              <EvidencePicker
                 id="cancel-rider-photo"
-                label="Rider's photo file ID"
+                orderId={order.id}
+                purpose="cash_incident_photo"
+                rider={rider ?? "The rider"}
+                label={`${rider}'s photo of the problem`}
+                description={`A rider holds this order, so the cancellation takes ${rider}'s own incident photo from the rider app.`}
                 value={riderPhotoId}
                 onChange={setRiderPhotoId}
                 disabled={busy}
-                description={`A rider holds this order, so the API takes ${rider}'s own incident photo. Ask the rider for the file ID their app shows after uploading it.`}
               />
             ) : (
               <ScreenshotField
@@ -659,19 +662,19 @@ export function ClaimReturnDialog({
   onClose: () => void;
 }) {
   const [pesos, setPesos] = useState("");
-  const [receiptId, setReceiptId] = useState("");
+  const [receiptId, setReceiptId] = useState<string | null>(null);
   const [inHand, setInHand] = useState(false);
   const open = incident !== null;
   const remaining = incident?.remainingMinor ?? 0;
   useOpenReset(open, () => {
     setPesos(minorToPesosInput(remaining));
-    setReceiptId("");
+    setReceiptId(null);
     setInHand(false);
   });
   const zero = remaining === 0;
   const amount = zero ? 0 : pesosToMinor(pesos);
   const amountOk = zero || (amount !== null && amount > 0 && amount <= remaining);
-  const ready = amountOk && inHand && receiptId.trim().length > 0;
+  const ready = amountOk && inHand && Boolean(receiptId);
   const rider = ctx.riderName(incident?.riderId ?? order.riderId);
   const settles = amount !== null && amount === remaining;
 
@@ -701,7 +704,7 @@ export function ClaimReturnDialog({
           resolutionType: "supplier_cash_return",
           amountMinor: amount ?? 0,
           riderReceiptConfirmed: true,
-          receiptFileId: receiptId.trim(),
+          receiptFileId: receiptId as string,
           ...(zero ? { noTransferRequired: true } : {}),
         });
       }}
@@ -737,13 +740,16 @@ export function ClaimReturnDialog({
                 </FieldDescription>
               </Field>
             )}
-            <FileIdField
+            <EvidencePicker
               id="return-receipt"
-              label="Rider's return receipt file ID"
+              orderId={order.id}
+              purpose="cash_shop_return"
+              rider={rider}
+              label={`${rider}'s photo of the shop's return`}
+              description={`${rider} photographs the cash the shop hands back in the rider app. Pick that photo.`}
               value={receiptId}
               onChange={setReceiptId}
               disabled={busy}
-              description={`The API takes ${rider}'s own photo of the shop's return. Ask the rider for the file ID their app shows after uploading it.`}
             />
             <Confirmation
               id="return-in-hand"
