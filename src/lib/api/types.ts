@@ -1088,6 +1088,107 @@ export type PhysicalInvoiceRequest = {
   promisedDeliveryAt?: string | null;
 };
 
+export type OrderCash = {
+  method: "cash";
+  /** Send back as `expectedVersion` on every cash write. */
+  version: number;
+  status:
+    | "due"
+    | "collected"
+    | "work_stopped"
+    | "online_repayment_required"
+    | "no_show_repaid"
+    | "cancelled"
+    | (string & {});
+  noShowWaitSeconds?: number;
+};
+
+/** The order's cash split, all PHP centavos. */
+export type CashAmounts = {
+  /** What the rider pays the shop at pickup. */
+  shopMinor: number;
+  /** What the rider collects from the client. */
+  collectMinor: number;
+  /** GRIDGO's share, reserved from the rider's wallet at accept. */
+  gridgoMinor: number;
+  /** The rider's earnings. */
+  riderMinor: number;
+  voucherMinor?: number;
+  productionDeductionMinor?: number;
+  gridgoFeeShareMinor?: number;
+};
+
+export type CashOrderIncident = {
+  id: string;
+  orderId?: string;
+  shopId?: string;
+  riderId?: string;
+  amountMinor: number;
+  resolvedMinor: number;
+  remainingMinor: number;
+  status: "outstanding" | "resolved" | (string & {});
+  incidentVersion?: number;
+  createdAt?: string;
+};
+
+/** A client-paid transfer waiting for (or past) Operations' check. */
+export type CashTransferSubmission = {
+  reference: string | null;
+  proofFileId: string | null;
+  submittedAt: string;
+  noTransferRequired?: boolean;
+};
+
+export type CashRemedy = {
+  id: string;
+  decisionId: string;
+  issueId: string;
+  remedyType: "partial_refund" | "full_refund" | "reprint" | "replacement" | (string & {});
+  status: "reserved" | "unknown" | "failed" | "paid" | (string & {});
+  payerId: string;
+  amountMinor: number;
+  advanceMinor: number;
+  heldFeeMinor: number;
+  fault?: string;
+  sourceWallet?: string;
+  provider?: string;
+  reservedAt?: string;
+  paidAt?: string;
+  reference?: string;
+};
+
+/** Operations' view of where a cash order stands (`cashProgress`). */
+export type CashProgress = {
+  version?: number;
+  shopPaidAt?: string;
+  shopReceiptFileId?: string;
+  collectedAt?: string;
+  noShowStartedAt?: string;
+  contactMethod?: "call" | "message" | (string & {});
+  noShowReportedAt?: string;
+  noShowPhotoFileId?: string;
+  noShowReason?: string;
+  noShowApprovedAt?: string;
+  rejectedReports?: { at: string; reason: string; photoFileId?: string }[];
+  repayment?: CashTransferSubmission;
+  repaymentConfirmedAt?: string;
+  rejectedRepayments?: (CashTransferSubmission & { reason: string; at: string })[];
+  redelivery?: {
+    id: string;
+    feeMinor: number;
+    quotedAt?: string;
+    expiresAt?: string;
+    payment?: CashTransferSubmission;
+    paidAt?: string;
+    deliveredAt?: string;
+  };
+  incident?: CashOrderIncident;
+  unpaidCancellation?: { at: string; reasonCode: string };
+  remedyDestination?: { qrFileId: string; accountName: string; revision: number };
+  remedy?: CashRemedy;
+  remedyAttempts?: (CashRemedy & { reason?: string; at?: string })[];
+};
+
 export type Order = {
   id: string;
   /** A test account's simulated order (docs/REVIEW_DATA_API.md in gridgo-api). */
@@ -1114,6 +1215,28 @@ export type Order = {
   removal?: { allowed: boolean; blockedReason: string | null } | null;
   supplierId: string | null;
   riderId: string | null;
+  /** Cash on delivery: present only on a cash order (`CASH_ON_DELIVERY_API.md`). */
+  cash?: OrderCash;
+  /** Operations and the assigned rider only. */
+  cashAmounts?: CashAmounts;
+  /** Operations only: the order's private cash progress. */
+  cashProgress?: CashProgress;
+  /** Operations, the rider and the shop: the shop-cash claim on this order. */
+  cashIncident?: CashOrderIncident | null;
+  /** Operations and the shop. */
+  cashSettlement?: {
+    grossPaidMinor: number;
+    returnedMinor: number;
+    netPaidMinor: number;
+    currentObligationMinor: number;
+  };
+  /** Operations and the client: a paid redelivery after a no-show. */
+  cashRedelivery?: {
+    id: string;
+    feeMinor: number;
+    paidAt: string | null;
+    deliveredAt: string | null;
+  } | null;
   /**
    * The shop at the counter. Operations, Super Admin, the assigned shop, and
    * the rider already receive it (`supplierContactFor`). Absent on a client
@@ -2222,6 +2345,15 @@ export type OrderFeeLike = Pick<
   "serviceFeeSchedule" | "serviceFeeWorking" | "serviceFeeRateBps" | "supplierSubtotalMinor"
 >;
 
+/** Cash on delivery settings. Amounts are PHP centavos. */
+export type CashSettings = {
+  enabled: boolean;
+  /** Cash is offered only when printing plus service fee is strictly below this. */
+  limitMinor: number;
+  /** How long a rider waits for the client before reporting a no-show, 60–7,200. */
+  noShowWaitSeconds: number;
+};
+
 export type PlatformSettings = {
   /**
    * The settings row's version, quoted back as `expectedVersion` on every
@@ -2336,6 +2468,13 @@ export type PlatformSettings = {
   /** Super Admin handover codes gate; issued codes survive disabling it. */
   handoverOtpEnabled?: boolean;
   /**
+   * Cash on delivery (gridgo-api `docs/CASH_ON_DELIVERY_API.md`). Ships off;
+   * only Super Admin changes it. Absent on an API without cash.
+   */
+  cash?: CashSettings;
+  /** Seconds a rider has to answer an exclusive offer, 10–120 (default 30). */
+  riderOfferTimeoutSeconds?: number;
+  /**
    * Finance switch (`gridgo-api/docs/SHOP_RECEIPT_SCAN_API.md`): while on, a
    * shop cannot mark a job ready for rider pickup until its receipt scan is
    * attached. Every reader sees it; only Super Admin writes it, with a reason.
@@ -2427,6 +2566,10 @@ export type UpdateSettingsInput = {
   hubPickupEnabled?: boolean;
   /** Super Admin handover codes gate; issued codes survive disabling it. */
   handoverOtpEnabled?: boolean;
+  /** Super Admin only. A partial object keeps the other cash settings. */
+  cash?: Partial<CashSettings>;
+  /** Whole seconds 10–120. */
+  riderOfferTimeoutSeconds?: number;
   /** Super Admin only, with a `reason` (`400 settings_reason_required`). */
   shopReceiptScanRequired?: boolean;
   /**

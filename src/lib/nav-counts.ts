@@ -82,6 +82,11 @@ export const NAV_COUNT_MEANING: Record<NavCountKey, CountMeaning> = {
     phrase: (count) => `${compactCount(count)} waiting`,
     attention: false,
   },
+  // Rider top-ups waiting for a bank check. No order waits: monochrome.
+  "cash-topups-waiting": {
+    phrase: (count) => `${compactCount(count)} ${count === 1 ? "top-up" : "top-ups"} to check`,
+    attention: false,
+  },
   "tracker-needs-decision": {
     phrase: (count) => `${compactCount(count)} ${count === 1 ? "needs" : "need"} a decision`,
     attention: false,

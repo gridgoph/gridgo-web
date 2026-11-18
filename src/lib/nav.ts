@@ -75,6 +75,7 @@ export type NavIconKey =
   | "founding-testers"
   | "play-testers"
   | "early-access"
+  | "cash"
   | "legal"
   | "acceptances"
   | "privacy"
@@ -141,7 +142,8 @@ export type NavCountKey =
   | "privacy-requests-open"
   | "finished-work-waiting"
   | "quotes-waiting"
-  | "early-access-waiting";
+  | "early-access-waiting"
+  | "cash-topups-waiting";
 
 /**
  * One rail section. A missing `label` is a top-level cluster (Overview / Jobs)
@@ -690,6 +692,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           count: "refunds-waiting",
         },
         {
+          id: "ops-cash",
+          href: "/ops/cash",
+          label: "Cash on delivery",
+          title: "Cash on delivery",
+          icon: "cash",
+          ready: true,
+          placeholderBody: "",
+          count: "cash-topups-waiting",
+        },
+        {
           id: "ops-claims",
           href: "/ops/claims",
           label: "Claims & holds",
@@ -1152,6 +1164,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "refunds-waiting",
+        },
+        {
+          id: "admin-cash",
+          href: "/admin/cash",
+          label: "Cash on delivery",
+          title: "Cash on delivery",
+          icon: "cash",
+          ready: true,
+          placeholderBody: "",
+          count: "cash-topups-waiting",
         },
       ],
     },

@@ -40,6 +40,7 @@ import {
 } from "@/components/settings/RiderDeliveryShare";
 import { CheckoutPayment, checkoutPaymentLabel } from "@/components/settings/CheckoutPayment";
 import { DeliveryZones, DeliveryZonesSkeleton } from "@/components/settings/DeliveryZones";
+import { CashSettings } from "@/components/settings/CashSettings";
 import { HandoverCodeSettings } from "@/components/settings/HandoverCodeSettings";
 import { ShopMoveCover } from "@/components/settings/ShopMoveCover";
 import { QuoteValiditySettings } from "@/components/settings/QuoteValiditySettings";
@@ -817,6 +818,17 @@ export function OperationalSettings() {
         onChange={setCheckoutPercent}
         inForce={settings.downpaymentPercent}
         disabled={busy}
+      />
+
+      <CashSettings
+        settings={settings}
+        canEdit
+        disabled={busy}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={() => load(true)}
       />
 
       <ShopMoveCover

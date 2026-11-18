@@ -160,6 +160,7 @@ export function ScreenshotField({
   file,
   onFile,
   disabled,
+  noun = "screenshot",
 }: {
   id: string;
   label: string;
@@ -167,6 +168,8 @@ export function ScreenshotField({
   file: File | null;
   onFile: (file: File | null) => void;
   disabled?: boolean;
+  /** What the file is, in the remove control's words. */
+  noun?: string;
 }) {
   const [problem, setProblem] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -229,7 +232,7 @@ export function ScreenshotField({
               disabled={disabled}
               onClick={() => onFile(null)}
             >
-              Remove this screenshot
+              Remove this {noun}
             </button>
           </div>
         </div>
