@@ -21,7 +21,10 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { getCashReconciliation } from "@/lib/api/cash";
 import { ApiError, updateSettings } from "@/lib/api/client";
-import type { CashSettings as CashSettingsValue, PlatformSettings } from "@/lib/api/types";
+import type {
+  CashSettings as CashSettingsValue,
+  PlatformSettings,
+} from "@/lib/api/types";
 import {
   CASH_SETTINGS_DEFAULTS,
   cashSettingsChanges,
@@ -51,7 +54,13 @@ const toDraft = (cash: CashSettingsValue, countdown: number): CashDraft => ({
  * Admin only. Its own save with a reason, like every money setting. Turning
  * cash on restates who it reaches and the ledger's reconciliation first.
  */
-export function CashSettings({ settings, canEdit, onSaved, onConflict, disabled }: Props) {
+export function CashSettings({
+  settings,
+  canEdit,
+  onSaved,
+  onConflict,
+  disabled,
+}: Props) {
   const stored = settings.cash;
   const countdown = settings.riderOfferTimeoutSeconds ?? 30;
   const base = toDraft(stored ?? CASH_SETTINGS_DEFAULTS, countdown);
@@ -61,13 +70,18 @@ export function CashSettings({ settings, canEdit, onSaved, onConflict, disabled 
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const [recon, setRecon] = useState<"checking" | "ok" | "problems" | "unknown">("checking");
+  const [recon, setRecon] = useState<"checking" | "ok" | "problems" | "unknown">(
+    "checking",
+  );
 
   const current = draft ?? base;
   const parsed = parseCashDraft(current);
   const problem = cashSettingsDraftError(current);
-  const changes = stored && parsed ? cashSettingsChanges(stored, countdown, parsed) : null;
-  const dirty = Boolean(changes && (Object.keys(changes.cash).length || changes.countdown !== undefined));
+  const changes =
+    stored && parsed ? cashSettingsChanges(stored, countdown, parsed) : null;
+  const dirty = Boolean(
+    changes && (Object.keys(changes.cash).length || changes.countdown !== undefined),
+  );
   const locked = busy || Boolean(disabled);
   const switching = changes?.cash.enabled !== undefined;
 
@@ -108,7 +122,9 @@ export function CashSettings({ settings, canEdit, onSaved, onConflict, disabled 
         expectedVersion: settings.version,
         reason: reason.trim(),
         ...(Object.keys(changes.cash).length ? { cash: changes.cash } : {}),
-        ...(changes.countdown !== undefined ? { riderOfferTimeoutSeconds: changes.countdown } : {}),
+        ...(changes.countdown !== undefined
+          ? { riderOfferTimeoutSeconds: changes.countdown }
+          : {}),
       });
       onSaved(saved);
       setDraft(null);
@@ -158,8 +174,8 @@ export function CashSettings({ settings, canEdit, onSaved, onConflict, disabled 
       </div>
       <p className="text-body text-text-secondary m-0 mt-1 max-w-prose">
         When on, individual clients can pay cash to the rider for a delivered order whose
-        printing and service fee is under the limit. The rider pays the shop at pickup and needs
-        GRIDGO&rsquo;s share in their wallet before a cash offer reaches them.
+        printing and service fee is under the limit. The rider pays the shop at pickup and
+        needs GRIDGO&rsquo;s share in their wallet before a cash offer reaches them.
       </p>
       <p className="text-caption text-text-secondary m-0 mt-2 max-w-prose">
         Turning cash off stops new cash checkouts and new top-ups. Wallets stay readable,
@@ -168,7 +184,8 @@ export function CashSettings({ settings, canEdit, onSaved, onConflict, disabled 
 
       {!stored ? (
         <p className="text-body text-text-secondary m-0 mt-3">
-          Cash settings are not available yet. They appear here once the service is updated.
+          Cash settings are not available yet. They appear here once the service is
+          updated.
         </p>
       ) : (
         <>
@@ -186,7 +203,9 @@ export function CashSettings({ settings, canEdit, onSaved, onConflict, disabled 
               <FieldLabel htmlFor="cash-enabled" className="min-h-11">
                 Accept cash on delivery
               </FieldLabel>
-              <span className="text-caption text-text-secondary">{current.enabled ? "On" : "Off"}</span>
+              <span className="text-caption text-text-secondary">
+                {current.enabled ? "On" : "Off"}
+              </span>
             </Field>
             <FieldDescription id="cash-enabled-help">
               In force right now: {inForce.enabled ? "On" : "Off"}.
@@ -261,7 +280,9 @@ export function CashSettings({ settings, canEdit, onSaved, onConflict, disabled 
                     setError(null);
                   }}
                 />
-                <FieldDescription>Kept with the change in the audit log.</FieldDescription>
+                <FieldDescription>
+                  Kept with the change in the audit log.
+                </FieldDescription>
               </Field>
             ) : null}
           </FieldGroup>
@@ -288,7 +309,9 @@ export function CashSettings({ settings, canEdit, onSaved, onConflict, disabled 
               </Button>
             </div>
           ) : (
-            <p className="text-caption text-text-secondary m-0 mt-3">Only Super Admin changes these.</p>
+            <p className="text-caption text-text-secondary m-0 mt-3">
+              Only Super Admin changes these.
+            </p>
           )}
         </>
       )}
@@ -303,11 +326,16 @@ export function CashSettings({ settings, canEdit, onSaved, onConflict, disabled 
         </p>
       ) : null}
 
-      <AlertDialog open={confirming} onOpenChange={(next) => !next && !busy && setConfirming(false)}>
+      <AlertDialog
+        open={confirming}
+        onOpenChange={(next) => !next && !busy && setConfirming(false)}
+      >
         <AlertDialogContent className="sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {changes?.cash.enabled ? "Turn on cash on delivery?" : "Turn off cash on delivery?"}
+              {changes?.cash.enabled
+                ? "Turn on cash on delivery?"
+                : "Turn off cash on delivery?"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {changes?.cash.enabled
@@ -320,11 +348,23 @@ export function CashSettings({ settings, canEdit, onSaved, onConflict, disabled 
               {recon === "checking" ? (
                 <span className="text-text-secondary">Checking the cash ledger…</span>
               ) : recon === "ok" ? (
-                <StatusChip tone="success" icon="circle-check" label="The cash ledger reconciles" />
+                <StatusChip
+                  tone="success"
+                  icon="circle-check"
+                  label="The cash ledger reconciles"
+                />
               ) : recon === "problems" ? (
-                <StatusChip tone="error" icon="circle-x" label="The cash ledger has problems: check Cash on delivery first" />
+                <StatusChip
+                  tone="error"
+                  icon="circle-x"
+                  label="The cash ledger has problems: check Cash on delivery first"
+                />
               ) : (
-                <StatusChip tone="warning" icon="circle-help" label="Could not check the cash ledger" />
+                <StatusChip
+                  tone="warning"
+                  icon="circle-help"
+                  label="Could not check the cash ledger"
+                />
               )}
             </p>
           ) : null}
@@ -337,7 +377,11 @@ export function CashSettings({ settings, canEdit, onSaved, onConflict, disabled 
               disabled={busy || recon === "checking"}
               onClick={() => void save()}
             >
-              {busy ? "Saving…" : changes?.cash.enabled ? "Turn on cash" : "Turn off cash"}
+              {busy
+                ? "Saving…"
+                : changes?.cash.enabled
+                  ? "Turn on cash"
+                  : "Turn off cash"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

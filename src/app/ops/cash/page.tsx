@@ -9,7 +9,12 @@ export default function OpsCashPage() {
   return (
     <Suspense
       fallback={
-        <SkeletonCards count={3} lines={3} label="Loading cash on delivery" className="gap-3" />
+        <SkeletonCards
+          count={3}
+          lines={3}
+          label="Loading cash on delivery"
+          className="gap-3"
+        />
       }
     >
       <CashDesk />

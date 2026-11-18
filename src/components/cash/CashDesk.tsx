@@ -125,14 +125,22 @@ export function CashDesk() {
     );
   }
   if (!data) {
-    return <SkeletonCards count={3} lines={3} label="Loading cash on delivery" className="gap-3" />;
+    return (
+      <SkeletonCards
+        count={3}
+        lines={3}
+        label="Loading cash on delivery"
+        className="gap-3"
+      />
+    );
   }
 
   const counts: Record<CashTab, number | null> = {
     topups: waitingTopups(data.topups),
     incidents:
-      data.orders.filter((o) => noShowWaiting(o) || repaymentWaiting(o) || redeliveryWaiting(o))
-        .length +
+      data.orders.filter(
+        (o) => noShowWaiting(o) || repaymentWaiting(o) || redeliveryWaiting(o),
+      ).length +
       data.incidents.filter((i) => i.status === "outstanding").length +
       remedyCases(data.orders, data.issues ?? []).filter((c) =>
         ["ready", "reserved", "unknown"].includes(c.stage),
@@ -143,9 +151,9 @@ export function CashDesk() {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-body text-text-secondary m-0 max-w-prose">
-        Riders pay shops in cash and collect from clients. Their wallets hold GRIDGO&rsquo;s share
-        until delivery. Check every top-up against the bank before confirming it, and decide
-        cash incidents from the evidence. Times are Manila time.
+        Riders pay shops in cash and collect from clients. Their wallets hold
+        GRIDGO&rsquo;s share until delivery. Check every top-up against the bank before
+        confirming it, and decide cash incidents from the evidence. Times are Manila time.
       </p>
       {error ? (
         <div
@@ -167,9 +175,7 @@ export function CashDesk() {
                 key={choice.value}
                 value={choice.value}
                 className="min-h-11"
-                aria-label={
-                  count ? `${choice.label}, ${count} waiting` : choice.label
-                }
+                aria-label={count ? `${choice.label}, ${count} waiting` : choice.label}
               >
                 {choice.label}
                 {count ? (

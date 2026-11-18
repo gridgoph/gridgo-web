@@ -29,7 +29,12 @@ import {
   parseCashDraft,
 } from "@/lib/cash-settings";
 
-function topup(id: string, at: string, decision: CashTopupRow["decision"] = null, ref = `REF-${id}`): CashTopupRow {
+function topup(
+  id: string,
+  at: string,
+  decision: CashTopupRow["decision"] = null,
+  ref = `REF-${id}`,
+): CashTopupRow {
   return {
     id,
     kind: "topup_pending",
@@ -50,7 +55,12 @@ function cashOrder(over: Partial<Order> = {}): Order {
     title: "Flyers",
     totalMinor: 120_000,
     cash: { method: "cash", version: 3, status: "due" },
-    cashAmounts: { shopMinor: 80_000, collectMinor: 120_000, gridgoMinor: 24_000, riderMinor: 16_000 },
+    cashAmounts: {
+      shopMinor: 80_000,
+      collectMinor: 120_000,
+      gridgoMinor: 24_000,
+      riderMinor: 16_000,
+    },
     cashProgress: {},
     ...over,
   } as Order;
@@ -59,8 +69,12 @@ function cashOrder(over: Partial<Order> = {}): Order {
 describe("top-ups", () => {
   it("reads the decision journal as the status", () => {
     expect(topupStatus(topup("a", "2026-11-18T01:00:00Z"))).toBe("waiting");
-    expect(topupStatus(topup("a", "2026-11-18T01:00:00Z", "topup_confirmed"))).toBe("confirmed");
-    expect(topupStatus(topup("a", "2026-11-18T01:00:00Z", "topup_rejected"))).toBe("rejected");
+    expect(topupStatus(topup("a", "2026-11-18T01:00:00Z", "topup_confirmed"))).toBe(
+      "confirmed",
+    );
+    expect(topupStatus(topup("a", "2026-11-18T01:00:00Z", "topup_rejected"))).toBe(
+      "rejected",
+    );
   });
 
   it("puts waiting first, oldest first, then decided newest first", () => {
@@ -89,38 +103,83 @@ describe("top-ups", () => {
 
 describe("order queues", () => {
   it("waits on a no-show only between the report and a decision", () => {
-    expect(noShowWaiting(cashOrder({ cashProgress: { noShowReportedAt: "x" } }))).toBe(true);
+    expect(noShowWaiting(cashOrder({ cashProgress: { noShowReportedAt: "x" } }))).toBe(
+      true,
+    );
     expect(
-      noShowWaiting(cashOrder({ cashProgress: { noShowReportedAt: "x", noShowApprovedAt: "y" } })),
+      noShowWaiting(
+        cashOrder({ cashProgress: { noShowReportedAt: "x", noShowApprovedAt: "y" } }),
+      ),
     ).toBe(false);
     expect(noShowWaiting(cashOrder())).toBe(false);
   });
 
   it("waits on the client's transfers until confirmed", () => {
     const submitted = { reference: "R1", proofFileId: "f", submittedAt: "t" };
-    expect(repaymentWaiting(cashOrder({ cashProgress: { noShowApprovedAt: "a", repayment: submitted } }))).toBe(true);
     expect(
       repaymentWaiting(
-        cashOrder({ cashProgress: { noShowApprovedAt: "a", repayment: submitted, repaymentConfirmedAt: "b" } }),
+        cashOrder({ cashProgress: { noShowApprovedAt: "a", repayment: submitted } }),
+      ),
+    ).toBe(true);
+    expect(
+      repaymentWaiting(
+        cashOrder({
+          cashProgress: {
+            noShowApprovedAt: "a",
+            repayment: submitted,
+            repaymentConfirmedAt: "b",
+          },
+        }),
       ),
     ).toBe(false);
     expect(
-      redeliveryWaiting(cashOrder({ cashProgress: { redelivery: { id: "rd", feeMinor: 5000, payment: submitted } } })),
+      redeliveryWaiting(
+        cashOrder({
+          cashProgress: { redelivery: { id: "rd", feeMinor: 5000, payment: submitted } },
+        }),
+      ),
     ).toBe(true);
     expect(
       redeliveryWaiting(
-        cashOrder({ cashProgress: { redelivery: { id: "rd", feeMinor: 5000, payment: submitted, paidAt: "p" } } }),
+        cashOrder({
+          cashProgress: {
+            redelivery: { id: "rd", feeMinor: 5000, payment: submitted, paidAt: "p" },
+          },
+        }),
       ),
     ).toBe(false);
   });
 
   it("cancels outright before the shop is paid and opens a claim after", () => {
-    expect(shopFailurePath(cashOrder({ state: "supplier_assigned", riderId: null }))).toBe("cancel_unpaid");
-    expect(shopFailurePath(cashOrder({ cashProgress: { shopPaidAt: "t" } }))).toBe("open_claim");
-    expect(shopFailurePath(cashOrder({ state: "ready_for_dispatch", cashProgress: { shopPaidAt: "t" } }))).toBe(null);
-    expect(shopFailurePath(cashOrder({ cashProgress: { shopPaidAt: "t", collectedAt: "c" } }))).toBe(null);
     expect(
-      shopFailurePath(cashOrder({ cashProgress: { shopPaidAt: "t", incident: { amountMinor: 1, resolvedMinor: 0, remainingMinor: 1, status: "outstanding" } } })),
+      shopFailurePath(cashOrder({ state: "supplier_assigned", riderId: null })),
+    ).toBe("cancel_unpaid");
+    expect(shopFailurePath(cashOrder({ cashProgress: { shopPaidAt: "t" } }))).toBe(
+      "open_claim",
+    );
+    expect(
+      shopFailurePath(
+        cashOrder({ state: "ready_for_dispatch", cashProgress: { shopPaidAt: "t" } }),
+      ),
+    ).toBe(null);
+    expect(
+      shopFailurePath(cashOrder({ cashProgress: { shopPaidAt: "t", collectedAt: "c" } })),
+    ).toBe(null);
+    expect(
+      shopFailurePath(
+        cashOrder({
+          cashProgress: {
+            shopPaidAt: "t",
+            incident: {
+              id: "cashincident_1",
+              amountMinor: 1,
+              resolvedMinor: 0,
+              remainingMinor: 1,
+              status: "outstanding",
+            },
+          },
+        }),
+      ),
     ).toBe(null);
     expect(shopFailurePath(cashOrder({ state: "cancelled" }))).toBe(null);
     expect(shopFailurePath(cashOrder({ cash: undefined }))).toBe(null);
@@ -141,39 +200,71 @@ describe("remedies", () => {
     ...over,
   });
   const issue = (d: FaultDecision): Issue =>
-    ({ id: "iss-1", orderId: "order-1", faultDecision: d } as unknown as Issue);
-  const collected = (progress = {}) => cashOrder({ cashProgress: { collectedAt: "c", ...progress } });
+    ({ id: "iss-1", orderId: "order-1", faultDecision: d }) as unknown as Issue;
+  const collected = (progress = {}) =>
+    cashOrder({ cashProgress: { collectedAt: "c", ...progress } });
 
   it("only lists paid-for remedies on collected cash orders, never the client's fault", () => {
     expect(remedyCases([cashOrder()], [issue(decision())])).toEqual([]);
-    expect(remedyCases([collected()], [issue(decision({ fault: "client" }))])).toEqual([]);
-    expect(remedyCases([collected()], [issue(decision({ remedy: "no_remedy" }))])).toEqual([]);
+    expect(remedyCases([collected()], [issue(decision({ fault: "client" }))])).toEqual(
+      [],
+    );
+    expect(
+      remedyCases([collected()], [issue(decision({ remedy: "no_remedy" }))]),
+    ).toEqual([]);
     expect(remedyCases([collected()], [issue(decision())])).toHaveLength(1);
   });
 
   it("waits for Super Admin above PHP 1,000 of GRIDGO funding", () => {
-    const [big] = remedyCases([collected()], [issue(decision({ gridgoCostMinor: 100_001 }))]);
+    const [big] = remedyCases(
+      [collected()],
+      [issue(decision({ gridgoCostMinor: 100_001 }))],
+    );
     expect(big.stage).toBe("needs_super_admin");
     const [approved] = remedyCases(
-      [collected({ remedyDestination: { qrFileId: "q", accountName: "A", revision: 1 } })],
+      [
+        collected({
+          remedyDestination: { qrFileId: "q", accountName: "A", revision: 1 },
+        }),
+      ],
       [issue(decision({ gridgoCostMinor: 100_001, approvedBy: "super" }))],
     );
     expect(approved.stage).toBe("ready");
-    const [pending] = remedyCases([collected()], [issue(decision({ status: "awaiting_approval" }))]);
+    const [pending] = remedyCases(
+      [collected()],
+      [issue(decision({ status: "awaiting_approval" }))],
+    );
     expect(pending.stage).toBe("needs_super_admin");
   });
 
   it("waits for the client's receiving QR on a refund, not on a reprint", () => {
-    expect(remedyCases([collected()], [issue(decision())])[0].stage).toBe("waiting_destination");
-    expect(remedyCases([collected()], [issue(decision({ remedy: "reprint", gridgoCostMinor: 50_000 }))])[0].stage).toBe(
-      "ready",
+    expect(remedyCases([collected()], [issue(decision())])[0].stage).toBe(
+      "waiting_destination",
     );
+    expect(
+      remedyCases(
+        [collected()],
+        [issue(decision({ remedy: "reprint", gridgoCostMinor: 50_000 }))],
+      )[0].stage,
+    ).toBe("ready");
   });
 
   it("follows the reserved transfer for this decision only", () => {
-    const remedy = { id: "r", decisionId: "dec-1", issueId: "iss-1", remedyType: "reprint", payerId: "me", amountMinor: 1, advanceMinor: 1, heldFeeMinor: 0 };
+    const remedy = {
+      id: "r",
+      decisionId: "dec-1",
+      issueId: "iss-1",
+      remedyType: "reprint",
+      payerId: "me",
+      amountMinor: 1,
+      advanceMinor: 1,
+      heldFeeMinor: 0,
+    };
     const at = (status: string) =>
-      remedyCases([collected({ remedy: { ...remedy, status } })], [issue(decision({ remedy: "reprint" }))])[0].stage;
+      remedyCases(
+        [collected({ remedy: { ...remedy, status } })],
+        [issue(decision({ remedy: "reprint" }))],
+      )[0].stage;
     expect(at("reserved")).toBe("reserved");
     expect(at("unknown")).toBe("unknown");
     expect(at("paid")).toBe("paid");
@@ -188,8 +279,24 @@ describe("wallets from the ledger", () => {
     journalChecks: [],
     invalidReservations: [],
     journals: [
-      { id: "j1", kind: "wallet_reserved", order_id: "order-1", rider_id: "rider-1", evidence: {}, created_at: "2026-11-18T02:00:00Z", difference: "0" },
-      { id: "j2", kind: "topup_confirmed", order_id: null, rider_id: "rider-1", evidence: { amountMinor: 50_000, reference: "R" }, created_at: "2026-11-18T01:00:00Z", difference: "0" },
+      {
+        id: "j1",
+        kind: "wallet_reserved",
+        order_id: "order-1",
+        rider_id: "rider-1",
+        evidence: {},
+        created_at: "2026-11-18T02:00:00Z",
+        difference: "0",
+      },
+      {
+        id: "j2",
+        kind: "topup_confirmed",
+        order_id: null,
+        rider_id: "rider-1",
+        evidence: { amountMinor: 50_000, reference: "R" },
+        created_at: "2026-11-18T01:00:00Z",
+        difference: "0",
+      },
     ],
     accounts: [
       { id: "wallet:rider-1", balanceMinor: "26000", derivedMinor: 26_000 },
@@ -203,7 +310,12 @@ describe("wallets from the ledger", () => {
   it("adds reservations to the rider who made them and flags mismatches", () => {
     const rows = walletsFromLedger(recon);
     expect(rows).toEqual([
-      expect.objectContaining({ riderId: "rider-2", availableMinor: 5_000, lowBalance: true, ok: false }),
+      expect.objectContaining({
+        riderId: "rider-2",
+        availableMinor: 5_000,
+        lowBalance: true,
+        ok: false,
+      }),
       expect.objectContaining({
         riderId: "rider-1",
         availableMinor: 26_000,
@@ -256,7 +368,12 @@ describe("errors and words", () => {
 });
 
 describe("cash settings", () => {
-  const draft = { enabled: true, limitPesos: "1500.00", waitMinutes: "10", countdownSeconds: "30" };
+  const draft = {
+    enabled: true,
+    limitPesos: "1500.00",
+    waitMinutes: "10",
+    countdownSeconds: "30",
+  };
   const stored = { enabled: false, limitMinor: 150_000, noShowWaitSeconds: 600 };
 
   it("checks the API's bounds before Save", () => {
@@ -266,16 +383,32 @@ describe("cash settings", () => {
     expect(cashSettingsDraftError({ ...draft, waitMinutes: "0" })?.field).toBe("wait");
     expect(cashSettingsDraftError({ ...draft, waitMinutes: "121" })?.field).toBe("wait");
     expect(cashSettingsDraftError({ ...draft, waitMinutes: "2.5" })?.field).toBe("wait");
-    expect(cashSettingsDraftError({ ...draft, countdownSeconds: "9" })?.field).toBe("countdown");
-    expect(cashSettingsDraftError({ ...draft, countdownSeconds: "121" })?.field).toBe("countdown");
+    expect(cashSettingsDraftError({ ...draft, countdownSeconds: "9" })?.field).toBe(
+      "countdown",
+    );
+    expect(cashSettingsDraftError({ ...draft, countdownSeconds: "121" })?.field).toBe(
+      "countdown",
+    );
   });
 
   it("sends only what changed", () => {
     const parsed = parseCashDraft(draft)!;
     expect(cashSettingsChanges(stored, 30, parsed)).toEqual({ cash: { enabled: true } });
     expect(
-      cashSettingsChanges(stored, 30, parseCashDraft({ ...draft, enabled: false, limitPesos: "2000", waitMinutes: "15", countdownSeconds: "45" })!),
+      cashSettingsChanges(
+        stored,
+        30,
+        parseCashDraft({
+          ...draft,
+          enabled: false,
+          limitPesos: "2000",
+          waitMinutes: "15",
+          countdownSeconds: "45",
+        })!,
+      ),
     ).toEqual({ cash: { limitMinor: 200_000, noShowWaitSeconds: 900 }, countdown: 45 });
-    expect(cashSettingsChanges(stored, 30, parseCashDraft({ ...draft, enabled: false })!)).toEqual({ cash: {} });
+    expect(
+      cashSettingsChanges(stored, 30, parseCashDraft({ ...draft, enabled: false })!),
+    ).toEqual({ cash: {} });
   });
 });

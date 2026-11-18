@@ -2,7 +2,14 @@
 
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -36,7 +43,11 @@ const client = vi.hoisted(() => ({
   getFileDownloadUrl: vi.fn(),
   getSupplierPayoutAccount: vi.fn(),
 }));
-const nav = vi.hoisted(() => ({ params: new URLSearchParams(), replace: vi.fn(), path: "/ops/cash" }));
+const nav = vi.hoisted(() => ({
+  params: new URLSearchParams(),
+  replace: vi.fn(),
+  path: "/ops/cash",
+}));
 const toasts = vi.hoisted(() => ({ add: vi.fn() }));
 
 vi.mock("@/lib/api/cash", () => cash);
@@ -49,7 +60,9 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => nav.params,
   usePathname: () => nav.path,
 }));
-vi.mock("@/lib/auth/AuthProvider", () => ({ useAuth: () => ({ user: { id: "staff-1" } }) }));
+vi.mock("@/lib/auth/AuthProvider", () => ({
+  useAuth: () => ({ user: { id: "staff-1" } }),
+}));
 vi.mock("@/lib/live/useLiveReload", () => ({ useLiveReload: () => undefined }));
 vi.mock("@/components/ui/toast", () => ({ toast: toasts }));
 
@@ -82,7 +95,12 @@ const noShowOrder = {
   totalMinor: 120_000,
   supplierContact: { shopName: "Shop A", contactName: null },
   cash: { method: "cash", version: 7, status: "due", noShowWaitSeconds: 600 },
-  cashAmounts: { shopMinor: 80_000, collectMinor: 120_000, gridgoMinor: 24_000, riderMinor: 16_000 },
+  cashAmounts: {
+    shopMinor: 80_000,
+    collectMinor: 120_000,
+    gridgoMinor: 24_000,
+    riderMinor: 16_000,
+  },
   cashProgress: {
     shopPaidAt: "2026-11-18T01:00:00.000Z",
     noShowStartedAt: "2026-11-18T03:00:00.000Z",
@@ -103,7 +121,10 @@ beforeEach(() => {
   toasts.add.mockReset();
   cash.listCashTopups.mockResolvedValue([decided, waiting]);
   cash.listCashIncidents.mockResolvedValue([]);
-  client.listOrders.mockResolvedValue([noShowOrder, { id: "online", state: "delivered" }]);
+  client.listOrders.mockResolvedValue([
+    noShowOrder,
+    { id: "online", state: "delivered" },
+  ]);
   client.listIssues.mockResolvedValue([]);
   client.listUsers.mockResolvedValue([{ id: "rider-1", name: "Rider One" }]);
 });
@@ -124,12 +145,16 @@ describe("CashDesk top-ups", () => {
   });
 
   it("confirms only after the bank check, naming the rider and amount", async () => {
-    cash.confirmCashTopup.mockResolvedValue({ topup: { id: waiting.id, status: "confirmed" } });
+    cash.confirmCashTopup.mockResolvedValue({
+      topup: { id: waiting.id, status: "confirmed" },
+    });
     render(<CashDesk />);
     await screen.findAllByText("GG1234");
     fireEvent.click(screen.getAllByRole("button", { name: "Confirm" })[0]);
     const dialog = await screen.findByRole("alertdialog");
-    expect(within(dialog).getByText("Confirm ₱500.00 for Rider One?")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Confirm ₱500.00 for Rider One?"),
+    ).toBeInTheDocument();
     expect(within(dialog).getByTestId("money-plate")).toHaveTextContent("₱500.00");
     expect(within(dialog).getByTestId("money-plate")).toHaveTextContent("GG1234");
     const submit = within(dialog).getByRole("button", { name: "Confirm ₱500.00" });
@@ -156,12 +181,16 @@ describe("CashDesk top-ups", () => {
 
   it("explains a reference already confirmed and keeps the dialog open", async () => {
     const { ApiError } = await import("@/lib/api/client");
-    cash.rejectCashTopup.mockRejectedValue(new ApiError(409, { error: "cash_topup_already_decided" }));
+    cash.rejectCashTopup.mockRejectedValue(
+      new ApiError(409, { error: "cash_topup_already_decided" }),
+    );
     render(<CashDesk />);
     await screen.findAllByText("GG1234");
     fireEvent.click(screen.getAllByRole("button", { name: "Reject" })[0]);
     const dialog = await screen.findByRole("alertdialog");
-    fireEvent.change(within(dialog).getByLabelText("Reason"), { target: { value: "No transfer" } });
+    fireEvent.change(within(dialog).getByLabelText("Reason"), {
+      target: { value: "No transfer" },
+    });
     fireEvent.click(within(dialog).getByRole("button", { name: "Reject top-up" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(/already decided/);
   });
@@ -171,39 +200,63 @@ describe("CashDesk incidents", () => {
   it("approves a no-show with Operations' own return photo and the cash version", async () => {
     nav.params = new URLSearchParams("tab=incidents");
     cash.uploadCashEvidence.mockResolvedValue({ fileId: "file-return" });
-    cash.cashOrderAction.mockResolvedValue({ cash: { version: 8, status: "online_repayment_required" } });
+    cash.cashOrderAction.mockResolvedValue({
+      cash: { version: 8, status: "online_repayment_required" },
+    });
     render(<CashDesk />);
     await screen.findByText("Rider One reported a no-show");
     fireEvent.click(screen.getByRole("button", { name: "Approve no-show" }));
     const dialog = await screen.findByRole("alertdialog");
     expect(within(dialog).getByTestId("money-plate")).toHaveTextContent("₱800.00");
     const photo = new File(["x"], "return.jpg", { type: "image/jpeg" });
-    fireEvent.change(within(dialog).getByLabelText("Photo of the parcel back at GRIDGO"), {
-      target: { files: [photo] },
-    });
+    fireEvent.change(
+      within(dialog).getByLabelText("Photo of the parcel back at GRIDGO"),
+      {
+        target: { files: [photo] },
+      },
+    );
     fireEvent.click(within(dialog).getByRole("checkbox"));
-    fireEvent.change(within(dialog).getByLabelText("Reason"), { target: { value: "Waited 10 min" } });
+    fireEvent.change(within(dialog).getByLabelText("Reason"), {
+      target: { value: "Waited 10 min" },
+    });
     fireEvent.click(within(dialog).getByRole("button", { name: "Reimburse ₱800.00" }));
     await waitFor(() => expect(cash.cashOrderAction).toHaveBeenCalledTimes(1));
     expect(cash.uploadCashEvidence).toHaveBeenCalledWith(photo, "cash_return_photo");
     const [orderId, action, body] = cash.cashOrderAction.mock.calls[0];
     expect(orderId).toBe("order-ns");
     expect(action).toBe("approve-no-show");
-    expect(body).toEqual({ expectedVersion: 7, reason: "Waited 10 min", returnPhotoFileId: "file-return" });
+    expect(body).toEqual({
+      expectedVersion: 7,
+      reason: "Waited 10 min",
+      returnPhotoFileId: "file-return",
+    });
   });
 
   it("offers a claim, not a cancellation, once the rider has paid the shop", async () => {
     nav.params = new URLSearchParams("tab=incidents");
     client.listOrders.mockResolvedValue([
-      { ...noShowOrder, id: "order-paid", state: "picked_up", cashProgress: { shopPaidAt: "t" } },
+      {
+        ...noShowOrder,
+        id: "order-paid",
+        state: "picked_up",
+        cashProgress: { shopPaidAt: "t" },
+      },
     ]);
     cash.uploadCashEvidence.mockResolvedValue({ fileId: "file-incident" });
-    cash.cashOrderAction.mockResolvedValue({ cash: { version: 8, status: "work_stopped" } });
+    cash.cashOrderAction.mockResolvedValue({
+      cash: { version: 8, status: "work_stopped" },
+    });
     render(<CashDesk />);
-    fireEvent.click((await screen.findAllByRole("button", { name: "Shop cannot produce" }))[0]);
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: "Shop cannot produce" }))[0],
+    );
     const dialog = await screen.findByRole("alertdialog");
-    expect(within(dialog).getByText("Open a claim on Shop A's cash?")).toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText("What happened"), { target: { value: "Press broke" } });
+    expect(
+      within(dialog).getByText("Open a claim on Shop A's cash?"),
+    ).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText("What happened"), {
+      target: { value: "Press broke" },
+    });
     fireEvent.change(within(dialog).getByLabelText("Photo of the problem"), {
       target: { files: [new File(["x"], "p.png", { type: "image/png" })] },
     });

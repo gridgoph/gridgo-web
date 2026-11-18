@@ -119,7 +119,9 @@ export function EvidenceButton({
       <Dialog open={url !== null} onOpenChange={(next) => !next && setUrl(null)}>
         <DialogContent className="sm:max-w-2xl">
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription className="sr-only">The stored picture, full size.</DialogDescription>
+          <DialogDescription className="sr-only">
+            The stored picture, full size.
+          </DialogDescription>
           {url ? (
             // eslint-disable-next-line @next/next/no-img-element -- signed, short-lived link
             <img

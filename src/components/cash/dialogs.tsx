@@ -70,7 +70,9 @@ const orderLine = (order: Order): PlateLine => ({
 // One dialog shell: keys, busy state, error copy, reload.
 // ---------------------------------------------------------------------------
 
-type Submit = (run: (action: CashOrderAction, body: Record<string, unknown>) => Promise<void>) => Promise<void>;
+type Submit = (
+  run: (action: CashOrderAction, body: Record<string, unknown>) => Promise<void>,
+) => Promise<void>;
 
 function CashActionDialog({
   open,
@@ -121,7 +123,12 @@ function CashActionDialog({
     try {
       await onSubmit(async (action, rest) => {
         const body = { expectedVersion: order.cash?.version ?? 1, ...rest };
-        await cashOrderAction(order.id, action, body, keyFor({ order: order.id, action, ...body }));
+        await cashOrderAction(
+          order.id,
+          action,
+          body,
+          keyFor({ order: order.id, action, ...body }),
+        );
       });
       toast.add({ type: "success", title: success });
       onClose();
@@ -161,7 +168,10 @@ function CashActionDialog({
 }
 
 function useStaffUpload(purpose: StaffCashEvidencePurpose) {
-  const upload = useCallback((file: File) => uploadCashEvidence(file, purpose), [purpose]);
+  const upload = useCallback(
+    (file: File) => uploadCashEvidence(file, purpose),
+    [purpose],
+  );
   return useUploadOnce(upload);
 }
 
@@ -208,7 +218,11 @@ export function NoShowDialog({
       open={open}
       order={order}
       ctx={ctx}
-      title={approving ? `Approve the no-show and reimburse ${rider}?` : "Reject this no-show report?"}
+      title={
+        approving
+          ? `Approve the no-show and reimburse ${rider}?`
+          : "Reject this no-show report?"
+      }
       description={
         approving
           ? "The rider's shop advance goes back to their wallet and the client owes the order total online before they can order with cash again. The order is not marked collected."
@@ -252,13 +266,19 @@ export function NoShowDialog({
               <>
                 <ScreenshotField
                   id="no-show-return-photo"
+                  noun="photo"
                   label="Photo of the parcel back at GRIDGO"
                   description="Your own photo, taken when the rider returned it."
                   file={photo}
                   onFile={setPhoto}
                   disabled={busy}
                 />
-                <Confirmation id="no-show-returned" checked={returned} disabled={busy} onChange={setReturned}>
+                <Confirmation
+                  id="no-show-returned"
+                  checked={returned}
+                  disabled={busy}
+                  onChange={setReturned}
+                >
                   The parcel is back with GRIDGO.
                 </Confirmation>
               </>
@@ -269,7 +289,11 @@ export function NoShowDialog({
               value={reason}
               onChange={setReason}
               disabled={busy}
-              placeholder={approving ? "e.g. Called twice, waited 10 minutes" : "e.g. Client answered; deliver again"}
+              placeholder={
+                approving
+                  ? "e.g. Called twice, waited 10 minutes"
+                  : "e.g. Client answered; deliver again"
+              }
               description="Kept with the decision in the audit log."
             />
           </FieldGroup>
@@ -305,7 +329,8 @@ export function ClientTransferDialog({
   });
   const p = order.cashProgress ?? {};
   const submission = kind === "repayment" ? p.repayment : p.redelivery?.payment;
-  const amountMinor = kind === "repayment" ? order.totalMinor : (p.redelivery?.feeMinor ?? 0);
+  const amountMinor =
+    kind === "repayment" ? order.totalMinor : (p.redelivery?.feeMinor ?? 0);
   const noTransfer = Boolean(submission?.noTransferRequired) || amountMinor === 0;
   const confirming = action === "confirm";
   const what = kind === "repayment" ? "repayment" : "redelivery payment";
@@ -333,7 +358,11 @@ export function ClientTransferDialog({
       variant={confirming ? "primary" : "destructive"}
       submitLabel={confirming ? `Confirm ${formatPhp(amountMinor)}` : `Reject ${what}`}
       busyLabel={confirming ? "Confirming…" : "Rejecting…"}
-      success={confirming ? `${what[0].toUpperCase()}${what.slice(1)} confirmed` : `${what[0].toUpperCase()}${what.slice(1)} rejected`}
+      success={
+        confirming
+          ? `${what[0].toUpperCase()}${what.slice(1)} confirmed`
+          : `${what[0].toUpperCase()}${what.slice(1)} rejected`
+      }
       failure={`Could not record the ${what}. Try again.`}
       onClose={onClose}
       onSubmit={async (run) => {
@@ -351,7 +380,11 @@ export function ClientTransferDialog({
       {(busy) => (
         <>
           <MoneyPlate
-            caption={kind === "repayment" ? "Client's online repayment" : "Client's redelivery fare"}
+            caption={
+              kind === "repayment"
+                ? "Client's online repayment"
+                : "Client's redelivery fare"
+            }
             amountMinor={amountMinor}
             lines={[
               { label: "Client", value: name },
@@ -368,12 +401,22 @@ export function ClientTransferDialog({
             ]}
           />
           {submission?.proofFileId ? (
-            <EvidenceButton fileId={submission.proofFileId} label="View the client's proof" title="Client's transfer proof" />
+            <EvidenceButton
+              fileId={submission.proofFileId}
+              label="View the client's proof"
+              title="Client's transfer proof"
+            />
           ) : null}
           <FieldGroup>
             {confirming && !noTransfer ? (
-              <Confirmation id="transfer-found" checked={found} disabled={busy} onChange={setFound}>
-                I found {formatPhp(amountMinor)} with this reference in GRIDGO&rsquo;s bank account.
+              <Confirmation
+                id="transfer-found"
+                checked={found}
+                disabled={busy}
+                onChange={setFound}
+              >
+                I found {formatPhp(amountMinor)} with this reference in GRIDGO&rsquo;s
+                bank account.
               </Confirmation>
             ) : null}
             {!confirming ? (
@@ -409,9 +452,9 @@ export function ShopFailureDialog({
   ctx: DeskContext;
   onClose: () => void;
 }) {
-  const [reasonCode, setReasonCode] = useState<"supplier_failure" | "artwork_unproducible">(
-    "supplier_failure",
-  );
+  const [reasonCode, setReasonCode] = useState<
+    "supplier_failure" | "artwork_unproducible"
+  >("supplier_failure");
   const [reason, setReason] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [riderPhotoId, setRiderPhotoId] = useState("");
@@ -450,12 +493,20 @@ export function ShopFailureDialog({
       variant="destructive"
       submitLabel={cancelling ? "Cancel order" : "Open claim"}
       busyLabel={cancelling ? "Cancelling…" : "Opening…"}
-      success={cancelling ? "Order cancelled; no cash was owed" : "Shop-cash claim opened"}
-      failure={cancelling ? "Could not cancel the order. Try again." : "Could not open the claim. Try again."}
+      success={
+        cancelling ? "Order cancelled; no cash was owed" : "Shop-cash claim opened"
+      }
+      failure={
+        cancelling
+          ? "Could not cancel the order. Try again."
+          : "Could not open the claim. Try again."
+      }
       onClose={onClose}
       onSubmit={async (run) => {
         if (cancelling) {
-          const photoFileId = riderPhoto ? riderPhotoId.trim() : await upload(photo as File);
+          const photoFileId = riderPhoto
+            ? riderPhotoId.trim()
+            : await upload(photo as File);
           await run("cancel-unpaid", {
             reasonCode,
             noCashAdvancedConfirmed: true,
@@ -471,7 +522,11 @@ export function ShopFailureDialog({
       {(busy) => (
         <>
           <MoneyPlate
-            caption={cancelling ? "Cash the shop is owed" : `Shop cash to return to ${rider ?? "the rider"}`}
+            caption={
+              cancelling
+                ? "Cash the shop is owed"
+                : `Shop cash to return to ${rider ?? "the rider"}`
+            }
             amountMinor={cancelling ? 0 : advance}
             lines={[
               { label: "Shop", value: shop },
@@ -482,7 +537,9 @@ export function ShopFailureDialog({
           <FieldGroup>
             {cancelling ? (
               <Field>
-                <FieldLabel id="cancel-reason-label">Why it cannot be produced</FieldLabel>
+                <FieldLabel id="cancel-reason-label">
+                  Why it cannot be produced
+                </FieldLabel>
                 <RadioGroup
                   aria-labelledby="cancel-reason-label"
                   value={reasonCode}
@@ -491,11 +548,15 @@ export function ShopFailureDialog({
                 >
                   <label className="flex min-h-11 items-center gap-3">
                     <RadioGroupItem value="supplier_failure" />
-                    <span className="text-body text-text-primary">The shop cannot produce it</span>
+                    <span className="text-body text-text-primary">
+                      The shop cannot produce it
+                    </span>
                   </label>
                   <label className="flex min-h-11 items-center gap-3">
                     <RadioGroupItem value="artwork_unproducible" />
-                    <span className="text-body text-text-primary">The artwork cannot be produced</span>
+                    <span className="text-body text-text-primary">
+                      The artwork cannot be produced
+                    </span>
                   </label>
                 </RadioGroup>
               </Field>
@@ -523,6 +584,7 @@ export function ShopFailureDialog({
             ) : (
               <ScreenshotField
                 id="shop-failure-photo"
+                noun="photo"
                 label="Photo of the problem"
                 description="Your own photo or screenshot showing why the order cannot be made."
                 file={photo}
@@ -531,7 +593,12 @@ export function ShopFailureDialog({
               />
             )}
             {cancelling ? (
-              <Confirmation id="no-cash-moved" checked={noCash} disabled={busy} onChange={setNoCash}>
+              <Confirmation
+                id="no-cash-moved"
+                checked={noCash}
+                disabled={busy}
+                onChange={setNoCash}
+              >
                 No cash was advanced to the shop and none was collected from the client.
               </Confirmation>
             ) : null}
@@ -588,7 +655,11 @@ export function ClaimReturnDialog({
       ready={ready}
       submitLabel={`Record ${formatPhp(amount ?? 0)}`}
       busyLabel="Recording…"
-      success={settles ? "Claim settled; order cancelled" : `${formatPhp(amount ?? 0)} return recorded`}
+      success={
+        settles
+          ? "Claim settled; order cancelled"
+          : `${formatPhp(amount ?? 0)} return recorded`
+      }
       failure="Could not record the return. Try again."
       onClose={onClose}
       onSubmit={async (run) => {
@@ -640,7 +711,12 @@ export function ClaimReturnDialog({
               disabled={busy}
               description={`The API takes ${rider}'s own photo of the shop's return. Ask the rider for the file ID their app shows after uploading it.`}
             />
-            <Confirmation id="return-in-hand" checked={inHand} disabled={busy} onChange={setInHand}>
+            <Confirmation
+              id="return-in-hand"
+              checked={inHand}
+              disabled={busy}
+              onChange={setInHand}
+            >
               {rider} confirmed they have this cash back from the shop.
             </Confirmation>
           </FieldGroup>
@@ -682,7 +758,9 @@ export function RemedyDialog({
   const [outcome, setOutcome] = useState<"unknown" | "not_sent">("unknown");
   const [notSent, setNotSent] = useState(false);
   const [reason, setReason] = useState("");
-  const [account, setAccount] = useState<SupplierPayoutAccount | null | undefined>(undefined);
+  const [account, setAccount] = useState<SupplierPayoutAccount | null | undefined>(
+    undefined,
+  );
   const upload = useStaffUpload(refund ? "cash_remedy_receipt" : "cash_reprint_receipt");
 
   useOpenReset(open, () => {
@@ -715,7 +793,7 @@ export function RemedyDialog({
   }, [open, step, refund, order.supplierId]);
 
   const label = REMEDY_LABEL[decision.remedy] ?? "Remedy";
-  const payee = refund ? (order.clientName || "the client") : shopNameOf(order);
+  const payee = refund ? order.clientName || "the client" : shopNameOf(order);
 
   let ready = false;
   if (step === "reserve") {
@@ -753,7 +831,11 @@ export function RemedyDialog({
       ready={ready}
       variant={step === "reconcile" ? "destructive" : "primary"}
       submitLabel={
-        step === "reserve" ? "Reserve transfer" : step === "pay" ? `Record ${formatPhp(amount)}` : "Record outcome"
+        step === "reserve"
+          ? "Reserve transfer"
+          : step === "pay"
+            ? `Record ${formatPhp(amount)}`
+            : "Record outcome"
       }
       busyLabel="Saving…"
       success={
@@ -779,7 +861,11 @@ export function RemedyDialog({
           });
         } else if (step === "pay") {
           const receiptFileId = await upload(receipt as File);
-          await run("remedy-pay", { amountMinor: amount, reference: reference.trim(), receiptFileId });
+          await run("remedy-pay", {
+            amountMinor: amount,
+            reference: reference.trim(),
+            receiptFileId,
+          });
         } else if (step === "reconcile") {
           await run("remedy-reconcile", {
             outcome,
@@ -796,9 +882,19 @@ export function RemedyDialog({
             amountMinor={amount}
             lines={[
               orderLine(order),
-              { label: "GRIDGO funds", value: formatPhp(live?.advanceMinor ?? decision.gridgoCostMinor ?? 0) },
+              {
+                label: "GRIDGO funds",
+                value: formatPhp(live?.advanceMinor ?? decision.gridgoCostMinor ?? 0),
+              },
               ...(live?.reference ? [{ label: "Reference", value: live.reference }] : []),
-              ...(live?.provider ? [{ label: "Paid from", value: `${live.provider}, ${live.sourceWallet ?? ""}` }] : []),
+              ...(live?.provider
+                ? [
+                    {
+                      label: "Paid from",
+                      value: `${live.provider}, ${live.sourceWallet ?? ""}`,
+                    },
+                  ]
+                : []),
             ]}
           />
           {step === "reserve" ? (
@@ -812,26 +908,40 @@ export function RemedyDialog({
                       alt={`${payee}'s receiving QR`}
                     />
                     <p className="text-body text-text-primary m-0">
-                      Account name: <span style={{ fontFamily: "var(--font-medium)" }}>{p.remedyDestination.accountName}</span>
+                      Account name:{" "}
+                      <span style={{ fontFamily: "var(--font-medium)" }}>
+                        {p.remedyDestination.accountName}
+                      </span>
                     </p>
                   </div>
                 ) : (
-                  <p className="text-body text-text-secondary m-0">The client has not sent a receiving QR yet.</p>
+                  <p className="text-body text-text-secondary m-0">
+                    The client has not sent a receiving QR yet.
+                  </p>
                 )
               ) : account === undefined ? (
-                <p className="text-body text-text-secondary m-0">Loading the shop&rsquo;s payout account…</p>
+                <p className="text-body text-text-secondary m-0">
+                  Loading the shop&rsquo;s payout account…
+                </p>
               ) : account?.qr ? (
                 <div className="flex flex-wrap items-start gap-3">
-                  <PayoutQrPlate fileId={account.qr.fileId} shopName={payee} className="w-32" />
+                  <PayoutQrPlate
+                    fileId={account.qr.fileId}
+                    shopName={payee}
+                    className="w-32"
+                  />
                   <PayoutDestinationWords account={account} shopName={payee} />
                 </div>
               ) : (
                 <p className="text-body text-error m-0" role="alert">
-                  The shop has no verified payout QR. Ask the shop to set one before reserving.
+                  The shop has no verified payout QR. Ask the shop to set one before
+                  reserving.
                 </p>
               )}
               <Field>
-                <FieldLabel htmlFor="remedy-provider">Wallet or bank you will pay from</FieldLabel>
+                <FieldLabel htmlFor="remedy-provider">
+                  Wallet or bank you will pay from
+                </FieldLabel>
                 <Input
                   id="remedy-provider"
                   value={provider}
@@ -842,7 +952,9 @@ export function RemedyDialog({
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="remedy-source">GRIDGO account you will pay from</FieldLabel>
+                <FieldLabel htmlFor="remedy-source">
+                  GRIDGO account you will pay from
+                </FieldLabel>
                 <Input
                   id="remedy-source"
                   value={sourceWallet}
@@ -851,9 +963,16 @@ export function RemedyDialog({
                   autoComplete="off"
                   onChange={(event) => setSourceWallet(event.target.value)}
                 />
-                <FieldDescription>The account name or last digits, so the ledger can find it.</FieldDescription>
+                <FieldDescription>
+                  The account name or last digits, so the ledger can find it.
+                </FieldDescription>
               </Field>
-              <Confirmation id="remedy-verified" checked={verified} disabled={busy} onChange={setVerified}>
+              <Confirmation
+                id="remedy-verified"
+                checked={verified}
+                disabled={busy}
+                onChange={setVerified}
+              >
                 I checked the receiving account belongs to {payee}.
               </Confirmation>
             </FieldGroup>
@@ -902,8 +1021,14 @@ export function RemedyDialog({
                 </RadioGroup>
               </Field>
               {outcome === "not_sent" ? (
-                <Confirmation id="reconcile-not-sent" checked={notSent} disabled={busy} onChange={setNotSent}>
-                  I checked GRIDGO&rsquo;s wallet: no money left for this transfer. It can be reserved again.
+                <Confirmation
+                  id="reconcile-not-sent"
+                  checked={notSent}
+                  disabled={busy}
+                  onChange={setNotSent}
+                >
+                  I checked GRIDGO&rsquo;s wallet: no money left for this transfer. It can
+                  be reserved again.
                 </Confirmation>
               ) : null}
               <ReasonField
@@ -921,4 +1046,3 @@ export function RemedyDialog({
     </CashActionDialog>
   );
 }
-

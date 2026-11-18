@@ -4,7 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { Check, X } from "lucide-react";
 
 import type { DeskContext, DeskData } from "@/components/cash/CashDesk";
-import { EvidenceButton, ErrorLine, MoneyPlate, ReasonField } from "@/components/cash/parts";
+import {
+  EvidenceButton,
+  ErrorLine,
+  MoneyPlate,
+  ReasonField,
+} from "@/components/cash/parts";
 import { Confirmation } from "@/components/refunds/dialogs";
 import { useCommandKeys } from "@/components/refunds/useCommand";
 import {
@@ -46,8 +51,10 @@ const STATUS_LABEL: Record<TopupStatus, string> = {
 };
 
 function TopupStatusChip({ status }: { status: TopupStatus }) {
-  if (status === "confirmed") return <StatusChip tone="success" icon="circle-check" label="Confirmed" />;
-  if (status === "rejected") return <StatusChip tone="error" icon="circle-x" label="Rejected" />;
+  if (status === "confirmed")
+    return <StatusChip tone="success" icon="circle-check" label="Confirmed" />;
+  if (status === "rejected")
+    return <StatusChip tone="error" icon="circle-x" label="Rejected" />;
   return <StatusChip tone="warning" icon="clock" label="Waiting" />;
 }
 
@@ -226,7 +233,8 @@ function TopupDecisionDialog({
     setError(null);
     const body = { reason: reason.trim() };
     try {
-      if (confirming) await confirmCashTopup(row.id, body, keyFor({ id: row.id, action, ...body }));
+      if (confirming)
+        await confirmCashTopup(row.id, body, keyFor({ id: row.id, action, ...body }));
       else await rejectCashTopup(row.id, body, keyFor({ id: row.id, action, ...body }));
       toast.add({
         type: "success",
@@ -240,7 +248,9 @@ function TopupDecisionDialog({
       setError(
         cashErrorMessage(
           err,
-          confirming ? "Could not confirm the top-up. Try again." : "Could not reject the top-up. Try again.",
+          confirming
+            ? "Could not confirm the top-up. Try again."
+            : "Could not reject the top-up. Try again.",
         ),
       );
       if (cashErrorNeedsReload(err)) void ctx.reload();
@@ -265,13 +275,17 @@ function TopupDecisionDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <MoneyPlate
-          caption={confirming ? "Credit to the rider's wallet" : "Top-up to close without credit"}
+          caption={
+            confirming ? "Credit to the rider's wallet" : "Top-up to close without credit"
+          }
           amountMinor={amount}
           lines={[
             { label: "Rider", value: rider },
             {
               label: "Reference",
-              value: <span className="break-all tracking-wide">{row.evidence.reference}</span>,
+              value: (
+                <span className="break-all tracking-wide">{row.evidence.reference}</span>
+              ),
             },
             { label: "Submitted", value: formatDateTime(row.created_at) },
           ]}
@@ -283,15 +297,20 @@ function TopupDecisionDialog({
         />
         {twins.length ? (
           <p className="text-body text-warning m-0" role="note">
-            {twins.length === 1 ? "Another top-up" : `${twins.length} other top-ups`} quote this
-            reference. A reference can be confirmed only once.
+            {twins.length === 1 ? "Another top-up" : `${twins.length} other top-ups`}{" "}
+            quote this reference. A reference can be confirmed only once.
           </p>
         ) : null}
         <FieldGroup>
           {confirming ? (
-            <Confirmation id="topup-found" checked={found} disabled={busy} onChange={setFound}>
-              I found {formatPhp(amount)} with reference {row.evidence.reference} in GRIDGO&rsquo;s
-              bank account.
+            <Confirmation
+              id="topup-found"
+              checked={found}
+              disabled={busy}
+              onChange={setFound}
+            >
+              I found {formatPhp(amount)} with reference {row.evidence.reference} in
+              GRIDGO&rsquo;s bank account.
             </Confirmation>
           ) : null}
           <ReasonField
@@ -301,7 +320,9 @@ function TopupDecisionDialog({
             onChange={setReason}
             disabled={busy}
             placeholder={
-              confirming ? "e.g. Matched in GCash history 18 Nov 10:42" : "e.g. No transfer with this reference"
+              confirming
+                ? "e.g. Matched in the bank statement, 18 Nov 10:42"
+                : "e.g. No transfer with this reference"
             }
             description="Kept with the decision in the audit log."
           />

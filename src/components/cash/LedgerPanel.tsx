@@ -91,7 +91,10 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
     [router, pathname, search],
   );
 
-  const orders = useMemo(() => new Map<string, Order>(data.orders.map((o) => [o.id, o])), [data.orders]);
+  const orders = useMemo(
+    () => new Map<string, Order>(data.orders.map((o) => [o.id, o])),
+    [data.orders],
+  );
   const wallets = useMemo(() => (recon ? walletsFromLedger(recon) : []), [recon]);
   const journals = useMemo(() => (recon ? sortJournals(recon.journals) : []), [recon]);
 
@@ -118,7 +121,9 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
             <span className="text-body text-text-primary tabular-nums" style={medium}>
               {formatPhp(row.availableMinor)}
             </span>
-            {row.lowBalance ? <StatusChip tone="warning" icon="triangle-alert" label="Low balance" /> : null}
+            {row.lowBalance ? (
+              <StatusChip tone="warning" icon="triangle-alert" label="Low balance" />
+            ) : null}
           </span>
         ),
       },
@@ -126,13 +131,21 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
         id: "reserved",
         header: "Reserved for orders",
         sortValue: (row) => row.reservedMinor,
-        cell: (row) => <span className="text-body text-text-primary tabular-nums">{formatPhp(row.reservedMinor)}</span>,
+        cell: (row) => (
+          <span className="text-body text-text-primary tabular-nums">
+            {formatPhp(row.reservedMinor)}
+          </span>
+        ),
       },
       {
         id: "balance",
         header: "Wallet total",
         sortValue: (row) => row.balanceMinor,
-        cell: (row) => <span className="text-body text-text-primary tabular-nums">{formatPhp(row.balanceMinor)}</span>,
+        cell: (row) => (
+          <span className="text-body text-text-primary tabular-nums">
+            {formatPhp(row.balanceMinor)}
+          </span>
+        ),
       },
       {
         id: "pending",
@@ -191,7 +204,9 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
         header: "When",
         sortValue: (row) => Date.parse(row.created_at),
         cell: (row) => (
-          <span className="text-body text-text-secondary whitespace-nowrap">{formatDateTime(row.created_at)}</span>
+          <span className="text-body text-text-secondary whitespace-nowrap">
+            {formatDateTime(row.created_at)}
+          </span>
         ),
       },
       {
@@ -199,7 +214,9 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
         header: "Rider",
         sortValue: (row) => (row.rider_id ? ctx.riderName(row.rider_id) : ""),
         cell: (row) => (
-          <span className="text-body text-text-primary">{row.rider_id ? ctx.riderName(row.rider_id) : "None"}</span>
+          <span className="text-body text-text-primary">
+            {row.rider_id ? ctx.riderName(row.rider_id) : "None"}
+          </span>
         ),
       },
       {
@@ -221,10 +238,13 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
       {
         id: "reference",
         header: "Reference",
-        sortValue: (row) => (typeof row.evidence?.reference === "string" ? row.evidence.reference : ""),
+        sortValue: (row) =>
+          typeof row.evidence?.reference === "string" ? row.evidence.reference : "",
         cell: (row) => (
           <span className="text-body text-text-secondary break-all">
-            {typeof row.evidence?.reference === "string" ? row.evidence.reference : "None"}
+            {typeof row.evidence?.reference === "string"
+              ? row.evidence.reference
+              : "None"}
           </span>
         ),
       },
@@ -252,7 +272,15 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
       />
     );
   }
-  if (!recon) return <SkeletonCards count={2} lines={3} label="Reading the cash ledger" className="gap-3" />;
+  if (!recon)
+    return (
+      <SkeletonCards
+        count={2}
+        lines={3}
+        label="Reading the cash ledger"
+        className="gap-3"
+      />
+    );
 
   const problems = reconciliationProblems(recon);
   const failedOrders = recon.orderChecks.filter((check) => !check.ok);
@@ -282,7 +310,8 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
           {recon.ok
             ? `Every journal balances, every balance matches its entries and ${recon.orderChecks.length} cash ${recon.orderChecks.length === 1 ? "order matches its" : "orders match their"} amounts.`
             : "Stop and look before enabling cash or confirming more money. Each order below names what does not add up."}{" "}
-          Open claims and no-show debts reconcile as amounts still owed, never as cash received.
+          Open claims and no-show debts reconcile as amounts still owed, never as cash
+          received.
         </p>
         <dl className="m-0 grid grid-cols-2 gap-x-6 gap-y-2 lg:grid-cols-4">
           {[
@@ -317,8 +346,10 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
         {recon.invalidReservations.length ? (
           <p className="text-body text-error m-0" role="alert">
             {recon.invalidReservations.length} wallet{" "}
-            {recon.invalidReservations.length === 1 ? "reservation does" : "reservations do"} not match
-            the held balance.
+            {recon.invalidReservations.length === 1
+              ? "reservation does"
+              : "reservations do"}{" "}
+            not match the held balance.
           </p>
         ) : null}
       </section>
@@ -326,8 +357,7 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
       {filtered ? (
         <div className="flex flex-wrap items-center gap-2" role="status">
           <span className="text-body text-text-primary">
-            Showing{" "}
-            {riderId ? `${ctx.riderName(riderId)}'s movements` : null}
+            Showing {riderId ? `${ctx.riderName(riderId)}'s movements` : null}
             {riderId && orderId ? " on " : null}
             {orderId ? `order ${orderId}` : null}. The checks above cover only these.
           </span>
@@ -351,8 +381,8 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
           Rider wallets
         </h2>
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Available funds cover GRIDGO&rsquo;s share of the next cash offer; a rider without
-          enough receives no cash offers. Lowest available first.
+          Available funds cover GRIDGO&rsquo;s share of the next cash offer; a rider
+          without enough receives no cash offers. Lowest available first.
         </p>
         <DataTable
           columns={walletColumns}
@@ -395,7 +425,12 @@ export function LedgerPanel({ data, ctx }: { data: DeskData; ctx: DeskContext })
           itemLabel="movements"
           rowActionsDensity="labeled"
           pageSize={25}
-          empty={<EmptyState title="No cash has moved yet" body="Top-ups, shop payments and collections appear here." />}
+          empty={
+            <EmptyState
+              title="No cash has moved yet"
+              body="Top-ups, shop payments and collections appear here."
+            />
+          }
           rowActions={(row) =>
             row.order_id && orderId !== row.order_id ? (
               <DataTableRowAction

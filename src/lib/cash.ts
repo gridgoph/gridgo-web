@@ -7,11 +7,7 @@
  */
 
 import { isApiError } from "@/lib/api/client";
-import type {
-  CashJournal,
-  CashReconciliation,
-  CashTopupRow,
-} from "@/lib/api/cash";
+import type { CashJournal, CashReconciliation, CashTopupRow } from "@/lib/api/cash";
 import type { FaultDecision, Issue, Order } from "@/lib/api/types";
 import { FAULT_APPROVAL_LIMIT_MINOR } from "@/lib/problem-reports";
 
@@ -63,10 +59,14 @@ export function waitingTopups(rows: CashTopupRow[]): number {
 }
 
 /** The first waiting top-up that quotes this reference, other than `id`. */
-export function sameReferenceTopups(rows: CashTopupRow[], row: CashTopupRow): CashTopupRow[] {
+export function sameReferenceTopups(
+  rows: CashTopupRow[],
+  row: CashTopupRow,
+): CashTopupRow[] {
   const ref = row.evidence.reference.trim().toUpperCase();
   return rows.filter(
-    (other) => other.id !== row.id && other.evidence.reference.trim().toUpperCase() === ref,
+    (other) =>
+      other.id !== row.id && other.evidence.reference.trim().toUpperCase() === ref,
   );
 }
 
@@ -104,7 +104,8 @@ export type ShopFailurePath = "cancel_unpaid" | "open_claim";
 export function shopFailurePath(order: Order): ShopFailurePath | null {
   const p = order.cashProgress ?? {};
   if (!order.cash || FINISHED.has(order.state)) return null;
-  if (p.collectedAt || p.noShowApprovedAt || p.repaymentConfirmedAt || p.incident) return null;
+  if (p.collectedAt || p.noShowApprovedAt || p.repaymentConfirmedAt || p.incident)
+    return null;
   if (!p.shopPaidAt) return "cancel_unpaid";
   return ["rider_assigned", "picked_up", "out_for_delivery"].includes(order.state)
     ? "open_claim"
@@ -119,12 +120,7 @@ export const isRefundRemedy = (remedy: string): boolean =>
   remedy === "partial_refund" || remedy === "full_refund";
 
 export type RemedyStage =
-  | "needs_super_admin"
-  | "waiting_destination"
-  | "ready"
-  | "reserved"
-  | "unknown"
-  | "paid";
+  "needs_super_admin" | "waiting_destination" | "ready" | "reserved" | "unknown" | "paid";
 
 export type CashRemedyCase = {
   order: Order;
@@ -166,7 +162,8 @@ export function remedyStage(order: Order, decision: FaultDecision): RemedyStage 
   ) {
     return "needs_super_admin";
   }
-  if (isRefundRemedy(decision.remedy) && !p.remedyDestination) return "waiting_destination";
+  if (isRefundRemedy(decision.remedy) && !p.remedyDestination)
+    return "waiting_destination";
   return "ready";
 }
 
@@ -258,7 +255,9 @@ export function walletsFromLedger(recon: CashReconciliation): RiderWalletRow[] {
       balanceMinor: wallet.availableMinor + wallet.reservedMinor,
       lowBalance: wallet.availableMinor < CASH_LOW_BALANCE_MINOR,
     }))
-    .sort((a, b) => a.availableMinor - b.availableMinor || a.riderId.localeCompare(b.riderId));
+    .sort(
+      (a, b) => a.availableMinor - b.availableMinor || a.riderId.localeCompare(b.riderId),
+    );
 }
 
 function splitAccount(id: string): [string, string | null] {
@@ -294,10 +293,15 @@ export function journalLabel(kind: string): string {
  * What a journal moved. Reservations carry no amount in their evidence, so
  * they read it from the order's GRIDGO share; null when unknown.
  */
-export function journalAmount(journal: CashJournal, orders: Map<string, Order>): number | null {
+export function journalAmount(
+  journal: CashJournal,
+  orders: Map<string, Order>,
+): number | null {
   const stated = journal.evidence?.amountMinor;
   if (typeof stated === "number") return stated;
-  if (["wallet_reserved", "wallet_released", "gridgo_share_debited"].includes(journal.kind)) {
+  if (
+    ["wallet_reserved", "wallet_released", "gridgo_share_debited"].includes(journal.kind)
+  ) {
     const order = journal.order_id ? orders.get(journal.order_id) : undefined;
     return order?.cashAmounts?.gridgoMinor ?? null;
   }
@@ -324,13 +328,15 @@ const CHECK_COPY: Record<string, string> = {
   unexpected_order_movement: "an unexpected movement is booked to the order",
   duplicate: "the same movement is booked twice",
   collection_and_no_show: "the order is both collected and a no-show",
-  shop_payment_without_reservation: "the shop was paid without a GRIDGO-share reservation",
+  shop_payment_without_reservation:
+    "the shop was paid without a GRIDGO-share reservation",
   collection_without_shop_payment: "cash was collected without a shop payment",
   refunds_exceed_collection: "refunds exceed the cash collected",
   remedy_fee_funding_exceeded: "remedies used more fee than the order kept",
   incident_balance_mismatch: "the shop-cash claim does not match its returns",
   incident_closure_mismatch: "a settled claim did not cancel the order",
-  incident_conflicts_with_client_collection: "a shop-cash claim exists on a collected order",
+  incident_conflicts_with_client_collection:
+    "a shop-cash claim exists on a collected order",
   shop_payment_state_mismatch: "the order and ledger disagree on the shop payment",
   collection_state_mismatch: "the order and ledger disagree on collection",
   no_show_state_mismatch: "the order and ledger disagree on the no-show",
@@ -351,7 +357,8 @@ export function reconciliationProblems(recon: CashReconciliation): number {
   return (
     recon.journals.filter((journal) => !journalBalanced(journal)).length +
     recon.journalChecks.filter((check) => !check.ok).length +
-    recon.accounts.filter((a) => amount(a.balanceMinor) !== amount(a.derivedMinor)).length +
+    recon.accounts.filter((a) => amount(a.balanceMinor) !== amount(a.derivedMinor))
+      .length +
     recon.invalidReservations.length +
     recon.orderChecks.filter((check) => !check.ok).length
   );
@@ -365,7 +372,8 @@ const ERROR_COPY: Record<string, string> = {
   cash_idempotency_conflict:
     "This exact request was already sent with different details. Close and start again.",
   cash_reference_required: "Write a reason of up to 120 characters.",
-  cash_topup_already_decided: "Someone already decided this top-up. The list is refreshed.",
+  cash_topup_already_decided:
+    "Someone already decided this top-up. The list is refreshed.",
   cash_topup_not_found: "This top-up is no longer on record. The list is refreshed.",
   cash_transfer_duplicate:
     "That reference was already confirmed for another transfer. Check the bank record before confirming.",
@@ -374,7 +382,8 @@ const ERROR_COPY: Record<string, string> = {
   cash_evidence_already_bound:
     "That picture is already attached to another record. Upload a new one.",
   cash_no_show_not_pending: "This no-show is no longer waiting. The order is refreshed.",
-  cash_repayment_not_pending: "This repayment is no longer waiting. The order is refreshed.",
+  cash_repayment_not_pending:
+    "This repayment is no longer waiting. The order is refreshed.",
   cash_redelivery_payment_not_pending:
     "This redelivery payment is no longer waiting. The order is refreshed.",
   cash_unpaid_cancellation_not_available:
@@ -385,8 +394,10 @@ const ERROR_COPY: Record<string, string> = {
   cash_shop_payment_reconciliation_required:
     "The shop payment on record does not match the order. Check the ledger before opening a claim.",
   cash_incident_not_outstanding: "This claim is already settled. The list is refreshed.",
-  cash_return_amount_invalid: "The amount must be more than zero and no more than what is still owed.",
-  cash_counter_return_confirmation_required: "Confirm the rider has the returned cash in hand.",
+  cash_return_amount_invalid:
+    "The amount must be more than zero and no more than what is still owed.",
+  cash_counter_return_confirmation_required:
+    "Confirm the rider has the returned cash in hand.",
   cash_resolution_not_enabled: "Only a shop cash return can settle a claim for now.",
   cash_incident_hold:
     "A shop-cash claim is open on this order. Settle the claim before anything else.",
@@ -410,9 +421,12 @@ const ERROR_COPY: Record<string, string> = {
 
 export function cashErrorMessage(err: unknown, fallback: string): string {
   if (!isApiError(err)) return fallback;
-  return ERROR_COPY[err.code] ?? (err.kind === "unauthorized"
-    ? "Your session expired. Sign in again to carry on."
-    : fallback);
+  return (
+    ERROR_COPY[err.code] ??
+    (err.kind === "unauthorized"
+      ? "Your session expired. Sign in again to carry on."
+      : fallback)
+  );
 }
 
 /** Errors after which the screen should reload what it shows. */

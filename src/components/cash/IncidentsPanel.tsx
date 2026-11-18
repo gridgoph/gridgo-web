@@ -93,7 +93,10 @@ function Case({
     <li className="gg-card flex flex-col gap-3 p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <h3 className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-bold)" }}>
+          <h3
+            className="text-body text-text-primary m-0"
+            style={{ fontFamily: "var(--font-bold)" }}
+          >
             {title}
           </h3>
           <OrderLink order={order} base={base} />
@@ -101,7 +104,9 @@ function Case({
         {chip}
       </div>
       <Facts facts={facts} />
-      {children ? <div className="flex flex-wrap items-center gap-2">{children}</div> : null}
+      {children ? (
+        <div className="flex flex-wrap items-center gap-2">{children}</div>
+      ) : null}
     </li>
   );
 }
@@ -138,7 +143,13 @@ function Section({
   );
 }
 
-const STAGE_TONE: Record<RemedyStage, { tone: "warning" | "info" | "success" | "error" | "neutral"; icon: "clock" | "circle-check" | "triangle-alert" | "circle-dot" | "circle-help" }> = {
+const STAGE_TONE: Record<
+  RemedyStage,
+  {
+    tone: "warning" | "info" | "success" | "error" | "neutral";
+    icon: "clock" | "circle-check" | "triangle-alert" | "circle-dot" | "circle-help";
+  }
+> = {
   needs_super_admin: { tone: "warning", icon: "clock" },
   waiting_destination: { tone: "neutral", icon: "clock" },
   ready: { tone: "info", icon: "circle-dot" },
@@ -155,14 +166,19 @@ const STAGE_TONE: Record<RemedyStage, { tone: "warning" | "info" | "success" | "
 export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext }) {
   const { user } = useAuth();
   const base = ctx.base;
-  const byId = useMemo(() => new Map(data.orders.map((order) => [order.id, order])), [data.orders]);
+  const byId = useMemo(
+    () => new Map(data.orders.map((order) => [order.id, order])),
+    [data.orders],
+  );
 
   const noShows = data.orders.filter(noShowWaiting);
   const transfers = data.orders.flatMap((order) => [
     ...(repaymentWaiting(order) ? [{ order, kind: "repayment" as const }] : []),
     ...(redeliveryWaiting(order) ? [{ order, kind: "redelivery" as const }] : []),
   ]);
-  const [claimFilter, setClaimFilter] = useState<"outstanding" | "resolved">("outstanding");
+  const [claimFilter, setClaimFilter] = useState<"outstanding" | "resolved">(
+    "outstanding",
+  );
   const claims = data.incidents.filter((incident) => incident.status === claimFilter);
   const failures = data.orders
     .map((order) => ({ order, path: shopFailurePath(order) }))
@@ -170,17 +186,29 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
   const remedies = remedyCases(data.orders, data.issues ?? []);
   const openRemedies = remedies.filter((c) => c.stage !== "paid");
 
-  const [noShow, setNoShow] = useState<{ order: Order; action: "approve" | "reject" } | null>(null);
+  const [noShow, setNoShow] = useState<{
+    order: Order;
+    action: "approve" | "reject";
+  } | null>(null);
   const [transfer, setTransfer] = useState<{
     order: Order;
     kind: "repayment" | "redelivery";
     action: "confirm" | "reject";
   } | null>(null);
-  const [failure, setFailure] = useState<{ order: Order; path: ShopFailurePath } | null>(null);
-  const [claim, setClaim] = useState<{ order: Order; incident: CashIncident } | null>(null);
-  const [remedy, setRemedy] = useState<{ remedy: CashRemedyCase; step: RemedyStep } | null>(null);
+  const [failure, setFailure] = useState<{ order: Order; path: ShopFailurePath } | null>(
+    null,
+  );
+  const [claim, setClaim] = useState<{ order: Order; incident: CashIncident } | null>(
+    null,
+  );
+  const [remedy, setRemedy] = useState<{
+    remedy: CashRemedyCase;
+    step: RemedyStep;
+  } | null>(null);
 
-  const failureColumns = useMemo<DataTableColumn<{ order: Order; path: ShopFailurePath }>[]>(
+  const failureColumns = useMemo<
+    DataTableColumn<{ order: Order; path: ShopFailurePath }>[]
+  >(
     () => [
       {
         id: "order",
@@ -194,14 +222,18 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
         id: "shop",
         header: "Shop",
         sortValue: (row) => shopNameOf(row.order),
-        cell: (row) => <span className="text-body text-text-primary">{shopNameOf(row.order)}</span>,
+        cell: (row) => (
+          <span className="text-body text-text-primary">{shopNameOf(row.order)}</span>
+        ),
       },
       {
         id: "state",
         header: "Stage",
         sortValue: (row) => row.order.state,
         cell: (row) => (
-          <span className="text-body text-text-secondary">{presentOrderState(row.order.state).label}</span>
+          <span className="text-body text-text-secondary">
+            {presentOrderState(row.order.state).label}
+          </span>
         ),
       },
       {
@@ -211,7 +243,8 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
         cell: (row) =>
           row.path === "open_claim" ? (
             <span className="text-body text-text-primary tabular-nums">
-              {formatPhp(row.order.cashAmounts?.shopMinor ?? 0)} paid by {ctx.riderName(row.order.riderId)}
+              {formatPhp(row.order.cashAmounts?.shopMinor ?? 0)} paid by{" "}
+              {ctx.riderName(row.order.riderId)}
             </span>
           ) : (
             <span className="text-body text-text-secondary">Not paid yet</span>
@@ -238,27 +271,50 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
               title={`${ctx.riderName(order.riderId)} reported a no-show`}
               order={order}
               base={base}
-              chip={<StatusChip tone="warning" icon="clock" label="Waiting for Operations" />}
+              chip={
+                <StatusChip tone="warning" icon="clock" label="Waiting for Operations" />
+              }
               facts={[
-                { label: "Shop advance to reimburse", value: formatPhp(order.cashAmounts?.shopMinor ?? 0) },
+                {
+                  label: "Shop advance to reimburse",
+                  value: formatPhp(order.cashAmounts?.shopMinor ?? 0),
+                },
                 { label: "Client total", value: formatPhp(order.totalMinor) },
                 { label: "Reported", value: formatDateTime(p.noShowReportedAt) },
                 {
                   label: "Tried to reach the client",
                   value: `${p.contactMethod === "message" ? "By message" : "By call"}, from ${formatDateTime(p.noShowStartedAt)}`,
                 },
-                { label: "Wait required", value: formatWait(order.cash?.noShowWaitSeconds ?? 600) },
+                {
+                  label: "Wait required",
+                  value: formatWait(order.cash?.noShowWaitSeconds ?? 600),
+                },
                 { label: "Rider's note", value: p.noShowReason ?? "None" },
                 ...(p.rejectedReports?.length
-                  ? [{ label: "Earlier reports rejected", value: String(p.rejectedReports.length) }]
+                  ? [
+                      {
+                        label: "Earlier reports rejected",
+                        value: String(p.rejectedReports.length),
+                      },
+                    ]
                   : []),
               ]}
             >
-              <EvidenceButton fileId={p.noShowPhotoFileId} label="View rider's photo" title="Rider's no-show photo" />
-              <Button variant="outline" onClick={() => setNoShow({ order, action: "approve" })}>
+              <EvidenceButton
+                fileId={p.noShowPhotoFileId}
+                label="View rider's photo"
+                title="Rider's no-show photo"
+              />
+              <Button
+                variant="outline"
+                onClick={() => setNoShow({ order, action: "approve" })}
+              >
                 Approve no-show
               </Button>
-              <Button variant="outline" onClick={() => setNoShow({ order, action: "reject" })}>
+              <Button
+                variant="outline"
+                onClick={() => setNoShow({ order, action: "reject" })}
+              >
                 Reject report
               </Button>
             </Case>
@@ -276,7 +332,8 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
         {transfers.map(({ order, kind }) => {
           const p = order.cashProgress ?? {};
           const submission = kind === "repayment" ? p.repayment : p.redelivery?.payment;
-          const amount = kind === "repayment" ? order.totalMinor : (p.redelivery?.feeMinor ?? 0);
+          const amount =
+            kind === "repayment" ? order.totalMinor : (p.redelivery?.feeMinor ?? 0);
           return (
             <Case
               key={`${order.id}:${kind}`}
@@ -287,17 +344,30 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
               facts={[
                 { label: "Amount", value: formatPhp(amount) },
                 { label: "Client", value: order.clientName || "Not on record" },
-                { label: "Reference", value: submission?.reference ?? "No transfer needed" },
+                {
+                  label: "Reference",
+                  value: submission?.reference ?? "No transfer needed",
+                },
                 { label: "Submitted", value: formatDateTime(submission?.submittedAt) },
               ]}
             >
               {submission?.proofFileId ? (
-                <EvidenceButton fileId={submission.proofFileId} label="View proof" title="Client's transfer proof" />
+                <EvidenceButton
+                  fileId={submission.proofFileId}
+                  label="View proof"
+                  title="Client's transfer proof"
+                />
               ) : null}
-              <Button variant="outline" onClick={() => setTransfer({ order, kind, action: "confirm" })}>
+              <Button
+                variant="outline"
+                onClick={() => setTransfer({ order, kind, action: "confirm" })}
+              >
                 Confirm payment
               </Button>
-              <Button variant="outline" onClick={() => setTransfer({ order, kind, action: "reject" })}>
+              <Button
+                variant="outline"
+                onClick={() => setTransfer({ order, kind, action: "reject" })}
+              >
                 Reject payment
               </Button>
             </Case>
@@ -324,7 +394,12 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
               const count = data.incidents.filter((i) => i.status === value).length;
               const label = value === "outstanding" ? "Outstanding" : "Settled";
               return (
-                <ToggleGroupItem key={value} value={value} className="h-11 gap-2 px-3" aria-label={`${label}, ${count}`}>
+                <ToggleGroupItem
+                  key={value}
+                  value={value}
+                  className="h-11 gap-2 px-3"
+                  aria-label={`${label}, ${count}`}
+                >
                   <span>{label}</span>
                   <span className="text-text-secondary tabular-nums" aria-hidden>
                     {count}
@@ -335,8 +410,8 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
           </ToggleGroup>
         </div>
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          The rider paid a shop that then could not produce. The order is stopped until the shop
-          returns the rider&rsquo;s cash. GRIDGO does not advance the money.
+          The rider paid a shop that then could not produce. The order is stopped until
+          the shop returns the rider&rsquo;s cash. GRIDGO does not advance the money.
         </p>
         {claims.length ? (
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
@@ -344,9 +419,13 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
               const order = byId.get(incident.orderId);
               if (!order) {
                 return (
-                  <li key={incident.id} className="gg-card p-3 text-body text-text-secondary">
-                    Claim on order {incident.orderId} for {formatPhp(incident.amountMinor)}: the order is not
-                    in the list on screen.
+                  <li
+                    key={incident.id}
+                    className="gg-card p-3 text-body text-text-secondary"
+                  >
+                    Claim on order {incident.orderId} for{" "}
+                    {formatPhp(incident.amountMinor)}: the order is not in the list on
+                    screen.
                   </li>
                 );
               }
@@ -358,7 +437,11 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
                   base={base}
                   chip={
                     incident.status === "outstanding" ? (
-                      <StatusChip tone="error" icon="triangle-alert" label="Work stopped" />
+                      <StatusChip
+                        tone="error"
+                        icon="triangle-alert"
+                        label="Work stopped"
+                      />
                     ) : (
                       <StatusChip tone="success" icon="circle-check" label="Settled" />
                     )
@@ -371,9 +454,16 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
                     { label: "What happened", value: incident.reason ?? "Not recorded" },
                   ]}
                 >
-                  <EvidenceButton fileId={incident.evidenceFileId} label="View photo" title="Claim photo" />
+                  <EvidenceButton
+                    fileId={incident.evidenceFileId}
+                    label="View photo"
+                    title="Claim photo"
+                  />
                   {incident.status === "outstanding" ? (
-                    <Button variant="outline" onClick={() => setClaim({ order, incident })}>
+                    <Button
+                      variant="outline"
+                      onClick={() => setClaim({ order, incident })}
+                    >
                       Record cash return
                     </Button>
                   ) : null}
@@ -383,7 +473,9 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
           </ul>
         ) : (
           <p className="text-body text-text-secondary m-0 rounded-card border border-dashed border-outline px-3 py-3">
-            {claimFilter === "outstanding" ? "No shop owes a rider cash." : "No claim has been settled yet."}
+            {claimFilter === "outstanding"
+              ? "No shop owes a rider cash."
+              : "No claim has been settled yet."}
           </p>
         )}
       </section>
@@ -393,8 +485,9 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
           When a shop cannot produce
         </h2>
         <p className="text-body text-text-secondary m-0 max-w-prose">
-          Cash orders not yet paid by the client. Before the rider pays the shop, the order is
-          cancelled outright. After, open a claim so the shop returns the rider&rsquo;s cash.
+          Cash orders not yet paid by the client. Before the rider pays the shop, the
+          order is cancelled outright. After, open a claim so the shop returns the
+          rider&rsquo;s cash.
         </p>
         <DataTable
           columns={failureColumns}
@@ -405,7 +498,9 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
           rowActionsDensity="labeled"
           pageSize={10}
           empty={
-            <p className="text-body text-text-secondary m-0 px-3 py-3">No cash order is in progress.</p>
+            <p className="text-body text-text-secondary m-0 px-3 py-3">
+              No cash order is in progress.
+            </p>
           }
           rowActions={(row) => (
             <DataTableRowAction
@@ -439,13 +534,35 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
               title={`${REMEDY_LABEL[c.decision.remedy] ?? "Remedy"} for ${formatPhp(c.decision.costMinor ?? 0)}`}
               order={c.order}
               base={base}
-              chip={<StatusChip tone={tone.tone} icon={tone.icon} label={REMEDY_STAGE_COPY[c.stage]} />}
+              chip={
+                <StatusChip
+                  tone={tone.tone}
+                  icon={tone.icon}
+                  label={REMEDY_STAGE_COPY[c.stage]}
+                />
+              }
               facts={[
-                { label: "Fault", value: c.decision.fault === "shop" ? "Shop" : c.decision.fault === "rider" ? "Rider" : "GRIDGO" },
-                { label: "GRIDGO funds", value: formatPhp(c.decision.gridgoCostMinor ?? 0) },
+                {
+                  label: "Fault",
+                  value:
+                    c.decision.fault === "shop"
+                      ? "Shop"
+                      : c.decision.fault === "rider"
+                        ? "Rider"
+                        : "GRIDGO",
+                },
+                {
+                  label: "GRIDGO funds",
+                  value: formatPhp(c.decision.gridgoCostMinor ?? 0),
+                },
                 { label: "Decision", value: c.decision.reason },
                 ...(live?.status === "reserved" || live?.status === "unknown"
-                  ? [{ label: "Reserved", value: `${formatDateTime(live.reservedAt)}${live.payerId === user?.id ? " by you" : ""}` }]
+                  ? [
+                      {
+                        label: "Reserved",
+                        value: `${formatDateTime(live.reservedAt)}${live.payerId === user?.id ? " by you" : ""}`,
+                      },
+                    ]
                   : []),
               ]}
             >
@@ -453,29 +570,41 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
                 <Button
                   variant="outline"
                   nativeButton={false}
-                  render={<Link href={`${base}/orders/${encodeURIComponent(c.order.id)}`} />}
+                  render={
+                    <Link href={`${base}/orders/${encodeURIComponent(c.order.id)}`} />
+                  }
                 >
                   Open the problem report
                 </Button>
               ) : null}
               {c.stage === "ready" ? (
-                <Button variant="outline" onClick={() => setRemedy({ remedy: c, step: "reserve" })}>
+                <Button
+                  variant="outline"
+                  onClick={() => setRemedy({ remedy: c, step: "reserve" })}
+                >
                   Reserve transfer
                 </Button>
               ) : null}
               {(c.stage === "reserved" || c.stage === "unknown") && mine ? (
                 <>
-                  <Button variant="outline" onClick={() => setRemedy({ remedy: c, step: "pay" })}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setRemedy({ remedy: c, step: "pay" })}
+                  >
                     Record transfer
                   </Button>
-                  <Button variant="outline" onClick={() => setRemedy({ remedy: c, step: "reconcile" })}>
+                  <Button
+                    variant="outline"
+                    onClick={() => setRemedy({ remedy: c, step: "reconcile" })}
+                  >
                     Transfer did not go through
                   </Button>
                 </>
               ) : null}
               {(c.stage === "reserved" || c.stage === "unknown") && !mine ? (
                 <span className="text-caption text-text-secondary">
-                  Only the person who reserved it, or Super Admin, can finish this transfer.
+                  Only the person who reserved it, or Super Admin, can finish this
+                  transfer.
                 </span>
               ) : null}
             </Case>
@@ -484,7 +613,12 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
       </Section>
 
       {noShow ? (
-        <NoShowDialog order={noShow.order} action={noShow.action} ctx={ctx} onClose={() => setNoShow(null)} />
+        <NoShowDialog
+          order={noShow.order}
+          action={noShow.action}
+          ctx={ctx}
+          onClose={() => setNoShow(null)}
+        />
       ) : null}
       {transfer ? (
         <ClientTransferDialog
@@ -496,13 +630,28 @@ export function IncidentsPanel({ data, ctx }: { data: DeskData; ctx: DeskContext
         />
       ) : null}
       {failure ? (
-        <ShopFailureDialog order={failure.order} path={failure.path} ctx={ctx} onClose={() => setFailure(null)} />
+        <ShopFailureDialog
+          order={failure.order}
+          path={failure.path}
+          ctx={ctx}
+          onClose={() => setFailure(null)}
+        />
       ) : null}
       {claim ? (
-        <ClaimReturnDialog order={claim.order} incident={claim.incident} ctx={ctx} onClose={() => setClaim(null)} />
+        <ClaimReturnDialog
+          order={claim.order}
+          incident={claim.incident}
+          ctx={ctx}
+          onClose={() => setClaim(null)}
+        />
       ) : null}
       {remedy ? (
-        <RemedyDialog remedy={remedy.remedy} step={remedy.step} ctx={ctx} onClose={() => setRemedy(null)} />
+        <RemedyDialog
+          remedy={remedy.remedy}
+          step={remedy.step}
+          ctx={ctx}
+          onClose={() => setRemedy(null)}
+        />
       ) : null}
     </div>
   );
