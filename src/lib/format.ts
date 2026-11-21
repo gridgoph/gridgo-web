@@ -77,3 +77,11 @@ export function formatRelativeTime(
   if (days < 7) return `${days}d ago`;
   return formatDate(iso);
 }
+
+/** "1:45 PM", a clock time on its own. */
+export function formatClock(value: Date | string | null | undefined): string {
+  if (!value) return "—";
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit" });
+}

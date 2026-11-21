@@ -555,6 +555,8 @@ type Props<T> = {
   loading?: boolean;
   /** Plural noun used in the pagination range, e.g. "orders". */
   itemLabel?: string;
+  /** The search box's text on arrival (a search typed elsewhere, such as the header). */
+  initialFilter?: string;
 };
 
 /**
@@ -586,6 +588,7 @@ export function DataTable<T>({
   pageSize = 10,
   loading = false,
   itemLabel = "rows",
+  initialFilter = "",
 }: Props<T>) {
   const [sorting, setSorting] = React.useState<SortingState>(
     defaultSortId
@@ -594,7 +597,13 @@ export function DataTable<T>({
   );
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({});
-  const [globalFilter, setGlobalFilter] = React.useState("");
+  const [globalFilter, setGlobalFilter] = React.useState(initialFilter);
+  // A new search from outside replaces the box's text, as if typed there.
+  const [seenInitial, setSeenInitial] = React.useState(initialFilter);
+  if (seenInitial !== initialFilter) {
+    setSeenInitial(initialFilter);
+    setGlobalFilter(initialFilter);
+  }
 
   const columnDefs = React.useMemo(() => toColumnDefs(columns), [columns]);
 

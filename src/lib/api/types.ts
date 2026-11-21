@@ -1293,6 +1293,20 @@ export type Order = {
    * Express; read a missing value as false (`isExpressOrder`).
    */
   express?: boolean;
+  /**
+   * `"express"` on an order placed through Express's document flow
+   * (gridgo-api docs/EXPRESS_API.md). Not the `express` scheduling tag above.
+   * Read it, with `expressOrder`, only through `src/lib/express-shop.ts`.
+   */
+  orderType?: string;
+  /** Express document order details, scoped per reader by the API. Shape is read defensively. */
+  expressOrder?: unknown;
+  /** `pickup` (the client collects at the shop) or `delivery`. */
+  fulfillmentMode?: string | null;
+  /** How the client paid, bounded for shops: `in_app | cash | voucher`. */
+  paymentClassification?: string | null;
+  /** The shop's own record of which order files were opened or downloaded, per person and device. */
+  fileAccesses?: ShopFileAccess[];
   /** When the shop actually finished, stamped as it hands over to a rider. */
   readyAt?: string | null;
   /**
@@ -1856,6 +1870,21 @@ export type FileCheck = {
 // ---- Shop acceptance and recovery (gridgo-api SHOP_RECOVERY_API.md) ----
 
 /** A recovery writes its cause here, including the three Operations opens. */
+/** One row of `order.fileAccesses` (gridgo-api EXPRESS_API.md "Shop file access"). */
+export type ShopFileAccess = {
+  jobId: string;
+  userId: string;
+  deviceId: string;
+  fileId: string;
+  action: "opened" | "downloaded" | "download_authorized" | (string & {});
+  firstAt: string;
+  lastAt: string;
+  count: number;
+};
+
+/** `GET /me/express-settings`: the shop-wide Express switch (Owner only). */
+export type ExpressSettings = { expressEnabled: boolean; version: number };
+
 export type ShopAcceptanceStatus = "pending" | "accepted" | ShopFailureKind;
 
 export type ShopAcceptance = {

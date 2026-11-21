@@ -1,6 +1,9 @@
 "use client";
 import {
   Award,
+  LayoutGrid,
+  ListTodo,
+  Sun,
   CalendarCheck,
   Calculator,
   Gift,
@@ -158,6 +161,8 @@ import {
   TestOperationsUnavailable,
 } from "@/components/shell/TestOperations";
 import { ThemeToggle } from "@/components/shell/ThemeToggle";
+import { HeaderJobSearch } from "@/components/shell/HeaderJobSearch";
+import { ShopStatusPill } from "@/components/shell/ShopStatusPill";
 import { onForbidden } from "@/lib/api/client";
 import { TestOperationsProvider, useTestOperations } from "@/lib/auth/test-operations";
 import { useShopAccess, type ShopAccess } from "@/lib/auth/shop-access";
@@ -269,6 +274,9 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   quotes: Calculator,
   "sample-batches": TestTubes,
   team: UsersRound,
+  today: Sun,
+  "my-shop": LayoutGrid,
+  "group-todo": ListTodo,
   "group-shop": Store,
   "group-money": HandCoins,
   "group-queue": Inbox,
@@ -279,6 +287,11 @@ const NAV_ICONS: Record<NavIconKey, LucideIcon> = {
   "group-legal": Landmark,
   "group-marketing": Sparkles,
 };
+
+/** The rows a group draws; `railHidden` pages are reached from their section's page. */
+function railItems(group: NavGroup): readonly NavItem[] {
+  return group.items.filter((item) => !item.railHidden);
+}
 
 /** Each count source this rail shows, once — read once for the whole rail. */
 function railCountSources(role: Role, scope: NavScope): NavCountKey[] {
@@ -660,7 +673,7 @@ function RailNavParent({
       </CollapsibleTrigger>
       <CollapsibleContent className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0 motion-reduce:transition-none">
         <SidebarMenuSub className="mt-0.5 gap-0.5">
-          {group.items.map((item) => (
+          {railItems(group).map((item) => (
             <RailNavSubItem
               key={item.id}
               item={item}
@@ -716,7 +729,7 @@ function RailNavFlyout({ group, pathname }: { group: NavGroup; pathname: string 
         >
           <DropdownMenuGroup>
             <DropdownMenuLabel>{label}</DropdownMenuLabel>
-            {group.items.map((item) => {
+            {railItems(group).map((item) => {
               const active = isActiveHref(pathname, item.href);
               const ItemIcon = NAV_ICONS[item.icon];
               const phrase = itemCountPhrase(item, counts);
@@ -815,20 +828,20 @@ function RailNavGroups({
   return (
     <>
       {sections.map((section) => {
-        const headingId = `rail-section-${section.label.toLowerCase()}`;
+        const headingId = `rail-section-${section.label.toLowerCase() || "main"}`;
         return (
           <SidebarGroup
-            key={section.label}
+            key={section.label || section.groups[0]?.id}
             data-nav-section={section.label}
             // On the icon rail the headings are gone, so a hairline keeps the
             // sections apart without words.
             className="px-2 py-1 group-data-[collapsible=icon]:not-first:border-t group-data-[collapsible=icon]:not-first:border-sidebar-border"
-            aria-labelledby={iconRail ? undefined : headingId}
+            aria-labelledby={iconRail || !section.label ? undefined : headingId}
             role="group"
           >
             {/* sidebar-07's small muted heading. Not rendered on the icon rail,
                 where it would be an invisible label with nothing to read. */}
-            {iconRail ? null : (
+            {iconRail || !section.label ? null : (
               <SidebarGroupLabel id={headingId} className="h-7">
                 <span
                   className="text-caption text-sidebar-foreground/60"
@@ -842,7 +855,7 @@ function RailNavGroups({
               <SidebarMenu>
                 {section.groups.map((group) => {
                   if (!group.label) {
-                    return group.items.map((item) => (
+                    return railItems(group).map((item) => (
                       <RailNavItem
                         key={item.id}
                         item={item}
@@ -919,6 +932,11 @@ function PortalSidebar({ role }: Pick<Props, "role">) {
       </SidebarHeader>
 
       <SidebarContent className="pt-1">
+        {role === "supplier" ? (
+          <div className="px-2 pt-2">
+            <ShopStatusPill onNavigate={closeMobile} />
+          </div>
+        ) : null}
         <nav aria-label="Primary navigation" className="flex min-h-0 flex-col gap-0">
           <NavCountsProvider sources={countSources} pathname={pathname}>
             <RailNavGroups role={role} pathname={pathname} onNavigate={closeMobile} />
@@ -945,8 +963,7 @@ export function AppShell({ role, testOperations = false, children }: Props) {
   // says "Owner only" without mounting the page, so it never reads; the API
   // refuses those routes on its own (`403 shop_owner_required`).
   const { staff: shopStaff } = useShopAccess();
-  const staffLanding =
-    shopStaff && (pathname === "/supplier/dashboard" || pathname === "/supplier");
+  const staffLanding = shopStaff && pathname === "/supplier";
   const ownerOnly =
     shopStaff && pathname.startsWith("/supplier") && !shopStaffAllowsPath(pathname);
   // A test operations login opens only the test desk's pages; anything else
@@ -1049,6 +1066,7 @@ export function AppShell({ role, testOperations = false, children }: Props) {
                 )}
               </div>
               <div className="flex items-center gap-1">
+                {role === "supplier" ? <HeaderJobSearch /> : null}
                 <ThemeToggle />
                 <InboxBell role={role} />
               </div>

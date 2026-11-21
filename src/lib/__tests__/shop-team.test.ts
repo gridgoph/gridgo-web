@@ -87,16 +87,19 @@ describe("Share via Messenger", () => {
 });
 
 describe("Staff navigation", () => {
-  it("leaves Staff with Jobs only", () => {
-    expect([...SHOP_STAFF_NAV_IDS]).toEqual(["supplier-jobs"]);
+  it("leaves Staff with To do's Today and All jobs, with no Money or settings", () => {
+    expect([...SHOP_STAFF_NAV_IDS]).toEqual(["supplier-today", "supplier-jobs"]);
     expect(navForRole("supplier", { shopStaff: true }).map((i) => i.href)).toEqual([
+      "/supplier/dashboard",
       "/supplier/jobs",
     ]);
-    expect(navGroupsForRole("supplier", { shopStaff: true })).toHaveLength(1);
-    expect(SHOP_STAFF_HOME).toBe("/supplier/jobs");
+    expect(navGroupsForRole("supplier", { shopStaff: true }).map((g) => g.label)).toEqual([
+      "To do",
+    ]);
+    expect(SHOP_STAFF_HOME).toBe("/supplier/dashboard");
   });
 
-  it("gives the Owner the Team page in the Shop group", () => {
+  it("gives the Owner the Staff page in the My shop group", () => {
     const hrefs = navForRole("supplier").map((i) => i.href);
     expect(hrefs).toContain("/supplier/team");
     const shopGroup = navGroupsForRole("supplier").find((g) => g.id === "supplier-shop");
@@ -112,6 +115,8 @@ describe("Staff navigation", () => {
     "/supplier/",
     "/supplier/jobs",
     "/supplier/jobs/ord_1",
+    "/supplier/jobs/ord_1/files",
+    "/supplier/dashboard",
     "/supplier/phone-app",
     "/supplier/notice",
   ])("lets Staff open %s", (path) => {
@@ -119,7 +124,6 @@ describe("Staff navigation", () => {
   });
 
   it.each([
-    "/supplier/dashboard",
     "/supplier/shop",
     "/supplier/shop-hours",
     "/supplier/services",
@@ -138,6 +142,8 @@ describe("Staff navigation", () => {
     "/supplier/legal",
     "/supplier/privacy",
     "/supplier/jobsX",
+    "/supplier/my-shop",
+    "/supplier/performance",
   ])("keeps Staff out of %s", (path) => {
     expect(shopStaffAllowsPath(path)).toBe(false);
   });

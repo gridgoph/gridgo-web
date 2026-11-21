@@ -22,7 +22,7 @@ export function ShopOwnerOnly() {
       {/* The page header already reads "Owner only"; this says what to do. */}
       <p className="text-body text-text-primary m-0">This page is for your shop&rsquo;s Owner.</p>
       <Button variant="secondary" nativeButton={false} render={<Link href={SHOP_STAFF_HOME} />}>
-        Open Jobs
+        Back to To do
       </Button>
     </section>
   );

@@ -106,21 +106,25 @@ it("rechecks on focus and removes work when new consent becomes required", async
   await waitFor(() => expect(m.replace).toHaveBeenCalled());
   expect(screen.queryByText("Ordinary work")).not.toBeInTheDocument();
 });
-it("shows editorial notices without requiring another checkbox", async () => {
+it("hands editorial notices to My shop instead of a banner on every page", async () => {
   m.pending.mockResolvedValue({
     ...clear,
     notices: [{ ...doc, id: "editorial", title: "Updated privacy notice" }],
   });
+  function Notices() {
+    const { notices } = useSupplierLegal();
+    return <p>Notices: {notices.map((notice) => notice.title).join(", ")}</p>;
+  }
   render(
     <SupplierLegalGate>
       <div>Ordinary work</div>
+      <Notices />
     </SupplierLegalGate>,
   );
-  await screen.findByText("Ordinary work");
-  expect(screen.getByRole("link", { name: "Updated privacy notice" })).toHaveAttribute(
-    "href",
-    "/supplier/legal/editorial",
-  );
+  await screen.findByText("Notices: Updated privacy notice");
+  expect(screen.getByText("Ordinary work")).toBeVisible();
+  // No banner and no link drawn above the work (gridgoph/gridgo-web#327).
+  expect(screen.queryByRole("link", { name: "Updated privacy notice" })).not.toBeInTheDocument();
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
 });
 it("keeps the legal and privacy pages available during a pending check", async () => {

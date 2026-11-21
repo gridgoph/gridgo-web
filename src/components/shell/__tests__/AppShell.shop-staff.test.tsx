@@ -180,6 +180,8 @@ vi.mock("@/lib/api/client", () => ({
   getTracker: countMocks.getTracker,
   getSettings: countMocks.getSettings,
   listDispatchOffers: countMocks.listDispatchOffers,
+  getMyShopHours: () => new Promise(() => {}),
+  getExpressSettings: () => new Promise(() => {}),
   onForbidden: forbiddenRef.subscribe,
 }));
 
@@ -289,14 +291,22 @@ const OWNER_ONLY_PATHS = [
   "/supplier/chat",
   "/supplier/legal",
   "/supplier/privacy",
+  "/supplier/my-shop",
+  "/supplier/performance",
 ];
 
 describe("AppShell shop Staff mode", () => {
-  it("shows Staff only the Jobs page on the rail", () => {
+  it("shows Staff To do's Today and All jobs, with no Money, Messages or My shop", () => {
     renderSupplier("/supplier/jobs", STAFF_SHOP);
     const nav = screen.getByRole("navigation", { name: "Primary navigation" });
     const links = within(nav).getAllByRole("link");
-    expect(links.map((link) => link.getAttribute("href"))).toEqual(["/supplier/jobs"]);
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "/supplier/dashboard",
+      "/supplier/jobs",
+    ]);
+    expect(within(nav).queryByText("Money")).not.toBeInTheDocument();
+    expect(within(nav).queryByText("My shop")).not.toBeInTheDocument();
+    expect(within(nav).queryByText("Messages")).not.toBeInTheDocument();
     expect(within(nav).queryByText("Team")).not.toBeInTheDocument();
     expect(within(nav).queryByText("Payouts")).not.toBeInTheDocument();
     expect(within(nav).queryByText("Shop hours")).not.toBeInTheDocument();
@@ -315,15 +325,21 @@ describe("AppShell shop Staff mode", () => {
       expect(screen.getByTestId("shop-owner-only")).toBeVisible();
       expect(screen.getByRole("heading", { name: "Owner only" })).toBeVisible();
       expect(screen.queryByText("Workspace body")).not.toBeInTheDocument();
-      expect(screen.getByText("Open Jobs").closest("a")).toHaveAttribute(
+      expect(screen.getByText("Back to To do").closest("a")).toHaveAttribute(
         "href",
-        "/supplier/jobs",
+        "/supplier/dashboard",
       );
     },
   );
 
   it("lets Staff open a job and the phone app page", () => {
-    for (const path of ["/supplier/jobs/ord_1", "/supplier/phone-app", "/supplier/notice"]) {
+    for (const path of [
+      "/supplier/dashboard",
+      "/supplier/jobs/ord_1",
+      "/supplier/jobs/ord_1/files",
+      "/supplier/phone-app",
+      "/supplier/notice",
+    ]) {
       renderSupplier(path, STAFF_SHOP);
       expect(screen.getByText("Workspace body")).toBeVisible();
       expect(screen.queryByTestId("shop-owner-only")).not.toBeInTheDocument();
@@ -331,10 +347,10 @@ describe("AppShell shop Staff mode", () => {
     }
   });
 
-  it("sends the Staff logo home to Jobs", () => {
+  it("sends the Staff logo home to Today", () => {
     const { container } = renderSupplier("/supplier/jobs", STAFF_SHOP);
     const home = container.querySelector('[data-slot="sidebar-header"] a');
-    expect(home).toHaveAttribute("href", "/supplier/jobs");
+    expect(home).toHaveAttribute("href", "/supplier/dashboard");
   });
 
   it("keeps the Owner's rail whole, Team included, with no shop line", () => {

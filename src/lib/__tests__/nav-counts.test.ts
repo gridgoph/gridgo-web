@@ -43,10 +43,8 @@ describe("rail section headings", () => {
       ["Manage", ["People & shops", "Catalogue", "Money", "Marketing"]],
       ["Platform", ["Legal & privacy", "System"]],
     ]);
-    expect(shape("supplier")).toEqual([
-      ["Work", ["supplier-top"]],
-      ["Business", ["Shop", "Money"]],
-    ]);
+    // The shop's rail is the phone app's four sections, with no headings.
+    expect(shape("supplier")).toEqual([["", ["To do", "supplier-messages", "Money", "My shop"]]]);
   });
 
   it("never splits a heading: each section's groups are contiguous", () => {
@@ -81,7 +79,7 @@ describe("rail counts", () => {
       ]),
     );
     expect(counted).toEqual({
-      supplier: ["supplier-jobs:jobs-need-action"],
+      supplier: ["supplier-today:jobs-need-action"],
       ops_admin: [
         "ops-orders:orders-waiting",
         "ops-chat:chat-unread",

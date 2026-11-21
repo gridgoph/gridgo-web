@@ -150,6 +150,8 @@ import type {
   RescheduleRequest,
   ShopFailureEvent,
   ShopHours,
+  ShopFileAccess,
+  ExpressSettings,
   ShopHoursPatch,
   ShopRecovery,
   ShopRecoveryCause,
@@ -1338,6 +1340,77 @@ function shopHoursOf(path: string, raw: unknown): ShopHours {
 }
 
 /** Supplier. The signed-in shop's own hours. */
+// ---------------------------------------------------------------------------
+// Express document jobs (gridgo-api docs/EXPRESS_API.md). Owner and Staff.
+// ---------------------------------------------------------------------------
+
+/**
+ * Take an Express offer inside its five minutes. `specialInstructionsRead` is
+ * sent only when the order has notes. Repeating it is harmless.
+ */
+export async function acceptExpressJob(
+  orderId: string,
+  specialInstructionsRead: boolean,
+): Promise<void> {
+  await request(`/orders/${encodeURIComponent(orderId)}/express/accept`, {
+    method: "POST",
+    body: JSON.stringify(specialInstructionsRead ? { specialInstructionsRead: true } : {}),
+  });
+}
+
+/** Pass an Express offer on; GRIDGO moves it to the next nearest Express shop. */
+export async function declineExpressJob(orderId: string, reason: string): Promise<void> {
+  await request(`/orders/${encodeURIComponent(orderId)}/express/decline`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+/**
+ * Close a ready Express pickup with the client's six-digit code. A wrong code
+ * is `409 express_pickup_code_mismatch`; five wrong ones lock the counter with
+ * `429 express_pickup_attempts_exceeded` and `retryAfter`.
+ */
+export async function enterExpressPickupCode(orderId: string, code: string): Promise<void> {
+  await request(`/orders/${encodeURIComponent(orderId)}/express/pickup`, {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+}
+
+/**
+ * Tell GRIDGO a client file was opened in the browser or saved on this PC,
+ * after it happened. The delete-files reminder reads these back from
+ * `order.fileAccesses`.
+ */
+export async function recordShopFileAccess(
+  orderId: string,
+  fileId: string,
+  input: { jobId: string; action: "opened" | "downloaded"; deviceId: string },
+): Promise<ShopFileAccess[] | null> {
+  const result = await request<{ fileAccesses?: ShopFileAccess[] }>(
+    `/orders/${encodeURIComponent(orderId)}/files/${encodeURIComponent(fileId)}/access`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return Array.isArray(result?.fileAccesses) ? result.fileAccesses : null;
+}
+
+/** Owner only. The shop-wide Express switch. */
+export async function getExpressSettings(): Promise<ExpressSettings> {
+  return request<ExpressSettings>("/me/express-settings");
+}
+
+/** Owner only. A stale version is `409 shop_profile_stale`. */
+export async function updateExpressSettings(
+  expressEnabled: boolean,
+  expectedVersion: number,
+): Promise<ExpressSettings> {
+  return request<ExpressSettings>("/me/express-settings", {
+    method: "PATCH",
+    body: JSON.stringify({ expressEnabled, expectedVersion }),
+  });
+}
+
 export async function getMyShopHours(): Promise<ShopHours> {
   return shopHoursOf("/me/shop-hours", await request<unknown>("/me/shop-hours"));
 }
@@ -1769,8 +1842,15 @@ export async function getFile(fileId: string): Promise<StoredFile> {
 }
 
 /** Five-minute signed GET for the stored object. */
-export async function getFileDownloadUrl(fileId: string): Promise<string> {
-  const result = await request<{ url: string }>(`/files/${fileId}/download-url`);
+export async function getFileDownloadUrl(
+  fileId: string,
+  options: { deviceId?: string } = {},
+): Promise<string> {
+  // A shop's artwork read is recorded per device (gridgo-api EXPRESS_API.md).
+  const result = await request<{ url: string }>(
+    `/files/${fileId}/download-url`,
+    options.deviceId ? { headers: { "X-GRIDGO-Device-Id": options.deviceId } } : {},
+  );
   return result.url;
 }
 

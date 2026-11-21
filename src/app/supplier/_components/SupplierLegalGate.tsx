@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { SkeletonCards } from "@/components/ui/loading";
 import { ApiError } from "@/lib/api/client";
 import { useShopAccess } from "@/lib/auth/shop-access";
+import { supplierWebDeviceId } from "@/lib/device-id";
 import { acceptSupplierLegal, getSupplierLegalPending } from "@/lib/api/supplier-self";
 import {
   LEGAL_VERSION_CHANGED,
@@ -30,6 +31,8 @@ import {
 type GateValue = {
   status: "unknown" | "clear" | "blocked" | "unavailable" | "unsupported";
   pending: LegalVersion[];
+  /** Updated documents that need no signature: read on My shop, never a banner on every page. */
+  notices: LegalVersion[];
   checking: boolean;
   refresh: () => void;
   error: string | null;
@@ -45,21 +48,8 @@ export function useSupplierLegal(): GateValue {
   return value;
 }
 
-const INSTALLATION_KEY = "gridgo.supplier.web.installationId";
-
 function webContext(): { app: string; device: string } {
-  let device = "supplier-web";
-  try {
-    const stored = window.localStorage.getItem(INSTALLATION_KEY);
-    if (stored) device = stored;
-    else {
-      device = `supplier-web-${crypto.randomUUID()}`;
-      window.localStorage.setItem(INSTALLATION_KEY, device);
-    }
-  } catch {
-    device = "supplier-web";
-  }
-  return { app: "gridgo-web/supplier", device };
+  return { app: "gridgo-web/supplier", device: supplierWebDeviceId() };
 }
 
 /**
@@ -70,6 +60,7 @@ function webContext(): { app: string; device: string } {
 const STAFF_GATE: GateValue = {
   status: "clear",
   pending: [],
+  notices: [],
   checking: false,
   refresh: () => undefined,
   error: null,
@@ -214,7 +205,7 @@ function LegalSession({
     (status === "unknown" || status === "blocked" || status === "unavailable");
   return (
     <Gate.Provider
-      value={{ status, pending, error, accepting, accept, checking, refresh }}
+      value={{ status, pending, notices, error, accepting, accept, checking, refresh }}
     >
       {error && !accepting ? (
         <div className="flex flex-col items-start gap-2" role="alert">
@@ -232,26 +223,6 @@ function LegalSession({
             Your data
           </Link>
         </div>
-      ) : null}
-      {notices.length ? (
-        <section aria-label="Document updates" className="mb-4 flex flex-col gap-2">
-          <h2 className="text-body text-text-primary m-0">Document updates</h2>
-          {notices.map((doc) => (
-            <div key={doc.id}>
-              <Link
-                href={`/supplier/legal/${encodeURIComponent(doc.id)}`}
-                className="text-body text-text-primary underline"
-              >
-                {doc.title}
-              </Link>
-              {doc.changeSummary ? (
-                <p className="text-caption text-text-secondary m-0">
-                  {doc.changeSummary}
-                </p>
-              ) : null}
-            </div>
-          ))}
-        </section>
       ) : null}
       {waiting ? (
         status !== "unavailable" ? (
