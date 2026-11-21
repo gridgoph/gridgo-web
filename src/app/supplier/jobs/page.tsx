@@ -2,7 +2,8 @@
 
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Banknote, CircleAlert, Clock3, Eye } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,8 @@ import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { useShopAccess } from "@/lib/auth/shop-access";
 import { isExpressOrder } from "@/lib/express";
+import { orderReference } from "@/lib/order-reference";
+import { isExpressDocumentOrder, paymentLine, workLine } from "@/lib/express-shop";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import { needsSupplierAction, presentSupplierJobStatus, primaryAction } from "@/lib/supplier-actions";
 import { useAcceptDeadlines } from "@/lib/use-accept-clock";
@@ -71,7 +74,18 @@ function facetOptions(jobs: Order[], value: (job: Order) => string) {
     .map((label) => ({ value: label, label }));
 }
 
+/** `useSearchParams` needs a Suspense boundary for the production build. */
 export default function SupplierJobsPage() {
+  return (
+    <Suspense fallback={null}>
+      <SupplierJobsBoard />
+    </Suspense>
+  );
+}
+
+function SupplierJobsBoard() {
+  // "Find a job" in the header lands here with `?q=`.
+  const query = useSearchParams()?.get("q") ?? "";
   const [jobs, setJobs] = useState<Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -133,14 +147,15 @@ export default function SupplierJobsPage() {
         primary: true,
         alwaysVisible: true,
         sortValue: (job) => job.title,
-        filterValue: (job) => `${job.title} ${job.size} ${job.material} ${job.id}`,
+        filterValue: (job) =>
+          `${job.title} ${job.size} ${job.material} ${job.id} ${orderReference(job.id) ?? ""} ${isExpressDocumentOrder(job) ? `${workLine(job)} Express` : "Regular"}`,
         cell: (job) => (
           <div className="min-w-0">
             <p
               className="text-body text-text-primary m-0 truncate"
               style={{ fontFamily: "var(--font-medium)" }}
             >
-              {job.title}
+              {isExpressDocumentOrder(job) ? workLine(job) : job.title}
             </p>
             <p className="text-caption text-text-muted m-0 mt-0.5 truncate">
               {deliveryPositionLabel(job) ? `${deliveryPositionLabel(job)} · ` : ""}
@@ -209,7 +224,10 @@ export default function SupplierJobsPage() {
             <span className="text-body text-text-secondary whitespace-nowrap">
               {formatDateTime(job.readyBy || job.deadline)}
             </span>
-            {isExpressOrder(job) ? <ExpressChip /> : null}
+            {isExpressOrder(job) || isExpressDocumentOrder(job) ? <ExpressChip /> : null}
+            {isExpressDocumentOrder(job) && paymentLine(job) ? (
+              <span className="text-caption text-text-muted">{paymentLine(job)}</span>
+            ) : null}
             <TestOrderChip order={job} />
           </div>
         ),
@@ -353,6 +371,7 @@ export default function SupplierJobsPage() {
         defaultSortDirection="desc"
         itemLabel="jobs"
         pageSize={15}
+        initialFilter={query}
         toolbar={
           <Button variant="secondary" disabled={loading} onClick={() => void load()}>
             Refresh

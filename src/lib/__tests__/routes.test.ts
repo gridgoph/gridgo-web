@@ -4,7 +4,7 @@ import { homeForRole, isForeignRolePath, roleLabel } from "@/lib/routes";
 
 describe("role routing", () => {
   it("maps portal roles to their home paths", () => {
-    expect(homeForRole("supplier")).toBe("/supplier/jobs");
+    expect(homeForRole("supplier")).toBe("/supplier/dashboard");
     expect(homeForRole("ops_admin")).toBe("/ops/orders");
     expect(homeForRole("super_admin")).toBe("/admin/overview");
   });

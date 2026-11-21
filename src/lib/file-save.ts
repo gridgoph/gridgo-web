@@ -14,6 +14,31 @@ export async function saveFileById(fileId: string, filename: string): Promise<vo
   await saveRemoteFile(await getFileDownloadUrl(fileId), filename);
 }
 
+/**
+ * The bytes behind a signed link, as a blob on this origin. The shop's file
+ * viewer shows and prints from it, so nothing is written to the PC.
+ */
+export async function fetchRemoteBlob(url: string): Promise<Blob> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("file read failed");
+  return response.blob();
+}
+
+/** Saves bytes already in the browser under `filename`. */
+export function saveBlob(blob: Blob, filename: string): void {
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  try {
+    anchor.click();
+  } finally {
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), REVOKE_AFTER_MS);
+  }
+}
+
 /** Saves the bytes behind a signed link already asked for on this click. */
 export async function saveRemoteFile(url: string, filename: string): Promise<void> {
   const response = await fetch(url);
