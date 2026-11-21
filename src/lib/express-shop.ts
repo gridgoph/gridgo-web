@@ -10,6 +10,7 @@
  * (`src/lib/express.ts`) is a scheduling promise on an ordinary order.
  */
 import { ApiError } from "@/lib/api/client";
+import { isShopStep, readRequirements } from "@/lib/packaging-readiness";
 import type { Order, ShopFileAccess } from "@/lib/api/types";
 
 type Raw = Record<string, unknown>;
@@ -424,4 +425,28 @@ export function shortcutAllowed(event: {
     return false;
   }
   return true;
+}
+
+/* -------------------------------------------------------------------------- */
+/* An API that still gates Express like a regular job                          */
+
+const OLDER_CHAIN_STATES = new Set(["production", "supplier_self_qc"]);
+
+/**
+ * True when this Express job still runs the regular chain: it reached
+ * `production` (gridgo-api#419 goes straight from accepted to ready), or the
+ * API's readiness check still names a shop step (a photo, the finished work,
+ * GRIDGO's review). The job page then keeps the regular actions, so the shop
+ * can always finish; `orderType` alone never proves the newer rule is live.
+ */
+export function expressNeedsRegularSteps(
+  order: Pick<Order, "state"> & Partial<Pick<Order, "transitionReadiness">>,
+): boolean {
+  if (OLDER_CHAIN_STATES.has(order.state)) return true;
+  return Object.values(order.transitionReadiness ?? {}).some(
+    (check) =>
+      check != null &&
+      typeof check === "object" &&
+      readRequirements((check as { missing?: unknown }).missing).some((item) => isShopStep(item.kind)),
+  );
 }

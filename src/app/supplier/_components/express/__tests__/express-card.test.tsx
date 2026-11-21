@@ -216,6 +216,44 @@ describe("typed handover", () => {
   });
 });
 
+describe("typed handover lockout", () => {
+  it("unlocks the code field when GRIDGO's retry time passes", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      m.pickup.mockRejectedValue(
+        new ApiError(429, {
+          error: "express_pickup_attempts_exceeded",
+          retryAfter: new Date(Date.now() + 60_000).toISOString(),
+        }),
+      );
+      render(
+        <CounterCodeSheet
+          order={express({ state: "ready_for_dispatch" })}
+          open
+          onOpenChange={() => {}}
+          onHandedOver={() => {}}
+        />,
+      );
+      const input = screen.getByLabelText("Client's code, 6 numbers");
+      fireEvent.change(input, { target: { value: "999999" } });
+      expect(await screen.findByRole("alert")).toHaveTextContent("Too many wrong codes");
+      expect(input).toBeDisabled();
+      await act(async () => {
+        vi.advanceTimersByTime(30_000);
+      });
+      expect(input).toBeDisabled();
+      // No other interaction: the deadline alone unlocks it.
+      await act(async () => {
+        vi.advanceTimersByTime(31_000);
+      });
+      expect(input).toBeEnabled();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("Done panel", () => {
   it("thanks the shop with no delete reminder when nothing was downloaded", () => {
     render(

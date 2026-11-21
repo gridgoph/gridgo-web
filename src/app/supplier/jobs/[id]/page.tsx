@@ -64,7 +64,7 @@ import {
 import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { EXPRESS_JOB_NOTE, isExpressOrder } from "@/lib/express";
-import { isExpressDocumentOrder, paymentLine } from "@/lib/express-shop";
+import { expressNeedsRegularSteps, isExpressDocumentOrder, paymentLine } from "@/lib/express-shop";
 import { orderReference } from "@/lib/order-reference";
 import { ExpressJobCard } from "@/app/supplier/_components/express/ExpressJobCard";
 import { ExpressDonePanel } from "@/app/supplier/_components/express/ExpressDonePanel";
@@ -442,10 +442,17 @@ export default function SupplierJobDetailPage() {
 
   const status = presentSupplierJobStatus(job, now);
   const activity = jobActivity(job);
-  // An Express document job is worked from its own card (accept, ready, code),
-  // never through the regular transition buttons.
+  // An Express document job is worked from its own card (accept, ready,
+  // code). While the API still gates it like a regular job (an API before
+  // gridgo-api#419), the regular steps stay too, minus accept and decline,
+  // which the card owns, so the shop can always finish the job.
   const expressDoc = isExpressDocumentOrder(job);
-  const actions = expressDoc ? [] : actionsForJob(job, now);
+  const expressRegular = expressDoc && expressNeedsRegularSteps(job);
+  const actions = !expressDoc
+    ? actionsForJob(job, now)
+    : expressRegular
+      ? actionsForJob(job, now).filter((a) => a.kind !== "accept" && a.kind !== "decline")
+      : [];
   const stopped = shopWorkStopped(job, now);
   const stop = shopStopNotice(job);
   const answer = acceptWindow(job, now);
@@ -542,7 +549,8 @@ export default function SupplierJobDetailPage() {
           <ExpressJobCard
             order={job}
             showMoney={!shopStaff}
-            shortcuts
+            // The regular step leads while it is the one that can finish the job.
+            shortcuts={!expressRegular}
             showDetailsLink={false}
             onChanged={(next) => {
               if (next) setJob(next);
@@ -634,7 +642,7 @@ export default function SupplierJobDetailPage() {
             ))}
             <JobFilesDialog order={job} />
           </div>
-          {!expressDoc && !primary && !secondary.length && !stop && answer.kind !== "expired" ? (
+          {(!expressDoc || expressRegular) && !primary && !secondary.length && !stop && answer.kind !== "expired" ? (
             <p className="text-body text-text-secondary m-0">
               {waiting ??
                 "Nothing for you to do on this job right now. The timeline below shows where it has got to."}

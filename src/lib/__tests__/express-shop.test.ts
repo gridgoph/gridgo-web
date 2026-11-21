@@ -8,6 +8,7 @@ import {
   counterCodeDigits,
   counterCodeOutcome,
   downloadedFileIds,
+  expressNeedsRegularSteps,
   expressReadySteps,
   expressStage,
   fileAccessJobId,
@@ -114,6 +115,21 @@ describe("It's ready", () => {
     expect(expressReadySteps(accepted, false)).toEqual(["production", "ready_for_dispatch"]);
     expect(expressReadySteps(express({ state: "production" }), false)).toEqual(["ready_for_dispatch"]);
     expect(expressReadySteps(express(), true)).toEqual([]);
+  });
+});
+
+describe("an API that still gates Express like a regular job", () => {
+  it("keeps the regular steps once the job is on the press or a shop step is still owed", () => {
+    expect(expressNeedsRegularSteps({ state: "payment_authorized" })).toBe(false);
+    expect(expressNeedsRegularSteps({ state: "production" })).toBe(true);
+    expect(expressNeedsRegularSteps({ state: "supplier_self_qc" })).toBe(true);
+    const owed = (code: string) => ({
+      state: "payment_authorized",
+      transitionReadiness: { ready_for_dispatch: { allowed: false, missing: [{ code, message: "" }] } },
+    });
+    expect(expressNeedsRegularSteps(owed("production_finished_required") as never)).toBe(true);
+    // A hold that is not the shop's step (a claim) does not bring them back.
+    expect(expressNeedsRegularSteps(owed("claim_hold_active") as never)).toBe(false);
   });
 });
 

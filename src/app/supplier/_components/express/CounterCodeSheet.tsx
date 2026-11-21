@@ -87,6 +87,23 @@ export function CounterCodeSheet({
       .finally(() => setBusy(false));
   }, [digits, busy, order.id, onHandedOver]);
 
+  // Unlock at GRIDGO's retry time: a render on its own never comes.
+  useEffect(() => {
+    if (!lockedUntil) return;
+    const unlock = () => {
+      setLockedUntil(null);
+      setMessage(null);
+      requestAnimationFrame(() => input.current?.focus());
+    };
+    const wait = lockedUntil.getTime() - Date.now();
+    if (wait <= 0) {
+      unlock();
+      return;
+    }
+    const timer = window.setTimeout(unlock, wait);
+    return () => window.clearTimeout(timer);
+  }, [lockedUntil]);
+
   const locked = lockedUntil != null && lockedUntil.getTime() > Date.now();
   const reference = orderReference(order.id);
 
