@@ -185,6 +185,8 @@ vi.mock("@/lib/api/client", () => ({
   getTracker: countMocks.getTracker,
   getSettings: countMocks.getSettings,
   listDispatchOffers: countMocks.listDispatchOffers,
+  getMyShopHours: () => new Promise(() => {}),
+  getExpressSettings: () => new Promise(() => {}),
   onForbidden: forbiddenRef.subscribe,
 }));
 
@@ -590,11 +592,15 @@ describe("AppShell chrome", () => {
     cleanup();
     renderShell("/supplier/jobs");
     const supplierNav = screen.getByRole("navigation", { name: "Primary navigation" });
-    expect(within(supplierNav).getByRole("link", { name: "Jobs" })).toHaveAttribute(
+    expect(within(supplierNav).getByRole("link", { name: "All jobs" })).toHaveAttribute(
       "aria-current",
       "page",
     );
-    for (const label of ["Shop", "Money"]) {
+    expect(within(supplierNav).getByRole("link", { name: "Messages" })).toHaveAttribute(
+      "href",
+      "/supplier/chat",
+    );
+    for (const label of ["To do", "Money", "My shop"]) {
       expect(
         within(supplierNav).getByRole("button", { name: label }),
       ).toBeInTheDocument();
@@ -772,6 +778,7 @@ describe("AppShell chrome", () => {
         .map((link) => link.getAttribute("href"));
       expect(hrefs.sort()).toEqual(
         navForRole(role)
+          .filter((item) => !item.railHidden)
           .map((item) => item.href)
           .sort(),
       );
@@ -796,6 +803,7 @@ describe("AppShell chrome", () => {
         }
         expect(reached.sort()).toEqual(
           navForRole(role)
+            .filter((item) => !item.railHidden)
             .map((item) => item.href)
             .sort(),
         );
@@ -855,9 +863,10 @@ describe("AppShell chrome", () => {
       expect(headings(nav)).toEqual(["Desk", "Work", "Manage", "Platform"]);
 
       cleanup();
+      // The shop's four sections need no headings (gridgoph/gridgo-web#327).
       renderShell("/supplier/dashboard");
       nav = screen.getByRole("navigation", { name: "Primary navigation" });
-      expect(headings(nav)).toEqual(["Work", "Business"]);
+      expect(headings(nav)).toEqual([]);
     });
 
     it("drops the headings on the icon rail", () => {

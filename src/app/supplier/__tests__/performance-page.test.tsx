@@ -32,7 +32,7 @@ vi.mock("@/lib/api/client", async () => {
   return { ...actual, listJobs: listJobsMock, getSupplierReadiness: readinessMock };
 });
 
-import SupplierDashboardPage from "@/app/supplier/dashboard/page";
+import SupplierDashboardPage from "@/app/supplier/performance/page";
 
 beforeAll(() => {
   // Recharts measures its container; jsdom reports zero and renders nothing.

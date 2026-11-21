@@ -64,6 +64,10 @@ import {
 import type { Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { EXPRESS_JOB_NOTE, isExpressOrder } from "@/lib/express";
+import { expressNeedsRegularSteps, isExpressDocumentOrder, paymentLine } from "@/lib/express-shop";
+import { orderReference } from "@/lib/order-reference";
+import { ExpressJobCard } from "@/app/supplier/_components/express/ExpressJobCard";
+import { ExpressDonePanel } from "@/app/supplier/_components/express/ExpressDonePanel";
 import { formatDateTime, formatPhp } from "@/lib/format";
 import {
   canRequestChange,
@@ -204,6 +208,8 @@ export default function SupplierJobDetailPage() {
   const [photoRefused, setPhotoRefused] = useState<PhotoKind | null>(null);
   // Rider-packs: the finished, unpacked work, sent for GRIDGO's review.
   const [finishedOpen, setFinishedOpen] = useState(false);
+  // An Express job handed over at the counter: the thank-you and delete reminder.
+  const [handedOver, setHandedOver] = useState<Order | null>(null);
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -436,7 +442,17 @@ export default function SupplierJobDetailPage() {
 
   const status = presentSupplierJobStatus(job, now);
   const activity = jobActivity(job);
-  const actions = actionsForJob(job, now);
+  // An Express document job is worked from its own card (accept, ready,
+  // code). While the API still gates it like a regular job (an API before
+  // gridgo-api#419), the regular steps stay too, minus accept and decline,
+  // which the card owns, so the shop can always finish the job.
+  const expressDoc = isExpressDocumentOrder(job);
+  const expressRegular = expressDoc && expressNeedsRegularSteps(job);
+  const actions = !expressDoc
+    ? actionsForJob(job, now)
+    : expressRegular
+      ? actionsForJob(job, now).filter((a) => a.kind !== "accept" && a.kind !== "decline")
+      : [];
   const stopped = shopWorkStopped(job, now);
   const stop = shopStopNotice(job);
   const answer = acceptWindow(job, now);
@@ -482,9 +498,14 @@ export default function SupplierJobDetailPage() {
             <h2 className="text-h2 text-text-primary m-0">{job.title}</h2>
             <p className="text-caption text-text-muted m-0 mt-1">
               {deliveryPositionLabel(job) ? `${deliveryPositionLabel(job)} · ` : ""}
-              Order {job.id}
+              Order {orderReference(job.id) ?? job.id}
+              {expressDoc && paymentLine(job) ? ` · ${paymentLine(job)}` : ""}
             </p>
-            {isExpressOrder(job) ? (
+            {expressDoc ? (
+              <div className="mt-2">
+                <ExpressChip />
+              </div>
+            ) : isExpressOrder(job) ? (
               <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
                 <ExpressChip />
                 <span className="text-caption text-text-secondary">{EXPRESS_JOB_NOTE}</span>
@@ -524,7 +545,26 @@ export default function SupplierJobDetailPage() {
           </div>
         ) : null}
 
-        {answer.kind !== "none" ? <AcceptWindowCard order={job} now={now} /> : null}
+        {expressDoc ? (
+          <ExpressJobCard
+            order={job}
+            showMoney={!shopStaff}
+            // The regular step leads while it is the one that can finish the job.
+            shortcuts={!expressRegular}
+            showDetailsLink={false}
+            onChanged={(next) => {
+              if (next) setJob(next);
+              else router.push("/supplier/dashboard");
+              void load().catch(() => undefined);
+            }}
+            onHandedOver={(order) => {
+              setJob(order);
+              setHandedOver(order);
+            }}
+          />
+        ) : answer.kind !== "none" ? (
+          <AcceptWindowCard order={job} now={now} />
+        ) : null}
         {stop ? (
           <section className="border-outline-subtle bg-surface-variant flex flex-col gap-1 rounded-field border px-3 py-2">
             <p className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
@@ -602,7 +642,7 @@ export default function SupplierJobDetailPage() {
             ))}
             <JobFilesDialog order={job} />
           </div>
-          {!primary && !secondary.length && !stop && answer.kind !== "expired" ? (
+          {(!expressDoc || expressRegular) && !primary && !secondary.length && !stop && answer.kind !== "expired" ? (
             <p className="text-body text-text-secondary m-0">
               {waiting ??
                 "Nothing for you to do on this job right now. The timeline below shows where it has got to."}
@@ -1034,6 +1074,13 @@ export default function SupplierJobDetailPage() {
           }}
         />
       ) : null}
+
+      <ExpressDonePanel
+        order={handedOver}
+        open={handedOver !== null}
+        showMoney={!shopStaff}
+        onClose={() => setHandedOver(null)}
+      />
 
       <DeclineJobDialog
         open={declineOpen}

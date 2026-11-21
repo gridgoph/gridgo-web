@@ -1,184 +1,130 @@
 "use client";
 
-import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
-
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  LabelList,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { Banknote, CircleCheck, PackageCheck, Timer } from "lucide-react";
+import { ArrowRight, BellRing, CalendarClock } from "lucide-react";
 
 import { PhoneAppInvite } from "@/components/pwa/PhoneApp";
 import { Button } from "@/components/ui/button";
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-  type ChartConfig,
-} from "@/components/ui/chart";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
-import { StatCard } from "@/components/ui/StatCard";
+import { Switch } from "@/components/ui/switch";
+import { ExpressDonePanel } from "@/app/supplier/_components/express/ExpressDonePanel";
+import { ExpressJobCard } from "@/app/supplier/_components/express/ExpressJobCard";
+import { nextSetupStep, shopIsReady } from "@/app/supplier/_lib/home-next";
 import {
-  nextObligations,
-  nextSetupStep,
-  shopIsReady,
-} from "@/app/supplier/_lib/home-next";
+  afterThat,
+  dueToday,
+  earnedToday,
+  expressQueue,
+  greeting,
+} from "@/app/supplier/_lib/today";
 import { ApiError, getSupplierReadiness, listJobs } from "@/lib/api/client";
 import type { Order } from "@/lib/api/types";
-import { useLiveReload } from "@/lib/live/useLiveReload";
-import { useAcceptDeadlines } from "@/lib/use-accept-clock";
-import { formatPhp } from "@/lib/format";
-
+import { useAuth } from "@/lib/auth/AuthProvider";
+import { useShopAccess } from "@/lib/auth/shop-access";
+import { todoTitle, workLine } from "@/lib/express-shop";
+import { formatClock, formatPhp } from "@/lib/format";
 import {
-  finishedByWeek,
-  medianProductionHours,
-  onTheBoardMinor,
-  onTimeSummary,
-  stageCounts,
-  unmappedStates,
-} from "../_lib/dashboard";
+  readNotificationSoundEnabled,
+  subscribeNotificationSoundEnabled,
+  writeNotificationSoundEnabled,
+} from "@/lib/live/notificationSound";
+import { useLiveReload } from "@/lib/live/useLiveReload";
+import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
+import { useAcceptDeadlines } from "@/lib/use-accept-clock";
 
-const WEEKS = 8;
-
-/*
-  One series per chart, so neither needs a legend and neither leans on colour to
-  tell things apart.
-
-  That is a constraint, not a preference: GRIDGO's chart ramp is a monochrome
-  scale plus the brand gold, which cannot carry categorical meaning, and the
-  palette is not ours to extend. So the charts are built not to ask it to — the
-  week chart is a single line, and the pipeline chart puts identity in the row
-  label rather than in the bar's fill.
-*/
-const weekChartConfig = {
-  earningsMinor: { label: "Work finished", color: "var(--color-chart-1)" },
-} satisfies ChartConfig;
-
-const stageChartConfig = {
-  jobs: { label: "Jobs", color: "var(--color-chart-1)" },
-} satisfies ChartConfig;
-
-/** Whole hours below two days, then days — a shop does not plan in 37.4 hours. */
-function NextPanel({
-  obligations,
-  setup,
-}: {
-  obligations: ReturnType<typeof nextObligations>;
-  setup: { message: string; href: string } | null;
-}) {
-  if (!obligations.length && !setup) return null;
+function SoundSwitch() {
+  const enabled = useSyncExternalStore(
+    subscribeNotificationSoundEnabled,
+    readNotificationSoundEnabled,
+    () => true,
+  );
   return (
-    <section className="flex flex-col gap-2" aria-label="Next">
-      <h2
-        className="text-body text-text-primary m-0"
-        style={{ fontFamily: "var(--font-medium)" }}
-      >
-        Next
-      </h2>
-      {setup ? (
-        <Link href={setup.href} className="text-body text-text-primary underline">
-          {setup.message}
-        </Link>
-      ) : null}
-      <ul className="m-0 flex list-none flex-col gap-2 p-0">
-        {obligations.slice(0, 5).map((item) => (
-          <li key={item.id}>
-            <Link href={item.href} className="text-body text-text-primary underline">
-              {item.title}. {item.detail}
-            </Link>
-          </li>
-        ))}
-      </ul>
+    <section aria-labelledby="alerts-heading" className="gg-card flex flex-col gap-1 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 id="alerts-heading" className="text-h3 text-text-primary m-0 flex items-center gap-2">
+          <BellRing className="size-4" aria-hidden />
+          Alerts with sound
+        </h3>
+        <Switch
+          checked={enabled}
+          aria-labelledby="alerts-heading"
+          onCheckedChange={(next) => writeNotificationSoundEnabled(Boolean(next))}
+        />
+      </div>
+      <p className="text-caption text-text-muted m-0">
+        {enabled
+          ? "A sound plays on this PC when a job comes in."
+          : "Off on this PC. New jobs still show on the bell."}
+      </p>
     </section>
   );
 }
 
-function formatDuration(hours: number | null): string {
-  if (hours === null) return "—";
-  if (hours < 1) return `${Math.max(1, Math.round(hours * 60))}m`;
-  if (hours < 48) return `${Math.round(hours)}h`;
-  return `${Math.round(hours / 24)}d`;
-}
-
-function formatRate(rate: number | null): string {
-  return rate === null ? "—" : `${Math.round(rate * 100)}%`;
-}
-
-/** Compact peso for an axis, where the full figure would collide. */
-function axisPhp(minor: number): string {
-  const pesos = minor / 100;
-  if (pesos >= 1000) return `₱${Math.round(pesos / 1000)}k`;
-  return `₱${Math.round(pesos)}`;
-}
-
-export default function SupplierDashboardPage() {
+/**
+ * Today (gridgoph/gridgo-web#327): the To do section's first page, the same
+ * order as the phone. Express jobs first, as cards with one big action each;
+ * then everything else; what is due today; the Owner's earnings; the sound.
+ */
+export default function SupplierTodayPage() {
+  const { user } = useAuth();
+  const { staff } = useShopAccess();
   const [jobs, setJobs] = useState<Order[] | null>(null);
   const [readiness, setReadiness] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [readinessError, setReadinessError] = useState(false);
+  const [done, setDone] = useState<Order | null>(null);
 
   const load = useSerializedLoad(
     useCallback(async () => {
       setLoading(true);
-      setError(null);
       try {
         const [nextJobs, nextReadiness] = await Promise.allSettled([
           listJobs(),
-          getSupplierReadiness(),
+          // Readiness is the Owner's (Staff are refused it).
+          staff ? Promise.resolve(null) : getSupplierReadiness(),
         ]);
-        setReadinessError(nextReadiness.status === "rejected");
         if (nextReadiness.status === "fulfilled") setReadiness(nextReadiness.value);
         if (nextJobs.status === "rejected") throw nextJobs.reason;
         setJobs(nextJobs.value);
+        setError(null);
       } catch (err) {
-        if (err instanceof ApiError) {
-          setError(
-            err.status === 403
-              ? "This dashboard is only available to supplier accounts."
-              : `Could not load your jobs (${err.code}). Try again.`,
-          );
-        } else {
-          setError("Could not load your jobs. Check your connection and try again.");
-        }
+        setError(
+          err instanceof ApiError && err.status === 403
+            ? "Today is only for shop accounts."
+            : "Could not load your jobs. Check this PC's connection and try again.",
+        );
       } finally {
         setLoading(false);
       }
-    }, []),
+    }, [staff]),
   );
 
   useLiveReload("jobs", load);
-
   useEffect(() => {
     void load();
   }, [load]);
 
   const rows = useMemo(() => jobs ?? [], [jobs]);
   const now = useAcceptDeadlines(rows);
-  const obligations = useMemo(() => nextObligations(rows, now), [rows, now]);
-  const setup = useMemo(
-    () => (shopIsReady(readiness) ? null : nextSetupStep(readiness)),
-    [readiness],
-  );
-  const weeks = useMemo(() => finishedByWeek(rows, WEEKS), [rows]);
-  const stages = useMemo(() => stageCounts(rows), [rows]);
-  const onTime = useMemo(() => onTimeSummary(rows), [rows]);
-  const median = useMemo(() => medianProductionHours(rows), [rows]);
-  const unmapped = useMemo(() => unmappedStates(rows), [rows]);
+  const express = useMemo(() => expressQueue(rows), [rows]);
+  const others = useMemo(() => afterThat(rows, now), [rows, now]);
+  const due = useMemo(() => dueToday(rows, now), [rows, now]);
+  const earned = useMemo(() => earnedToday(rows, now), [rows, now]);
+  const setup = staff || shopIsReady(readiness) ? null : nextSetupStep(readiness);
 
-  const thisWeek = weeks[weeks.length - 1];
-  const finishedThisWeek = thisWeek?.earningsMinor ?? 0;
-  const anyFinished = weeks.some((week) => week.jobs > 0);
+  const replace = useCallback(
+    (id: string, next: Order | null) => {
+      setJobs((current) => {
+        if (!current) return current;
+        if (!next) return current.filter((job) => job.id !== id);
+        return current.map((job) => (job.id === id ? next : job));
+      });
+      void load();
+    },
+    [load],
+  );
 
   if (error && !jobs) {
     return (
@@ -186,221 +132,159 @@ export default function SupplierDashboardPage() {
         body={error}
         action={
           <Button variant="secondary" onClick={() => void load()}>
-            Retry
+            Try again
           </Button>
         }
       />
     );
   }
+  if (loading && !jobs) return <LoadingBlock label="Loading today's jobs" />;
 
-  if (loading && !jobs) {
-    return <LoadingBlock label="Loading your shop's figures" />;
-  }
-
-  const refresh = (
-    <div className="flex flex-col gap-2">
-      {error || readinessError ? (
-        <p role="alert" className="text-body text-text-secondary m-0">
-          {error
-            ? "Could not refresh jobs. Your last loaded figures are still shown. "
-            : ""}
-          {readinessError
-            ? "Shop readiness could not be refreshed. Any previously loaded setup step is still shown."
-            : ""}
-        </p>
-      ) : null}
-      <Button
-        className="self-start"
-        variant="secondary"
-        disabled={loading}
-        onClick={() => void load()}
-      >
-        Refresh dashboard
-      </Button>
-    </div>
-  );
-
-  if (!rows.length) {
-    return (
-      <div className="flex flex-col gap-4">
-        <PhoneAppInvite />
-        {refresh}
-        <NextPanel obligations={obligations} setup={setup} />
-        <EmptyState
-          title="Nothing to measure yet"
-          body="Your first assigned job starts this dashboard. Earnings, on-time delivery and production time all come from the jobs you work."
-          action={
-            <Button variant="secondary" onClick={() => void load()}>
-              Refresh
-            </Button>
-          }
-        />
-      </div>
-    );
-  }
+  const things = express.length + others.length;
 
   return (
     <div className="flex flex-col gap-4">
-      <PhoneAppInvite />
-      {refresh}
-      <NextPanel obligations={obligations} setup={setup} />
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard
-          label="On the board"
-          value={formatPhp(onTheBoardMinor(rows))}
-          hint="Every job you are still working"
-          icon={Banknote}
-        />
-        <StatCard
-          label="Finished this week"
-          value={formatPhp(finishedThisWeek)}
-          hint={`${thisWeek?.jobs ?? 0} job${thisWeek?.jobs === 1 ? "" : "s"} marked ready`}
-          icon={PackageCheck}
-        />
-        <StatCard
-          label="On time"
-          value={formatRate(onTime.rate)}
-          hint={
-            onTime.measured === 0
-              ? "No finished job has a ready-by date yet"
-              : `${onTime.onTime} of ${onTime.measured} met your ready-by date`
-          }
-          icon={CircleCheck}
-        />
-        <StatCard
-          label="Typical production"
-          value={formatDuration(median)}
-          hint={
-            median === null
-              ? "Measured once you finish a job you started"
-              : "Median, from starting to marking ready"
-          }
-          icon={Timer}
-        />
+      <div className="flex flex-col gap-0.5">
+        <p className="text-body text-text-muted m-0">{greeting(now, user?.name)}</p>
+        <h2 className="text-h1 text-text-primary m-0">{todoTitle(things)}</h2>
       </div>
 
-      <section className="gg-card" aria-labelledby="finished-heading">
-        <h2 id="finished-heading" className="text-h3 text-text-primary m-0 mb-1">
-          What you finished
-        </h2>
-        <p className="text-body text-text-secondary m-0 mb-3">
-          The last {WEEKS} weeks, valued at what each job pays your shop, counted on the
-          day you marked it ready. This is work completed, not money released — milestone
-          payouts live on the Payouts screen.
+      {error ? (
+        <p role="alert" className="text-body text-text-secondary m-0">
+          Could not refresh. What you see is from the last load.{" "}
+          <Button variant="link" className="px-0" onClick={() => void load()}>
+            Try again
+          </Button>
         </p>
-        {anyFinished ? (
-          <ChartContainer
-            config={weekChartConfig}
-            className="h-64 w-full"
-            aria-label={`Value of work finished each week for the last ${WEEKS} weeks`}
-          >
-            <AreaChart data={weeks} accessibilityLayer margin={{ left: 4, right: 8 }}>
-              <CartesianGrid vertical={false} />
-              <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} />
-              <YAxis
-                tickLine={false}
-                axisLine={false}
-                width={56}
-                tickFormatter={(value) => axisPhp(Number(value))}
-              />
-              <ChartTooltip
-                content={
-                  <ChartTooltipContent
-                    labelFormatter={(label) => `Week of ${label}`}
-                    formatter={(value) => formatPhp(Number(value))}
-                  />
-                }
-              />
-              <Area
-                dataKey="earningsMinor"
-                type="monotone"
-                stroke="var(--color-earningsMinor)"
-                strokeWidth={2}
-                fill="var(--color-earningsMinor)"
-                fillOpacity={0.12}
-                dot={false}
-                activeDot={{ r: 4 }}
-              />
-            </AreaChart>
-          </ChartContainer>
-        ) : (
-          <p className="text-body text-text-muted m-0">
-            Nothing marked ready in the last {WEEKS} weeks. The line starts with your
-            first finished job.
-          </p>
-        )}
-      </section>
+      ) : null}
 
-      <section className="gg-card" aria-labelledby="pipeline-heading">
-        <h2 id="pipeline-heading" className="text-h3 text-text-primary m-0 mb-1">
-          Where your jobs are
-        </h2>
-        <p className="text-body text-text-secondary m-0 mb-3">
-          Every job on your board, at the stage it has reached. Read top to bottom — this
-          is the order the work happens in, not a ranking.
-        </p>
-        {stages.length ? (
-          <ChartContainer
-            config={stageChartConfig}
-            className="w-full"
-            style={{ height: Math.max(160, stages.length * 44 + 40) }}
-            aria-label="Number of jobs at each stage of your pipeline"
-          >
-            <BarChart
-              data={stages}
-              layout="vertical"
-              accessibilityLayer
-              margin={{ left: 4, right: 32 }}
+      {express.map((job, index) => (
+        <ExpressJobCard
+          key={job.id}
+          order={job}
+          showMoney={!staff}
+          shortcuts={index === 0}
+          onChanged={(next) => replace(job.id, next)}
+          onHandedOver={(handed) => {
+            setDone(handed);
+            replace(job.id, handed);
+          }}
+        />
+      ))}
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.9fr)]">
+        <section aria-labelledby="after-heading" className="gg-card flex flex-col gap-2 p-4">
+          <h3 id="after-heading" className="text-h3 text-text-primary m-0">
+            {express.length ? "After that" : "To do"}
+          </h3>
+          {setup ? (
+            <Link href={setup.href} className="text-body text-text-primary underline">
+              {setup.message}
+            </Link>
+          ) : null}
+          {others.length ? (
+            <ul className="m-0 flex list-none flex-col p-0">
+              {others.slice(0, 8).map((item) => (
+                <li
+                  key={item.id}
+                  className="border-outline-subtle flex items-center gap-3 border-b py-2 last:border-b-0"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className="text-body text-text-primary m-0 truncate"
+                      style={{ fontFamily: "var(--font-medium)" }}
+                    >
+                      {item.title}
+                    </p>
+                    <p className="text-caption text-text-muted m-0">Regular · {item.detail}</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    render={<Link href={item.href} />}
+                    nativeButton={false}
+                    aria-label={`Open ${item.title}`}
+                  >
+                    Open
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-body text-text-secondary m-0">
+              {express.length ? "Nothing else waiting on you." : "Nothing waiting on you right now. New jobs show here."}
+            </p>
+          )}
+          <p className="text-caption text-text-muted m-0 mt-auto pt-2">
+            Regular jobs keep GRIDGO&rsquo;s check and photos. Express jobs don&rsquo;t.
+          </p>
+          <Link href="/supplier/jobs" className="text-body text-text-primary flex min-h-11 items-center gap-1 underline">
+            All jobs
+            <ArrowRight className="size-4" aria-hidden />
+          </Link>
+        </section>
+
+        <section aria-labelledby="due-heading" className="gg-card flex flex-col gap-2 p-4">
+          <h3 id="due-heading" className="text-h3 text-text-primary m-0 flex items-center gap-2">
+            <CalendarClock className="size-4" aria-hidden />
+            Due today
+          </h3>
+          {due.length ? (
+            <ul className="m-0 flex list-none flex-col gap-1 p-0">
+              {due.slice(0, 6).map((job) => (
+                <li key={job.id} className="flex items-baseline justify-between gap-3">
+                  <span
+                    className="text-body text-text-primary tabular-nums"
+                    style={{ fontFamily: "var(--font-medium)" }}
+                  >
+                    {formatClock(job.readyBy ?? job.deadline)}
+                  </span>
+                  <Link
+                    href={`/supplier/jobs/${encodeURIComponent(job.id)}`}
+                    className="text-body text-text-secondary min-w-0 truncate underline"
+                  >
+                    {workLine(job)}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-body text-text-secondary m-0">Nothing else is due today.</p>
+          )}
+          {staff ? null : (
+            <Link href="/supplier/schedule" className="text-body text-text-primary min-h-11 underline">
+              Open the schedule
+            </Link>
+          )}
+        </section>
+
+        <div className="flex flex-col gap-4">
+          {staff ? null : (
+            <Link
+              href="/supplier/payouts"
+              className="gg-card flex flex-col gap-1 p-4 no-underline hover:bg-overlay-hover"
             >
-              <CartesianGrid horizontal={false} />
-              <XAxis type="number" hide allowDecimals={false} />
-              <YAxis
-                type="category"
-                dataKey="label"
-                tickLine={false}
-                axisLine={false}
-                width={168}
-              />
-              <ChartTooltip
-                cursor={false}
-                content={
-                  <ChartTooltipContent
-                    formatter={(value, _name, item) => {
-                      const worth = (item?.payload as { earningsMinor?: number })
-                        ?.earningsMinor;
-                      const jobs = `${value} job${Number(value) === 1 ? "" : "s"}`;
-                      return worth ? `${jobs} · ${formatPhp(worth)}` : jobs;
-                    }}
-                  />
-                }
-              />
-              <Bar
-                dataKey="jobs"
-                fill="var(--color-jobs)"
-                radius={[0, 4, 4, 0]}
-                barSize={20}
-              >
-                <LabelList
-                  dataKey="jobs"
-                  position="right"
-                  className="fill-text-secondary"
-                  fontSize={12}
-                />
-              </Bar>
-            </BarChart>
-          </ChartContainer>
-        ) : (
-          <p className="text-body text-text-muted m-0">
-            No job is at a tracked stage right now.
-          </p>
-        )}
-        {unmapped.length ? (
-          <p className="text-caption text-text-muted m-0 mt-3">
-            Not shown above: {unmapped.join(", ")}. These jobs sit at a stage this chart
-            does not track yet.
-          </p>
-        ) : null}
-      </section>
+              <span className="text-caption text-text-muted">You earned today</span>
+              <span className="text-h1 text-text-primary tabular-nums">{formatPhp(earned.minor)}</span>
+              <span className="text-caption text-text-muted">
+                {earned.jobs === 0
+                  ? "Nothing marked ready yet today · see Money"
+                  : `${earned.jobs} ${earned.jobs === 1 ? "job" : "jobs"} marked ready · see Money`}
+              </span>
+            </Link>
+          )}
+          <SoundSwitch />
+        </div>
+      </div>
+
+      <PhoneAppInvite />
+
+      <ExpressDonePanel
+        order={done}
+        open={done !== null}
+        showMoney={!staff}
+        onClose={() => setDone(null)}
+      />
     </div>
   );
 }

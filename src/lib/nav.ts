@@ -86,8 +86,11 @@ export type NavIconKey =
   | "quotes"
   | "sample-batches"
   | "team"
+  | "today"
+  | "my-shop"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
+  | "group-todo"
   | "group-money"
   | "group-queue"
   | "group-field"
@@ -119,6 +122,12 @@ export type NavItem = {
    * for it. Sources and their wording live in `src/lib/nav-counts.ts`.
    */
   count?: NavCountKey;
+  /**
+   * Kept for titles, breadcrumbs and Staff rules, but not drawn on the rail:
+   * a page the shop opens from its section's own page (My shop), so the rail
+   * stays at the phone's four sections.
+   */
+  railHidden?: boolean;
 };
 
 /**
@@ -166,99 +175,34 @@ export type NavGroup = {
 };
 
 export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
+  // The shop's four sections, the same words and order as the phone app
+  // (gridgoph/gridgo-web#327, gridgo-supplier#269): To do, Messages, Money and
+  // My shop. No section headings: four rows need none. Every earlier page is
+  // still here; the rarely used ones sit off the rail (`railHidden`) and are
+  // linked from the My shop page.
   supplier: [
     {
-      id: "supplier-top",
-      section: "Work",
+      id: "supplier-todo",
+      section: "",
+      label: "To do",
+      icon: "group-todo",
       items: [
         {
-          id: "supplier-dashboard",
+          id: "supplier-today",
           href: "/supplier/dashboard",
-          label: "Dashboard",
-          title: "Shop dashboard",
-          icon: "dashboard",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "supplier-jobs",
-          href: "/supplier/jobs",
-          label: "Jobs",
-          title: "Assigned jobs",
-          icon: "jobs",
+          label: "Today",
+          title: "Today",
+          icon: "today",
           ready: true,
           placeholderBody: "",
           count: "jobs-need-action",
         },
         {
-          id: "supplier-chat",
-          href: "/supplier/chat",
-          label: "Chat",
-          title: "Support chat",
-          icon: "chat",
-          ready: true,
-          placeholderBody: "",
-        },
-      ],
-    },
-    {
-      id: "supplier-shop",
-      section: "Business",
-      label: "Shop",
-      icon: "group-shop",
-      items: [
-        {
-          id: "supplier-shop",
-          href: "/supplier/shop",
-          label: "Shop details",
-          title: "Shop details",
-          icon: "verification",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "supplier-team",
-          href: "/supplier/team",
-          label: "Team",
-          title: "Team",
-          icon: "team",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "supplier-documents",
-          href: "/supplier/documents",
-          label: "Accreditation",
-          title: "Accreditation",
-          icon: "reports",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "supplier-services",
-          href: "/supplier/services",
-          label: "Services",
-          title: "Services you offer",
-          icon: "products",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "supplier-catalogue",
-          href: "/supplier/catalogue",
-          label: "Catalogues",
-          title: "Your board",
-          icon: "catalogue",
-          ready: true,
-          placeholderBody:
-            "The shop board: listings clients pick from. Hunt, filter, and open a listing page. Uses GET/POST /me/catalog-items.",
-        },
-        {
-          id: "supplier-product-types",
-          href: "/supplier/product-types",
-          label: "Product types",
-          title: "Product types",
-          icon: "listing-reviews",
+          id: "supplier-jobs",
+          href: "/supplier/jobs",
+          label: "All jobs",
+          title: "All jobs",
+          icon: "jobs",
           ready: true,
           placeholderBody: "",
         },
@@ -273,56 +217,34 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
             "Show promised dates and capacity commitments for accepted jobs. Built on listJobs / getOrder — no separate schedule endpoint.",
         },
         {
-          id: "supplier-shop-hours",
-          href: "/supplier/shop-hours",
-          label: "Shop hours",
-          title: "Shop hours",
-          icon: "shop-hours",
+          id: "supplier-performance",
+          href: "/supplier/performance",
+          label: "How the shop is doing",
+          title: "How the shop is doing",
+          icon: "dashboard",
           ready: true,
           placeholderBody: "",
         },
+      ],
+    },
+    {
+      id: "supplier-messages",
+      section: "",
+      items: [
         {
-          id: "supplier-legal",
-          href: "/supplier/legal",
-          label: "Legal",
-          title: "Legal & privacy",
-          icon: "legal",
+          id: "supplier-chat",
+          href: "/supplier/chat",
+          label: "Messages",
+          title: "Messages",
+          icon: "chat",
           ready: true,
           placeholderBody: "",
-        },
-        {
-          id: "supplier-privacy",
-          href: "/supplier/privacy",
-          label: "Your data",
-          title: "Your data",
-          icon: "privacy",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "supplier-report",
-          href: "/supplier/report",
-          label: "Report a problem",
-          title: "Report a problem",
-          icon: "escalations",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
-          id: "supplier-capacity",
-          href: "/supplier/capacity",
-          label: "Capacity",
-          title: "Capacity",
-          icon: "capacity",
-          ready: true,
-          placeholderBody:
-            "Edit daily/weekly capacity and turnaround on live service lines via updateSupplierService. Capability expansion re-enters verification.",
         },
       ],
     },
     {
       id: "supplier-money",
-      section: "Business",
+      section: "",
       label: "Money",
       icon: "group-money",
       items: [
@@ -337,15 +259,6 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
             "Track completed jobs and payout holds. Use listJobs with payoutHold on Order, plus listClaims / listIssues scoped to your orders. Active holds block payout_released.",
         },
         {
-          id: "supplier-record",
-          href: "/supplier/record",
-          label: "Reviews",
-          title: "Reviews and shop record",
-          icon: "performance",
-          ready: true,
-          placeholderBody: "",
-        },
-        {
           id: "supplier-payout-account",
           href: "/supplier/payout-account",
           label: "Where you get paid",
@@ -354,6 +267,140 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody:
             "The receiving QR and account Operations pays your jobs to. getMyPayoutAccount / updateMyPayoutAccount / uploadPayoutQr.",
+        },
+      ],
+    },
+    {
+      id: "supplier-shop",
+      section: "",
+      label: "My shop",
+      icon: "group-shop",
+      items: [
+        {
+          id: "supplier-my-shop",
+          href: "/supplier/my-shop",
+          label: "Overview",
+          title: "My shop",
+          icon: "my-shop",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "supplier-catalogue",
+          href: "/supplier/catalogue",
+          label: "Products",
+          title: "Products",
+          icon: "catalogue",
+          ready: true,
+          placeholderBody:
+            "The shop board: listings clients pick from. Hunt, filter, and open a listing page. Uses GET/POST /me/catalog-items.",
+        },
+        {
+          id: "supplier-team",
+          href: "/supplier/team",
+          label: "Staff",
+          title: "Staff",
+          icon: "team",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "supplier-shop-hours",
+          href: "/supplier/shop-hours",
+          label: "Hours",
+          title: "Shop hours",
+          icon: "shop-hours",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "supplier-shop",
+          href: "/supplier/shop",
+          label: "Shop details",
+          title: "Shop details",
+          icon: "verification",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "supplier-documents",
+          href: "/supplier/documents",
+          label: "Shop papers",
+          title: "Shop papers",
+          icon: "reports",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "supplier-product-types",
+          href: "/supplier/product-types",
+          label: "Product types",
+          title: "Product types",
+          icon: "listing-reviews",
+          ready: true,
+          placeholderBody: "",
+          railHidden: true,
+        },
+        {
+          id: "supplier-services",
+          href: "/supplier/services",
+          label: "Services",
+          title: "Services you offer",
+          icon: "products",
+          ready: true,
+          placeholderBody: "",
+          railHidden: true,
+        },
+        {
+          id: "supplier-capacity",
+          href: "/supplier/capacity",
+          label: "Capacity",
+          title: "Capacity",
+          icon: "capacity",
+          ready: true,
+          placeholderBody:
+            "Edit daily/weekly capacity and turnaround on live service lines via updateSupplierService. Capability expansion re-enters verification.",
+          railHidden: true,
+        },
+        {
+          id: "supplier-record",
+          href: "/supplier/record",
+          label: "Reviews",
+          title: "Reviews and shop record",
+          icon: "performance",
+          ready: true,
+          placeholderBody: "",
+          railHidden: true,
+        },
+        {
+          id: "supplier-legal",
+          href: "/supplier/legal",
+          label: "Legal",
+          title: "Legal & privacy",
+          icon: "legal",
+          ready: true,
+          placeholderBody: "",
+          railHidden: true,
+        },
+        {
+          id: "supplier-privacy",
+          href: "/supplier/privacy",
+          label: "Your data",
+          title: "Your data",
+          icon: "privacy",
+          ready: true,
+          placeholderBody: "",
+          railHidden: true,
+        },
+        {
+          id: "supplier-report",
+          href: "/supplier/report",
+          label: "Report a problem",
+          title: "Report a problem",
+          icon: "escalations",
+          ready: true,
+          placeholderBody: "",
+          railHidden: true,
         },
       ],
     },
@@ -1404,7 +1451,10 @@ export type NavScope = {
  * products, production times, hours, profile, payouts, earnings, reports and
  * the team stay with the Owner (gridgo-api docs/SHOP_TEAM_API.md).
  */
-export const SHOP_STAFF_NAV_IDS: ReadonlySet<string> = new Set(["supplier-jobs"]);
+export const SHOP_STAFF_NAV_IDS: ReadonlySet<string> = new Set([
+  "supplier-today",
+  "supplier-jobs",
+]);
 
 /** Pages outside the rail that Staff may still open. */
 const SHOP_STAFF_EXTRA_PATHS: readonly string[] = [
@@ -1413,7 +1463,7 @@ const SHOP_STAFF_EXTRA_PATHS: readonly string[] = [
 ];
 
 /** Where a Staff login lands, and where the logo and refusals send them. */
-export const SHOP_STAFF_HOME = "/supplier/jobs";
+export const SHOP_STAFF_HOME = "/supplier/dashboard";
 
 /**
  * Whether a Staff login may open `pathname`. Anything else in the supplier
@@ -1516,6 +1566,7 @@ export function contextTitleForPath(
   role?: Role | string | null,
 ): string {
   // Nested workspaces that share a list parent
+  if (/^\/supplier\/jobs\/[^/]+\/files$/.test(pathname)) return "Job files";
   if (pathname.startsWith("/supplier/jobs/")) return "Order workspace";
   if (pathname === "/supplier/catalogue/new") return "New listing";
   if (pathname === "/supplier/phone-app") return "Phone app";

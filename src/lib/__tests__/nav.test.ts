@@ -34,22 +34,24 @@ describe("ROLE_NAV", () => {
     expect(hrefs).toEqual([
       "/supplier/dashboard",
       "/supplier/jobs",
-      "/supplier/chat",
-      "/supplier/shop",
-      "/supplier/team",
-      "/supplier/documents",
-      "/supplier/services",
-      "/supplier/catalogue",
-      "/supplier/product-types",
       "/supplier/schedule",
+      "/supplier/performance",
+      "/supplier/chat",
+      "/supplier/payouts",
+      "/supplier/payout-account",
+      "/supplier/my-shop",
+      "/supplier/catalogue",
+      "/supplier/team",
       "/supplier/shop-hours",
+      "/supplier/shop",
+      "/supplier/documents",
+      "/supplier/product-types",
+      "/supplier/services",
+      "/supplier/capacity",
+      "/supplier/record",
       "/supplier/legal",
       "/supplier/privacy",
       "/supplier/report",
-      "/supplier/capacity",
-      "/supplier/payouts",
-      "/supplier/record",
-      "/supplier/payout-account",
     ]);
   });
 
@@ -280,8 +282,10 @@ describe("ROLE_NAV", () => {
       "/supplier/documents",
       "/supplier/jobs",
       "/supplier/legal",
+      "/supplier/my-shop",
       "/supplier/payout-account",
       "/supplier/payouts",
+      "/supplier/performance",
       "/supplier/privacy",
       "/supplier/product-types",
       "/supplier/record",
@@ -346,11 +350,14 @@ describe("ROLE_NAV", () => {
       "Manage",
       "Platform",
     ]);
-    expect(ROLE_NAV_GROUPS.supplier.map((g) => g.label ?? g.id)).toEqual([
-      "supplier-top",
-      "Shop",
+    // The phone app's four sections, in its order (gridgoph/gridgo-web#327).
+    expect(ROLE_NAV_GROUPS.supplier.map((g) => g.label ?? g.items[0]?.label)).toEqual([
+      "To do",
+      "Messages",
       "Money",
+      "My shop",
     ]);
+    expect(navSectionsForRole("supplier").map((section) => section.label)).toEqual([""]);
 
     expect(ROLE_NAV_GROUPS.ops_admin[0]?.label).toBeUndefined();
 
@@ -485,34 +492,26 @@ describe("ROLE_NAV", () => {
       ).toEqual(hrefs);
     }
 
-    expect(
-      ROLE_NAV_GROUPS.supplier
-        .find((g) => g.id === "supplier-top")
-        ?.items.map((n) => n.href),
-    ).toEqual(["/supplier/dashboard", "/supplier/jobs", "/supplier/chat"]);
+    const supplierGroup = (id: string) =>
+      ROLE_NAV_GROUPS.supplier.find((g) => g.id === id)?.items.map((n) => n.href);
+    expect(supplierGroup("supplier-todo")).toEqual([
+      "/supplier/dashboard",
+      "/supplier/jobs",
+      "/supplier/schedule",
+      "/supplier/performance",
+    ]);
+    expect(supplierGroup("supplier-messages")).toEqual(["/supplier/chat"]);
+    expect(supplierGroup("supplier-money")).toEqual([
+      "/supplier/payouts",
+      "/supplier/payout-account",
+    ]);
+    // My shop draws six rows; the rest are linked from the My shop page.
     expect(
       ROLE_NAV_GROUPS.supplier
         .find((g) => g.id === "supplier-shop")
-        ?.items.map((n) => n.href),
-    ).toEqual([
-      "/supplier/shop",
-      "/supplier/team",
-      "/supplier/documents",
-      "/supplier/services",
-      "/supplier/catalogue",
-      "/supplier/product-types",
-      "/supplier/schedule",
-      "/supplier/shop-hours",
-      "/supplier/legal",
-      "/supplier/privacy",
-      "/supplier/report",
-      "/supplier/capacity",
-    ]);
-    expect(
-      ROLE_NAV_GROUPS.supplier
-        .find((g) => g.id === "supplier-money")
-        ?.items.map((n) => n.href),
-    ).toEqual(["/supplier/payouts", "/supplier/record", "/supplier/payout-account"]);
+        ?.items.filter((n) => !n.railHidden)
+        .map((n) => n.label),
+    ).toEqual(["Overview", "Products", "Staff", "Hours", "Shop details", "Shop papers"]);
 
     const grouped = Object.values(ROLE_NAV_GROUPS).flatMap((groups) =>
       groups.flatMap((group) => group.items.map((item) => item.href)),
