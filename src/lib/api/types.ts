@@ -2529,6 +2529,12 @@ export type PlatformSettings = {
   /** The tester sign-up form, with `{code}` where the invite code goes; null is unset. */
   testerSignupFormUrlTemplate?: string | null;
   /**
+   * Shop app early access (`gridgo-api/docs/EARLY_ACCESS_API.md`): while false
+   * the API refuses shop sign-ups and grants and the website shop form reads
+   * "opens soon". Off by default; absent on an older API.
+   */
+  shopEarlyAccessEnabled?: boolean;
+  /**
    * The hub's pick-up hours and flat fee. Every role reads it; only Super
    * Admin writes it. Absent on an API that predates hub pick-up.
    */
@@ -2615,6 +2621,8 @@ export type UpdateSettingsInput = {
   testerMonthlyBudgetMinor?: number | null;
   /** Super Admin: HTTPS sign-up form URL with one `{code}` in its query, or null. */
   testerSignupFormUrlTemplate?: string | null;
+  /** Super Admin only, with a `reason`; a JSON boolean (`400 invalid_shop_early_access_enabled`). */
+  shopEarlyAccessEnabled?: boolean;
   /** Super Admin only, always `{schedule, feeMinor}`; the point is read-only. */
   hubPickup?: Pick<HubPickup, "schedule" | "feeMinor">;
   /** Pricing dashboard. Whole centavos of monthly fixed cost. */

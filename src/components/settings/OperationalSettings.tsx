@@ -48,6 +48,7 @@ import { SampleBatchHoldSettings } from "@/components/settings/SampleBatchHoldSe
 import { CoverSpineSettings } from "@/components/settings/CoverSpineSettings";
 import { FoundingTesterLaunch } from "@/components/settings/FoundingTesterLaunch";
 import { TesterInviteSettings } from "@/components/settings/TesterInviteSettings";
+import { ShopEarlyAccessSettings } from "@/components/settings/ShopEarlyAccessSettings";
 import { ColourDetectionSettings } from "@/components/settings/ColourDetectionSettings";
 import { RiderTrackingSettings } from "@/components/settings/RiderTrackingSettings";
 import { HubPickupSettings } from "@/components/settings/HubPickupSettings";
@@ -1047,6 +1048,17 @@ export function OperationalSettings() {
           await load(true);
           return !refreshFailed.current;
         }}
+      />
+
+      <ShopEarlyAccessSettings
+        settings={settings}
+        canEdit
+        disabled={busy}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={() => load(true)}
       />
 
       <ColourDetectionSettings
