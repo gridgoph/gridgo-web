@@ -2,6 +2,7 @@ import { withRequestDeadline } from "@/lib/api/requestDeadline";
 import { sendMultipart, UploadInterrupted } from "@/lib/api/multipart";
 import { beginUpload } from "@/lib/upload-activity";
 import { clearSharedReads, sharedRead } from "@/lib/api/sharedReads";
+import { noteWorkerRefusal, workerTokenHeader } from "@/lib/shop-device";
 /**
  * Typed GRIDGO demo API client.
  *
@@ -388,6 +389,9 @@ async function authorizedHeaders(
   if (init.body && !headers["Content-Type"] && !isFormData) {
     headers["Content-Type"] = "application/json";
   }
+  // A shared shop PC: the picked person's turn rides on every request.
+  const worker = workerTokenHeader();
+  if (worker) headers["X-GRIDGO-Worker-Token"] = worker;
   signal.throwIfAborted();
   const token = await tokenProvider(tokenOptions);
   signal.throwIfAborted();
@@ -406,6 +410,8 @@ function parseBody(text: string): unknown {
 
 function failed(path: string, status: number, body: unknown): ApiError {
   const error = new ApiError(status, body);
+  // A worker refusal ends the turn before anyone can retry its token.
+  if (error.kind === "forbidden") noteWorkerRefusal(error.code);
   if (error.kind === "forbidden" && !path.startsWith("/auth/")) notifyForbidden(error);
   return error;
 }

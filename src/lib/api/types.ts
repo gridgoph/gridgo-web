@@ -476,8 +476,19 @@ export type PortalRoleProjection<R extends PortalRole = PortalRole> =
 
 // ---- Shop team (gridgo-api docs/SHOP_TEAM_API.md) ----
 
-export type ShopRole = "owner" | "staff";
+/**
+ * A person's place in a shop. `manager` (gridgo-api#422) also changes hours,
+ * products and Staff; it never sees Money or the Owner's settings.
+ */
+export type ShopRole = "owner" | "manager" | "staff";
 export type ShopMemberStatus = "pending" | "active" | "removed";
+
+/** The phone-free person picked on a shared shop PC, as the API names them. */
+export type ShopWorker = {
+  pinStaffId: string;
+  name: string;
+  role: "staff" | "manager";
+};
 
 /** One shop a person belongs to. `id` is the shop (its Owner account's user ID). */
 export type ShopSummary = {
@@ -485,6 +496,8 @@ export type ShopSummary = {
   name: string;
   role: ShopRole;
   status: ShopMemberStatus;
+  /** On a shared shop PC: the PIN person working now. Their role is `role`. */
+  worker?: ShopWorker;
 };
 
 export type ShopMember = {
@@ -494,6 +507,71 @@ export type ShopMember = {
   status: ShopMemberStatus;
   createdAt?: string;
   updatedAt?: string;
+  /** Extended team contract only: an account login, as opposed to a PIN record. */
+  kind?: "account";
+  jobAlerts?: boolean;
+  photoFileId?: string | null;
+};
+
+/**
+ * A phone-free shop person (`/me/shop-team/pin-staff`). Never a GRIDGO user:
+ * they work only on the shop's own signed-in PC or phone, by PIN.
+ */
+export type ShopPinStaff = {
+  id: string;
+  pinStaffId?: string;
+  shopId: string;
+  kind: "pin";
+  name: string;
+  role: "staff" | "manager";
+  status: "active" | "removed";
+  jobAlerts: boolean;
+  photoFileId: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  /** Picked on a shop device right now. */
+  onShift?: boolean;
+};
+
+/** Who did best this week. Never a slowest list. */
+export type ShopTeamFastest = {
+  userId?: string;
+  pinStaffId?: string;
+  name: string;
+  badge: "fastest_this_week";
+};
+
+/** One person's week, sent to Owners and Managers only. */
+export type ShopTeamMemberStats = {
+  userId?: string;
+  pinStaffId?: string;
+  name: string;
+  jobsThisWeek: number;
+  acceptedJobs: number;
+  /** Null when no acceptance was measured. */
+  averageAcceptSeconds: number | null;
+};
+
+export type ShopTeamMission = {
+  code: string;
+  targetJobs: number;
+  acceptedJobs: number;
+  quickAcceptedJobs: number;
+  completed: boolean;
+};
+
+export type ShopTeamStats = {
+  weekStartsAt: string;
+  weekEndsAt: string;
+  fastestThisWeek: ShopTeamFastest | null;
+  mission: ShopTeamMission | null;
+  /** Owners and Managers only. */
+  members?: ShopTeamMemberStats[];
+};
+
+export type ShopTeamSettings = {
+  jobsHandledBy: "just_me" | "me_and_staff";
+  showRankingToStaff: boolean;
 };
 
 export type ShopInviteKind = "email" | "phone" | "qr" | "link";
@@ -517,8 +595,10 @@ export type ShopInvite = {
 export type OrderActor = {
   userId: string | null;
   name: string;
-  /** `owner` / `staff` for shop actions, a platform role, or `system`. */
+  /** `owner` / `manager` / `staff` for shop actions, a platform role, or `system`. */
   role: string;
+  /** Set when a PIN person did it on the shop's shared PC or phone. */
+  pinStaffId?: string | null;
 };
 
 /** One recorded action on an order (`order.actions`, Operations and the shop only). */

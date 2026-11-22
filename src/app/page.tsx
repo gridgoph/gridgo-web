@@ -14,6 +14,7 @@ import { homeForRole } from "@/lib/routes";
 import { discoverShopInvites, listMyShopMemberships } from "@/lib/api/shop-team";
 import { ShopRemovedNotice } from "@/components/shop-team/ShopAccessNotices";
 import { JOIN_TOKEN_KEY } from "@/components/shop-team/JoinTeam";
+import { isWorkerLockCode } from "@/lib/shop-device";
 
 export default function HomePage() {
   const auth = useAuth();
@@ -54,6 +55,12 @@ export default function HomePage() {
     })();
   }, [noPortal, removedFromShop, inviteCheck, router]);
 
+  // A locked shared shop PC opens its "Who's working?" picker, in the shop's tree.
+  const sharedPcLocked = auth.status === "unavailable" && isWorkerLockCode(auth.accessError);
+  useEffect(() => {
+    if (sharedPcLocked) router.replace("/supplier/dashboard");
+  }, [sharedPcLocked, router]);
+
   useEffect(() => {
     if (auth.status === "signed_out") router.replace("/login");
     if (auth.status === "mapped" && destinationRole) {
@@ -74,7 +81,7 @@ export default function HomePage() {
     );
   }
 
-  if (auth.status === "unavailable") {
+  if (auth.status === "unavailable" && !sharedPcLocked) {
     return (
       <PortalAccessUnavailable
         onRetry={() => void auth.refresh()}

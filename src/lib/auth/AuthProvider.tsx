@@ -14,6 +14,7 @@ import {
 import { useRouter } from "next/navigation";
 
 import { getAuthMe, isApiError, setTokenProvider } from "@/lib/api/client";
+import { resetShopDevice } from "@/lib/shop-device";
 import { withRequestDeadline } from "@/lib/api/requestDeadline";
 import type { RoleMembership, User } from "@/lib/api/types";
 import { releaseWebPushForSignOut } from "@/lib/pwa/webPush";
@@ -266,6 +267,8 @@ function SessionAuthProvider({
     // session, so it runs first, and it is bounded so sign-out never waits.
     await releaseWebPushForSignOut().catch(() => undefined);
     await clerkSession.signOut({ redirectUrl });
+    // A shared shop PC's turn ends with the session that carried it.
+    resetShopDevice();
     if (!mounted.current) return;
     setTokenProvider(() => null);
     hasMappedIdentity.current = false;

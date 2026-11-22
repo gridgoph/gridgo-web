@@ -1444,6 +1444,8 @@ export type NavScope = {
    * the rail and the address bar from leading there.
    */
   shopStaff?: boolean;
+  /** A shop Manager (`shop.role === "manager"`); implies `shopStaff`. */
+  shopManager?: boolean;
 };
 
 /**
@@ -1454,6 +1456,20 @@ export type NavScope = {
 export const SHOP_STAFF_NAV_IDS: ReadonlySet<string> = new Set([
   "supplier-today",
   "supplier-jobs",
+  // Read-only shop status and the positive team view (gridgoph/gridgo-web#328).
+  "supplier-my-shop",
+  "supplier-team",
+]);
+
+/**
+ * A shop Manager: Staff's pages plus the schedule, products, hours and staff
+ * (the API's Manager allowlist, gridgo-api docs/SHOP_TEAM_API.md). Never Money.
+ */
+export const SHOP_MANAGER_NAV_IDS: ReadonlySet<string> = new Set([
+  ...SHOP_STAFF_NAV_IDS,
+  "supplier-schedule",
+  "supplier-catalogue",
+  "supplier-shop-hours",
 ]);
 
 /** Pages outside the rail that Staff may still open. */
@@ -1466,14 +1482,15 @@ const SHOP_STAFF_EXTRA_PATHS: readonly string[] = [
 export const SHOP_STAFF_HOME = "/supplier/dashboard";
 
 /**
- * Whether a Staff login may open `pathname`. Anything else in the supplier
- * tree shows "Owner only" without reading, so a typed address does nothing.
+ * Whether a Staff (or, with `manager`, a Manager) login may open `pathname`.
+ * Anything else in the supplier tree shows "Owner only" without reading, so a
+ * typed address does nothing.
  */
-export function shopStaffAllowsPath(pathname: string): boolean {
+export function shopStaffAllowsPath(pathname: string, manager = false): boolean {
   const path = pathname.replace(/\/+$/, "");
   if (path === "/supplier") return true;
   const allowed = [
-    ...navForRole("supplier", { shopStaff: true }).map((item) => item.href),
+    ...navForRole("supplier", { shopStaff: true, shopManager: manager }).map((item) => item.href),
     ...SHOP_STAFF_EXTRA_PATHS,
   ];
   return allowed.some((href) => path === href || path.startsWith(`${href}/`));
@@ -1507,11 +1524,12 @@ export function navGroupsForRole(
 ): readonly NavGroup[] {
   if (!isPortalRole(role)) return [];
   const groups = ROLE_NAV_GROUPS[role];
-  if (scope.shopStaff && role === "supplier") {
+  if ((scope.shopStaff || scope.shopManager) && role === "supplier") {
+    const ids = scope.shopManager ? SHOP_MANAGER_NAV_IDS : SHOP_STAFF_NAV_IDS;
     return groups
       .map((group) => ({
         ...group,
-        items: group.items.filter((item) => SHOP_STAFF_NAV_IDS.has(item.id)),
+        items: group.items.filter((item) => ids.has(item.id)),
       }))
       .filter((group) => group.items.length > 0);
   }

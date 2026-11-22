@@ -54,19 +54,65 @@ export function joinTokenFromHash(hash: string): string | null {
 
 export const SHOP_ROLE_LABEL: Record<ShopRole, string> = {
   owner: "Owner",
+  manager: "Manager",
   staff: "Staff",
 };
 
 export function shopRoleLabel(role: string | null | undefined): string {
-  return role === "owner" || role === "staff" ? SHOP_ROLE_LABEL[role] : "Member";
+  return role === "owner" || role === "manager" || role === "staff"
+    ? SHOP_ROLE_LABEL[role]
+    : "Member";
 }
 
-/** A Staff login sees only the shop's work. Absent `shop` means the Owner account. */
+/**
+ * Not the Owner: no Money, no payout, no Owner settings. Absent `shop` means
+ * the Owner account. A Manager is "staff" here because the API strips money
+ * from them exactly as it does for Staff.
+ */
 export function isShopStaff(shop: Pick<ShopSummary, "role"> | null | undefined): boolean {
-  return shop?.role === "staff";
+  return shop?.role === "staff" || shop?.role === "manager";
+}
+
+/**
+ * What a shop role may do, the same split as the phone app and the API's
+ * allowlists (gridgo-api docs/SHOP_TEAM_API.md, EXPRESS_API.md):
+ *
+ * - Owner: everything, and alone sees Money, payout and the shop's status
+ *   switches (the API lets only Owners write `/me/shop-status` this release).
+ * - Manager: also changes hours, products and Staff; never Money.
+ * - Staff: work, plus a read-only My shop and the positive team view.
+ *
+ * Hiding is a courtesy: the API refuses every route on its own.
+ */
+export type ShopCapabilities = {
+  money: boolean;
+  editStatus: boolean;
+  editHours: boolean;
+  editProducts: boolean;
+  manageTeam: boolean;
+  /** Grant or take back Manager, hide the ranking: the Owner's alone. */
+  ownerSettings: boolean;
+  /** Per-person counts and speed: Owners and Managers. */
+  personStats: boolean;
+};
+
+export function shopCapabilities(role: ShopRole | null | undefined): ShopCapabilities {
+  const owner = role !== "staff" && role !== "manager";
+  const runsShop = owner || role === "manager";
+  return {
+    money: owner,
+    editStatus: owner,
+    editHours: runsShop,
+    editProducts: runsShop,
+    manageTeam: runsShop,
+    ownerSettings: owner,
+    personStats: runsShop,
+  };
 }
 
 // ---- Team list --------------------------------------------------------------
+
+const ROLE_ORDER: Record<ShopRole, number> = { owner: 0, manager: 1, staff: 2 };
 
 /** Waiting people first (they need the Owner), then Owners, then Staff, by name. */
 export function teamRows(members: readonly ShopMember[]): {
@@ -78,7 +124,7 @@ export function teamRows(members: readonly ShopMember[]): {
     pending: members.filter((m) => m.status === "pending").sort(byName),
     active: members
       .filter((m) => m.status === "active")
-      .sort((a, b) => (a.role === b.role ? byName(a, b) : a.role === "owner" ? -1 : 1)),
+      .sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || byName(a, b)),
   };
 }
 
@@ -186,7 +232,7 @@ export function actorLine(actor: OrderActor | null | undefined): string {
   if (!actor) return "";
   if (actor.role === "system" || (!actor.userId && actor.name === "System")) return "GRIDGO";
   const role =
-    actor.role === "owner" || actor.role === "staff"
+    actor.role === "owner" || actor.role === "staff" || actor.role === "manager"
       ? SHOP_ROLE_LABEL[actor.role]
       : PLATFORM_ROLE_LABEL[actor.role];
   const name = actor.name?.trim();
