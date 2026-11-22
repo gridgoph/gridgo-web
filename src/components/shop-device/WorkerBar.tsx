@@ -13,13 +13,14 @@ const ACTIVITY_EVENTS = ["pointerdown", "keydown", "wheel", "touchstart", "mouse
 const CHECK_EVERY_MS = 15_000;
 
 /**
- * Lock the PC: tell the API (best effort; a lost call still leaves the API's
- * own 30-minute end), then show the picker. Nothing falls back to the
- * signed-in account.
+ * Lock the PC: drop the turn and show the picker at once, then tell the API
+ * (the lock needs no turn token; a lost call still leaves the API's own
+ * 30-minute end). Nothing falls back to the signed-in account.
  */
 export async function endWorkerTurn(reason: LockReason) {
-  await lockWorkingDevice().catch(() => undefined);
+  if (!shopDeviceSnapshot().worker) return;
   lockShopDevice(reason);
+  await lockWorkingDevice().catch(() => undefined);
 }
 
 /**

@@ -22,6 +22,14 @@ const api = vi.hoisted(() => ({
   approveShopMember: vi.fn(),
   setShopMemberRole: vi.fn(),
   removeShopMember: vi.fn(),
+  setShopMemberAlerts: vi.fn(),
+  setMyTeamAlerts: vi.fn(),
+  updatePinStaff: vi.fn(),
+  removePinStaff: vi.fn(),
+  createPinStaff: vi.fn(),
+  resetPinStaffPin: vi.fn(),
+  updateShopTeamSettings: vi.fn(),
+  lockWorkingDevice: vi.fn(),
 }));
 
 vi.stubGlobal("React", React);
@@ -29,12 +37,19 @@ vi.mock("@/lib/api/shop-team", () => api);
 vi.mock("@/lib/auth/AuthProvider", () => ({
   useAuth: () => ({ user: { id: "user_owner", name: "Olive Owner" } }),
 }));
-vi.mock("@/lib/auth/shop-access", () => ({
-  useShopAccess: () => ({
-    shop: { id: "user_owner", name: "Blueprint Print Co.", role: "owner", status: "active" },
-    staff: false,
-  }),
-}));
+vi.mock("@/lib/auth/shop-access", async () => {
+  const { shopCapabilities } = await import("@/lib/shop-team");
+  return {
+    useShopAccess: () => ({
+      shop: { id: "user_owner", name: "Blueprint Print Co.", role: "owner", status: "active" },
+      staff: false,
+      manager: false,
+      role: "owner",
+      worker: null,
+      can: shopCapabilities("owner"),
+    }),
+  };
+});
 vi.mock("@/lib/live/useLiveReload", () => ({ useLiveReload: () => undefined }));
 vi.mock("@/components/ui/toast", () => ({ toast: { add: vi.fn() } }));
 
@@ -96,19 +111,19 @@ afterEach(() => {
 describe("Owner Team page", () => {
   it("shows waiting people first, the team with roles, and open invites", async () => {
     render(<TeamManager />);
-    const waiting = await screen.findByRole("region", { name: "Waiting for you" });
+    const waiting = await screen.findByRole("region", { name: "Wants to join" });
     expect(within(waiting).getByText("Pia Pending")).toBeVisible();
-    const team = screen.getByRole("region", { name: "Team" });
-    const rows = within(team).getAllByTestId("team-member");
-    expect(rows.map((row) => row.textContent)).toEqual([
-      expect.stringContaining("Olive Owner (you)Owner"),
-      expect.stringContaining("Bea StaffStaff"),
-    ]);
+    const leads = screen.getByRole("list", { name: "Owners and managers" });
+    expect(within(leads).getByTestId("team-person")).toHaveTextContent("Olive Owner (you)Owner");
+    const staffList = screen.getByRole("region", { name: /Staff · 1/ });
+    expect(within(staffList).getByTestId("team-person")).toHaveTextContent("Bea Staff");
     const open = screen.getByRole("region", { name: "Open invites" });
     expect(within(open).getByText("sam@example.com")).toBeVisible();
     expect(within(open).getByText("Expires in 47 h")).toBeVisible();
-    // One yellow action on the page.
+    // An API without PIN people: the one yellow action is Add staff.
     expect(screen.getByRole("button", { name: "Add staff" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Add with PIN" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Use this PC for PIN staff")).not.toBeInTheDocument();
   });
 
   it("approves a waiting person", async () => {
@@ -116,9 +131,9 @@ describe("Owner Team page", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Approve Pia Pending" }));
     expect(api.approveShopMember).toHaveBeenCalledWith("user_pia");
     await waitFor(() =>
-      expect(screen.queryByRole("region", { name: "Waiting for you" })).not.toBeInTheDocument(),
+      expect(screen.queryByRole("region", { name: "Wants to join" })).not.toBeInTheDocument(),
     );
-    expect(screen.getAllByTestId("team-member")).toHaveLength(3);
+    expect(screen.getAllByTestId("team-person")).toHaveLength(3);
   });
 
   it("declines a waiting person after a confirmation", async () => {
@@ -132,8 +147,9 @@ describe("Owner Team page", () => {
 
   it("removes a member after saying they are signed out right away", async () => {
     render(<TeamManager />);
-    await userEvent.click(await screen.findByRole("button", { name: "Options for Bea Staff" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "Remove" }));
+    await userEvent.click(await screen.findByRole("button", { name: /^Bea Staff/ }));
+    const panel = await screen.findByTestId("person-panel");
+    await userEvent.click(within(panel).getByRole("button", { name: "Remove from shop" }));
     const dialog = await screen.findByRole("alertdialog");
     expect(within(dialog).getByText(/signed out right away/)).toBeVisible();
     await userEvent.click(within(dialog).getByRole("button", { name: "Remove" }));
@@ -141,23 +157,19 @@ describe("Owner Team page", () => {
     await waitFor(() => expect(screen.queryByText("Bea Staff")).not.toBeInTheDocument());
   });
 
-  it("never offers to remove or demote the only Owner", async () => {
+  it("never offers to remove or demote the only Owner, nor yourself", async () => {
     render(<TeamManager />);
-    await userEvent.click(await screen.findByRole("button", { name: "Options for Olive Owner" }));
-    expect(await screen.findByRole("menuitem", { name: "Remove" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
-    expect(screen.getByRole("menuitem", { name: "Make Staff" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
+    await userEvent.click(await screen.findByRole("button", { name: /^Olive Owner/ }));
+    const panel = await screen.findByTestId("person-panel");
+    expect(within(panel).queryByRole("button", { name: "Remove from shop" })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("group", { name: /Role for/ })).not.toBeInTheDocument();
   });
 
   it("makes a Staff member an Owner", async () => {
     render(<TeamManager />);
-    await userEvent.click(await screen.findByRole("button", { name: "Options for Bea Staff" }));
-    await userEvent.click(await screen.findByRole("menuitem", { name: "Make Owner" }));
+    await userEvent.click(await screen.findByRole("button", { name: /^Bea Staff/ }));
+    const panel = await screen.findByTestId("person-panel");
+    await userEvent.click(within(panel).getByRole("button", { name: "Owner" }));
     expect(api.setShopMemberRole).toHaveBeenCalledWith("user_bea", "owner");
   });
 

@@ -285,32 +285,65 @@ const OWNER_ONLY_PATHS = [
   "/supplier/payouts",
   "/supplier/record",
   "/supplier/payout-account",
-  "/supplier/team",
   "/supplier/documents",
   "/supplier/report",
   "/supplier/chat",
   "/supplier/legal",
   "/supplier/privacy",
-  "/supplier/my-shop",
   "/supplier/performance",
 ];
 
 describe("AppShell shop Staff mode", () => {
-  it("shows Staff To do's Today and All jobs, with no Money, Messages or My shop", () => {
+  it("shows Staff To do's Today and All jobs, My shop and the team, with no Money or Messages", () => {
     renderSupplier("/supplier/jobs", STAFF_SHOP);
     const nav = screen.getByRole("navigation", { name: "Primary navigation" });
-    const links = within(nav).getAllByRole("link");
-    expect(links.map((link) => link.getAttribute("href"))).toEqual([
-      "/supplier/dashboard",
-      "/supplier/jobs",
-    ]);
+    expect(within(nav).getByRole("link", { name: /Today/ })).toHaveAttribute("href", "/supplier/dashboard");
+    expect(within(nav).getByRole("link", { name: /All jobs/ })).toHaveAttribute("href", "/supplier/jobs");
+    expect(within(nav).getByText("My shop")).toBeInTheDocument();
     expect(within(nav).queryByText("Money")).not.toBeInTheDocument();
-    expect(within(nav).queryByText("My shop")).not.toBeInTheDocument();
     expect(within(nav).queryByText("Messages")).not.toBeInTheDocument();
-    expect(within(nav).queryByText("Team")).not.toBeInTheDocument();
     expect(within(nav).queryByText("Payouts")).not.toBeInTheDocument();
-    expect(within(nav).queryByText("Shop hours")).not.toBeInTheDocument();
+    expect(within(nav).queryByText("Hours")).not.toBeInTheDocument();
+    expect(within(nav).queryByText("Products")).not.toBeInTheDocument();
     expect(screen.getByText("Workspace body")).toBeVisible();
+  });
+
+  it("lets Staff open My shop and the team", () => {
+    for (const path of ["/supplier/my-shop", "/supplier/team"]) {
+      renderSupplier(path, STAFF_SHOP);
+      expect(screen.getByText("Workspace body")).toBeVisible();
+      cleanup();
+    }
+  });
+
+  it("lets a Manager open products and hours, never Money", () => {
+    const manager = { ...STAFF_SHOP, role: "manager" as never };
+    for (const path of ["/supplier/catalogue", "/supplier/catalogue/new", "/supplier/shop-hours", "/supplier/schedule"]) {
+      renderSupplier(path, manager);
+      expect(screen.getByText("Workspace body")).toBeVisible();
+      cleanup();
+    }
+    for (const path of ["/supplier/payouts", "/supplier/payout-account", "/supplier/shop"]) {
+      renderSupplier(path, manager);
+      expect(screen.getByTestId("shop-owner-only")).toBeVisible();
+      cleanup();
+    }
+  });
+
+  it("shows who is working on a shared PC in the top bar, with no account inbox", () => {
+    renderSupplier("/supplier/jobs", STAFF_SHOP);
+    expect(screen.getByRole("button", { name: /^Notifications/ })).toBeVisible();
+    expect(screen.queryByTestId("worker-bar")).not.toBeInTheDocument();
+    cleanup();
+    renderSupplier("/supplier/jobs", {
+      ...STAFF_SHOP,
+      role: "staff" as never,
+      worker: { pinStaffId: "shp_ana", name: "Ana", role: "staff" },
+    } as never);
+    const bar = screen.getByTestId("worker-bar");
+    expect(bar).toHaveTextContent("Ana");
+    expect(within(bar).getByRole("button", { name: /Switch person/ })).toBeVisible();
+    expect(screen.queryByRole("button", { name: /notifications|inbox/i })).not.toBeInTheDocument();
   });
 
   it("names the shop and the Staff role under the account", () => {
