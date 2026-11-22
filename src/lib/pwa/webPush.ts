@@ -43,6 +43,51 @@ import { iosSupportsWebPush, readDevice, type DeviceKind } from "@/lib/pwa/insta
 let syncedFor: string | null = null;
 
 /**
+ * While this browser is being handed over to a shop's shared PC (and after),
+ * nothing registers the signed-in account's push again.
+ */
+let personalPushPaused = false;
+/** A registration (sync or turn-on) on its way; the handover waits for it. */
+let registering: Promise<unknown> | null = null;
+
+function track<T>(work: Promise<T>): Promise<T> {
+  registering = work;
+  void work.finally(() => {
+    if (registering === work) registering = null;
+  }).catch(() => undefined);
+  return work;
+}
+
+/** Back to normal: a shared-PC handover that did not go through. */
+export function resumePersonalPush(): void {
+  personalPushPaused = false;
+  personalPushReleased = false;
+}
+
+/**
+ * The API copy of a subscription the browser has already dropped, still to
+ * be removed there. Kept so a failed handover can finish the job on retry.
+ */
+export const WEB_PUSH_PENDING_REMOVAL_KEY = "gridgo-web.web-push-pending-removal";
+
+function readPendingRemoval(): string | null {
+  try {
+    return window.localStorage.getItem(WEB_PUSH_PENDING_REMOVAL_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writePendingRemoval(endpoint: string | null): void {
+  try {
+    if (endpoint) window.localStorage.setItem(WEB_PUSH_PENDING_REMOVAL_KEY, endpoint);
+    else window.localStorage.removeItem(WEB_PUSH_PENDING_REMOVAL_KEY);
+  } catch {
+    // Private mode: the retry then finds nothing to finish.
+  }
+}
+
+/**
  * Which account turned notifications on in this browser. A different account
  * signing in here must not inherit the subscription: sync drops it instead of
  * re-sending it under the new account.
@@ -229,6 +274,11 @@ export async function turnOnWebPush(
   publicKey: string | null,
   userId: string | null,
 ): Promise<TurnOnOutcome> {
+  if (personalPushPaused) return { status: await readWebPushStatus() };
+  return track(turnOn(publicKey, userId));
+}
+
+async function turnOn(publicKey: string | null, userId: string | null): Promise<TurnOnOutcome> {
   let permission = readDesktopAlertPermission();
   if (permission === "default") permission = await requestPermission();
   const support = pushSupport(readDevice(), readPushFeatures());
@@ -295,6 +345,11 @@ export async function turnOffWebPush(): Promise<WebPushStatus> {
  * browser rotated, or a database restore. Never asks for permission.
  */
 export async function syncWebPush(userId: string): Promise<void> {
+  if (personalPushPaused || syncedFor === userId) return;
+  return track(sync(userId));
+}
+
+async function sync(userId: string): Promise<void> {
   if (syncedFor === userId) return;
   syncedFor = userId;
   if (readDesktopAlertPermission() !== "granted") return;
@@ -372,8 +427,140 @@ export async function releaseWebPushForSignOut(timeoutMs = 3_000): Promise<void>
   }
 }
 
+/** Why a shared-PC handover stopped; the Team page says it and offers a retry. */
+export class SharedPcCleanupError extends Error {
+  constructor(readonly step: "notifications" | "browser" | "gridgo") {
+    super(`shared_pc_cleanup_${step}`);
+    this.name = "SharedPcCleanupError";
+  }
+}
+
+function within<T>(work: Promise<T>, ms: number, step: SharedPcCleanupError["step"]): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new SharedPcCleanupError(step)), ms);
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        reject(new SharedPcCleanupError(step));
+      },
+    );
+  });
+}
+
+/**
+ * Every service-worker registration this site has, found directly. Unlike
+ * `registration()` (which may register one, and answers null when that
+ * fails), a lookup that fails or never answers is an error here: "could not
+ * tell" is never read as "nothing to remove".
+ */
+async function existingRegistrations(timeoutMs: number): Promise<readonly ServiceWorkerRegistration[]> {
+  const container = typeof navigator === "undefined" ? undefined : navigator.serviceWorker;
+  if (!container || typeof container.getRegistrations !== "function") {
+    throw new SharedPcCleanupError("browser");
+  }
+  return within(container.getRegistrations(), timeoutMs, "browser");
+}
+
+/**
+ * The browser half of a handover, which works with or without the API:
+ * notifications on screen close, and every push subscription any of this
+ * site's registrations holds is dropped (`unsubscribe()` must say true). Each
+ * dropped endpoint is kept for GRIDGO to forget. Throws on anything it could
+ * not confirm.
+ */
+async function dropBrowserPush(timeoutMs: number): Promise<void> {
+  const features = readPushFeatures();
+  // No service worker at all: this browser can neither show nor hold a push.
+  if (!features.serviceWorker) return;
+  const registrations = await existingRegistrations(timeoutMs);
+  for (const registration of registrations) {
+    if (typeof registration.getNotifications === "function") {
+      const shown = await within(registration.getNotifications(), timeoutMs, "notifications");
+      for (const notification of shown) notification.close();
+    }
+    if (!registration.pushManager) continue;
+    const subscription = await within(registration.pushManager.getSubscription(), timeoutMs, "browser");
+    if (!subscription) continue;
+    const endpoint = subscription.endpoint;
+    const dropped = await within(subscription.unsubscribe(), timeoutMs, "browser");
+    if (!dropped) throw new SharedPcCleanupError("browser");
+    writePendingRemoval(endpoint);
+  }
+}
+
+/**
+ * Whether this page has confirmed the signed-in account's push is gone from
+ * this browser. "Who's working?" shows only once it has.
+ */
+let personalPushReleased = false;
+
+export function isPersonalPushReleased(): boolean {
+  return personalPushReleased;
+}
+
+/**
+ * Hand this browser over to a shop's shared PC. Unlike sign-out, nothing here
+ * is best effort: the picker opens only after every step is confirmed, and a
+ * failure throws {@link SharedPcCleanupError} with what is left kept for a
+ * retry.
+ *
+ * 1. New personal registrations stop, and one already on its way finishes.
+ * 2. Notifications already on screen close, and the browser drops every
+ *    subscription (`dropBrowserPush`), so nothing more can arrive here.
+ * 3. GRIDGO forgets it. If that fails the endpoint is kept and sent again on
+ *    the next try; the device lock refuses this route afterwards, so it has
+ *    to land before the lock.
+ *
+ * The caller keeps the account's live stream closed for the whole handover.
+ */
+export async function releaseWebPushForSharedPc(timeoutMs = 10_000): Promise<void> {
+  personalPushPaused = true;
+  if (registering) await registering.catch(() => undefined);
+  await dropBrowserPush(timeoutMs);
+
+  const pending = readPendingRemoval();
+  if (pending) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      await unsubscribeWebPush(pending, { signal: controller.signal });
+    } catch {
+      throw new SharedPcCleanupError("gridgo");
+    } finally {
+      clearTimeout(timer);
+    }
+    writePendingRemoval(null);
+  }
+  writeOwner(null);
+  syncedFor = null;
+  personalPushReleased = true;
+}
+
+/**
+ * A PC the API already has locked (a reload, another tab, or a refusal):
+ * the picker may only show once this browser holds none of the account's
+ * push. GRIDGO refuses the account's push routes on a locked device, so only
+ * the browser half runs; a dropped endpoint is dead at the push service and
+ * stays recorded for a later handover to remove.
+ */
+export async function releaseWebPushOnLockedPc(timeoutMs = 10_000): Promise<void> {
+  personalPushPaused = true;
+  if (registering) await registering.catch(() => undefined);
+  await dropBrowserPush(timeoutMs);
+  writeOwner(null);
+  syncedFor = null;
+  personalPushReleased = true;
+}
+
 /** Test seam. */
 export function resetWebPushForTests(): void {
   syncedFor = null;
   keyPromise = null;
+  personalPushPaused = false;
+  personalPushReleased = false;
+  registering = null;
 }

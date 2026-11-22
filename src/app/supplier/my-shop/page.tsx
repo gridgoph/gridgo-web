@@ -24,9 +24,27 @@ import {
 
 import { Switch } from "@/components/ui/switch";
 import { useSupplierLegal } from "@/app/supplier/_components/SupplierLegalGate";
-import { ApiError, getExpressSettings, getMyShopHours, updateExpressSettings } from "@/lib/api/client";
-import type { ExpressSettings, ShopHours } from "@/lib/api/types";
-import { SHOP_STATUS_CHANGED, shopStatus } from "@/lib/shop-status";
+import { ShopCard } from "@/components/my-shop/ShopCard";
+import {
+  MY_SHOP_PRODUCT_LIMIT,
+  MY_SHOP_PRODUCT_LIMIT_PHONE,
+  ShopProducts,
+} from "@/components/my-shop/ShopProducts";
+import { ShopStatusPanel } from "@/components/my-shop/ShopStatusPanel";
+import { TeamStrip } from "@/components/my-shop/TeamStrip";
+import { useMyShopStatus } from "@/components/my-shop/useMyShopStatus";
+import { payoutProviderLabel } from "@/components/orders/PayoutDestination";
+import {
+  ApiError,
+  getExpressSettings,
+  getMyPayoutAccount,
+  updateExpressSettings,
+} from "@/lib/api/client";
+import type { ExpressSettings, SupplierPayoutAccount } from "@/lib/api/types";
+import { useShopAccess } from "@/lib/auth/shop-access";
+import { SHOP_STATUS_CHANGED } from "@/lib/shop-status";
+import type { ShopCapabilities } from "@/lib/shop-team";
+import { useSupplierDesktop } from "@/lib/useSupplierDesktop";
 
 type Place = { href: string; title: string; body: string; icon: LucideIcon };
 
@@ -170,28 +188,80 @@ function ExpressSwitch() {
   );
 }
 
+/** "Wallet ••4821": enough to recognise the account, never the whole number. */
+function payoutSummary(account: SupplierPayoutAccount | null): string {
+  if (!account) return "Not set yet. Add it so GRIDGO can pay you.";
+  const tail = account.accountNumber?.replace(/\D/g, "").slice(-4);
+  return [payoutProviderLabel(account), tail ? `••${tail}` : null].filter(Boolean).join(" ");
+}
+
 /**
- * My shop (gridgoph/gridgo-web#327): the Express switch on top, then the
- * shop's own pages. Owner only; Staff never open it. Document updates live
- * here instead of a banner on every page.
+ * My shop (gridgoph/gridgo-web#327, #328): the shop card with its open/closed
+ * sign, products, the team, and the Shop status panel, then the shop's own
+ * pages. At 1280px and wider the status panel sits beside the rest; below it,
+ * the phone app's single column. Owners change everything; Managers change
+ * hours and products; Staff read. Only the Owner sees where the shop gets paid.
  */
 export default function SupplierMyShopPage() {
   const { notices } = useSupplierLegal();
-  const [hours, setHours] = useState<ShopHours | null>(null);
+  const access = useShopAccess();
+  const { can } = access;
+  const desktop = useSupplierDesktop();
+  const { state, busy, message, save } = useMyShopStatus();
+  const [payout, setPayout] = useState<string | null>(null);
 
   useEffect(() => {
-    void getMyShopHours()
-      .then(setHours)
-      .catch(() => undefined);
-  }, []);
+    if (!can.money) return;
+    void getMyPayoutAccount()
+      .then((account) => setPayout(payoutSummary(account)))
+      .catch(() => setPayout("Open to check it"));
+  }, [can.money]);
 
-  const status = shopStatus(hours, null);
+  const status = state.kind === "ready" ? state.status : null;
+  const name = status?.shopName ?? access.shop?.name ?? "Your shop";
+  const unsupported = state.kind === "unsupported";
 
-  return (
-    <div className="flex flex-col gap-4">
-      <ExpressSwitch />
+  const panel = unsupported ? (
+    can.editStatus ? <ExpressSwitch /> : null
+  ) : state.kind === "failed" ? (
+    <p className="text-body text-text-secondary m-0" role="alert">
+      Could not read your shop status. Reload the page to try again.
+    </p>
+  ) : (
+    <ShopStatusPanel
+      status={status}
+      loading={state.kind === "loading"}
+      canEdit={can.editStatus}
+      canEditHours={can.editHours}
+      busy={busy}
+      message={message}
+      payoutLine={can.money ? (payout ?? "Checking…") : null}
+      onSave={(patch) => void save(patch)}
+    />
+  );
 
-      {notices.length ? (
+  const places = MAIN.filter((place) => placeAllowed(place.href, can));
+  const more = MORE.filter((place) => placeAllowed(place.href, can));
+
+  const main = (
+    <>
+      {status ? (
+        <ShopCard
+          name={name}
+          status={status}
+          canEdit={can.editStatus}
+          canEditHours={can.editHours}
+          busy={busy}
+          onSave={(patch) => void save(patch)}
+        />
+      ) : null}
+      {desktop ? null : panel}
+      {can.editProducts ? (
+        <ShopProducts limit={desktop ? MY_SHOP_PRODUCT_LIMIT : MY_SHOP_PRODUCT_LIMIT_PHONE} />
+      ) : null}
+      <TeamStrip manage={can.manageTeam} />
+
+      {notices.length && can.money ? (
         <section aria-labelledby="doc-updates-heading" className="gg-card flex flex-col gap-2 p-4">
           <h2 id="doc-updates-heading" className="text-h3 text-text-primary m-0">
             Document updates
@@ -214,24 +284,53 @@ export default function SupplierMyShopPage() {
         </section>
       ) : null}
 
-      {status.line ? (
-        <p className="text-body text-text-secondary m-0">
-          Right now: <span className="text-text-primary">{status.line}</span>
-        </p>
+      {places.length ? (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {places.map((place) => (
+            <PlaceLink key={place.href} place={place} />
+          ))}
+        </div>
       ) : null}
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {MAIN.map((place) => (
-          <PlaceLink key={place.href} place={place} />
-        ))}
-      </div>
+      {more.length ? (
+        <>
+          <h2 className="text-h3 text-text-primary m-0 mt-2">More</h2>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {more.map((place) => (
+              <PlaceLink key={place.href} place={place} />
+            ))}
+          </div>
+        </>
+      ) : null}
+    </>
+  );
 
-      <h2 className="text-h3 text-text-primary m-0 mt-2">More</h2>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {MORE.map((place) => (
-          <PlaceLink key={place.href} place={place} />
-        ))}
+  if (!desktop) {
+    return (
+      <div className="flex flex-col gap-4" data-layout="phone">
+        {main}
       </div>
+    );
+  }
+  return (
+    <div
+      className="grid grid-cols-[minmax(0,1fr)_22.5rem] items-start gap-4"
+      data-layout="desktop"
+    >
+      <div className="flex min-w-0 flex-col gap-4">{main}</div>
+      <aside className="sticky top-[4.25rem] flex flex-col gap-4">{panel}</aside>
     </div>
   );
+}
+
+/**
+ * Which of the shop's own pages this role can open. The rest would only say
+ * "Owner only", so they are not offered.
+ */
+function placeAllowed(href: string, can: ShopCapabilities): boolean {
+  if (can.money) return true;
+  if (href === "/supplier/catalogue") return false; // the products section covers it
+  if (href === "/supplier/team") return false; // the team strip covers it
+  if (href === "/supplier/shop-hours") return can.editHours;
+  return href === "/supplier/phone-app";
 }

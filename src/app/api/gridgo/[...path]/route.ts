@@ -23,6 +23,9 @@ const FORWARDED_REQUEST_HEADERS = [
   "content-type",
   "last-event-id",
   "x-gridgo-role",
+  // The shared shop PC's turn (src/lib/shop-device.ts). Without it every
+  // request after a PIN is picked reads as a locked PC.
+  "x-gridgo-worker-token",
   "idempotency-key",
 ];
 

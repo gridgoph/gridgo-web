@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { BellRing, Copy, EllipsisVertical, Share, SquarePlus } from "lucide-react";
 
+import { useShopDevice } from "@/components/shop-device/useShopDevice";
 import { Button } from "@/components/ui/button";
 import { StatusChip } from "@/components/ui/StatusChip";
 import type { StatusIconName, StatusTone } from "@/lib/order-state";
@@ -376,7 +377,28 @@ function PushStep({ control, primary }: { control: PhoneAppControl; primary: boo
   );
 }
 
+/**
+ * A shared shop PC never sets up the signed-in account's phone alerts: the
+ * API refuses personal notification routes there, and the alerts would not
+ * be the person at the keyboard's.
+ */
+function useSharedShopPc(): boolean {
+  return useShopDevice().shared;
+}
+
 export function PhoneAppSetup() {
+  if (useSharedShopPc()) {
+    return (
+      <p className="text-body text-text-secondary m-0 max-w-prose">
+        This PC is shared by the shop. Set up job alerts on your own phone, signed in with your own
+        login.
+      </p>
+    );
+  }
+  return <PhoneAppSetupSteps />;
+}
+
+function PhoneAppSetupSteps() {
   const control = usePhoneApp();
   // One yellow button: the step the shop is on.
   const installPending = control.install === "prompt";
@@ -438,6 +460,10 @@ function writeDismissed(kinds: Set<InviteKind>): void {
 }
 
 export function PhoneAppInvite() {
+  return useSharedShopPc() ? null : <PhoneAppInviteCard />;
+}
+
+function PhoneAppInviteCard() {
   const control = usePhoneApp();
   const [dismissed, setDismissed] = useState<Set<InviteKind> | null>(null);
   useEffect(() => setDismissed(readDismissed()), []);

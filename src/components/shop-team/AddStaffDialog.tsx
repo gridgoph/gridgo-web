@@ -37,7 +37,7 @@ type Created = {
 
 /**
  * Add staff three ways. GRIDGO sends no email or text: every invite is a
- * one-time link (48 hours) the Owner passes on, shown here once because the
+ * one-time link (24 hours) the Owner passes on, shown here once because the
  * API returns its token only at creation. An email or phone invite also
  * waits for that person when they sign in with it.
  */
@@ -46,14 +46,17 @@ export function AddStaffDialog({
   onOpenChange,
   shopName,
   onCreated,
+  initialMethod = "contact",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   shopName?: string | null;
   onCreated: () => void;
+  /** Show QR and Send link open the dialog on their own tab. */
+  initialMethod?: AddStaffMethod;
 }) {
   const id = useId();
-  const [method, setMethod] = useState<AddStaffMethod>("contact");
+  const [method, setMethod] = useState<AddStaffMethod>(initialMethod);
   const [contact, setContact] = useState("");
   const [inputError, setInputError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,9 +71,9 @@ export function AddStaffDialog({
       setInputError(null);
       setError(null);
       setCreated(null);
-      setMethod("contact");
     }
-  }, [open]);
+    setMethod(initialMethod);
+  }, [open, initialMethod]);
 
   async function create(kind: "email" | "phone" | "qr" | "link", identity?: string) {
     setBusy(true);
@@ -261,7 +264,7 @@ export function AddStaffDialog({
 }
 
 /**
- * "Works once · expires in 48 h", with New code beside it. After a new code,
+ * "Works once · expires in 24 h", with New code beside it. After a new code,
  * it says the earlier one is dead, so the Owner knows to resend.
  */
 function InviteReady({
