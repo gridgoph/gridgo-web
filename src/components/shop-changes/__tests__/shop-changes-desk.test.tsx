@@ -1,12 +1,24 @@
 // @vitest-environment jsdom
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/lib/api/client";
-import type { Order, RescheduleRequest, ShopFailureEvent } from "@/lib/api/types";
+import type {
+  Order,
+  PlatformSettings,
+  RescheduleRequest,
+  ShopFailureEvent,
+} from "@/lib/api/types";
 
 vi.stubGlobal("React", React);
 class FakePointerEvent extends MouseEvent {
@@ -15,8 +27,14 @@ class FakePointerEvent extends MouseEvent {
   }
 }
 vi.stubGlobal("PointerEvent", FakePointerEvent);
-vi.mock("@/lib/live/useLiveReload", () => ({ useLiveReload: () => {} }));
+const live = vi.hoisted(() => ({ load: null as (() => Promise<void>) | null }));
+vi.mock("@/lib/live/useLiveReload", () => ({
+  useLiveReload: (_resources: unknown, load: () => Promise<void>) => {
+    live.load = load;
+  },
+}));
 const api = vi.hoisted(() => ({
+  getSettings: vi.fn(),
   listShopFailures: vi.fn(),
   listRescheduleRequests: vi.fn(),
   listOrders: vi.fn(),
@@ -91,14 +109,23 @@ const orders = [
 ] as Order[];
 
 beforeEach(() => {
+  api.getSettings.mockResolvedValue(null);
   api.listShopFailures.mockResolvedValue([paidDropout, timeout]);
-  api.listRescheduleRequests.mockResolvedValue({ totalRequests: 1, requests: [heldRequest] });
+  api.listRescheduleRequests.mockResolvedValue({
+    totalRequests: 1,
+    requests: [heldRequest],
+  });
   api.listOrders.mockResolvedValue(orders);
-  api.getUser.mockImplementation(async (id: string) => ({ id, name: `Shop ${id.slice(-1).toUpperCase()}` }));
+  api.getUser.mockImplementation(async (id: string) => ({
+    id,
+    name: `Shop ${id.slice(-1).toUpperCase()}`,
+  }));
 });
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
+  live.load = null;
   for (const fn of Object.values(api)) fn.mockReset();
 });
 
@@ -124,11 +151,20 @@ it("puts the paid-share dropout and the held deadline request in Needs Operation
 });
 
 it("records a resolution for a held deadline request", async () => {
-  api.resolveRescheduleRequest.mockResolvedValue({ ...heldRequest, workHeld: false, resolution: "resolved" });
+  api.resolveRescheduleRequest.mockResolvedValue({
+    ...heldRequest,
+    workHeld: false,
+    resolution: "resolved",
+  });
+  api.listRescheduleRequests
+    .mockResolvedValueOnce({ totalRequests: 1, requests: [heldRequest] })
+    .mockResolvedValue({ totalRequests: 0, requests: [] });
   render(<ShopChangesDesk tree="admin" />);
   await screen.findByRole("heading", { name: "Needs Operations" });
 
-  fireEvent.click(within(needsSection()).getAllByRole("button", { name: "Record a resolution" })[0]);
+  fireEvent.click(
+    within(needsSection()).getAllByRole("button", { name: "Record a resolution" })[0],
+  );
   const dialog = await screen.findByRole("dialog");
   fireEvent.click(within(dialog).getByRole("button", { name: "Record resolution" }));
   expect(within(dialog).getByRole("alert")).toHaveTextContent(/Write what was agreed/);
@@ -143,7 +179,9 @@ it("records a resolution for a held deadline request", async () => {
       reason: "Client and shop agreed to continue on the original date.",
     }),
   );
-  await waitFor(() => expect(api.listShopFailures).toHaveBeenCalledTimes(2));
+  expect(await screen.findByText("1 waiting on you")).toBeInTheDocument();
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(screen.getByRole("button", { name: /Refresh/ })).toBeEnabled();
 });
 
 it("logs every dropout with its stage, reason and where it stands", async () => {
@@ -174,3 +212,55 @@ it("says nothing is waiting when nothing is", async () => {
   render(<ShopChangesDesk tree="ops" />);
   expect(await screen.findByTestId("needs-operations-empty")).toBeInTheDocument();
 });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+it.each(["resolve", "reject"] as const)(
+  "ignores a settings %s after unmount",
+  async (outcome) => {
+    const settings = deferred<PlatformSettings>();
+    api.getSettings.mockReturnValue(settings.promise);
+    const view = render(<ShopChangesDesk tree="ops" />);
+    await screen.findByRole("heading", { name: "Needs Operations" });
+    view.unmount();
+
+    // A state update reads window.event in React, even after unmount. Observe
+    // that access without tearing down jsdom or suppressing unhandled errors.
+    const browserWindow = window;
+    const windowRead = vi
+      .spyOn(globalThis, "window", "get")
+      .mockReturnValue(browserWindow);
+    if (outcome === "resolve") settings.resolve({} as PlatformSettings);
+    else settings.reject(new Error("Settings unavailable"));
+    await settings.promise.catch(() => undefined);
+    expect(windowRead).not.toHaveBeenCalled();
+  },
+);
+
+it.each(["resolve", "reject"] as const)(
+  "ignores a desk %s and a queued refresh after unmount",
+  async (outcome) => {
+    const failures = deferred<ShopFailureEvent[]>();
+    api.listShopFailures.mockReturnValue(failures.promise);
+    const view = render(<ShopChangesDesk tree="ops" />);
+    const queued = live.load!();
+    view.unmount();
+    const browserWindow = window;
+    const windowRead = vi
+      .spyOn(globalThis, "window", "get")
+      .mockReturnValue(browserWindow);
+    if (outcome === "resolve") failures.resolve([paidDropout]);
+    else failures.reject(new Error("Dropouts unavailable"));
+    await queued;
+    expect(api.listShopFailures).toHaveBeenCalledTimes(1);
+    expect(windowRead).not.toHaveBeenCalled();
+  },
+);
