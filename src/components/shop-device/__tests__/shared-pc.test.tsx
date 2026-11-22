@@ -121,6 +121,11 @@ describe("Who's working?", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("That PIN is not right. Try again.");
     expect(screen.getByLabelText("Lito, type your PIN")).toHaveValue("");
     expect(workerTokenHeader()).toBeNull();
+    // Focus stays in the field, so the right PIN goes straight in.
+    expect(screen.getByLabelText("Lito, type your PIN")).toHaveFocus();
+    await userEvent.keyboard("0420");
+    await waitFor(() => expect(api.selectWorker).toHaveBeenLastCalledWith("shp_lito", "0420"));
+    expect(workerTokenHeader()).toBe("turn-token");
   });
 
   it("says to wait after too many wrong PINs", async () => {

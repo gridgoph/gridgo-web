@@ -49,8 +49,11 @@ export function TeamStrip({ manage }: { manage: boolean }) {
       className="flex min-h-16 items-center gap-4 rounded-card border border-outline bg-surface p-3 no-underline hover:bg-overlay-hover"
     >
       <span className="flex -space-x-2" aria-hidden>
-        {people.slice(0, FACES).map((person) => (
-          <TeamAvatar key={person.key} name={person.name} className="rounded-pill ring-2 ring-surface" />
+        {people.slice(0, FACES).map((person, index) => (
+          // A phone keeps three faces so the words beside them still fit.
+          <span key={person.key} className={index >= 3 ? "hidden sm:inline-flex" : "inline-flex"}>
+            <TeamAvatar name={person.name} className="rounded-pill ring-2 ring-surface" />
+          </span>
         ))}
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
@@ -58,13 +61,13 @@ export function TeamStrip({ manage }: { manage: boolean }) {
           Team{team ? ` · ${people.length}` : ""}
         </span>
         {line ? (
-          <span className="text-caption text-text-muted flex items-center gap-1 truncate">
-            {fastest ? <Zap aria-hidden className="size-3 shrink-0" /> : null}
+          <span className="text-caption text-text-muted line-clamp-2 sm:truncate">
+            {fastest ? <Zap aria-hidden className="mr-1 inline size-3 align-[-1px]" /> : null}
             {line}
           </span>
         ) : null}
       </span>
-      <span className="text-body text-text-primary underline">{manage ? "Manage team" : "See the team"}</span>
+      <span className="text-body text-text-primary hidden underline sm:inline">{manage ? "Manage team" : "See the team"}</span>
       <ChevronRight aria-hidden className="size-4 shrink-0 text-text-muted" />
     </Link>
   );

@@ -205,7 +205,39 @@ export function WhosWorking({ reason }: { reason: LockReason }) {
             <label htmlFor={pinId} className="text-h3 text-text-primary">
               {picked.name}, type your PIN
             </label>
-            <div className="relative flex gap-3" aria-hidden>
+            {/* The real field: typed into from the keyboard. Read-only (never
+                disabled) while GRIDGO checks, so focus stays for a retry. */}
+            <input
+              ref={inputRef}
+              id={pinId}
+              data-testid="worker-pin"
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              pattern="[0-9]*"
+              maxLength={PIN_LENGTH}
+              value={pin}
+              readOnly={busy}
+              aria-busy={busy || undefined}
+              aria-invalid={error ? true : undefined}
+              aria-describedby={error ? `${pinId}-error` : undefined}
+              onChange={(event) => {
+                if (!busy) type(event.target.value);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setPicked(null);
+                  setPin("");
+                }
+              }}
+              className="peer sr-only"
+            />
+            {/* What the person sees: one dot per digit. A click lands in the field. */}
+            <label
+              htmlFor={pinId}
+              aria-hidden
+              className="flex min-h-11 cursor-text items-center gap-3 rounded-field px-4 peer-focus:outline-2 peer-focus:outline-offset-2 peer-focus:outline-foreground"
+            >
               {Array.from({ length: PIN_LENGTH }, (_, index) => (
                 <span
                   key={index}
@@ -217,30 +249,7 @@ export function WhosWorking({ reason }: { reason: LockReason }) {
                   )}
                 />
               ))}
-            </div>
-            {/* The real field: typed into from the keyboard, read as dots. */}
-            <input
-              ref={inputRef}
-              id={pinId}
-              data-testid="worker-pin"
-              type="password"
-              inputMode="numeric"
-              autoComplete="off"
-              pattern="[0-9]*"
-              maxLength={PIN_LENGTH}
-              value={pin}
-              disabled={busy}
-              aria-invalid={error ? true : undefined}
-              aria-describedby={error ? `${pinId}-error` : undefined}
-              onChange={(event) => type(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  setPicked(null);
-                  setPin("");
-                }
-              }}
-              className="h-11 w-40 rounded-field border border-outline bg-surface text-center text-h3 tracking-[0.5em] text-text-primary"
-            />
+            </label>
             {error ? (
               <p id={`${pinId}-error`} className="text-body text-error m-0" role="alert">
                 {error}

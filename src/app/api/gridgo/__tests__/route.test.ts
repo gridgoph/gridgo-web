@@ -61,6 +61,7 @@ describe("GET /api/gridgo/*", () => {
           accept: "application/json",
           "x-gridgo-role": "ops_admin",
           "idempotency-key": "mutation-attempt-1",
+          "x-gridgo-worker-token": "shop-pc-turn",
           authorization: "Bearer clerk-session-token",
           origin: "http://localhost:3310",
           cookie: "__session=should-not-forward",
@@ -80,6 +81,7 @@ describe("GET /api/gridgo/*", () => {
     expect(headers.get("accept")).toBe("application/json");
     expect(headers.get("x-gridgo-role")).toBe("ops_admin");
     expect(headers.get("idempotency-key")).toBe("mutation-attempt-1");
+    expect(headers.get("x-gridgo-worker-token")).toBe("shop-pc-turn");
     expect(init.body).toBeUndefined();
   });
 });

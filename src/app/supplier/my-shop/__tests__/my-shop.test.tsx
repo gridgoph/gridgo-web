@@ -29,7 +29,13 @@ vi.mock("@/lib/api/client", async (original) => ({
   getExpressSettings: vi.fn(),
 }));
 vi.mock("@/components/my-shop/ShopProducts", () => ({
-  ShopProducts: () => <section aria-label="Products">products</section>,
+  MY_SHOP_PRODUCT_LIMIT: 8,
+  MY_SHOP_PRODUCT_LIMIT_PHONE: 4,
+  ShopProducts: ({ limit }: { limit: number }) => (
+    <section aria-label="Products" data-limit={limit}>
+      products
+    </section>
+  ),
 }));
 vi.mock("@/app/supplier/_components/SupplierLegalGate", () => ({
   useSupplierLegal: () => ({ notices: [] }),
@@ -95,6 +101,7 @@ describe("My shop by role", () => {
     expect(screen.getByTestId("shop-sign")).toHaveTextContent("OPEN");
     expect(screen.getByText("Night until 11 PM")).toBeVisible();
     expect(document.querySelector('[data-layout="desktop"]')).not.toBeNull();
+    expect(screen.getByRole("region", { name: "Products" })).toHaveAttribute("data-limit", "8");
   });
 
   it("gives a Manager products and hours, but never payout or the switches", async () => {
@@ -127,6 +134,7 @@ describe("My shop by role", () => {
     render(<SupplierMyShopPage />);
     await screen.findByRole("region", { name: "Shop status" });
     expect(document.querySelector('[data-layout="phone"]')).not.toBeNull();
+    expect(screen.getByRole("region", { name: "Products" })).toHaveAttribute("data-limit", "4");
     expect(document.querySelector("aside")).toBeNull();
   });
 });

@@ -168,7 +168,7 @@ import { TestOperationsProvider, useTestOperations } from "@/lib/auth/test-opera
 import { useShopAccess, type ShopAccess } from "@/lib/auth/shop-access";
 import { shopRoleLabel } from "@/lib/shop-team";
 import { ShopOwnerOnly } from "@/components/shop-team/ShopOwnerOnly";
-import { WorkerBar } from "@/components/shop-device/WorkerBar";
+import { endWorkerTurn, WorkerBar } from "@/components/shop-device/WorkerBar";
 import { useShopDevice } from "@/components/shop-device/useShopDevice";
 import { TEST_OPERATIONS_FORBIDDEN } from "@/lib/review-data";
 import { useAuth } from "@/lib/auth/AuthProvider";
@@ -361,10 +361,13 @@ function NavUser({ role }: { role: Role }) {
   const switchableRoles = portalRolesFromMemberships(memberships ?? []).filter(
     (candidate) => candidate !== role,
   );
+  // On a shared shop PC the footer is the person at the keyboard, never the
+  // account the PC is signed in with, and it offers nothing of that account.
+  const worker = shopAccess.worker ?? null;
   const fallbackName = user?.name?.trim() || "Account";
-  const name = clerkProfileName(clerkUser, fallbackName);
-  const email = clerkProfileEmail(clerkUser, user?.email?.trim() ?? "");
-  const imageUrl = clerkProfileImageUrl(clerkUser);
+  const name = worker ? worker.name : clerkProfileName(clerkUser, fallbackName);
+  const email = worker ? "" : clerkProfileEmail(clerkUser, user?.email?.trim() ?? "");
+  const imageUrl = worker ? undefined : clerkProfileImageUrl(clerkUser);
   const collapsed = state === "collapsed";
 
   return (
@@ -418,13 +421,25 @@ function NavUser({ role }: { role: Role }) {
                 </div>
               </DropdownMenuLabel>
             </DropdownMenuGroup>
-            <DropdownMenuGroup>
-              <DropdownMenuItem className="min-h-11" onClick={() => openUserProfile()}>
-                <CircleUser aria-hidden />
-                Manage account
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            {settingsHref ? (
+            {worker ? (
+              <DropdownMenuGroup>
+                <DropdownMenuItem
+                  className="min-h-11"
+                  onClick={() => void endWorkerTurn("switch")}
+                >
+                  <ArrowLeftRight aria-hidden />
+                  Switch person
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            ) : (
+              <DropdownMenuGroup>
+                <DropdownMenuItem className="min-h-11" onClick={() => openUserProfile()}>
+                  <CircleUser aria-hidden />
+                  Manage account
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            )}
+            {settingsHref && !worker ? (
               <DropdownMenuGroup>
                 <DropdownMenuItem
                   render={<Link href={settingsHref} />}
@@ -435,7 +450,7 @@ function NavUser({ role }: { role: Role }) {
                 </DropdownMenuItem>
               </DropdownMenuGroup>
             ) : null}
-            {role === "supplier" ? (
+            {role === "supplier" && !worker ? (
               <DropdownMenuGroup>
                 <DropdownMenuItem
                   render={<Link href="/supplier/phone-app" />}
@@ -446,7 +461,7 @@ function NavUser({ role }: { role: Role }) {
                 </DropdownMenuItem>
               </DropdownMenuGroup>
             ) : null}
-            {switchableRoles.length > 0 ? (
+            {switchableRoles.length > 0 && !worker ? (
               <DropdownMenuGroup>
                 {switchableRoles.map((nextRole) => (
                   <DropdownMenuItem
@@ -464,7 +479,7 @@ function NavUser({ role }: { role: Role }) {
             <DropdownMenuGroup>
               <DropdownMenuItem className="min-h-11" onClick={() => void signOut()}>
                 <LogOut aria-hidden />
-                Log out
+                {worker ? "Sign out of this PC" : "Log out"}
               </DropdownMenuItem>
             </DropdownMenuGroup>
           </DropdownMenuContent>

@@ -153,7 +153,9 @@ export function PersonPanel({
           </div>
           <div className="flex flex-col gap-1 rounded-field bg-surface-variant p-3">
             <dt className="text-caption text-text-muted">Average time to accept</dt>
-            <dd className="text-h3 text-text-primary m-0">{avg ?? "Not measured yet"}</dd>
+            <dd className={avg ? "text-h3 text-text-primary m-0" : "text-body text-text-secondary m-0"}>
+              {avg ?? "Not measured yet"}
+            </dd>
           </div>
         </dl>
       ) : null}

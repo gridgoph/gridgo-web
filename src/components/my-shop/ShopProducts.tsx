@@ -23,8 +23,10 @@ import {
   type Listing,
 } from "@/lib/listings";
 
-/** How many products My shop shows before "See all". */
+/** How many products My shop shows before "See all": two rows of four on a desktop. */
 export const MY_SHOP_PRODUCT_LIMIT = 8;
+/** On a phone, two rows of two, so the status and team stay within reach. */
+export const MY_SHOP_PRODUCT_LIMIT_PHONE = 4;
 
 type Tile = { listing: Listing; standing: BoardStanding };
 
@@ -38,7 +40,7 @@ type State =
  * standing, an Add, and See all to the whole board. Owners and Managers only:
  * a product carries its price, which Staff never see.
  */
-export function ShopProducts() {
+export function ShopProducts({ limit = MY_SHOP_PRODUCT_LIMIT }: { limit?: number } = {}) {
   const { user } = useAuth();
   const shopApproved = user?.verificationStatus === "approved";
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -76,12 +78,14 @@ export function ShopProducts() {
   useLiveReload(["catalog", "services"], load);
 
   const live = state.kind === "ready" ? state.tiles.filter((t) => t.standing.kind === "live").length : 0;
-  const more = state.kind === "ready" && state.total > state.tiles.length;
+  const shown = state.kind === "ready" ? state.tiles.slice(0, limit) : [];
+  const total = state.kind === "ready" ? state.total : 0;
+  const more = total > shown.length;
 
   return (
     <section aria-labelledby="my-shop-products" className="flex flex-col gap-3" data-testid="shop-products">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 id="my-shop-products" className="text-h3 text-text-primary m-0 flex-1">
+        <h2 id="my-shop-products" className="text-h3 text-text-primary m-0 flex-1 whitespace-nowrap">
           Products
           {state.kind === "ready" && state.tiles.length ? (
             <span className="text-text-muted">{` · ${live} live`}</span>
@@ -113,7 +117,7 @@ export function ShopProducts() {
 
       {state.kind === "ready" && state.tiles.length ? (
         <ul className="m-0 grid list-none grid-cols-2 gap-3 p-0 md:grid-cols-3 min-[1280px]:grid-cols-4">
-          {state.tiles.map(({ listing, standing }) => (
+          {shown.map(({ listing, standing }) => (
             <li key={listing.id}>
               <Link
                 href={`/supplier/catalogue/${listing.id}`}
@@ -145,7 +149,7 @@ export function ShopProducts() {
       ) : null}
       {more ? (
         <p className="text-caption text-text-muted m-0">
-          Showing {state.kind === "ready" ? state.tiles.length : 0} of {state.kind === "ready" ? state.total : 0}.{" "}
+          Showing {shown.length} of {total}.{" "}
           <Link href="/supplier/catalogue" className="underline">
             See all products
           </Link>

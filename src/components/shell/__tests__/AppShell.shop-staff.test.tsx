@@ -344,6 +344,10 @@ describe("AppShell shop Staff mode", () => {
     expect(bar).toHaveTextContent("Ana");
     expect(within(bar).getByRole("button", { name: /Switch person/ })).toBeVisible();
     expect(screen.queryByRole("button", { name: /notifications|inbox/i })).not.toBeInTheDocument();
+    // The footer is the person at the keyboard, not the account the PC is signed in with.
+    const account = document.querySelector('[data-slot="account-menu"]');
+    expect(account).toHaveAttribute("aria-label", "Ana");
+    expect(account).not.toHaveTextContent("Sam Santos");
   });
 
   it("names the shop and the Staff role under the account", () => {

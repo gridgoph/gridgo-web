@@ -25,7 +25,11 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { useSupplierLegal } from "@/app/supplier/_components/SupplierLegalGate";
 import { ShopCard } from "@/components/my-shop/ShopCard";
-import { ShopProducts } from "@/components/my-shop/ShopProducts";
+import {
+  MY_SHOP_PRODUCT_LIMIT,
+  MY_SHOP_PRODUCT_LIMIT_PHONE,
+  ShopProducts,
+} from "@/components/my-shop/ShopProducts";
 import { ShopStatusPanel } from "@/components/my-shop/ShopStatusPanel";
 import { TeamStrip } from "@/components/my-shop/TeamStrip";
 import { useMyShopStatus } from "@/components/my-shop/useMyShopStatus";
@@ -252,7 +256,9 @@ export default function SupplierMyShopPage() {
         />
       ) : null}
       {desktop ? null : panel}
-      {can.editProducts ? <ShopProducts /> : null}
+      {can.editProducts ? (
+        <ShopProducts limit={desktop ? MY_SHOP_PRODUCT_LIMIT : MY_SHOP_PRODUCT_LIMIT_PHONE} />
+      ) : null}
       <TeamStrip manage={can.manageTeam} />
 
       {notices.length && can.money ? (

@@ -487,7 +487,9 @@ export function TeamManager() {
           >
             {panel ?? (
               <p className="text-body text-text-secondary m-0">
-                Pick someone to see their week{can.manageTeam ? " and change their settings" : ""}.
+                {can.manageTeam
+                  ? "Pick someone to see their week and change their settings."
+                  : "Pick someone to see their role and job alerts."}
               </p>
             )}
           </aside>
