@@ -10,8 +10,13 @@ import type {
   ShopInvite,
   ShopInviteKind,
   ShopMember,
+  ShopMemberStatus,
+  ShopPinStaff,
   ShopRole,
   ShopSummary,
+  ShopTeamMemberStats,
+  ShopTeamMission,
+  ShopTeamStats,
 } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
 
@@ -218,6 +223,10 @@ const TEAM_ERROR_COPY: Record<string, string> = {
   invalid_shop_invite_claim: "This invite link is not complete. Ask for a new one.",
   shop_access_removed: "Your access to this shop was removed.",
   shop_approval_pending: "The Owner has not approved you yet.",
+  invalid_shop_pin: "A PIN is exactly 4 numbers.",
+  invalid_shop_member_name: "Enter a name of up to 100 letters.",
+  invalid_shop_member_update: "Check the name and try again.",
+  invalid_shop_team_settings: "That setting did not save. Try again.",
 };
 
 /** Plain words for a team API refusal; the API's `message` is never shown. */
@@ -317,4 +326,121 @@ export function orderActionRows(actions: readonly OrderAction[] | undefined): Ar
       when: formatDateTime(row.at),
       at: row.at,
     }));
+}
+
+// ---- Extended team: one roster of account and PIN people ----------------------
+
+/** One person on the team, whether they sign in or work by PIN. */
+export type TeamPerson = {
+  /** `account:<userId>` or `pin:<id>`: unique across both kinds. */
+  key: string;
+  kind: "account" | "pin";
+  id: string;
+  name: string;
+  role: ShopRole;
+  status: ShopMemberStatus;
+  jobAlerts: boolean;
+  /** PIN people only: picked on a shop device right now. */
+  onShift: boolean;
+  createdAt?: string;
+};
+
+export function teamPeople(
+  members: readonly ShopMember[],
+  pinStaff: readonly ShopPinStaff[] | null,
+): TeamPerson[] {
+  return [
+    ...members.map<TeamPerson>((m) => ({
+      key: `account:${m.userId}`,
+      kind: "account",
+      id: m.userId,
+      name: m.name,
+      role: m.role,
+      status: m.status,
+      jobAlerts: m.jobAlerts !== false,
+      onShift: false,
+      createdAt: m.createdAt,
+    })),
+    ...(pinStaff ?? []).map<TeamPerson>((p) => ({
+      key: `pin:${p.id}`,
+      kind: "pin",
+      id: p.id,
+      name: p.name,
+      role: p.role,
+      status: p.status,
+      jobAlerts: p.jobAlerts !== false,
+      onShift: p.onShift === true,
+      createdAt: p.createdAt,
+    })),
+  ];
+}
+
+/**
+ * The team card's rows: Owners and Managers on the shop card, Staff in the
+ * grid, each by name; pending people wait apart; removed people are gone.
+ */
+export function rosterOf(people: readonly TeamPerson[]): {
+  leads: TeamPerson[];
+  staff: TeamPerson[];
+  pending: TeamPerson[];
+} {
+  const byName = (a: TeamPerson, b: TeamPerson) => a.name.localeCompare(b.name);
+  const active = people.filter((p) => p.status === "active");
+  return {
+    leads: active
+      .filter((p) => p.role !== "staff")
+      .sort((a, b) => ROLE_ORDER[a.role] - ROLE_ORDER[b.role] || byName(a, b)),
+    staff: active.filter((p) => p.role === "staff").sort(byName),
+    pending: people.filter((p) => p.status === "pending").sort(byName),
+  };
+}
+
+/** The stats row for a person, matched on their user or PIN id. */
+export function statsFor(
+  person: Pick<TeamPerson, "kind" | "id">,
+  stats: ShopTeamStats | null,
+): ShopTeamMemberStats | null {
+  return (
+    stats?.members?.find((row) =>
+      person.kind === "pin" ? row.pinStaffId === person.id : row.userId === person.id,
+    ) ?? null
+  );
+}
+
+export function isFastest(
+  person: Pick<TeamPerson, "kind" | "id">,
+  stats: ShopTeamStats | null,
+): boolean {
+  const fastest = stats?.fastestThisWeek;
+  if (!fastest) return false;
+  return person.kind === "pin" ? fastest.pinStaffId === person.id : fastest.userId === person.id;
+}
+
+/** "38 sec", "2 min 5 sec": an average time to accept. Null when unmeasured. */
+export function acceptTimeLabel(seconds: number | null | undefined): string | null {
+  if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return null;
+  if (seconds < 60) return `${Math.round(seconds)} sec`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.round(seconds % 60);
+  return rest ? `${minutes} min ${rest} sec` : `${minutes} min`;
+}
+
+/** "4 of 10 jobs accepted within 5 minutes": the team's positive weekly goal. */
+export function missionLine(mission: ShopTeamMission | null | undefined): string | null {
+  if (!mission) return null;
+  if (mission.completed) return `Done: ${mission.targetJobs} jobs accepted within 5 minutes this week`;
+  return `${mission.quickAcceptedJobs} of ${mission.targetJobs} jobs accepted within 5 minutes`;
+}
+
+/** 0–100 for the mission bar. */
+export function missionPercent(mission: ShopTeamMission | null | undefined): number {
+  if (!mission || mission.targetJobs <= 0) return 0;
+  return Math.min(100, Math.round((mission.quickAcceptedJobs / mission.targetJobs) * 100));
+}
+
+/** Under a face in the grid: on shift, how they work, or waiting. */
+export function personLine(person: TeamPerson): string {
+  if (person.status === "pending") return "Wants to join";
+  const how = person.kind === "pin" ? "PIN" : "Own login";
+  return person.onShift ? `On shift · ${how}` : how;
 }
