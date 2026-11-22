@@ -188,7 +188,7 @@ function ExpressSwitch() {
   );
 }
 
-/** "GCash ••4821": enough to recognise the account, never the whole number. */
+/** "Wallet ••4821": enough to recognise the account, never the whole number. */
 function payoutSummary(account: SupplierPayoutAccount | null): string {
   if (!account) return "Not set yet. Add it so GRIDGO can pay you.";
   const tail = account.accountNumber?.replace(/\D/g, "").slice(-4);
