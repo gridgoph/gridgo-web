@@ -21,6 +21,9 @@ vi.mock("@/lib/api/client", async (importOriginal) => {
   };
 });
 
+const lockApi = vi.hoisted(() => ({ lockWorkingDevice: vi.fn(async () => undefined) }));
+vi.mock("@/lib/api/shop-team", () => lockApi);
+
 const registration = {
   pushManager: {
     getSubscription: vi.fn(async (): Promise<PushSubscription | null> => null),
@@ -37,14 +40,24 @@ vi.mock("@/lib/live/desktopAlerts", async (importOriginal) => {
   return { ...actual, ensureDesktopAlertWorker: vi.fn(async () => registration) };
 });
 
+import { enterSharedPc } from "@/components/shop-device/enterSharedPc";
 import { ApiError, subscribeWebPush, unsubscribeWebPush } from "@/lib/api/client";
+import { ensureDesktopAlertWorker } from "@/lib/live/desktopAlerts";
+import { resetShopDevice, shopDeviceSnapshot } from "@/lib/shop-device";
+import { resetDeviceLock } from "@/lib/shop-device-lock";
 import type { DeviceKind } from "@/lib/pwa/install";
 
 import {
   applicationServerKey,
   pushSupport,
+  isPersonalPushReleased,
+  releaseWebPushForSharedPc,
+  releaseWebPushOnLockedPc,
   releaseWebPushForSignOut,
   resetWebPushForTests,
+  resumePersonalPush,
+  SharedPcCleanupError,
+  WEB_PUSH_PENDING_REMOVAL_KEY,
   syncWebPush,
   turnOffWebPush,
   turnOnWebPush,
@@ -313,5 +326,171 @@ describe("keeping the API copy right", () => {
     await vi.waitFor(() =>
       expect(window.localStorage.getItem(WEB_PUSH_OWNER_KEY)).toBeNull(),
     );
+  });
+});
+
+
+describe("handing this browser over to a shared shop PC", () => {
+  /** The site's registrations as the browser lists them: the push one, with what it shows. */
+  function registered(getRegistrations?: () => Promise<unknown[]>) {
+    const close = vi.fn();
+    const withShown = Object.assign(registration, {
+      getNotifications: vi.fn(async () => [{ close }, { close }]),
+    });
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: { getRegistrations: vi.fn(getRegistrations ?? (async () => [withShown])) },
+    });
+    return close;
+  }
+
+  beforeEach(() => {
+    registered();
+    resetShopDevice();
+    resetDeviceLock();
+    lockApi.lockWorkingDevice.mockClear();
+  });
+
+  it("closes shown notifications and removes the subscription here and at GRIDGO", async () => {
+    installNotification("granted", "granted");
+    const close = registered();
+    window.localStorage.setItem(WEB_PUSH_OWNER_KEY, "user_owner");
+    registration.pushManager.getSubscription.mockResolvedValue(fakeSubscription());
+    await releaseWebPushForSharedPc();
+    expect(close).toHaveBeenCalledTimes(2);
+    expect(unsubscribe).toHaveBeenCalled();
+    expect(unsubscribeWebPush).toHaveBeenCalledWith("https://push.example/abc", expect.anything());
+    expect(window.localStorage.getItem(WEB_PUSH_OWNER_KEY)).toBeNull();
+    expect(window.localStorage.getItem(WEB_PUSH_PENDING_REMOVAL_KEY)).toBeNull();
+  });
+
+  it("stops when the browser will not drop the subscription, and keeps the owner record", async () => {
+    installNotification("granted", "granted");
+    window.localStorage.setItem(WEB_PUSH_OWNER_KEY, "user_owner");
+    registration.pushManager.getSubscription.mockResolvedValue(fakeSubscription());
+    unsubscribe.mockResolvedValueOnce(false);
+    await expect(releaseWebPushForSharedPc()).rejects.toBeInstanceOf(SharedPcCleanupError);
+    unsubscribe.mockRejectedValueOnce(new Error("busy"));
+    await expect(releaseWebPushForSharedPc()).rejects.toMatchObject({ step: "browser" });
+    expect(unsubscribeWebPush).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(WEB_PUSH_OWNER_KEY)).toBe("user_owner");
+  });
+
+  it("stops when the browser never says whether it holds one", async () => {
+    installNotification("granted", "granted");
+    registration.pushManager.getSubscription.mockReturnValueOnce(new Promise(() => undefined));
+    await expect(releaseWebPushForSharedPc(10)).rejects.toMatchObject({ step: "browser" });
+  });
+
+  it("keeps GRIDGO's copy to remove on the retry when that call fails", async () => {
+    installNotification("granted", "granted");
+    window.localStorage.setItem(WEB_PUSH_OWNER_KEY, "user_owner");
+    registration.pushManager.getSubscription.mockResolvedValueOnce(fakeSubscription());
+    vi.mocked(unsubscribeWebPush).mockRejectedValueOnce(new ApiError(503, { error: "server_error" }));
+    await expect(releaseWebPushForSharedPc()).rejects.toMatchObject({ step: "gridgo" });
+    expect(window.localStorage.getItem(WEB_PUSH_PENDING_REMOVAL_KEY)).toBe("https://push.example/abc");
+    expect(window.localStorage.getItem(WEB_PUSH_OWNER_KEY)).toBe("user_owner");
+    // The retry: the browser holds nothing now, GRIDGO's copy still goes.
+    registration.pushManager.getSubscription.mockResolvedValueOnce(null);
+    await releaseWebPushForSharedPc();
+    expect(unsubscribeWebPush).toHaveBeenLastCalledWith("https://push.example/abc", expect.anything());
+    expect(window.localStorage.getItem(WEB_PUSH_PENDING_REMOVAL_KEY)).toBeNull();
+    expect(window.localStorage.getItem(WEB_PUSH_OWNER_KEY)).toBeNull();
+  });
+
+  it("waits for a registration on its way, then registers nothing new until resumed", async () => {
+    installNotification("granted", "granted");
+    window.localStorage.setItem(WEB_PUSH_OWNER_KEY, "user_owner");
+    let found: (value: PushSubscription | null) => void = () => undefined;
+    registration.pushManager.getSubscription.mockReturnValueOnce(
+      new Promise((resolve) => {
+        found = resolve;
+      }),
+    );
+    const syncing = syncWebPush("user_owner");
+    registration.pushManager.getSubscription.mockResolvedValue(fakeSubscription());
+    const handover = releaseWebPushForSharedPc();
+    found(fakeSubscription());
+    await syncing;
+    await handover;
+    // The sync's save ran before the browser and GRIDGO copies were removed.
+    expect(calls.indexOf("save")).toBeLessThan(calls.indexOf("forget"));
+    vi.mocked(subscribeWebPush).mockClear();
+    await syncWebPush("user_other");
+    expect(subscribeWebPush).not.toHaveBeenCalled();
+    registration.pushManager.subscribe.mockClear();
+    await turnOnWebPush("key", "user_owner");
+    expect(registration.pushManager.subscribe).not.toHaveBeenCalled();
+    expect(subscribeWebPush).not.toHaveBeenCalled();
+    resumePersonalPush();
+  });
+
+  it("finds the subscription even when the alert worker lookup answers nothing", async () => {
+    installNotification("granted", "granted");
+    window.localStorage.setItem(WEB_PUSH_OWNER_KEY, "user_owner");
+    registration.pushManager.getSubscription.mockResolvedValue(fakeSubscription());
+    vi.mocked(ensureDesktopAlertWorker).mockResolvedValue(null);
+    await enterSharedPc();
+    expect(unsubscribe).toHaveBeenCalled();
+    expect(unsubscribeWebPush).toHaveBeenCalledWith("https://push.example/abc", expect.anything());
+    expect(shopDeviceSnapshot().shared).toBe(true);
+    expect(isPersonalPushReleased()).toBe(true);
+    vi.mocked(ensureDesktopAlertWorker).mockResolvedValue(registration as never);
+  });
+
+  it("does not share the PC when the registration lookup fails", async () => {
+    installNotification("granted", "granted");
+    window.localStorage.setItem(WEB_PUSH_OWNER_KEY, "user_owner");
+    registered(() => Promise.reject(new Error("registration failed")));
+    await expect(enterSharedPc()).rejects.toBeInstanceOf(SharedPcCleanupError);
+    expect(shopDeviceSnapshot()).toMatchObject({ shared: false, preparing: false });
+    expect(lockApi.lockWorkingDevice).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(WEB_PUSH_OWNER_KEY)).toBe("user_owner");
+    expect(isPersonalPushReleased()).toBe(false);
+  });
+
+  it("does not share the PC when the registration lookup never answers", async () => {
+    vi.useFakeTimers();
+    try {
+      installNotification("granted", "granted");
+      window.localStorage.setItem(WEB_PUSH_OWNER_KEY, "user_owner");
+      registered(() => new Promise<unknown[]>(() => undefined));
+      const sharing = enterSharedPc();
+      const outcome = expect(sharing).rejects.toMatchObject({ step: "browser" });
+      await vi.advanceTimersByTimeAsync(10_001);
+      await outcome;
+      expect(shopDeviceSnapshot()).toMatchObject({ shared: false, preparing: false });
+      expect(lockApi.lockWorkingDevice).not.toHaveBeenCalled();
+      expect(window.localStorage.getItem(WEB_PUSH_OWNER_KEY)).toBe("user_owner");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not share the PC when the browser cannot list its registrations at all", async () => {
+    installNotification("granted", "granted");
+    Object.defineProperty(navigator, "serviceWorker", { configurable: true, value: {} });
+    await expect(enterSharedPc()).rejects.toMatchObject({ step: "browser" });
+    expect(shopDeviceSnapshot().shared).toBe(false);
+    expect(lockApi.lockWorkingDevice).not.toHaveBeenCalled();
+  });
+
+  it("on a PC GRIDGO already locked, drops the browser's copy without calling GRIDGO", async () => {
+    installNotification("granted", "granted");
+    window.localStorage.setItem(WEB_PUSH_OWNER_KEY, "user_owner");
+    registration.pushManager.getSubscription.mockResolvedValue(fakeSubscription());
+    await releaseWebPushOnLockedPc();
+    expect(unsubscribe).toHaveBeenCalled();
+    expect(unsubscribeWebPush).not.toHaveBeenCalled();
+    expect(window.localStorage.getItem(WEB_PUSH_PENDING_REMOVAL_KEY)).toBe("https://push.example/abc");
+    expect(isPersonalPushReleased()).toBe(true);
+  });
+
+  it("on a locked PC, still refuses when the browser keeps the subscription", async () => {
+    installNotification("granted", "granted");
+    registration.pushManager.getSubscription.mockResolvedValue(fakeSubscription());
+    unsubscribe.mockResolvedValueOnce(false);
+    await expect(releaseWebPushOnLockedPc()).rejects.toMatchObject({ step: "browser" });
+    expect(isPersonalPushReleased()).toBe(false);
   });
 });

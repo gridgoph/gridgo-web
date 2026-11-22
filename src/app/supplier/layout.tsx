@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 
 import { SupplierLegalGate } from "@/app/supplier/_components/SupplierLegalGate";
 import { RoleGate } from "@/components/shell/RoleGate";
+import { ShopDeviceGate } from "@/components/shop-device/ShopDeviceGate";
 
 /**
  * The supplier tree is an installable web app (`public/supplier.webmanifest`).
@@ -37,8 +38,10 @@ export default function SupplierLayout({
   children: React.ReactNode;
 }) {
   return (
-    <RoleGate allow="supplier">
-      <SupplierLegalGate>{children}</SupplierLegalGate>
-    </RoleGate>
+    <ShopDeviceGate>
+      <RoleGate allow="supplier">
+        <SupplierLegalGate>{children}</SupplierLegalGate>
+      </RoleGate>
+    </ShopDeviceGate>
   );
 }

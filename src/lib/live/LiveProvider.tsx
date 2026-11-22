@@ -81,24 +81,30 @@ type LiveProviderProps = {
    * the provider itself never touches the router.
    */
   onOpenNotification?: (notification: Notification) => void;
+  /**
+   * A shared shop PC: no inbox, stream or desktop alerts for the signed-in
+   * account. The API refuses them there, and they are not the worker's.
+   */
+  disabled?: boolean;
 };
 
-export function LiveProvider({ children, role, onOpenNotification }: LiveProviderProps) {
+export function LiveProvider({ children, role, onOpenNotification, disabled }: LiveProviderProps) {
   const { user } = useAuth();
   return (
     <AccountLiveProvider
-      key={`${user?.id ?? "signed-out"}:${role ?? ""}`}
+      key={`${user?.id ?? "signed-out"}:${role ?? ""}:${disabled ? "shared" : "own"}`}
       role={role}
       onOpenNotification={onOpenNotification}
+      disabled={disabled}
     >
       {children}
     </AccountLiveProvider>
   );
 }
 
-function AccountLiveProvider({ children, role, onOpenNotification }: LiveProviderProps) {
+function AccountLiveProvider({ children, role, onOpenNotification, disabled }: LiveProviderProps) {
   const { user, refresh: refreshIdentity } = useAuth();
-  const userId = user?.id;
+  const userId = disabled ? undefined : user?.id;
   const identityRefresh = useRef(refreshIdentity);
   identityRefresh.current = refreshIdentity;
   const openNotification = useRef(onOpenNotification);

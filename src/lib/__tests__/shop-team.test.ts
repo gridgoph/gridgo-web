@@ -87,16 +87,45 @@ describe("Share via Messenger", () => {
 });
 
 describe("Staff navigation", () => {
-  it("leaves Staff with To do's Today and All jobs, with no Money or settings", () => {
-    expect([...SHOP_STAFF_NAV_IDS]).toEqual(["supplier-today", "supplier-jobs"]);
+  it("leaves Staff with To do's Today and All jobs, a read-only My shop and the team, with no Money or settings", () => {
+    expect([...SHOP_STAFF_NAV_IDS]).toEqual([
+      "supplier-today",
+      "supplier-jobs",
+      "supplier-my-shop",
+      "supplier-team",
+    ]);
     expect(navForRole("supplier", { shopStaff: true }).map((i) => i.href)).toEqual([
       "/supplier/dashboard",
       "/supplier/jobs",
+      "/supplier/my-shop",
+      "/supplier/team",
     ]);
     expect(navGroupsForRole("supplier", { shopStaff: true }).map((g) => g.label)).toEqual([
       "To do",
+      "My shop",
     ]);
     expect(SHOP_STAFF_HOME).toBe("/supplier/dashboard");
+  });
+
+  it("gives a Manager the schedule, products and hours too, never Money", () => {
+    const hrefs = navForRole("supplier", { shopStaff: true, shopManager: true }).map((i) => i.href);
+    expect(hrefs).toEqual(
+      expect.arrayContaining([
+        "/supplier/schedule",
+        "/supplier/catalogue",
+        "/supplier/shop-hours",
+        "/supplier/team",
+        "/supplier/my-shop",
+      ]),
+    );
+    expect(hrefs.some((href) => href.startsWith("/supplier/payout"))).toBe(false);
+    for (const path of ["/supplier/catalogue/new", "/supplier/catalogue/item_1", "/supplier/shop-hours"]) {
+      expect(shopStaffAllowsPath(path, true)).toBe(true);
+      expect(shopStaffAllowsPath(path)).toBe(false);
+    }
+    for (const path of ["/supplier/payouts", "/supplier/payout-account", "/supplier/shop", "/supplier/documents"]) {
+      expect(shopStaffAllowsPath(path, true)).toBe(false);
+    }
   });
 
   it("gives the Owner the Staff page in the My shop group", () => {
@@ -119,6 +148,8 @@ describe("Staff navigation", () => {
     "/supplier/dashboard",
     "/supplier/phone-app",
     "/supplier/notice",
+    "/supplier/my-shop",
+    "/supplier/team",
   ])("lets Staff open %s", (path) => {
     expect(shopStaffAllowsPath(path)).toBe(true);
   });
@@ -136,13 +167,11 @@ describe("Staff navigation", () => {
     "/supplier/payout-account",
     "/supplier/record",
     "/supplier/report",
-    "/supplier/team",
     "/supplier/documents",
     "/supplier/chat",
     "/supplier/legal",
     "/supplier/privacy",
     "/supplier/jobsX",
-    "/supplier/my-shop",
     "/supplier/performance",
   ])("keeps Staff out of %s", (path) => {
     expect(shopStaffAllowsPath(path)).toBe(false);

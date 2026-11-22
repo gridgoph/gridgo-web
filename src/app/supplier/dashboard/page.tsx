@@ -69,7 +69,7 @@ function SoundSwitch() {
  */
 export default function SupplierTodayPage() {
   const { user } = useAuth();
-  const { staff } = useShopAccess();
+  const { staff, worker } = useShopAccess();
   const [jobs, setJobs] = useState<Order[] | null>(null);
   const [readiness, setReadiness] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
@@ -145,7 +145,7 @@ export default function SupplierTodayPage() {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-0.5">
-        <p className="text-body text-text-muted m-0">{greeting(now, user?.name)}</p>
+        <p className="text-body text-text-muted m-0">{greeting(now, worker?.name ?? user?.name)}</p>
         <h2 className="text-h1 text-text-primary m-0">{todoTitle(things)}</h2>
       </div>
 

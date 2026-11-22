@@ -168,6 +168,8 @@ import { TestOperationsProvider, useTestOperations } from "@/lib/auth/test-opera
 import { useShopAccess, type ShopAccess } from "@/lib/auth/shop-access";
 import { shopRoleLabel } from "@/lib/shop-team";
 import { ShopOwnerOnly } from "@/components/shop-team/ShopOwnerOnly";
+import { endWorkerTurn, WorkerBar } from "@/components/shop-device/WorkerBar";
+import { useShopDevice } from "@/components/shop-device/useShopDevice";
 import { TEST_OPERATIONS_FORBIDDEN } from "@/lib/review-data";
 import { useAuth } from "@/lib/auth/AuthProvider";
 import { LiveProvider } from "@/lib/live/LiveProvider";
@@ -359,10 +361,13 @@ function NavUser({ role }: { role: Role }) {
   const switchableRoles = portalRolesFromMemberships(memberships ?? []).filter(
     (candidate) => candidate !== role,
   );
+  // On a shared shop PC the footer is the person at the keyboard, never the
+  // account the PC is signed in with, and it offers nothing of that account.
+  const worker = shopAccess.worker ?? null;
   const fallbackName = user?.name?.trim() || "Account";
-  const name = clerkProfileName(clerkUser, fallbackName);
-  const email = clerkProfileEmail(clerkUser, user?.email?.trim() ?? "");
-  const imageUrl = clerkProfileImageUrl(clerkUser);
+  const name = worker ? worker.name : clerkProfileName(clerkUser, fallbackName);
+  const email = worker ? "" : clerkProfileEmail(clerkUser, user?.email?.trim() ?? "");
+  const imageUrl = worker ? undefined : clerkProfileImageUrl(clerkUser);
   const collapsed = state === "collapsed";
 
   return (
@@ -416,13 +421,25 @@ function NavUser({ role }: { role: Role }) {
                 </div>
               </DropdownMenuLabel>
             </DropdownMenuGroup>
-            <DropdownMenuGroup>
-              <DropdownMenuItem className="min-h-11" onClick={() => openUserProfile()}>
-                <CircleUser aria-hidden />
-                Manage account
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-            {settingsHref ? (
+            {worker ? (
+              <DropdownMenuGroup>
+                <DropdownMenuItem
+                  className="min-h-11"
+                  onClick={() => void endWorkerTurn("switch")}
+                >
+                  <ArrowLeftRight aria-hidden />
+                  Switch person
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            ) : (
+              <DropdownMenuGroup>
+                <DropdownMenuItem className="min-h-11" onClick={() => openUserProfile()}>
+                  <CircleUser aria-hidden />
+                  Manage account
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            )}
+            {settingsHref && !worker ? (
               <DropdownMenuGroup>
                 <DropdownMenuItem
                   render={<Link href={settingsHref} />}
@@ -433,7 +450,7 @@ function NavUser({ role }: { role: Role }) {
                 </DropdownMenuItem>
               </DropdownMenuGroup>
             ) : null}
-            {role === "supplier" ? (
+            {role === "supplier" && !worker ? (
               <DropdownMenuGroup>
                 <DropdownMenuItem
                   render={<Link href="/supplier/phone-app" />}
@@ -444,7 +461,7 @@ function NavUser({ role }: { role: Role }) {
                 </DropdownMenuItem>
               </DropdownMenuGroup>
             ) : null}
-            {switchableRoles.length > 0 ? (
+            {switchableRoles.length > 0 && !worker ? (
               <DropdownMenuGroup>
                 {switchableRoles.map((nextRole) => (
                   <DropdownMenuItem
@@ -462,7 +479,7 @@ function NavUser({ role }: { role: Role }) {
             <DropdownMenuGroup>
               <DropdownMenuItem className="min-h-11" onClick={() => void signOut()}>
                 <LogOut aria-hidden />
-                Log out
+                {worker ? "Sign out of this PC" : "Log out"}
               </DropdownMenuItem>
             </DropdownMenuGroup>
           </DropdownMenuContent>
@@ -795,9 +812,9 @@ function RailNavGroups({
   // The mobile sheet is always the full rail, whatever the desktop fold says.
   const iconRail = state === "collapsed" && !isMobile;
   const testOperations = useTestOperations();
-  const { staff: shopStaff } = useShopAccess();
-  const sections = navSectionsForRole(role, { testOperations, shopStaff });
-  const parents = navGroupsForRole(role, { testOperations, shopStaff }).filter(
+  const { staff: shopStaff, manager: shopManager } = useShopAccess();
+  const sections = navSectionsForRole(role, { testOperations, shopStaff, shopManager });
+  const parents = navGroupsForRole(role, { testOperations, shopStaff, shopManager }).filter(
     (group) => group.label,
   );
 
@@ -962,10 +979,12 @@ export function AppShell({ role, testOperations = false, children }: Props) {
   // A shop's Staff opens only the work pages. Any other supplier address
   // says "Owner only" without mounting the page, so it never reads; the API
   // refuses those routes on its own (`403 shop_owner_required`).
-  const { staff: shopStaff } = useShopAccess();
+  const { staff: shopStaff, manager: shopManager, worker } = useShopAccess();
   const staffLanding = shopStaff && pathname === "/supplier";
   const ownerOnly =
-    shopStaff && pathname.startsWith("/supplier") && !shopStaffAllowsPath(pathname);
+    shopStaff &&
+    pathname.startsWith("/supplier") &&
+    !shopStaffAllowsPath(pathname, shopManager);
   // A test operations login opens only the test desk's pages; anything else
   // in the tree says so instead of reading. A refusal on an allowed page
   // (`403 test_operations_forbidden`) adds one calm line for that page.
@@ -998,16 +1017,21 @@ export function AppShell({ role, testOperations = false, children }: Props) {
   // never asks for permission (`src/lib/pwa/webPush.ts`).
   const { user: account } = useAuth();
   const accountId = account?.id ?? null;
+  // A shared shop PC never registers the signed-in account's push: the API
+  // refuses personal notification routes there, and they are not the worker's.
+  const device = useShopDevice();
+  const sharedDevice = device.shared || device.preparing || Boolean(worker);
   useEffect(() => {
-    if (role === "supplier" && accountId) {
+    if (role === "supplier" && accountId && !sharedDevice) {
       void syncWebPush(accountId).catch(() => undefined);
     }
-  }, [role, accountId]);
+  }, [role, accountId, sharedDevice]);
 
   return (
     <TestOperationsProvider value={testOperations}>
       <LiveProvider
         role={role}
+        disabled={sharedDevice}
         onOpenNotification={(notification) => {
           const href = notificationHref(role, notification);
           if (href) router.push(href);
@@ -1066,9 +1090,10 @@ export function AppShell({ role, testOperations = false, children }: Props) {
                 )}
               </div>
               <div className="flex items-center gap-1">
+                {role === "supplier" && worker ? <WorkerBar worker={worker} /> : null}
                 {role === "supplier" ? <HeaderJobSearch /> : null}
                 <ThemeToggle />
-                <InboxBell role={role} />
+                {sharedDevice ? null : <InboxBell role={role} />}
               </div>
             </header>
 
