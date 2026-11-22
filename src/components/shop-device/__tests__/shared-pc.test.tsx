@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { enterSharedPc } from "@/components/shop-device/enterSharedPc";
 import { ShopDeviceGate } from "@/components/shop-device/ShopDeviceGate";
 import { LOCK_PENDING_COPY } from "@/components/shop-device/WhosWorking";
+import { PUSH_NOT_RELEASED_COPY } from "@/components/shop-device/ShopDeviceGate";
 import { endWorkerTurn, useTurnWatch } from "@/components/shop-device/WorkerBar";
 import { resetDeviceLock } from "@/lib/shop-device-lock";
 import { ApiError } from "@/lib/api/client";
@@ -38,8 +39,11 @@ const auth = vi.hoisted(() => ({
 
 vi.stubGlobal("React", React);
 const push = vi.hoisted(() => ({
+  released: true,
   releaseWebPushForSharedPc: vi.fn(async () => undefined),
+  releaseWebPushOnLockedPc: vi.fn(async (): Promise<void> => undefined),
   resumePersonalPush: vi.fn(),
+  isPersonalPushReleased: vi.fn((): boolean => true),
 }));
 vi.mock("@/lib/api/shop-team", () => api);
 vi.mock("@/lib/pwa/webPush", () => push);
@@ -56,6 +60,11 @@ function setVisibility(value: "visible" | "hidden") {
 beforeEach(() => {
   resetShopDevice();
   resetDeviceLock();
+  push.released = true;
+  push.isPersonalPushReleased.mockImplementation(() => push.released);
+  push.releaseWebPushOnLockedPc.mockImplementation(async () => {
+    push.released = true;
+  });
   setVisibility("visible");
   auth.current = { ...auth.current, status: "mapped", accessError: null };
   api.getWorkingList.mockResolvedValue({ members: [owner, ana, lito], worker: null });
@@ -297,5 +306,50 @@ describe("Share this PC", () => {
     api.lockWorkingDevice.mockRejectedValueOnce(new Error("offline"));
     await expect(enterSharedPc()).rejects.toThrow();
     expect(shopDeviceSnapshot().shared).toBe(false);
+  });
+});
+
+describe("every way to the picker waits for the account's alerts to be gone", () => {
+  it("after a reload of a locked PC: no faces, no PIN, until the browser has dropped them", async () => {
+    push.released = false;
+    let dropped: () => void = () => undefined;
+    push.releaseWebPushOnLockedPc.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          dropped = () => {
+            push.released = true;
+            resolve();
+          };
+        }),
+    );
+    auth.current = { ...auth.current, status: "unavailable", accessError: "shop_worker_locked" };
+    render(<ShopDeviceGate>{null}</ShopDeviceGate>);
+    expect(screen.getByText("Getting this shop PC ready…")).toBeInTheDocument();
+    expect(screen.queryByTestId("whos-working")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("worker-face")).not.toBeInTheDocument();
+    dropped();
+    expect(await screen.findByTestId("whos-working")).toBeVisible();
+  });
+
+  it("shows why and offers a retry when the browser will not drop them", async () => {
+    push.released = false;
+    push.releaseWebPushOnLockedPc.mockRejectedValueOnce(new Error("browser"));
+    auth.current = { ...auth.current, status: "unavailable", accessError: "shop_worker_locked" };
+    render(<ShopDeviceGate>{null}</ShopDeviceGate>);
+    expect(await screen.findByRole("alert")).toHaveTextContent(PUSH_NOT_RELEASED_COPY);
+    expect(screen.queryByTestId("whos-working")).not.toBeInTheDocument();
+    expect(api.selectWorker).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByTestId("whos-working")).toBeVisible();
+    expect(push.releaseWebPushOnLockedPc).toHaveBeenCalledTimes(2);
+  });
+
+  it("after a refusal reaches a tab that never shared: the same check first", async () => {
+    push.released = false;
+    push.releaseWebPushOnLockedPc.mockRejectedValueOnce(new Error("browser"));
+    lockShopDevice("ended");
+    render(<ShopDeviceGate>{null}</ShopDeviceGate>);
+    expect(await screen.findByTestId("push-not-released")).toBeVisible();
+    expect(screen.queryByTestId("whos-working")).not.toBeInTheDocument();
   });
 });

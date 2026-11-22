@@ -61,6 +61,7 @@ function track<T>(work: Promise<T>): Promise<T> {
 /** Back to normal: a shared-PC handover that did not go through. */
 export function resumePersonalPush(): void {
   personalPushPaused = false;
+  personalPushReleased = false;
 }
 
 /**
@@ -450,20 +451,55 @@ function within<T>(work: Promise<T>, ms: number, step: SharedPcCleanupError["ste
   });
 }
 
-/** Close every notification this site is showing: the account's, not the shop's. */
-async function closeShownNotifications(timeoutMs: number): Promise<void> {
-  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
-  if (typeof navigator.serviceWorker.getRegistrations !== "function") return;
-  const registrations = await within(
-    navigator.serviceWorker.getRegistrations(),
-    timeoutMs,
-    "notifications",
-  );
-  for (const registration of registrations) {
-    if (typeof registration.getNotifications !== "function") continue;
-    const shown = await within(registration.getNotifications(), timeoutMs, "notifications");
-    for (const notification of shown) notification.close();
+/**
+ * Every service-worker registration this site has, found directly. Unlike
+ * `registration()` (which may register one, and answers null when that
+ * fails), a lookup that fails or never answers is an error here: "could not
+ * tell" is never read as "nothing to remove".
+ */
+async function existingRegistrations(timeoutMs: number): Promise<readonly ServiceWorkerRegistration[]> {
+  const container = typeof navigator === "undefined" ? undefined : navigator.serviceWorker;
+  if (!container || typeof container.getRegistrations !== "function") {
+    throw new SharedPcCleanupError("browser");
   }
+  return within(container.getRegistrations(), timeoutMs, "browser");
+}
+
+/**
+ * The browser half of a handover, which works with or without the API:
+ * notifications on screen close, and every push subscription any of this
+ * site's registrations holds is dropped (`unsubscribe()` must say true). Each
+ * dropped endpoint is kept for GRIDGO to forget. Throws on anything it could
+ * not confirm.
+ */
+async function dropBrowserPush(timeoutMs: number): Promise<void> {
+  const features = readPushFeatures();
+  // No service worker at all: this browser can neither show nor hold a push.
+  if (!features.serviceWorker) return;
+  const registrations = await existingRegistrations(timeoutMs);
+  for (const registration of registrations) {
+    if (typeof registration.getNotifications === "function") {
+      const shown = await within(registration.getNotifications(), timeoutMs, "notifications");
+      for (const notification of shown) notification.close();
+    }
+    if (!registration.pushManager) continue;
+    const subscription = await within(registration.pushManager.getSubscription(), timeoutMs, "browser");
+    if (!subscription) continue;
+    const endpoint = subscription.endpoint;
+    const dropped = await within(subscription.unsubscribe(), timeoutMs, "browser");
+    if (!dropped) throw new SharedPcCleanupError("browser");
+    writePendingRemoval(endpoint);
+  }
+}
+
+/**
+ * Whether this page has confirmed the signed-in account's push is gone from
+ * this browser. "Who's working?" shows only once it has.
+ */
+let personalPushReleased = false;
+
+export function isPersonalPushReleased(): boolean {
+  return personalPushReleased;
 }
 
 /**
@@ -473,10 +509,9 @@ async function closeShownNotifications(timeoutMs: number): Promise<void> {
  * retry.
  *
  * 1. New personal registrations stop, and one already on its way finishes.
- * 2. Notifications already on screen close.
- * 3. The browser drops its subscription (`unsubscribe()` must say true), so
- *    nothing more can arrive here.
- * 4. GRIDGO forgets it. If that fails the endpoint is kept and sent again on
+ * 2. Notifications already on screen close, and the browser drops every
+ *    subscription (`dropBrowserPush`), so nothing more can arrive here.
+ * 3. GRIDGO forgets it. If that fails the endpoint is kept and sent again on
  *    the next try; the device lock refuses this route afterwards, so it has
  *    to land before the lock.
  *
@@ -485,20 +520,7 @@ async function closeShownNotifications(timeoutMs: number): Promise<void> {
 export async function releaseWebPushForSharedPc(timeoutMs = 10_000): Promise<void> {
   personalPushPaused = true;
   if (registering) await registering.catch(() => undefined);
-  await closeShownNotifications(timeoutMs);
-
-  if (pushSupport(readDevice(), readPushFeatures()) === "supported") {
-    const ready = await within(registration(), timeoutMs, "browser");
-    const subscription = ready
-      ? await within(ready.pushManager.getSubscription(), timeoutMs, "browser")
-      : null;
-    if (subscription) {
-      const endpoint = subscription.endpoint;
-      const dropped = await within(subscription.unsubscribe(), timeoutMs, "browser");
-      if (!dropped) throw new SharedPcCleanupError("browser");
-      writePendingRemoval(endpoint);
-    }
-  }
+  await dropBrowserPush(timeoutMs);
 
   const pending = readPendingRemoval();
   if (pending) {
@@ -515,6 +537,23 @@ export async function releaseWebPushForSharedPc(timeoutMs = 10_000): Promise<voi
   }
   writeOwner(null);
   syncedFor = null;
+  personalPushReleased = true;
+}
+
+/**
+ * A PC the API already has locked (a reload, another tab, or a refusal):
+ * the picker may only show once this browser holds none of the account's
+ * push. GRIDGO refuses the account's push routes on a locked device, so only
+ * the browser half runs; a dropped endpoint is dead at the push service and
+ * stays recorded for a later handover to remove.
+ */
+export async function releaseWebPushOnLockedPc(timeoutMs = 10_000): Promise<void> {
+  personalPushPaused = true;
+  if (registering) await registering.catch(() => undefined);
+  await dropBrowserPush(timeoutMs);
+  writeOwner(null);
+  syncedFor = null;
+  personalPushReleased = true;
 }
 
 /** Test seam. */
@@ -522,5 +561,6 @@ export function resetWebPushForTests(): void {
   syncedFor = null;
   keyPromise = null;
   personalPushPaused = false;
+  personalPushReleased = false;
   registering = null;
 }

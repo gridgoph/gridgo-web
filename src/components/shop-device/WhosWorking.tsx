@@ -10,6 +10,7 @@ import { isApiError } from "@/lib/api/client";
 import { getWorkingList, selectWorker } from "@/lib/api/shop-team";
 import type { ShopMember, ShopPinStaff } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { isPersonalPushReleased } from "@/lib/pwa/webPush";
 import { lockReasonLine, lockShopDevice, startWorkerTurn, type LockReason } from "@/lib/shop-device";
 import { sendDeviceLock, settleDeviceLock } from "@/lib/shop-device-lock";
 import { shopRoleLabel } from "@/lib/shop-team";
@@ -92,6 +93,9 @@ export function WhosWorking({ reason }: { reason: LockReason }) {
 
   async function submit(value: string) {
     if (!picked || busy) return;
+    // The gate shows this picker only after the account's push is gone; a
+    // turn never starts otherwise, whatever mounted it.
+    if (!isPersonalPushReleased()) return;
     setBusy(true);
     setError(null);
     try {
