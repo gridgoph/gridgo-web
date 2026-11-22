@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronRight, Zap } from "lucide-react";
 
 import { TeamAvatar } from "@/components/shop-team/TeamAvatar";
 import { getMyShopTeam, type ShopTeam } from "@/lib/api/shop-team";
+import { useShopAccess } from "@/lib/auth/shop-access";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { missionLine, rosterOf, teamPeople } from "@/lib/shop-team";
 
@@ -20,17 +21,25 @@ export function TeamStrip({ manage }: { manage: boolean }) {
   const [team, setTeam] = useState<ShopTeam | null>(null);
   const [failed, setFailed] = useState(false);
 
+  const { role, worker } = useShopAccess();
+  // Only the newest read lands, and a new role or person starts from nothing.
+  const viewKey = `${role}|${worker?.pinStaffId ?? ""}`;
+  const latestRead = useRef(0);
   const load = useCallback(async () => {
+    const read = ++latestRead.current;
     try {
-      setTeam(await getMyShopTeam());
+      const next = await getMyShopTeam();
+      if (read !== latestRead.current) return;
+      setTeam(next);
       setFailed(false);
     } catch {
-      setFailed(true);
+      if (read === latestRead.current) setFailed(true);
     }
   }, []);
   useEffect(() => {
+    setTeam(null);
     void load();
-  }, [load]);
+  }, [load, viewKey]);
   useLiveReload("identity", load);
 
   if (failed && !team) return null;

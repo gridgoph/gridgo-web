@@ -64,6 +64,7 @@ export function PersonPanel({
   self,
   rights,
   stats,
+  showSpeed,
   busy,
   onRole,
   onAlerts,
@@ -74,6 +75,8 @@ export function PersonPanel({
   self: boolean;
   rights: PersonRights;
   stats: ShopTeamStats | null;
+  /** Owners and Managers only: this week's jobs and accept time. */
+  showSpeed: boolean;
   busy: boolean;
   onRole: (role: ShopRole) => void;
   onAlerts: (on: boolean) => void;
@@ -81,7 +84,7 @@ export function PersonPanel({
   onRemove: () => void;
 }) {
   const id = useId();
-  const week = statsFor(person, stats);
+  const week = showSpeed ? statsFor(person, stats) : null;
   const fastest = isFastest(person, stats);
   const avg = acceptTimeLabel(week?.averageAcceptSeconds);
   const how = person.kind === "pin" ? "PIN on the shop PC" : "Own login";

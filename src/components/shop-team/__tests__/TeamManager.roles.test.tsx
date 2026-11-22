@@ -8,7 +8,8 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { personRights } from "@/components/shop-team/PersonPanel";
-import { TeamManager } from "@/components/shop-team/TeamManager";
+import { sharedPcErrorCopy, TeamManager } from "@/components/shop-team/TeamManager";
+import { SharedPcCleanupError } from "@/lib/pwa/webPush";
 import type { ShopRole } from "@/lib/api/types";
 import { shopCapabilities, type TeamPerson } from "@/lib/shop-team";
 
@@ -222,5 +223,62 @@ describe("Team page by role", () => {
     render(<TeamManager />);
     expect(await screen.findByText("Team mission")).toBeVisible();
     expect(screen.queryByText(/Fastest this week/)).not.toBeInTheDocument();
+  });
+});
+
+describe("Team after a role change", () => {
+  it("drops a Manager's slow answer once the viewer is Staff", async () => {
+    access.role = "manager";
+    access.userId = "user_rey";
+    let managerAnswer: (value: unknown) => void = () => undefined;
+    api.getMyShopTeam.mockReturnValueOnce(new Promise((resolve) => (managerAnswer = resolve)));
+    const view = render(<TeamManager />);
+    // Demoted while that read is on its way; the next read answers as Staff.
+    access.role = "staff";
+    api.getMyShopTeam.mockResolvedValueOnce(extended("staff"));
+    view.rerender(<TeamManager />);
+    expect(await screen.findByText("Team mission")).toBeVisible();
+    managerAnswer(extended("manager"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByText(/Accepts in/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^Ana/ }));
+    const panel = await screen.findByTestId("person-panel");
+    expect(within(panel).queryByText("Jobs this week")).not.toBeInTheDocument();
+    expect(within(panel).queryByText("38 sec")).not.toBeInTheDocument();
+  });
+
+  it("keeps the newer answer when an older one lands after it", async () => {
+    access.role = "owner";
+    let first: (value: unknown) => void = () => undefined;
+    api.getMyShopTeam.mockReturnValueOnce(new Promise((resolve) => (first = resolve)));
+    const view = render(<TeamManager />);
+    access.role = "staff";
+    api.getMyShopTeam.mockResolvedValueOnce({ ...extended("staff"), pinStaff: [{ ...ana, name: "Ana Newer" }] });
+    view.rerender(<TeamManager />);
+    expect(await screen.findByText("Ana Newer")).toBeVisible();
+    first({ ...extended("owner"), pinStaff: [{ ...ana, name: "Ana Older" }] });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByText("Ana Older")).not.toBeInTheDocument();
+    expect(screen.getByText("Ana Newer")).toBeVisible();
+  });
+
+  it("never shows Staff a speed, even when an answer carries one", async () => {
+    access.role = "staff";
+    access.userId = "user_bea";
+    api.getMyShopTeam.mockResolvedValue(extended("manager"));
+    render(<TeamManager />);
+    expect(await screen.findByText("Fastest this week: Ana")).toBeVisible();
+    expect(screen.queryByText(/Accepts in/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /^Ana/ }));
+    const panel = await screen.findByTestId("person-panel");
+    expect(within(panel).queryByText("Jobs this week")).not.toBeInTheDocument();
+  });
+});
+
+describe("Share this PC failure words", () => {
+  it("says what stopped it and that sharing again retries", () => {
+    expect(sharedPcErrorCopy(new SharedPcCleanupError("browser"))).toMatch(/turn off your alerts on this PC/);
+    expect(sharedPcErrorCopy(new SharedPcCleanupError("gridgo"))).toMatch(/share it again/);
+    expect(sharedPcErrorCopy(new Error("offline"))).toMatch(/Check the connection/);
   });
 });

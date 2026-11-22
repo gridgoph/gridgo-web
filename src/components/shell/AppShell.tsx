@@ -1019,7 +1019,8 @@ export function AppShell({ role, testOperations = false, children }: Props) {
   const accountId = account?.id ?? null;
   // A shared shop PC never registers the signed-in account's push: the API
   // refuses personal notification routes there, and they are not the worker's.
-  const sharedDevice = useShopDevice().shared || Boolean(worker);
+  const device = useShopDevice();
+  const sharedDevice = device.shared || device.preparing || Boolean(worker);
   useEffect(() => {
     if (role === "supplier" && accountId && !sharedDevice) {
       void syncWebPush(accountId).catch(() => undefined);

@@ -14,13 +14,14 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { AddStaffDialog, type AddStaffMethod } from "@/components/shop-team/AddStaffDialog";
 import { PersonPanel, personRights } from "@/components/shop-team/PersonPanel";
 import { AddPinStaffDialog, NewPinDialog } from "@/components/shop-team/PinStaffDialogs";
 import { TeamAvatar } from "@/components/shop-team/TeamAvatar";
 import { enterSharedPc } from "@/components/shop-device/enterSharedPc";
+import { SharedPcCleanupError } from "@/lib/pwa/webPush";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -93,6 +94,17 @@ type Confirm = { kind: "remove"; person: TeamPerson } | { kind: "shared-pc" };
  * only. PIN people, the shared PC and the week show only when this GRIDGO
  * sends them, so an older API never leads to a refusal.
  */
+/** Why "Share this PC" stopped. The PC stays yours; pressing it again retries. */
+export function sharedPcErrorCopy(caught: unknown): string {
+  if (caught instanceof SharedPcCleanupError) {
+    return caught.step === "gridgo"
+      ? "Could not stop GRIDGO sending your alerts to this PC. Check the connection and share it again."
+      : "Could not turn off your alerts on this PC. Share it again, or turn them off in the browser first.";
+  }
+  if (isApiError(caught)) return shopTeamErrorCopy(caught.code);
+  return "Could not reach GRIDGO. Check the connection and share it again.";
+}
+
 export function TeamManager() {
   const { user } = useAuth();
   const access = useShopAccess();
@@ -107,18 +119,31 @@ export function TeamManager() {
   const [busy, setBusy] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<Confirm | null>(null);
 
+  // Only the newest read lands. A read started under another role or another
+  // person at the keyboard (a demotion, a switch on the shared PC) is dropped,
+  // so a Manager's answer with everyone's speed never shows to Staff.
+  const viewKey = `${user?.id ?? ""}|${role}|${worker?.pinStaffId ?? ""}`;
+  const latestRead = useRef(0);
   const load = useCallback(async () => {
+    const read = ++latestRead.current;
     try {
-      setTeam(await getMyShopTeam());
+      const next = await getMyShopTeam();
+      if (read !== latestRead.current) return;
+      setTeam(next);
       setLoadError(null);
     } catch (caught) {
+      if (read !== latestRead.current) return;
       setLoadError(shopTeamErrorCopy(isApiError(caught) ? caught.code : null));
     }
   }, []);
 
   useEffect(() => {
+    // A new viewer starts from nothing: what the last one could see goes.
+    setTeam(null);
+    setSelectedKey(null);
+    setLoadError(null);
     void load();
-  }, [load]);
+  }, [load, viewKey]);
   // Someone joining or an approval elsewhere is an `identity` ping to the shop.
   useLiveReload("identity", load);
 
@@ -203,6 +228,7 @@ export function TeamManager() {
         selected.role === "owner" && ownerCount <= 1,
       )}
       stats={team?.stats ?? null}
+      showSpeed={can.personStats}
       busy={busy !== null}
       onRole={(next) => changeRole(selected, next)}
       onAlerts={(on) => changeAlerts(selected, on)}
@@ -249,7 +275,8 @@ export function TeamManager() {
   };
 
   const fastest = team?.stats?.fastestThisWeek ?? null;
-  const fastestStats = fastest
+  // Per-person speed is for Owners and Managers, whatever an answer carries.
+  const fastestStats = fastest && can.personStats
     ? team?.stats?.members?.find((row) =>
         fastest.pinStaffId ? row.pinStaffId === fastest.pinStaffId : row.userId === fastest.userId,
       )
@@ -565,7 +592,7 @@ export function TeamManager() {
                   void enterSharedPc().catch((caught) =>
                     toast.add({
                       type: "error",
-                      title: shopTeamErrorCopy(isApiError(caught) ? caught.code : null),
+                      title: sharedPcErrorCopy(caught),
                     }),
                   );
                   return;

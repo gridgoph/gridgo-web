@@ -2,7 +2,7 @@ import { withRequestDeadline } from "@/lib/api/requestDeadline";
 import { sendMultipart, UploadInterrupted } from "@/lib/api/multipart";
 import { beginUpload } from "@/lib/upload-activity";
 import { clearSharedReads, sharedRead } from "@/lib/api/sharedReads";
-import { noteWorkerRefusal, workerTokenHeader } from "@/lib/shop-device";
+import { currentWorkerTurn, noteWorkerRefusal } from "@/lib/shop-device";
 /**
  * Typed GRIDGO demo API client.
  *
@@ -369,7 +369,18 @@ async function send(
     path = withReviewData(path);
   }
   const headers = await authorizedHeaders(path, init, signal, accept, tokenOptions);
-  return fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
+  const response = await fetch(`${getApiBase()}${path}`, { ...init, headers, signal });
+  const turn = turnOf(headers);
+  if (turn !== undefined && response && typeof response === "object") sentTurn.set(response, turn);
+  return response;
+}
+
+/** The shared-PC turn each request went out under, by its header object and its response. */
+const sentTurn = new WeakMap<object, number>();
+
+/** The turn a response's request was sent under; undefined for a bare Response. */
+function turnOf(sent: object): number | undefined {
+  return sentTurn.get(sent);
 }
 
 async function authorizedHeaders(
@@ -389,9 +400,11 @@ async function authorizedHeaders(
   if (init.body && !headers["Content-Type"] && !isFormData) {
     headers["Content-Type"] = "application/json";
   }
-  // A shared shop PC: the picked person's turn rides on every request.
-  const worker = workerTokenHeader();
-  if (worker) headers["X-GRIDGO-Worker-Token"] = worker;
+  // A shared shop PC: the picked person's turn rides on every request, and
+  // the request remembers which turn sent it (see `failed`).
+  const sent = currentWorkerTurn();
+  if (sent.token) headers["X-GRIDGO-Worker-Token"] = sent.token;
+  sentTurn.set(headers, sent.turn);
   signal.throwIfAborted();
   const token = await tokenProvider(tokenOptions);
   signal.throwIfAborted();
@@ -408,10 +421,11 @@ function parseBody(text: string): unknown {
   }
 }
 
-function failed(path: string, status: number, body: unknown): ApiError {
+function failed(path: string, status: number, body: unknown, sentUnder?: number): ApiError {
   const error = new ApiError(status, body);
-  // A worker refusal ends the turn before anyone can retry its token.
-  if (error.kind === "forbidden") noteWorkerRefusal(error.code);
+  // A worker refusal ends the turn that sent the request (never a later one)
+  // before anyone can retry its token.
+  if (error.kind === "forbidden") noteWorkerRefusal(error.code, sentUnder);
   if (error.kind === "forbidden" && !path.startsWith("/auth/")) notifyForbidden(error);
   return error;
 }
@@ -428,7 +442,7 @@ async function request<T>(
     withRequestDeadline(init.signal, async (signal) => {
       const res = await send(path, init, signal, "application/json", tokenOptions);
       const data = parseBody(await res.text());
-      if (!res.ok) throw failed(path, res.status, data);
+      if (!res.ok) throw failed(path, res.status, data, turnOf(res));
       return data as T;
     });
   if ((init.method ?? "GET").toUpperCase() !== "GET") {
@@ -509,7 +523,7 @@ async function multipartRequest<T>(
     );
     const data = parseBody(response.text);
     if (response.status < 200 || response.status >= 300)
-      throw failed(path, response.status, data);
+      throw failed(path, response.status, data, turnOf(headers));
     update({ phase: "stored" });
     return data as T;
   } catch (error) {
@@ -527,7 +541,7 @@ export { request as apiRequest };
 async function requestBlob(path: string, init: RequestInit = {}): Promise<Blob> {
   return withRequestDeadline(init.signal, async (signal) => {
     const res = await send(path, init, signal, "*/*");
-    if (!res.ok) throw failed(path, res.status, parseBody(await res.text()));
+    if (!res.ok) throw failed(path, res.status, parseBody(await res.text()), turnOf(res));
     return res.blob();
   });
 }
@@ -2950,7 +2964,7 @@ export async function downloadAuditCsv(
       async (signal) => {
         const res = await send(path, {}, signal, "text/csv");
         const text = await res.text();
-        if (!res.ok) throw failed(path, res.status, parseBody(text));
+        if (!res.ok) throw failed(path, res.status, parseBody(text), turnOf(res));
         const header = res.headers.get("X-Next-Offset");
         const next = header === null || header === "" ? null : Number(header);
         return { text, next: Number.isSafeInteger(next) ? next : null };
@@ -4300,7 +4314,7 @@ export async function downloadLegalAcceptancesCsv(userId: string): Promise<Blob>
       async (signal) => {
         const res = await send(path, {}, signal, "text/csv");
         const text = await res.text();
-        if (!res.ok) throw failed(path, res.status, parseBody(text));
+        if (!res.ok) throw failed(path, res.status, parseBody(text), turnOf(res));
         const header = res.headers.get("X-Next-Offset");
         const next = header === null || header === "" ? null : Number(header);
         return { text, next: Number.isSafeInteger(next) ? next : null };

@@ -10,7 +10,8 @@ import { isApiError } from "@/lib/api/client";
 import { getWorkingList, selectWorker } from "@/lib/api/shop-team";
 import type { ShopMember, ShopPinStaff } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/AuthProvider";
-import { lockReasonLine, startWorkerTurn, type LockReason } from "@/lib/shop-device";
+import { lockReasonLine, lockShopDevice, startWorkerTurn, type LockReason } from "@/lib/shop-device";
+import { sendDeviceLock, settleDeviceLock } from "@/lib/shop-device-lock";
 import { shopRoleLabel } from "@/lib/shop-team";
 import { cn } from "@/lib/utils";
 
@@ -50,6 +51,10 @@ type Load =
  * hands back a turn that every request then carries. People with their own
  * login use it on their own device; this picks phone-free PIN people only.
  */
+/** The last turn's lock has not reached GRIDGO yet, so no new turn starts. */
+export const LOCK_PENDING_COPY =
+  "Could not close the last turn. Check the connection, then type your PIN again.";
+
 export function WhosWorking({ reason }: { reason: LockReason }) {
   const auth = useAuth();
   const [load, setLoad] = useState<Load>({ kind: "loading" });
@@ -90,9 +95,25 @@ export function WhosWorking({ reason }: { reason: LockReason }) {
     setBusy(true);
     setError(null);
     try {
+      // The last person's lock lands first, or it could end this new turn.
+      try {
+        await settleDeviceLock();
+      } catch {
+        setError(LOCK_PENDING_COPY);
+        setPin("");
+        inputRef.current?.focus();
+        return;
+      }
       const selection = await selectWorker(picked.id, value);
-      startWorkerTurn(selection);
       setPin("");
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        // The window was left while GRIDGO checked the PIN: nobody is at the
+        // keyboard, so the turn ends before it starts.
+        lockShopDevice("away");
+        await sendDeviceLock().catch(() => undefined);
+        return;
+      }
+      startWorkerTurn(selection);
       await auth.refresh();
     } catch (caught) {
       const code = isApiError(caught) ? caught.code : null;

@@ -7,8 +7,11 @@ import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { enterSharedPc } from "@/components/shop-device/enterSharedPc";
 import { ShopDeviceGate } from "@/components/shop-device/ShopDeviceGate";
-import { useTurnWatch } from "@/components/shop-device/WorkerBar";
+import { LOCK_PENDING_COPY } from "@/components/shop-device/WhosWorking";
+import { endWorkerTurn, useTurnWatch } from "@/components/shop-device/WorkerBar";
+import { resetDeviceLock } from "@/lib/shop-device-lock";
 import { ApiError } from "@/lib/api/client";
 import {
   IDLE_LOCK_MS,
@@ -34,15 +37,26 @@ const auth = vi.hoisted(() => ({
 }));
 
 vi.stubGlobal("React", React);
+const push = vi.hoisted(() => ({
+  releaseWebPushForSharedPc: vi.fn(async () => undefined),
+  resumePersonalPush: vi.fn(),
+}));
 vi.mock("@/lib/api/shop-team", () => api);
+vi.mock("@/lib/pwa/webPush", () => push);
 vi.mock("@/lib/auth/AuthProvider", () => ({ useAuth: () => auth.current }));
 
 const ana = { id: "shp_ana", shopId: "shop_1", kind: "pin", name: "Ana", role: "staff", status: "active", jobAlerts: true, photoFileId: null };
 const lito = { ...ana, id: "shp_lito", name: "Lito" };
 const owner = { userId: "user_owner", name: "Olive Owner", role: "owner", status: "active", kind: "account" };
 
+function setVisibility(value: "visible" | "hidden") {
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => value });
+}
+
 beforeEach(() => {
   resetShopDevice();
+  resetDeviceLock();
+  setVisibility("visible");
   auth.current = { ...auth.current, status: "mapped", accessError: null };
   api.getWorkingList.mockResolvedValue({ members: [owner, ana, lito], worker: null });
   api.lockWorkingDevice.mockResolvedValue(undefined);
@@ -176,5 +190,112 @@ describe("idle lock", () => {
       vi.advanceTimersByTime(75_000);
     });
     expect(shopDeviceSnapshot()).toMatchObject({ worker: null, lockReason: "expired" });
+  });
+});
+
+describe("handing over between two people", () => {
+  it("sends the next PIN only after the last person's lock has landed", async () => {
+    startWorkerTurn({ worker: ana as never, token: "token-ana", expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() });
+    let landed: () => void = () => undefined;
+    api.lockWorkingDevice.mockReturnValueOnce(new Promise<void>((resolve) => (landed = resolve)));
+    void endWorkerTurn("switch");
+    render(<ShopDeviceGate>{null}</ShopDeviceGate>);
+    // The picker shows at once; nothing of Ana's turn is left.
+    expect(workerTokenHeader()).toBeNull();
+    await userEvent.click((await screen.findAllByTestId("worker-face"))[1]);
+    await userEvent.keyboard("0420");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(api.selectWorker).not.toHaveBeenCalled();
+    landed();
+    await waitFor(() => expect(api.selectWorker).toHaveBeenCalledWith("shp_lito", "0420"));
+    expect(workerTokenHeader()).toBe("turn-token");
+  });
+
+  it("sends a lost lock again before the pick, and holds the pick while it still fails", async () => {
+    startWorkerTurn({ worker: ana as never, token: "token-ana", expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() });
+    api.lockWorkingDevice.mockRejectedValueOnce(new Error("offline")).mockRejectedValueOnce(new Error("offline"));
+    await endWorkerTurn("switch");
+    render(<ShopDeviceGate>{null}</ShopDeviceGate>);
+    await userEvent.click((await screen.findAllByTestId("worker-face"))[0]);
+    await userEvent.keyboard("0420");
+    expect(await screen.findByRole("alert")).toHaveTextContent(LOCK_PENDING_COPY);
+    expect(api.selectWorker).not.toHaveBeenCalled();
+    // The connection is back: the lock goes again first, then the pick.
+    await userEvent.keyboard("0420");
+    await waitFor(() => expect(api.selectWorker).toHaveBeenCalledTimes(1));
+    expect(api.lockWorkingDevice).toHaveBeenCalledTimes(3);
+    const lockOrder = api.lockWorkingDevice.mock.invocationCallOrder[2];
+    expect(lockOrder).toBeLessThan(api.selectWorker.mock.invocationCallOrder[0]);
+  });
+
+  it("ends a turn whose PIN was accepted while the window was hidden", async () => {
+    lockShopDevice(null);
+    render(<ShopDeviceGate>{null}</ShopDeviceGate>);
+    await userEvent.click((await screen.findAllByTestId("worker-face"))[0]);
+    let accept: (value: unknown) => void = () => undefined;
+    api.selectWorker.mockReturnValueOnce(new Promise((resolve) => (accept = resolve)));
+    await userEvent.keyboard("0420");
+    setVisibility("hidden");
+    accept({ worker: ana, token: "turn-token", expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() });
+    await waitFor(() => expect(shopDeviceSnapshot().lockReason).toBe("away"));
+    expect(workerTokenHeader()).toBeNull();
+    expect(api.lockWorkingDevice).toHaveBeenCalled();
+    expect(auth.current.refresh).not.toHaveBeenCalled();
+  });
+});
+
+describe("leaving the window", () => {
+  it("locks at once when the window is hidden or minimised", async () => {
+    startWorkerTurn({ worker: ana as never, token: "turn-token", expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() });
+    renderHook(() => useTurnWatch(true));
+    setVisibility("hidden");
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(shopDeviceSnapshot()).toMatchObject({ worker: null, lockReason: "away" });
+    expect(workerTokenHeader()).toBeNull();
+    expect(api.lockWorkingDevice).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let a touch after a long sleep revive the old turn", async () => {
+    let clock = Date.parse("2026-11-22T08:00:00Z");
+    const now = () => clock;
+    startWorkerTurn({ worker: ana as never, token: "turn-token", expiresAt: new Date(clock + 60 * 60_000).toISOString() });
+    renderHook(() => useTurnWatch(true, now));
+    // The computer slept: no timer ran, then someone moves the mouse.
+    clock += IDLE_LOCK_MS + 1000;
+    await act(async () => {
+      window.dispatchEvent(new MouseEvent("mousemove"));
+    });
+    expect(shopDeviceSnapshot()).toMatchObject({ worker: null, lockReason: "idle" });
+  });
+});
+
+describe("Share this PC", () => {
+  it("keeps this the account's PC, with a retry, when the push cleanup fails", async () => {
+    push.releaseWebPushForSharedPc.mockRejectedValueOnce(new Error("browser"));
+    await expect(enterSharedPc()).rejects.toThrow();
+    expect(shopDeviceSnapshot()).toMatchObject({ shared: false, preparing: false });
+    expect(api.lockWorkingDevice).not.toHaveBeenCalled();
+    expect(push.resumePersonalPush).toHaveBeenCalled();
+    // Pressing it again goes through.
+    await enterSharedPc();
+    expect(shopDeviceSnapshot()).toMatchObject({ shared: true, worker: null });
+    expect(api.lockWorkingDevice).toHaveBeenCalledTimes(1);
+  });
+
+  it("closes the account's delivery before the cleanup starts", async () => {
+    let seenPreparing: boolean | null = null;
+    push.releaseWebPushForSharedPc.mockImplementationOnce(async () => {
+      seenPreparing = shopDeviceSnapshot().preparing;
+    });
+    await enterSharedPc();
+    expect(seenPreparing).toBe(true);
+  });
+
+  it("does not open the picker when the lock fails", async () => {
+    api.lockWorkingDevice.mockRejectedValueOnce(new Error("offline"));
+    await expect(enterSharedPc()).rejects.toThrow();
+    expect(shopDeviceSnapshot().shared).toBe(false);
   });
 });

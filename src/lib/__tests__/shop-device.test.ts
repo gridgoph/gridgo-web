@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { setTokenProvider } from "@/lib/api/client";
+import { apiRequest, setTokenProvider } from "@/lib/api/client";
 import { getWorkingList, lockWorkingDevice, selectWorker } from "@/lib/api/shop-team";
 import {
   IDLE_LOCK_MS,
@@ -129,5 +129,43 @@ describe("shared shop PC requests", () => {
     expect(shopDeviceSnapshot().worker).toBeNull();
     await lockWorkingDevice().catch(() => undefined);
     expect(seen[1].headers["X-GRIDGO-Worker-Token"]).toBeUndefined();
+  });
+});
+
+describe("an answer that arrives after the next person picked", () => {
+  it.each(["shop_worker_locked", "shop_worker_invalid", "shop_device_session_required"])(
+    "never lets Ana's late %s end Lito's turn",
+    async (code) => {
+      let answer: (response: Response) => void = () => undefined;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          (_input: RequestInfo | URL, init?: RequestInit) =>
+            new Promise<Response>((resolve) => {
+              seen.push({ path: "/orders/order_old", headers: { ...(init?.headers as Record<string, string>) }, body: null });
+              answer = resolve;
+            }),
+        ),
+      );
+      startWorkerTurn({ ...TURN, token: "token-ana" });
+      const old = apiRequest("/orders/order_old").catch((error: unknown) => error);
+      await vi.waitFor(() => expect(seen).toHaveLength(1));
+      expect(seen[0].headers["X-GRIDGO-Worker-Token"]).toBe("token-ana");
+
+      lockShopDevice("switch");
+      startWorkerTurn({ ...TURN, worker: { id: "shp_lito", name: "Lito", role: "staff" }, token: "token-lito" });
+      answer(json({ error: code }, 403));
+      await expect(old).resolves.toMatchObject({ code });
+
+      expect(workerTokenHeader()).toBe("token-lito");
+      expect(shopDeviceSnapshot().worker).toMatchObject({ name: "Lito" });
+    },
+  );
+
+  it("still ends the turn that sent the refused request", async () => {
+    startWorkerTurn({ ...TURN, token: "token-ana" });
+    stubFetch(() => json({ error: "shop_worker_invalid" }, 403));
+    await expect(apiRequest("/orders/order_1")).rejects.toMatchObject({ code: "shop_worker_invalid" });
+    expect(workerTokenHeader()).toBeNull();
   });
 });
