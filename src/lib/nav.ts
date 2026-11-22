@@ -46,6 +46,7 @@ export type NavIconKey =
   | "settings"
   | "audit"
   | "verification"
+  | "shop-verification"
   | "roles"
   | "zones"
   | "credits"
@@ -618,6 +619,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
       icon: "group-people",
       items: [
         {
+          // Shops taking jobs before GRIDGO checks their papers (gridgo-api#411).
+          id: "ops-shop-verification",
+          href: "/ops/shop-verification",
+          label: "Shop verification",
+          title: "Shop verification",
+          icon: "shop-verification",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "ops-rankings",
           href: "/ops/rankings",
           label: "Shop rankings",
@@ -1046,6 +1057,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "signups-waiting",
+        },
+        {
+          // Shops taking jobs before GRIDGO checks their papers (gridgo-api#411).
+          id: "admin-shop-verification",
+          href: "/admin/shop-verification",
+          label: "Shop verification",
+          title: "Shop verification",
+          icon: "shop-verification",
+          ready: true,
+          placeholderBody: "",
         },
         {
           id: "admin-roles",

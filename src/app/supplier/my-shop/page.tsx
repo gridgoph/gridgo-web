@@ -45,6 +45,7 @@ import { useShopAccess } from "@/lib/auth/shop-access";
 import { SHOP_STATUS_CHANGED } from "@/lib/shop-status";
 import type { ShopCapabilities } from "@/lib/shop-team";
 import { useSupplierDesktop } from "@/lib/useSupplierDesktop";
+import { useShopVerification } from "@/components/shop-verification/useShopVerification";
 
 type Place = { href: string; title: string; body: string; icon: LucideIcon };
 
@@ -240,7 +241,17 @@ export default function SupplierMyShopPage() {
     />
   );
 
-  const places = MAIN.filter((place) => placeAllowed(place.href, can));
+  // Shop papers become Get verified while GRIDGO offers it (gridgo-api#411).
+  // Never a negative label: unverified shops see only the way to get verified.
+  const { state: verification } = useShopVerification();
+  const verified = verification.kind === "ready" ? verification.read.verification.verified : null;
+  const places = MAIN.filter((place) => placeAllowed(place.href, can)).map((place) =>
+    place.href !== "/supplier/documents" || verified === null
+      ? place
+      : verified
+        ? { ...place, title: "Verified", body: "GRIDGO checked your ID and permit" }
+        : { ...place, title: "Get verified", body: "Your ID, a selfie with it, and your permit" },
+  );
   const more = MORE.filter((place) => placeAllowed(place.href, can));
 
   const main = (
