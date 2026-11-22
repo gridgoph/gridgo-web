@@ -424,7 +424,11 @@ function ShopPanel({
             label="Days left"
             value={staffDaysLine(v)}
             hint={
-              v.verified ? null : v.deadlineAt ? `New orders pause ${formatDateTime(v.deadlineAt)}` : null
+              v.verified || !v.deadlineAt
+                ? null
+                : v.daysLeft <= 0
+                  ? `Ended ${formatDateTime(v.deadlineAt)}`
+                  : `New orders pause ${formatDateTime(v.deadlineAt)}`
             }
           />
           <Fact
@@ -578,7 +582,7 @@ function PaperPlate({
 
   return (
     <figure className="gg-card m-0 flex flex-col gap-2 p-3" data-testid="paper-plate">
-      <div className="bg-surface-variant flex aspect-[4/3] items-center justify-center overflow-hidden rounded-field">
+      <div className="bg-surface-variant flex h-40 items-center justify-center overflow-hidden rounded-field md:h-auto md:aspect-[4/3]">
         {!file ? (
           <span className="text-caption text-text-muted flex flex-col items-center gap-1">
             <Icon className="size-6" strokeWidth={1.5} aria-hidden />
