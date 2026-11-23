@@ -13,6 +13,11 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   fileId?: string;
+  /**
+   * A ready address for a photo with no file of its own: a GRIDGO template's
+   * stock photo (`/product-template-photos/…`). Used only when `fileId` is absent.
+   */
+  src?: string | null;
   alt: string;
   className?: string;
   emptyLabel?: string;
@@ -26,6 +31,7 @@ const MAX_SCALE = 4;
 /** Print sample in a crop-mark frame — the board's tile, not a product shot. */
 export function SamplePhoto({
   fileId,
+  src: stockSrc = null,
   alt,
   className,
   emptyLabel = "No sample yet",
@@ -36,7 +42,7 @@ export function SamplePhoto({
 
   useEffect(() => {
     if (!fileId) {
-      setSrc(null);
+      setSrc(stockSrc);
       return;
     }
     let gone = false;
@@ -50,7 +56,7 @@ export function SamplePhoto({
     return () => {
       gone = true;
     };
-  }, [fileId]);
+  }, [fileId, stockSrc]);
 
   const frame = cn(
     "relative aspect-square overflow-hidden bg-surface-variant",

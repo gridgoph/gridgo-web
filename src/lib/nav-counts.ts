@@ -57,6 +57,11 @@ export const NAV_COUNT_MEANING: Record<NavCountKey, CountMeaning> = {
     phrase: (count) => `${compactCount(count)} waiting for review`,
     attention: false,
   },
+  // Shops waiting on a template or a product setup; no order waits: monochrome.
+  "product-setup-waiting": {
+    phrase: (count) => `${compactCount(count)} waiting for the GRIDGO team`,
+    attention: false,
+  },
   // A client's cart, not an order, waits on the shop's price: monochrome.
   "colour-price-checks-waiting": {
     phrase: (count) => `${compactCount(count)} waiting on a shop price`,

@@ -14,11 +14,21 @@ import { formatPhp } from "@/lib/format";
 import { normalizeListing, priceLine, specs, type Listing } from "@/lib/listings";
 import { layoutsLine, sameLayouts } from "@/lib/print-layout";
 import type { StatusIconName, StatusTone } from "@/lib/order-state";
+import {
+  priceRowsFromItem,
+  templateFactsOf,
+  type PriceFlag,
+  type TemplateFacts,
+} from "@/lib/product-templates";
 
 export type ReviewEntry = {
   listing: Listing;
   /** `reviewBlockers` codes: what stops an approval right now. */
   blockers: string[];
+  /** `item.template` on a template product (gridgo-supplier#268); absent otherwise. */
+  template?: TemplateFacts | null;
+  /** A template product's full prices, rebuilt from the item. */
+  prices?: { optionKey: string; priceMinor: number }[];
 };
 
 export type ReviewPage = { entries: ReviewEntry[]; nextCursor: string | null };
@@ -40,7 +50,8 @@ export function normalizeReviewPage(body: unknown): ReviewPage {
       isRecord(item) && Array.isArray(item.reviewBlockers)
         ? item.reviewBlockers.filter((code): code is string => typeof code === "string")
         : [];
-    return [{ listing, blockers }];
+    const template = templateFactsOf(item);
+    return [template ? { listing, blockers, template, prices: priceRowsFromItem(item) } : { listing, blockers }];
   });
   return { entries, nextCursor: text(raw.nextCursor) };
 }
@@ -101,6 +112,23 @@ export function photoRuleComplete(ticked: ReadonlySet<string>): boolean {
   return PHOTO_RULE_CHECKS.every((check) => ticked.has(check.id));
 }
 
+/**
+ * A template product whose only change is its prices (gridgo-supplier#268):
+ * the panel reads as a price check, not a listing review.
+ */
+export function isPriceCheck(entry: Pick<ReviewEntry, "template">): boolean {
+  return Boolean(entry.template?.managed && entry.template.priceOnly);
+}
+
+/**
+ * A price check on a product that shows only GRIDGO's stock photos: no shop
+ * photo to check, so Approve skips the three photo checks and sends no
+ * `photosUnbranded` (the API allows that for exactly this case).
+ */
+export function skipsPhotoChecks(entry: Pick<ReviewEntry, "template" | "listing">): boolean {
+  return isPriceCheck(entry) && entry.listing.photos.length === 0;
+}
+
 /** Why Approve is not pressable yet, or null when it is. */
 export function approveBlocker(
   entry: ReviewEntry,
@@ -110,8 +138,71 @@ export function approveBlocker(
     return "Only a listing waiting for review can be approved.";
   if (entry.blockers.length)
     return "The shop has to finish this listing before it can be approved.";
+  if (isPriceCheck(entry) && entry.template?.shopConfirmed === false)
+    return "The shop has not confirmed these prices yet. GRIDGO prepared them; the shop confirms first.";
+  if (skipsPhotoChecks(entry)) return null;
   if (!photoRuleComplete(ticked)) return "Tick every photo check to approve.";
   return null;
+}
+
+/**
+ * The approval body. The photo attestation is sent only when a person
+ * ticked the photo checks; a stock-photo price check has none to make.
+ */
+export function approvalDecision(
+  entry: Pick<ReviewEntry, "template" | "listing">,
+): { status: "approved"; photosUnbranded: true } | { status: "approved" } {
+  return skipsPhotoChecks(entry) ? { status: "approved" } : { status: "approved", photosUnbranded: true };
+}
+
+/** One row of a price check: the option as the shop names it, its full price, and any unusual-price flag. */
+export type PriceCheckRow = {
+  optionKey: string;
+  label: string;
+  priceMinor: number;
+  flag: PriceFlag | null;
+};
+
+/**
+ * The full price table of a template product under check. Labels come from
+ * the item's own options (through `template.optionKeys`), so the reviewer
+ * reads what clients will read.
+ */
+export function priceCheckRows(entry: Pick<ReviewEntry, "listing" | "template" | "prices">): PriceCheckRow[] {
+  const facts = entry.template;
+  if (!facts) return [];
+  const labelOf = new Map<string, string>();
+  for (const group of entry.listing.groups)
+    for (const option of group.options) {
+      const key = facts.optionKeys[option.id];
+      if (key) labelOf.set(key, option.label);
+    }
+  const flags = new Map((facts.priceCheck?.flags ?? []).map((f) => [f.optionKey, f]));
+  return (entry.prices ?? []).map((row) => ({
+    optionKey: row.optionKey,
+    label: labelOf.get(row.optionKey) ?? row.optionKey,
+    priceMinor: row.priceMinor,
+    flag: flags.get(row.optionKey) ?? null,
+  }));
+}
+
+/**
+ * The listings queue order: waiting price checks first, by their Manila
+ * target day (oldest target first), then everything else newest first.
+ */
+export function reviewQueueOrder(entries: readonly ReviewEntry[]): ReviewEntry[] {
+  const checks = entries
+    .filter((e) => isPriceCheck(e) && e.listing.reviewStatus === "pending")
+    .sort((a, b) => {
+      const at = a.template?.priceCheck?.targetBy ?? "9999-12-31";
+      const bt = b.template?.priceCheck?.targetBy ?? "9999-12-31";
+      return (
+        at.localeCompare(bt) ||
+        String(a.template?.priceCheck?.submittedAt ?? "").localeCompare(String(b.template?.priceCheck?.submittedAt ?? ""))
+      );
+    });
+  const rest = newestFirst(entries.filter((e) => !checks.includes(e)));
+  return [...checks, ...rest];
 }
 
 /** The API caps a send-back reason at 2,000 characters. */
@@ -222,6 +313,11 @@ export function reviewChip(entry: ReviewEntry): ReviewChip {
   }
   if (entry.blockers.length) {
     return { label: "Not finished", tone: "neutral", icon: "circle-dashed" };
+  }
+  if (isPriceCheck(entry)) {
+    return entry.template?.shopConfirmed === false
+      ? { label: "Price check, shop to confirm", tone: "neutral", icon: "clock" }
+      : { label: "Price check", tone: "info", icon: "clock" };
   }
   return { label: "Ready to review", tone: "info", icon: "clock" };
 }

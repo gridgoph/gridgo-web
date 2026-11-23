@@ -68,6 +68,7 @@ export type NavIconKey =
   | "hub"
   | "staff"
   | "listing-reviews"
+  | "product-setup"
   | "colour-price-checks"
   | "featured-prints"
   | "vouchers"
@@ -148,6 +149,7 @@ export type NavCountKey =
   | "refunds-waiting"
   | "shop-changes-needs-ops"
   | "listing-reviews-waiting"
+  | "product-setup-waiting"
   | "colour-price-checks-waiting"
   | "privacy-requests-open"
   | "finished-work-waiting"
@@ -516,6 +518,18 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           ready: true,
           placeholderBody: "",
           count: "listing-reviews-waiting",
+        },
+        {
+          // GRIDGO product templates: shops' requests, the template list, and
+          // products prepared or matched for one shop (gridgo-supplier#268).
+          id: "ops-product-setup",
+          href: "/ops/product-setup",
+          label: "Product setup",
+          title: "Product setup",
+          icon: "product-setup",
+          ready: true,
+          placeholderBody: "",
+          count: "product-setup-waiting",
         },
         {
           // Draft carts whose pages fall in a colour tier the shop left blank.
@@ -1180,6 +1194,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           count: "listing-reviews-waiting",
         },
         {
+          id: "admin-product-setup",
+          href: "/admin/product-setup",
+          label: "Product setup",
+          title: "Product setup",
+          icon: "product-setup",
+          ready: true,
+          placeholderBody: "",
+          count: "product-setup-waiting",
+        },
+        {
           id: "admin-supplier-products",
           href: "/admin/supplier-products",
           label: "Supplier products",
@@ -1607,10 +1631,14 @@ export function contextTitleForPath(
   // Nested workspaces that share a list parent
   if (/^\/supplier\/jobs\/[^/]+\/files$/.test(pathname)) return "Job files";
   if (pathname.startsWith("/supplier/jobs/")) return "Order workspace";
-  if (pathname === "/supplier/catalogue/new") return "New listing";
+  if (pathname === "/supplier/catalogue/new") return "Custom product";
+  if (pathname === "/supplier/catalogue/add") return "Add a product";
+  if (pathname === "/supplier/catalogue/ask") return "Ask GRIDGO";
+  if (pathname === "/supplier/catalogue/setup") return "Let GRIDGO set it up";
+  if (pathname === "/supplier/catalogue/check") return "Check your products";
   if (pathname === "/supplier/phone-app") return "Phone app";
   if (pathname === "/supplier/notice") return "Opening update";
-  if (pathname.startsWith("/supplier/catalogue/")) return "Listing";
+  if (pathname.startsWith("/supplier/catalogue/")) return "Product";
   if (pathname === "/admin/catalogue/jobs/new") return "Add print job";
   if (pathname.startsWith("/admin/catalogue/jobs/")) return "Print job";
   if (pathname === "/admin/catalogue/categories/new") return "Add category";
@@ -1624,6 +1652,9 @@ export function contextTitleForPath(
   }
   if (/^\/(ops|admin)\/supplier-products\/[^/]+/.test(pathname))
     return "Supplier product";
+  if (/^\/(ops|admin)\/product-setup\/templates\/new$/.test(pathname)) return "New template";
+  if (/^\/(ops|admin)\/product-setup\/templates\/[^/]+/.test(pathname)) return "Product template";
+  if (/^\/(ops|admin)\/product-setup\/shops\/[^/]+/.test(pathname)) return "Shop products";
   if (/^\/(ops|admin)\/quotes\/[^/]+/.test(pathname)) return "Quote request";
   if (/^\/(ops|admin)\/sample-batches\/[^/]+/.test(pathname)) return "Sample batch";
   if (pathname.startsWith("/admin/vouchers/")) return "Voucher campaign";

@@ -56,7 +56,9 @@ import {
   isRevision,
   normalizeProductTypeRequests,
   normalizeReviewPage,
-  newestFirst,
+  approvalDecision,
+  isPriceCheck,
+  reviewQueueOrder,
   reviewChip,
   reviewCountLine,
   reviewErrorMessage,
@@ -67,6 +69,7 @@ import {
   type ReviewKind,
 } from "@/lib/listing-review";
 import { priceLine } from "@/lib/listings";
+import { manilaToday, priceCheckTargetLine } from "@/lib/product-templates";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import { normalizeStaffCatalogPage, readStaffShop } from "@/lib/supplier-products";
@@ -281,7 +284,7 @@ export function ListingReviewsDesk({ tree }: { tree: "ops" | "admin" }) {
   const source = status === "pending" ? pending : other;
   const sorted = useMemo(() => {
     if (!source) return null;
-    if (status === "pending") return newestFirst(source);
+    if (status === "pending") return reviewQueueOrder(source);
     return [...source].sort((a, b) =>
       String(b.listing.reviewedAt ?? "").localeCompare(
         String(a.listing.reviewedAt ?? ""),
@@ -420,11 +423,10 @@ export function ListingReviewsDesk({ tree }: { tree: "ops" | "admin" }) {
     const version = entry.listing.version;
     void decide(
       () =>
-        decideCatalogReview(entry.listing.id, version, {
-          status: "approved",
-          photosUnbranded: true,
-        }),
-      isRevision(entry.listing)
+        decideCatalogReview(entry.listing.id, version, approvalDecision(entry)),
+      isPriceCheck(entry)
+        ? `Approved the prices on “${entry.listing.name}”. The shop has been told.`
+        : isRevision(entry.listing)
         ? `Approved “${entry.listing.name}”. Clients now see the new version, and the shop has been told.`
         : `Approved “${entry.listing.name}”. Clients see it whenever the shop has it on the board, and the shop has been told.`,
       entry.listing.id,
@@ -640,7 +642,9 @@ export function ListingReviewsDesk({ tree }: { tree: "ops" | "admin" }) {
                           <span className="text-caption text-text-primary tabular-nums">
                             {priceLine(entry.listing)}
                           </span>
-                          {isRevision(entry.listing) ? (
+                          {isPriceCheck(entry) ? (
+                            <StatusChip tone="info" icon="clock" label="Price check" />
+                          ) : isRevision(entry.listing) ? (
                             <StatusChip tone="neutral" icon="square-pen" label="Change" />
                           ) : null}
                           {entry.listing.express ? <ExpressChip /> : null}
@@ -651,7 +655,9 @@ export function ListingReviewsDesk({ tree }: { tree: "ops" | "admin" }) {
                       }
                       when={
                         status === "pending"
-                          ? entry.listing.updatedAt
+                          ? isPriceCheck(entry) && entry.template?.priceCheck?.targetBy
+                            ? priceCheckTargetLine(entry.template.priceCheck.targetBy, manilaToday())
+                            : entry.listing.updatedAt
                             ? `Changed ${formatDateTime(entry.listing.updatedAt)}`
                             : null
                           : entry.listing.reviewedAt

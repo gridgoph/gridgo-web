@@ -473,6 +473,7 @@ const SHARED_LIST_PATHS = new Set([
   "/refund-requests",
   "/ops/catalog-reviews",
   "/ops/product-type-requests",
+  "/ops/product-setup-requests",
   "/ops/colour-price-checks",
   "/ops/quote-requests",
   "/admin/privacy-requests",
@@ -3169,6 +3170,12 @@ export async function listCatalogReviews(
 
 export type CatalogReviewDecision =
   | { status: "approved"; photosUnbranded: true }
+  /**
+   * Only for a template price check on a product that shows GRIDGO's stock
+   * photos alone (`skipsPhotoChecks` in `@/lib/listing-review`): there is no
+   * shop photo to attest, and the API accepts the approval without it.
+   */
+  | { status: "approved" }
   | { status: "needs_revision"; reason: string };
 
 export async function decideCatalogReview(

@@ -6,6 +6,11 @@ import { Plus } from "lucide-react";
 
 import { SamplePhoto } from "@/app/supplier/_components/SamplePhoto";
 import { loadShopServiceLines } from "@/app/supplier/_lib/listings-api";
+import { CheckProductsCard } from "@/components/product-templates/supplier/CheckProductsCard";
+import {
+  useCheckProducts,
+  useTemplateSummary,
+} from "@/components/product-templates/supplier/useCheckProducts";
 import { Button } from "@/components/ui/button";
 import { SkeletonLines } from "@/components/ui/loading";
 import { StatusMark } from "@/components/ui/StatusChip";
@@ -44,6 +49,12 @@ export function ShopProducts({ limit = MY_SHOP_PRODUCT_LIMIT }: { limit?: number
   const { user } = useAuth();
   const shopApproved = user?.verificationStatus === "approved";
   const [state, setState] = useState<State>({ kind: "loading" });
+  // GRIDGO templates (gridgo-supplier#268): Add opens the three steps when
+  // offered, a template product opens its price table with its stock photo,
+  // and anything waiting on the shop shows as "Check your products".
+  const { summary } = useTemplateSummary();
+  const { check } = useCheckProducts(summary);
+  const addHref = summary?.offered ? "/supplier/catalogue/add" : "/supplier/catalogue/new";
 
   const load = useCallback(async () => {
     try {
@@ -94,11 +105,13 @@ export function ShopProducts({ limit = MY_SHOP_PRODUCT_LIMIT }: { limit?: number
         <Button variant="ghost" nativeButton={false} render={<Link href="/supplier/catalogue" />}>
           See all
         </Button>
-        <Button variant="primary" nativeButton={false} render={<Link href="/supplier/catalogue/new" />}>
+        <Button variant="primary" nativeButton={false} render={<Link href={addHref} />}>
           <Plus aria-hidden />
           Add a product
         </Button>
       </div>
+
+      <CheckProductsCard check={check} />
 
       {state.kind === "loading" ? <SkeletonLines lines={3} /> : null}
       {state.kind === "failed" ? (
@@ -117,34 +130,42 @@ export function ShopProducts({ limit = MY_SHOP_PRODUCT_LIMIT }: { limit?: number
 
       {state.kind === "ready" && state.tiles.length ? (
         <ul className="m-0 grid list-none grid-cols-2 gap-3 p-0 md:grid-cols-3 min-[1280px]:grid-cols-4">
-          {shown.map(({ listing, standing }) => (
-            <li key={listing.id}>
-              <Link
-                href={`/supplier/catalogue/${listing.id}`}
-                data-testid="shop-product"
-                className="flex h-full flex-col gap-2 rounded-card border border-outline bg-surface p-2 no-underline hover:bg-overlay-hover"
-              >
-                <SamplePhoto
-                  fileId={listing.photos[0]?.fileId}
-                  alt={listing.photos[0]?.altText ?? listing.name}
-                  enlarge={false}
-                  emptyLabel="No photo yet"
-                />
-                <span className="flex min-w-0 flex-col gap-0.5 px-1 pb-1">
-                  <span
-                    className="text-body text-text-primary truncate"
-                    style={{ fontFamily: "var(--font-medium)" }}
-                  >
-                    {listing.name || "Untitled product"}
+          {shown.map(({ listing, standing }) => {
+            const template = summary?.byItem.get(listing.id);
+            return (
+              <li key={listing.id}>
+                <Link
+                  href={
+                    template
+                      ? `/supplier/catalogue/product/${encodeURIComponent(listing.id)}`
+                      : `/supplier/catalogue/${listing.id}`
+                  }
+                  data-testid="shop-product"
+                  className="flex h-full flex-col gap-2 rounded-card border border-outline bg-surface p-2 no-underline hover:bg-overlay-hover"
+                >
+                  <SamplePhoto
+                    fileId={listing.photos[0]?.fileId}
+                    src={listing.photos[0] ? null : (template?.photoUrl ?? null)}
+                    alt={listing.photos[0]?.altText ?? listing.name}
+                    enlarge={false}
+                    emptyLabel="No photo yet"
+                  />
+                  <span className="flex min-w-0 flex-col gap-0.5 px-1 pb-1">
+                    <span
+                      className="text-body text-text-primary truncate"
+                      style={{ fontFamily: "var(--font-medium)" }}
+                    >
+                      {listing.name || "Untitled product"}
+                    </span>
+                    <span className="text-caption text-text-secondary truncate">{priceLine(listing)}</span>
+                    <span className="text-caption text-text-secondary">
+                      <StatusMark tone={standing.tone} icon={standing.icon} label={standing.label} />
+                    </span>
                   </span>
-                  <span className="text-caption text-text-secondary truncate">{priceLine(listing)}</span>
-                  <span className="text-caption text-text-secondary">
-                    <StatusMark tone={standing.tone} icon={standing.icon} label={standing.label} />
-                  </span>
-                </span>
-              </Link>
-            </li>
-          ))}
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
       {more ? (

@@ -55,6 +55,11 @@ export function notificationHref(role: Role, notification: Notification): string
       : "/supplier/catalogue";
   }
 
+  // Product templates (gridgo-supplier#268, PRODUCT_TEMPLATES_API.md). The
+  // notices name no product today, so each lands on the screen that lists it.
+  const templateHref = productTemplateHref(role, type, notification.catalogItemId ?? null);
+  if (templateHref !== undefined) return templateHref;
+
   // Listing review (gridgo-api#154). The notice names no listing, so staff
   // land on the desk and the shop on its board, where the standing shows.
   if (type === "catalog_review_pending" || type === "catalog_review_decided") {
@@ -407,4 +412,52 @@ function isRoleEvent(type: string): boolean {
 
 function isRefund(type: string): boolean {
   return type.startsWith("refund_");
+}
+
+const TEMPLATE_PRODUCT_NOTICES = new Set([
+  "template_product_price_check",
+  "template_product_confirmation_required",
+  "template_product_live",
+  "template_product_price_checked",
+]);
+const SETUP_REQUEST_NOTICES = new Set([
+  "product_setup_requested",
+  "product_setup_updated",
+  "template_request_completed",
+]);
+
+/**
+ * `undefined` when the type is not a template notice. Staff land on the
+ * price check (listing reviews) or the Product setup desk; Super Admin stays
+ * in `/admin`. The shop lands on the product, its check list, or Add.
+ */
+function productTemplateHref(
+  role: Role,
+  type: string,
+  catalogItemId: string | null,
+): string | null | undefined {
+  const known =
+    TEMPLATE_PRODUCT_NOTICES.has(type) ||
+    SETUP_REQUEST_NOTICES.has(type) ||
+    type === "template_products_check" ||
+    type === "product_template_updated";
+  if (!known) return undefined;
+  if (role === "super_admin" || role === "ops_admin") {
+    const tree = role === "super_admin" ? "/admin" : "/ops";
+    if (TEMPLATE_PRODUCT_NOTICES.has(type)) return `${tree}/listing-reviews`;
+    if (type === "product_template_updated") return `${tree}/product-setup?tab=templates`;
+    if (type === "template_products_check") return `${tree}/product-setup?tab=shops`;
+    return `${tree}/product-setup`;
+  }
+  if (role === "supplier") {
+    if (TEMPLATE_PRODUCT_NOTICES.has(type)) {
+      return catalogItemId
+        ? `/supplier/catalogue/product/${encodeURIComponent(catalogItemId)}`
+        : "/supplier/catalogue";
+    }
+    if (type === "template_products_check") return "/supplier/catalogue/check";
+    if (SETUP_REQUEST_NOTICES.has(type)) return "/supplier/catalogue/add";
+    return "/supplier/catalogue";
+  }
+  return null;
 }

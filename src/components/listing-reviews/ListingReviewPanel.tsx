@@ -15,8 +15,11 @@ import {
   PHOTO_RULE_CHECKS,
   approveBlocker,
   blockerSentence,
+  isPriceCheck,
   isRevision,
   listingChanges,
+  priceCheckRows,
+  skipsPhotoChecks,
   reviewChip,
   reviewKindLabel,
   type ListingChange,
@@ -33,6 +36,12 @@ import {
 import { readyInLine } from "@/lib/production-time";
 import { expressFactLine } from "@/lib/express";
 import { layoutLabel, layoutsLine, type KnownLayout } from "@/lib/print-layout";
+import {
+  manilaToday,
+  priceCheckTargetLine,
+  unitLabel,
+  usualRangeLine,
+} from "@/lib/product-templates";
 
 type Props = {
   entry: ReviewEntry;
@@ -74,6 +83,8 @@ export function ListingReviewPanel({
   const chip = reviewChip(entry);
   const blocked = approveBlocker(entry, ticked);
   const pending = listing.reviewStatus === "pending";
+  const priceCheck = isPriceCheck(entry);
+  const noPhotoChecks = skipsPhotoChecks(entry);
 
   return (
     <>
@@ -152,8 +163,10 @@ export function ListingReviewPanel({
           </div>
         ) : null}
 
+        {priceCheck ? <PriceCheckSection entry={entry} /> : null}
+
         {/* A change to a live listing: what moves for clients comes first. */}
-        {isRevision(listing) && pending ? (
+        {isRevision(listing) && pending && !priceCheck ? (
           <LiveComparison listing={listing} typeName={typeName} />
         ) : null}
 
@@ -193,6 +206,11 @@ export function ListingReviewPanel({
       <div className="flex shrink-0 flex-col gap-3 border-t border-outline bg-surface p-4">
         {pending ? (
           <>
+            {noPhotoChecks ? (
+              <p className="text-caption text-text-muted m-0">
+                No photo checks: this product shows GRIDGO&rsquo;s own stock photos only.
+              </p>
+            ) : (
             <fieldset className="m-0 flex flex-col gap-1 border-0 p-0" disabled={busy}>
               <legend
                 className="text-body text-text-primary mb-1 p-0"
@@ -237,6 +255,7 @@ export function ListingReviewPanel({
                 })}
               </div>
             </fieldset>
+            )}
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="primary"
@@ -244,7 +263,7 @@ export function ListingReviewPanel({
                 aria-describedby={blocked ? `${ruleId}-blocked` : undefined}
                 onClick={onApprove}
               >
-                {busy ? "Saving" : "Approve listing"}
+                {busy ? "Saving" : priceCheck ? "Approve prices" : "Approve listing"}
               </Button>
               <Button disabled={busy} onClick={onSendBack}>
                 Send back
@@ -609,6 +628,95 @@ function LiveComparison({
             </tbody>
           </table>
         </div>
+      )}
+    </section>
+  );
+}
+
+/**
+ * A template product's price check (gridgo-supplier#268): the full price
+ * table as clients will read it, the unusual-price flags with the usual
+ * range, when it was sent and the same-day Manila target, and whether the
+ * shop confirmed prices GRIDGO prepared for it.
+ */
+function PriceCheckSection({ entry }: { entry: ReviewEntry }) {
+  const id = useId();
+  const facts = entry.template;
+  const rows = priceCheckRows(entry);
+  const check = facts?.priceCheck ?? null;
+  const target = priceCheckTargetLine(check?.targetBy ?? null, manilaToday());
+  const flagged = rows.filter((r) => r.flag);
+  const unit = unitLabel(facts?.unit ?? null);
+
+  return (
+    <section aria-labelledby={`${id}-title`} className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3
+          id={`${id}-title`}
+          className="text-body text-text-primary m-0"
+          style={{ fontFamily: "var(--font-medium)" }}
+        >
+          Price check
+        </h3>
+        {facts?.shopConfirmed === false ? (
+          <StatusChip tone="warning" icon="clock" label="Shop has not confirmed" />
+        ) : (
+          <StatusChip tone="success" icon="circle-check" label="Shop confirmed" />
+        )}
+        {flagged.length ? (
+          <StatusChip
+            tone="warning"
+            icon="triangle-alert"
+            label={`${flagged.length} unusual price${flagged.length === 1 ? "" : "s"}`}
+          />
+        ) : null}
+      </div>
+      <p className="text-caption text-text-muted m-0">
+        {check?.submittedAt ? `Sent ${formatDateTime(check.submittedAt)}` : "Sent time not on file"}
+        {target ? ` · ${target}` : ""}
+        {facts?.shopConfirmed === false
+          ? " · GRIDGO prepared these prices. The shop confirms them before they can be approved."
+          : ""}
+      </p>
+      {rows.length ? (
+        <table className="w-full border-collapse">
+          <caption className="sr-only">Full prices, {unit}</caption>
+          <thead>
+            <tr className="text-caption text-text-muted text-left">
+              <th scope="col" className="py-1 pr-3 font-normal">
+                Option
+              </th>
+              <th scope="col" className="py-1 pr-3 text-right font-normal">
+                Full price {unit}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.optionKey} className="border-t border-outline align-top">
+                <th scope="row" className="text-body text-text-primary py-1.5 pr-3 text-left font-normal">
+                  {row.label}
+                  {row.flag ? (
+                    <span className="text-caption text-text-secondary flex items-center gap-1">
+                      <TriangleAlert
+                        aria-hidden
+                        className="size-3.5 shrink-0"
+                        style={{ color: "var(--color-warning)" }}
+                      />
+                      Unusual price
+                      {row.flag.range ? `. ${usualRangeLine(row.flag.range, facts?.unit ?? null)}` : ""}
+                    </span>
+                  ) : null}
+                </th>
+                <td className="text-body text-text-primary py-1.5 text-right tabular-nums">
+                  {formatPhp(row.priceMinor)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <p className="text-body text-text-secondary m-0">No prices on file for this product.</p>
       )}
     </section>
   );

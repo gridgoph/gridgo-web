@@ -16,6 +16,34 @@ function note(partial: Partial<Notification>): Notification {
 }
 
 describe("notificationHref", () => {
+  it("lands product template notices on the price check, the desk or the shop's products", () => {
+    for (const type of [
+      "template_product_price_check",
+      "template_product_confirmation_required",
+      "template_product_live",
+      "template_product_price_checked",
+    ]) {
+      expect(notificationHref("super_admin", note({ type }))).toBe("/admin/listing-reviews");
+      expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/listing-reviews");
+      expect(notificationHref("supplier", note({ type }))).toBe("/supplier/catalogue");
+      expect(notificationHref("supplier", note({ type, catalogItemId: "sci_1" }))).toBe(
+        "/supplier/catalogue/product/sci_1",
+      );
+    }
+    for (const type of ["product_setup_requested", "product_setup_updated", "template_request_completed"]) {
+      expect(notificationHref("super_admin", note({ type }))).toBe("/admin/product-setup");
+      expect(notificationHref("ops_admin", note({ type }))).toBe("/ops/product-setup");
+      expect(notificationHref("supplier", note({ type }))).toBe("/supplier/catalogue/add");
+    }
+    expect(notificationHref("super_admin", note({ type: "product_template_updated" }))).toBe(
+      "/admin/product-setup?tab=templates",
+    );
+    expect(notificationHref("supplier", note({ type: "template_products_check" }))).toBe(
+      "/supplier/catalogue/check",
+    );
+    expect(notificationHref("client", note({ type: "template_product_live" }))).toBeNull();
+  });
+
   it("lands legal and privacy notices on each staff tree's own screen", () => {
     for (const type of ["legal.created", "legal.edited", "legal.published", "legal.deleted"]) {
       expect(notificationHref("super_admin", note({ type }))).toBe("/admin/legal");
