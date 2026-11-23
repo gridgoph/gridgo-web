@@ -2526,6 +2526,11 @@ export type PlatformSettings = {
    */
   riderCommissionBps?: number;
   /**
+   * The daily shop settlement policy (gridgo-api#416, docs/SHOP_MONEY_API.md).
+   * Super Admin writes it with a reason. Absent on an API before shop money.
+   */
+  shopMoney?: ShopMoneySettings;
+  /**
    * Deprecated since gridgo-api#229: still stored, no longer controls what a
    * client sees. Not shown or sent by this portal.
    */
@@ -2662,6 +2667,8 @@ export type UpdateSettingsInput = {
   physicalInvoiceRequestsEnabled?: boolean;
   organizationDiscountRateBps?: number;
   riderCommissionBps?: number;
+  /** Super Admin only, with a reason. Omitted fields keep their stored value; `launchedAt` is never sent. */
+  shopMoney?: Partial<Omit<ShopMoneySettings, "launchedAt">>;
   /** Super Admin only; whole seconds 15–30. */
   riderLocationRefreshIntervalSeconds?: number;
   /** Super Admin only; whole seconds 30–600. */
@@ -5356,4 +5363,172 @@ export type SampleBatch = {
   version: number;
   createdAt: string;
   updatedAt: string;
+};
+
+// ---------------------------------------------------------------------------
+// Shop money (gridgo-api#416, docs/SHOP_MONEY_API.md)
+// ---------------------------------------------------------------------------
+
+/** The daily settlement policy. Times are Manila `HH:mm`; weekdays use Sunday = 0. */
+export type ShopMoneySettings = {
+  payoutTime: string;
+  minimumMinor: number;
+  payDeadline: string;
+  reminderTime: string;
+  bonusRateBps: number;
+  bonusDays: number;
+  bonusCapMinor: number;
+  businessWeekdays: number[];
+  holidays: string[];
+  extraBusinessDates: string[];
+  /** Immutable launch boundary for the launch-week bonus. */
+  launchedAt: string | null;
+};
+
+/**
+ * One shop's two running balances. `owedMinor` is "GRIDGO owes you",
+ * `owingMinor` is "You owe GRIDGO", `netMinor` their difference. `paidMinor`
+ * counts money actually sent. `paused` is the Pay GRIDGO new-order hold.
+ */
+export type ShopMoneyBalances = {
+  owedMinor: number;
+  owingMinor: number;
+  netMinor: number;
+  paidMinor: number;
+  overdue: boolean;
+  paused: boolean;
+  nextPayoutAt: string | null;
+};
+
+export type ShopMoneyShopRow = ShopMoneyBalances & { supplierId: string };
+
+/** One payable item in a run or prepared transfer: `stage:…`, `change:…`, `settlement:…` or `bonus:…`. */
+export type ShopMoneyItem = {
+  key: string;
+  orderId: string;
+  amountMinor: number;
+  netAmountMinor: number;
+  /** Debt recovered out of this item before the transfer. */
+  recoveryMinor?: number;
+  attemptId?: string;
+};
+
+export type ShopMoneyHeld = { key: string; reason: string };
+
+/** One shop inside a settlement run. */
+export type ShopMoneyRunShop = ShopMoneyBalances & {
+  supplierId: string;
+  availableMinor: number;
+  /** What this run may send (0 when below the minimum). */
+  amountMinor: number;
+  /** Below the minimum: carried into the next business day. */
+  rolloverMinor: number;
+  items: ShopMoneyItem[];
+  held: ShopMoneyHeld[];
+};
+
+export type ShopMoneyRun = {
+  id: string;
+  at: string;
+  key: string;
+  kind: "settlement_run";
+  data: {
+    date: string;
+    minimumMinor: number;
+    payoutTime: string;
+    shops: ShopMoneyRunShop[];
+  };
+};
+
+export type ShopMoneyTransferStatus =
+  | "transfer_reserved"
+  | "transfer_unknown"
+  | "transfer_paid"
+  | "transfer_cancelled";
+
+/** A prepared daily transfer: the frozen instruction to send once. */
+export type ShopMoneyTransfer = {
+  id: string;
+  at: string;
+  key: string;
+  supplierId: string;
+  kind: "transfer_reserved";
+  data: {
+    items: ShopMoneyItem[];
+    held: ShopMoneyHeld[];
+    netAmountMinor: number;
+    grossAmountMinor: number;
+    runId: string;
+    payerId: string;
+    payoutAccount: SupplierPayoutAccount;
+  };
+  /** Present on the desk list; a prepare replay reports it separately. */
+  status?: ShopMoneyTransferStatus;
+};
+
+/** The recorded outcome of a transfer action. */
+export type ShopMoneyTransferOutcome = {
+  id: string;
+  at: string;
+  key: string;
+  supplierId: string;
+  kind: "transfer_paid" | "transfer_unknown" | "transfer_cancelled";
+  data: {
+    transferId: string;
+    reason: string;
+    amountMinor?: number;
+    reference?: string | null;
+    receiptFileId?: string | null;
+    paidAt?: string;
+  };
+};
+
+export type ShopMoneyDesk = {
+  shops: ShopMoneyShopRow[];
+  runs: ShopMoneyRun[];
+  transfers: ShopMoneyTransfer[];
+};
+
+export type ShopMoneyLedgerEntry = {
+  id: string;
+  at: string;
+  key: string;
+  supplierId: string;
+  orderId?: string | null;
+  kind: string;
+  owedDeltaMinor: number;
+  owingDeltaMinor: number;
+  data?: Record<string, unknown> | null;
+};
+
+export type ShopClientPaymentMethod = "in_app_qr" | "cash_to_rider" | "voucher" | "counter_cash";
+
+export type ShopMoneyJob = {
+  orderId: string;
+  createdAt: string;
+  clientPayment: { methods: ShopClientPaymentMethod[]; settlement?: "daily" | "staged" } | null;
+  shopPayMinor: number | null;
+  bonus: { amountMinor: number; firstOrderAt: string; days: number; rateBps: number; capMinor: number } | null;
+};
+
+/** An open Pay GRIDGO request: the shop owes GRIDGO after a cutoff. */
+export type ShopPayGridgo = {
+  requestId: string;
+  amountMinor: number;
+  reference: string;
+  deadlineAt: string;
+  confirmation: "manual";
+  qrImageUrl: string | null;
+};
+
+export type ShopMoneyPolicy = { counterCashEnabled: boolean; version: number; reason?: string };
+
+export type ShopMoneyShop = {
+  balances: ShopMoneyBalances;
+  policy: ShopMoneyPolicy;
+  history: ShopMoneyLedgerEntry[];
+  jobs: ShopMoneyJob[];
+  earningsByDay: Record<string, number>;
+  paymentMethods: Partial<Record<ShopClientPaymentMethod, number>>;
+  payGridgo: ShopPayGridgo | null;
 };

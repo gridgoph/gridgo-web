@@ -77,6 +77,7 @@ export type NavIconKey =
   | "play-testers"
   | "early-access"
   | "cash"
+  | "shop-money"
   | "legal"
   | "acceptances"
   | "privacy"
@@ -153,7 +154,8 @@ export type NavCountKey =
   | "finished-work-waiting"
   | "quotes-waiting"
   | "early-access-waiting"
-  | "cash-topups-waiting";
+  | "cash-topups-waiting"
+  | "shop-money-open";
 
 /**
  * One rail section. A missing `label` is a top-level cluster (Overview / Jobs)
@@ -731,6 +733,17 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          // Daily shop balances, the 4 PM run and Pay GRIDGO (gridgo-api#416).
+          id: "ops-shop-money",
+          href: "/ops/shop-money",
+          label: "Shop balances",
+          title: "Shop balances and daily payouts",
+          icon: "shop-money",
+          ready: true,
+          placeholderBody: "",
+          count: "shop-money-open",
+        },
+        {
           id: "ops-supplier-invoices",
           href: "/ops/supplier-invoices",
           label: "Supplier invoices",
@@ -1213,6 +1226,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           icon: "pricing",
           ready: true,
           placeholderBody: "",
+        },
+        {
+          id: "admin-shop-money",
+          href: "/admin/shop-money",
+          label: "Shop balances",
+          title: "Shop balances and daily payouts",
+          icon: "shop-money",
+          ready: true,
+          placeholderBody: "",
+          count: "shop-money-open",
         },
         {
           id: "admin-supplier-invoices",

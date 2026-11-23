@@ -15,6 +15,7 @@ import { waitingOnOperationsCount, type QueueContext } from "@/app/ops/_lib/pipe
 import { useQueueContext } from "@/lib/live/useQueueContext";
 import { isAwaitingSignupReview } from "@/components/approvals/signup-queue";
 import {
+  getShopMoneyDesk,
   getTracker,
   getWorkspaceRole,
   listApprovalCases,
@@ -48,6 +49,7 @@ import type { NavCountKey } from "@/lib/nav";
 import type { NavCounts } from "@/lib/nav-counts";
 import { refundNeedsStaff } from "@/lib/refunds";
 import { finishedReviewWaitingCount } from "@/lib/shop-handover";
+import { shopMoneyNeedsAction } from "@/lib/shop-money";
 import { buildNeedsOperations } from "@/lib/shop-changes";
 import { needsSupplierAction } from "@/lib/supplier-actions";
 import { useAcceptDeadlines } from "@/lib/use-accept-clock";
@@ -252,6 +254,11 @@ const NAV_COUNT_SOURCES: Record<Exclude<NavCountKey, OrderCountKey>, CountSource
   "early-access-waiting": {
     resources: ["early-access"],
     load: async () => (await listEarlyAccess({ status: "pending", limit: 1 })).counts.pending,
+  },
+  // The desk's own list; shop money writes ping `payouts`.
+  "shop-money-open": {
+    resources: ["payouts"],
+    load: async () => shopMoneyNeedsAction(await getShopMoneyDesk()),
   },
   // Top-up notices carry no order, so the inbox ping is the signal.
   "cash-topups-waiting": {

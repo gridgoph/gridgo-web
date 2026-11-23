@@ -43,6 +43,7 @@ import { DeliveryZones, DeliveryZonesSkeleton } from "@/components/settings/Deli
 import { CashSettings } from "@/components/settings/CashSettings";
 import { HandoverCodeSettings } from "@/components/settings/HandoverCodeSettings";
 import { ShopMoveCover } from "@/components/settings/ShopMoveCover";
+import { ShopMoneySettings } from "@/components/settings/ShopMoneySettings";
 import { QuoteValiditySettings } from "@/components/settings/QuoteValiditySettings";
 import { SampleBatchHoldSettings } from "@/components/settings/SampleBatchHoldSettings";
 import { CoverSpineSettings } from "@/components/settings/CoverSpineSettings";
@@ -835,6 +836,16 @@ export function OperationalSettings() {
       <ShopMoveCover
         settings={settings}
         canEdit
+        disabled={busy}
+        onSaved={(next) => {
+          settingsRef.current = next;
+          setSettings(next);
+        }}
+        onConflict={() => load(true)}
+      />
+
+      <ShopMoneySettings
+        settings={settings}
         disabled={busy}
         onSaved={(next) => {
           settingsRef.current = next;
