@@ -153,3 +153,15 @@ describe("/signup resume", () => {
     expect(api.saveSignupStep).toHaveBeenNthCalledWith(2, 6, "prints", expect.any(Object));
   });
 });
+
+describe("after a save", () => {
+  it("moves forward past a step still open (codes off), then back to it", async () => {
+    const { afterSave } = await import("@/components/supplier-signup/SignupWizard");
+    const pinDone = draft("shop", { eligibility: ELIGIBILITY, location: {} });
+    expect(afterSave(pinDone, "location")).toBe("prints");
+    const printsDone = draft("shop", { eligibility: ELIGIBILITY, location: {}, prints: {} });
+    expect(afterSave(printsDone, "prints")).toBe("staff");
+    const allDone = draft("enroll", { eligibility: ELIGIBILITY, shop: SHOP, location: {}, prints: {} });
+    expect(afterSave(allDone, "shop")).toBe("staff");
+  });
+});

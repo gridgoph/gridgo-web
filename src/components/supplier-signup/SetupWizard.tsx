@@ -263,6 +263,17 @@ export function SetupWizard() {
         />
       }
       step={step}
+      idle={
+        complete ? (
+          <StepFrame
+            title="Every step is done"
+            lede="GRIDGO checks your shop and listings next. Change any step from the list, or finish."
+            next={{ label: "Finish", hint: "Human na", onClick: () => router.push(READY_PATH), testId: "setup-finish" }}
+          >
+            {null}
+          </StepFrame>
+        ) : undefined
+      }
       onShowSteps={() => setActive(null)}
       footer={
         <Button

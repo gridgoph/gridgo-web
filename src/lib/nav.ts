@@ -1666,6 +1666,8 @@ export function contextTitleForPath(
   if (pathname === "/supplier/catalogue/ask") return "Ask GRIDGO";
   if (pathname === "/supplier/catalogue/setup") return "Let GRIDGO set it up";
   if (pathname === "/supplier/catalogue/check") return "Check your products";
+  if (pathname === "/supplier/setup/ready") return "Setup done";
+  if (pathname === "/supplier/setup") return "Set up your shop";
   if (pathname === "/supplier/phone-app") return "Phone app";
   if (pathname === "/supplier/notice") return "Opening update";
   if (pathname.startsWith("/supplier/catalogue/")) return "Product";

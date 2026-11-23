@@ -50,7 +50,6 @@ import {
   readSignupLocal,
 } from "@/lib/signup-local";
 import { holdSignupLogo } from "@/lib/signup-logo";
-import { useSupplierDesktop } from "@/lib/useSupplierDesktop";
 
 export const SIGNUP_PATH = "/signup";
 export const SETUP_PATH = "/supplier/setup";
@@ -74,6 +73,30 @@ type Active = MissionId | "start";
 const STALE_ONCE = "Your sign-up changed in another window. It is up to date now; press again.";
 
 /** The refusals "Open my shop" can meet, in the shop's words. */
+const STEP_MISSION: Record<SignupDraftStep, MissionId | null> = {
+  eligibility: null,
+  shop: "shop",
+  location: "pin",
+  prints: "prints",
+};
+
+/**
+ * Where to go after saving a step: the next unfinished step after it, so a
+ * shop that went past "Your shop" (codes off) keeps moving forward; then the
+ * first unfinished one; then opening the shop.
+ */
+export function afterSave(signup: GuidedSignup, step: SignupDraftStep): MissionId {
+  const states = missionStates(signup);
+  const saved = STEP_MISSION[step];
+  const from = saved ? DRAFT_MISSIONS.indexOf(saved) + 1 : 0;
+  const open = (id: MissionId) => states[id as keyof typeof states] !== "done";
+  return (
+    DRAFT_MISSIONS.slice(from).find(open) ??
+    DRAFT_MISSIONS.find(open) ??
+    "staff"
+  );
+}
+
 export function enrollRefusal(error: unknown): string {
   if (!isApiError(error)) return "GRIDGO did not answer, so your shop did not open. Check your connection and try again.";
   switch (error.code) {
@@ -108,7 +131,6 @@ export function enrollRefusal(error: unknown): string {
 export function SignupWizard() {
   const auth = useAuth();
   const router = useRouter();
-  const desktop = useSupplierDesktop();
   const [phase, setPhase] = useState<Phase>({ kind: "checking" });
   const [signup, setSignup] = useState<GuidedSignup | null>(null);
   const [terms, setTerms] = useState<SignupTerms | null>(null);
@@ -217,7 +239,7 @@ export function SignupWizard() {
     }
     if (result.status === "ok") {
       adopt(result.signup, result.terms);
-      if (step !== "eligibility") setActive(desktop ? landOn(result.signup) : null);
+      if (step !== "eligibility") setActive(afterSave(result.signup, step));
       return null;
     }
     if (result.status === "enrolled") {

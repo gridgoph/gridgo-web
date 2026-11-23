@@ -29,6 +29,7 @@ export function WizardShell({
   standalone = false,
   headerEnd,
   centered,
+  idle,
 }: {
   heading: string;
   lede: string;
@@ -43,6 +44,8 @@ export function WizardShell({
   headerEnd?: ReactNode;
   /** One centred column instead of the step list (step 0, the account, notices). */
   centered?: ReactNode;
+  /** At 1280px and wider with no step open: what the right-hand pane shows. */
+  idle?: ReactNode;
 }) {
   const desktop = useSupplierDesktop();
 
@@ -69,10 +72,9 @@ export function WizardShell({
       <aside className="sticky top-4 flex flex-col gap-6 rounded-card border border-outline bg-surface p-5">
         {intro}
         {rail}
-        {footer && !step ? <div>{footer}</div> : null}
       </aside>
       <div className="min-w-0 rounded-card border border-outline bg-surface p-8">
-        <div className="mx-auto w-full max-w-2xl">{step ?? footer}</div>
+        <div className="mx-auto w-full max-w-2xl">{step ?? idle ?? footer}</div>
       </div>
     </div>
   ) : step ? (
