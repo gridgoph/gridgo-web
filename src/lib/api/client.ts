@@ -170,6 +170,13 @@ import type {
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
 import { acceptsReviewData, withReviewData } from "@/lib/review-data";
+import {
+  readShopMoney,
+  readShopMoneySchedule,
+  type MoneyPeriod,
+  type ShopMoneyRead,
+  type ShopMoneySchedule,
+} from "@/lib/supplier-money";
 import { previewParams, type ProductionTimeChoice } from "@/lib/production-time-choice";
 import {
   normalizeShopHours,
@@ -4550,6 +4557,35 @@ export async function getPortalBuild(): Promise<{ commit: string; builtAt: strin
     }
     return { commit: body.commit, builtAt: body.builtAt };
   });
+}
+
+// ---------------------------------------------------------------------------
+// The shop Owner's own Money (gridgo-api#416, docs/SHOP_MONEY_API.md).
+// ---------------------------------------------------------------------------
+
+/**
+ * The Owner's balances with GRIDGO, read through `lib/supplier-money.ts`.
+ * Null when GRIDGO has no such route yet (404/405) or refuses it (403, Staff),
+ * so Money draws what it did before.
+ */
+export async function getMyShopMoney(period: MoneyPeriod): Promise<ShopMoneyRead | null> {
+  try {
+    const body = await request<unknown>(`/me/shop-money${buildQuery({ period })}`);
+    return readShopMoney(body);
+  } catch (error) {
+    if (error instanceof ApiError && [403, 404, 405].includes(error.status)) return null;
+    throw error;
+  }
+}
+
+/** `GET /settings` `shopMoney` as a shop reads it, or null when GRIDGO does not offer it. */
+export async function getShopMoneySchedule(): Promise<ShopMoneySchedule | null> {
+  try {
+    const settings = await getSettings();
+    return readShopMoneySchedule(settings.shopMoney);
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
