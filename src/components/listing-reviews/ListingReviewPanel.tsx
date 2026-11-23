@@ -170,7 +170,7 @@ export function ListingReviewPanel({
           <LiveComparison listing={listing} typeName={typeName} />
         ) : null}
 
-        <PhotoBench listing={listing} />
+        <PhotoBench listing={listing} stockPhoto={entry.stockPhoto ?? null} />
 
         <ListingFacts
           listing={listing}
@@ -306,7 +306,21 @@ export function ListingReviewPanel({
 }
 
 /** Every sample, large, on a neutral plate; the cover is the first. */
-function PhotoBench({ listing }: { listing: Listing }) {
+function PhotoBench({ listing, stockPhoto }: { listing: Listing; stockPhoto: string | null }) {
+  if (!listing.photos.length && stockPhoto) {
+    return (
+      <figure className="m-0 flex max-w-xs flex-col gap-1">
+        {/* GRIDGO's own stock photo, served from the API. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={stockPhoto}
+          alt={listing.name}
+          className="bg-muted aspect-square w-full rounded-[var(--radius-field)] border border-border object-cover"
+        />
+        <figcaption className="text-caption text-text-secondary">GRIDGO stock photo. Nothing to check.</figcaption>
+      </figure>
+    );
+  }
   if (!listing.photos.length) {
     return (
       <p className="text-body text-text-secondary m-0 flex items-center gap-2">

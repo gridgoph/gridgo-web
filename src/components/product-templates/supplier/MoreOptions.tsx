@@ -71,16 +71,24 @@ export function MoreOptions({
         data-testid="more-options-toggle"
       >
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="text-body text-text-primary" style={{ fontFamily: "var(--font-medium)" }}>
+          <span
+            className="text-body text-text-primary"
+            style={{ fontFamily: "var(--font-medium)" }}
+          >
             More options
           </span>
           <span className="text-caption text-text-muted">
-            {count ? `${count} set` : "Bulk discount, minimum order, rush, extras, photos, tips"}
+            {count
+              ? `${count} set`
+              : "Bulk discount, minimum order, rush, extras, photos, tips"}
           </span>
         </span>
         <ChevronDown
           aria-hidden
-          className={cn("text-text-muted size-5 shrink-0 transition-transform", open && "rotate-180")}
+          className={cn(
+            "text-text-muted size-5 shrink-0 transition-transform",
+            open && "rotate-180",
+          )}
         />
       </button>
 
@@ -106,7 +114,9 @@ export function MoreOptions({
                 />
                 <span className="text-body text-text-secondary">each</span>
               </div>
-              <FieldDescription>A lower price each when a client orders many. Leave empty for none.</FieldDescription>
+              <FieldDescription>
+                A lower price each when a client orders many. Leave empty for none.
+              </FieldDescription>
             </Field>
 
             <Field>
@@ -117,7 +127,9 @@ export function MoreOptions({
                 onChange={(minimumOrder) => set({ minimumOrder })}
                 label="Minimum order"
               />
-              <FieldDescription>The fewest you will take. Leave empty for any amount.</FieldDescription>
+              <FieldDescription>
+                The fewest you will take. Leave empty for any amount.
+              </FieldDescription>
             </Field>
 
             <Field>
@@ -139,7 +151,9 @@ export function MoreOptions({
                 />
                 <span className="text-body text-text-secondary">more</span>
               </div>
-              <FieldDescription>Faster than your ready time, for an extra fee. Leave empty for no rush.</FieldDescription>
+              <FieldDescription>
+                Faster than your ready time, for an extra fee. Leave empty for no rush.
+              </FieldDescription>
             </Field>
 
             <Field>

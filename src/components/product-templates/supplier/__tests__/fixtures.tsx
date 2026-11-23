@@ -72,7 +72,10 @@ export const READY_TIMES = [
   { code: "next_day", label: "Next working day" },
 ];
 
-export function catalogue(templates: unknown[] = [FLYERS], extra: Record<string, unknown> = {}) {
+export function catalogue(
+  templates: unknown[] = [FLYERS],
+  extra: Record<string, unknown> = {},
+) {
   return {
     templates,
     readyTimes: READY_TIMES,
@@ -82,15 +85,19 @@ export function catalogue(templates: unknown[] = [FLYERS], extra: Record<string,
 }
 
 export const SERVICES = {
-  services: [{ id: "svc_marketing", categoryCode: "marketing_collateral", state: "live" }],
+  services: [
+    { id: "svc_marketing", categoryCode: "marketing_collateral", state: "live" },
+  ],
 };
 
 /** `GET /me/template-products/:id` for a product made from Flyers. */
-export function templateProduct(overrides: {
-  item?: Record<string, unknown>;
-  template?: Record<string, unknown>;
-  prices?: { optionKey: string; priceMinor: number }[];
-} = {}) {
+export function templateProduct(
+  overrides: {
+    item?: Record<string, unknown>;
+    template?: Record<string, unknown>;
+    prices?: { optionKey: string; priceMinor: number }[];
+  } = {},
+) {
   return {
     item: {
       id: "sci_1",

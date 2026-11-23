@@ -1,5 +1,6 @@
 "use client";
 
+import { templateStanding } from "@/lib/product-templates";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { useLiveReload } from "@/lib/live/useLiveReload";
@@ -93,10 +94,12 @@ export default function SupplierCataloguesPage() {
   const addHref = summary?.offered ? "/supplier/catalogue/add" : "/supplier/catalogue/new";
   const templateCardProps = (listing: Listing) => {
     const template = summary?.byItem.get(listing.id);
+    const facts = check?.factsByItem.get(listing.id);
     return template
       ? {
           stockPhotoSrc: template.photoUrl,
           editHref: `/supplier/catalogue/product/${encodeURIComponent(listing.id)}`,
+          templateStanding: facts ? templateStanding({ ...listing, template: facts }) : null,
         }
       : {};
   };

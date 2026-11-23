@@ -11,7 +11,10 @@ import { useSetupRequests } from "@/components/product-templates/supplier/useSet
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
-import { createProductSetupRequest, uploadProductSetupFile } from "@/lib/api/product-templates";
+import {
+  createProductSetupRequest,
+  uploadProductSetupFile,
+} from "@/lib/api/product-templates";
 import {
   REQUEST_MESSAGE_MAX,
   SETUP_FILE_ACCEPT,
@@ -68,14 +71,20 @@ export default function SetupHelpPage() {
 
   async function sendFile(key: string, file: File) {
     if (file.size > SETUP_FILE_MAX_BYTES) {
-      patch(key, { state: "failed", error: "Larger than 20 MB. Choose a smaller file or a lower-resolution photo." });
+      patch(key, {
+        state: "failed",
+        error: "Larger than 20 MB. Choose a smaller file or a lower-resolution photo.",
+      });
       return;
     }
     try {
       const stored = await uploadProductSetupFile(file);
       patch(key, { state: "ready", fileId: stored.fileId });
     } catch (err) {
-      patch(key, { state: "failed", error: uploadErrorMessage(err, { what: "this file" }) });
+      patch(key, {
+        state: "failed",
+        error: uploadErrorMessage(err, { what: "this file" }),
+      });
     }
   }
 
@@ -128,8 +137,8 @@ export default function SetupHelpPage() {
       <div className="flex flex-col gap-1">
         <h1 className="text-h2 text-text-primary m-0">Let GRIDGO set it up</h1>
         <p className="text-body text-text-secondary m-0">
-          Send your price list. The GRIDGO team adds your products and prices, then you check
-          them. Nothing goes live until you confirm.
+          Send your price list. The GRIDGO team adds your products and prices, then you
+          check them. Nothing goes live until you confirm.
         </p>
       </div>
 
@@ -139,12 +148,15 @@ export default function SetupHelpPage() {
           role="status"
           data-testid="setup-sent"
         >
-          <p className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+          <p
+            className="text-body text-text-primary m-0"
+            style={{ fontFamily: "var(--font-medium)" }}
+          >
             Sent to the GRIDGO team
           </p>
           <p className="text-body text-text-secondary m-0">
-            We tell you when your products are ready to check. They stay hidden until you confirm
-            the prices.
+            We tell you when your products are ready to check. They stay hidden until you
+            confirm the prices.
           </p>
           <Button
             className="self-start"
@@ -174,10 +186,14 @@ export default function SetupHelpPage() {
                     )}
                   </span>
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="text-body text-text-primary truncate">{upload.name}</span>
+                    <span className="text-body text-text-primary truncate">
+                      {upload.name}
+                    </span>
                     <span
                       className={
-                        upload.state === "failed" ? "text-caption text-error" : "text-caption text-text-muted"
+                        upload.state === "failed"
+                          ? "text-caption text-error"
+                          : "text-caption text-text-muted"
                       }
                     >
                       {upload.state === "sending"
@@ -191,7 +207,9 @@ export default function SetupHelpPage() {
                     variant="ghost"
                     size="icon"
                     aria-label={`Remove ${upload.name}`}
-                    onClick={() => setUploads((current) => current.filter((u) => u.key !== upload.key))}
+                    onClick={() =>
+                      setUploads((current) => current.filter((u) => u.key !== upload.key))
+                    }
                   >
                     <X aria-hidden />
                   </Button>
@@ -199,7 +217,9 @@ export default function SetupHelpPage() {
               ))}
             </ul>
           ) : (
-            <p className="text-caption text-text-muted m-0">A clear photo of the price list on your wall works.</p>
+            <p className="text-caption text-text-muted m-0">
+              A clear photo of the price list on your wall works.
+            </p>
           )}
           <input
             ref={inputRef}
@@ -217,8 +237,8 @@ export default function SetupHelpPage() {
             </Button>
           ) : null}
           <FieldDescription>
-            Up to {SETUP_FILES_MAX} files of 20 MB each. A voice note can be a recording saved on
-            your phone or computer.
+            Up to {SETUP_FILES_MAX} files of 20 MB each. A voice note can be a recording
+            saved on your phone or computer.
           </FieldDescription>
         </Field>
         <Field>
@@ -230,12 +250,18 @@ export default function SetupHelpPage() {
             placeholder="Tarpaulin ₱18 per sq ft. Same day if before 2 PM."
             onChange={(event) => setMessage(event.target.value)}
           />
-          <FieldDescription>Optional. Anything the price list does not say.</FieldDescription>
+          <FieldDescription>
+            Optional. Anything the price list does not say.
+          </FieldDescription>
         </Field>
       </FieldGroup>
 
       {tried && problem ? (
-        <p className="text-body text-text-primary m-0" role="status" data-testid="flow-foot-note">
+        <p
+          className="text-body text-text-primary m-0"
+          role="status"
+          data-testid="flow-foot-note"
+        >
           {problem}
         </p>
       ) : null}

@@ -15,7 +15,9 @@ export async function readShops(): Promise<ShopRef[]> {
     listUsers("supplier").catch(() => []),
   ]);
   const shops =
-    index && typeof index === "object" && "shops" in index ? (index as { shops: unknown }).shops : [];
+    index && typeof index === "object" && "shops" in index
+      ? (index as { shops: unknown }).shops
+      : [];
   for (const raw of Array.isArray(shops) ? shops : []) {
     const shop = readStaffShop(raw);
     if (shop?.shopName) names.set(shop.supplierId, shop.shopName);
@@ -29,9 +31,15 @@ export async function readShops(): Promise<ShopRef[]> {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function shopNameOf(shops: readonly ShopRef[] | null, supplierId: string | null): string {
+export function shopNameOf(
+  shops: readonly ShopRef[] | null,
+  supplierId: string | null,
+): string {
   if (!shops) return "…";
-  return (supplierId ? shops.find((s) => s.supplierId === supplierId)?.name : null) ?? "Unnamed shop";
+  return (
+    (supplierId ? shops.find((s) => s.supplierId === supplierId)?.name : null) ??
+    "Unnamed shop"
+  );
 }
 
 export type Tree = "ops" | "admin";
@@ -44,6 +52,10 @@ export function templateHref(tree: Tree, id: string): string {
   return `/${tree}/product-setup/templates/${encodeURIComponent(id)}`;
 }
 
-export function shopHref(tree: Tree, supplierId: string, request?: string | null): string {
+export function shopHref(
+  tree: Tree,
+  supplierId: string,
+  request?: string | null,
+): string {
   return `/${tree}/product-setup/shops/${encodeURIComponent(supplierId)}${request ? `?request=${encodeURIComponent(request)}` : ""}`;
 }

@@ -28,8 +28,8 @@ export default function CheckProductsPage() {
       <div className="flex flex-col gap-1">
         <h1 className="text-h2 text-text-primary m-0">Check your products</h1>
         <p className="text-body text-text-secondary m-0">
-          These are hidden from clients until you add or confirm their prices. A new price is for
-          new orders only.
+          These are hidden from clients until you add or confirm their prices. A new price
+          is for new orders only.
         </p>
       </div>
 
@@ -54,14 +54,23 @@ export default function CheckProductsPage() {
                 >
                   <ProductThumb src={photoSrc} alt={listing.name} />
                   <span className="flex min-w-0 flex-1 flex-col gap-1">
-                    <span className="text-body text-text-primary" style={{ fontFamily: "var(--font-medium)" }}>
+                    <span
+                      className="text-body text-text-primary"
+                      style={{ fontFamily: "var(--font-medium)" }}
+                    >
                       {listing.name || "Product"}
                     </span>
                     <span className="flex">
-                      <StatusChip tone={standing.tone} icon={standing.icon} label={standing.label} />
+                      <StatusChip
+                        tone={standing.tone}
+                        icon={standing.icon}
+                        label={standing.label}
+                      />
                     </span>
                     {standing.detail ? (
-                      <span className="text-caption text-text-secondary">{standing.detail}</span>
+                      <span className="text-caption text-text-secondary">
+                        {standing.detail}
+                      </span>
                     ) : null}
                   </span>
                   <ChevronRight className="text-text-muted size-5 shrink-0" aria-hidden />
@@ -74,8 +83,9 @@ export default function CheckProductsPage() {
 
       {check && check.suggested > 0 ? (
         <p className="text-caption text-text-muted m-0">
-          The GRIDGO team may also move your older products onto GRIDGO&apos;s price tables and join
-          duplicates. They tell you first, and nothing with an open order is touched.
+          The GRIDGO team may also move your older products onto GRIDGO&apos;s price
+          tables and join duplicates. They tell you first, and nothing with an open order
+          is touched.
         </p>
       ) : null}
     </div>

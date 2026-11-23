@@ -59,9 +59,19 @@ import {
   type TemplateFacts,
 } from "@/lib/product-templates";
 
-type Form = { rows: DraftRow[]; readyTime: string | null; more: MoreOptionsDraft; printerFeet: number | null };
+type Form = {
+  rows: DraftRow[];
+  readyTime: string | null;
+  more: MoreOptionsDraft;
+  printerFeet: number | null;
+};
 
-type Product = { listing: Listing; facts: TemplateFacts; photoSrc: string | null; realPhoto: boolean };
+type Product = {
+  listing: Listing;
+  facts: TemplateFacts;
+  photoSrc: string | null;
+  realPhoto: boolean;
+};
 
 /**
  * One GRIDGO template product (gridgo-supplier#268): its full price table,
@@ -89,7 +99,10 @@ export default function TemplateProductPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [example, setExample] = useState<{ key: string | null; line: string | null }>({ key: null, line: null });
+  const [example, setExample] = useState<{ key: string | null; line: string | null }>({
+    key: null,
+    line: null,
+  });
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -102,18 +115,24 @@ export default function TemplateProductPage() {
       const listing = normalizeListing(raw);
       const facts = templateFactsOf(raw);
       if (!listing || !facts) {
-        setLoadError("This product has no GRIDGO price table. Change it in the full product builder.");
+        setLoadError(
+          "This product has no GRIDGO price table. Change it in the full product builder.",
+        );
         return;
       }
       const catalogue = normalizeCatalogue(catalogueBody);
       // An unpriced product moved over without a template picks the one GRIDGO
       // offers for its kind of work; saving its prices records that choice.
-      const sameKind = catalogue.templates.filter((t) => t.subcategoryCode === listing.subcategoryCode);
+      const sameKind = catalogue.templates.filter(
+        (t) => t.subcategoryCode === listing.subcategoryCode,
+      );
       const found =
         catalogue.templates.find((t) => t.id === facts.templateId) ??
         (!facts.templateId && sameKind.length === 1 ? sameKind[0]! : null);
-      const item = raw && typeof raw === "object" ? (raw as { item?: unknown }).item : null;
-      const photos = (item as { photos?: { realPhoto?: boolean }[] } | null)?.photos ?? [];
+      const item =
+        raw && typeof raw === "object" ? (raw as { item?: unknown }).item : null;
+      const photos =
+        (item as { photos?: { realPhoto?: boolean }[] } | null)?.photos ?? [];
       setProduct({
         listing,
         facts,
@@ -136,7 +155,8 @@ export default function TemplateProductPage() {
           minimumOrderQuantity: listing.minimumOrderQuantity,
           priceTiers: listing.priceTiers,
           speedTiers: listing.speedTiers.map((tier) => ({
-            turnaroundMinutes: tier.turnaround.unit === "hours" ? tier.turnaround.minutes : null,
+            turnaroundMinutes:
+              tier.turnaround.unit === "hours" ? tier.turnaround.minutes : null,
             surchargeMinor: tier.surchargeMinor,
           })),
           clientTips: facts.clientTips,
@@ -162,7 +182,8 @@ export default function TemplateProductPage() {
     let cancelled = false;
     templateReadyPreview(id, readyTime).then(
       (raw) => {
-        if (!cancelled) setExample({ key: readyTime, line: readyByLine(normalizePreview(raw)) });
+        if (!cancelled)
+          setExample({ key: readyTime, line: readyByLine(normalizePreview(raw)) });
       },
       () => {
         if (!cancelled) setExample({ key: readyTime, line: null });
@@ -210,7 +231,8 @@ export default function TemplateProductPage() {
     if (!form || !template) return null;
     return (
       priceBlocker(form.rows) ??
-      (needsPrinterMaxWidth(template.subcategoryCode) && parsePrinterMaxWidthFeet(form.printerFeet) == null
+      (needsPrinterMaxWidth(template.subcategoryCode) &&
+      parsePrinterMaxWidthFeet(form.printerFeet) == null
         ? "Set how wide your printer prints, in whole feet from 1 to 20."
         : null) ??
       (!form.readyTime ? "Choose when it is ready." : null) ??
@@ -247,7 +269,9 @@ export default function TemplateProductPage() {
           templateId: template.id,
           readyTime: form.readyTime,
           prices: pricesBody(form.rows),
-          ...(needsPrinterMaxWidth(template.subcategoryCode) ? { printerMaxWidthFeet: form.printerFeet } : {}),
+          ...(needsPrinterMaxWidth(template.subcategoryCode)
+            ? { printerMaxWidthFeet: form.printerFeet }
+            : {}),
           ...moreOptionsBody(form.more),
         }),
       toConfirm || needsPrice
@@ -269,7 +293,9 @@ export default function TemplateProductPage() {
     void run(
       next ? "Making it live…" : "Hiding it…",
       () => updateCatalogItem(listing.id, listing.version, { active: next }),
-      next ? "Live. Clients can order it." : "Hidden. Clients cannot see it. Your prices are kept.",
+      next
+        ? "Live. Clients can order it."
+        : "Hidden. Clients cannot see it. Your prices are kept.",
     );
   }
 
@@ -287,7 +313,11 @@ export default function TemplateProductPage() {
         <FlowHeading title={listing.name || template.name}>
           <div className="flex flex-col gap-1">
             <div className="flex">
-              <StatusChip tone={standing.tone} icon={standing.icon} label={standing.label} />
+              <StatusChip
+                tone={standing.tone}
+                icon={standing.icon}
+                label={standing.label}
+              />
             </div>
             {standing.detail ? (
               <p className="text-caption text-text-secondary m-0">{standing.detail}</p>
@@ -317,7 +347,9 @@ export default function TemplateProductPage() {
             busyLabel={busy ?? undefined}
           />
         ) : (
-          <p className="text-caption text-text-muted m-0">Change a price or the ready time to save.</p>
+          <p className="text-caption text-text-muted m-0">
+            Change a price or the ready time to save.
+          </p>
         )
       }
     >
@@ -331,7 +363,10 @@ export default function TemplateProductPage() {
         </p>
       ) : null}
       {error ? (
-        <p className="rounded-card border-error bg-surface text-body text-text-primary m-0 border p-3" role="alert">
+        <p
+          className="rounded-card border-error bg-surface text-body text-text-primary m-0 border p-3"
+          role="alert"
+        >
           {error}
         </p>
       ) : null}
@@ -339,15 +374,24 @@ export default function TemplateProductPage() {
       {standing.switchable ? (
         <label className="rounded-card border border-outline bg-surface flex min-h-14 items-center gap-3 px-4 py-3">
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="text-body text-text-primary" style={{ fontFamily: "var(--font-medium)" }}>
+            <span
+              className="text-body text-text-primary"
+              style={{ fontFamily: "var(--font-medium)" }}
+            >
               {listing.onTheBoard ? "Live" : "Hidden"}
             </span>
-            <span className="text-caption text-text-muted">Hiding is instant. Your prices are kept.</span>
+            <span className="text-caption text-text-muted">
+              Hiding is instant. Your prices are kept.
+            </span>
           </span>
           <Switch
             checked={listing.onTheBoard}
             disabled={busy != null}
-            aria-label={listing.onTheBoard ? "Live. Turn off to hide it" : "Hidden. Turn on to make it live"}
+            aria-label={
+              listing.onTheBoard
+                ? "Live. Turn off to hide it"
+                : "Hidden. Turn on to make it live"
+            }
             onCheckedChange={(next) => toggleLive(Boolean(next))}
           />
         </label>
@@ -402,12 +446,15 @@ export default function TemplateProductPage() {
         className="rounded-card border border-outline bg-surface hover:bg-overlay-hover flex min-h-14 items-center gap-3 px-3 py-2.5 no-underline"
       >
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="text-body text-text-primary" style={{ fontFamily: "var(--font-medium)" }}>
+          <span
+            className="text-body text-text-primary"
+            style={{ fontFamily: "var(--font-medium)" }}
+          >
             Photos and extras
           </span>
           <span className="text-caption text-text-muted">
-            Your own photos get a &quot;Real photo&quot; badge. Extras like lamination too. The
-            GRIDGO team gives these changes its full check.
+            Your own photos get a &quot;Real photo&quot; badge. Extras like lamination
+            too. The GRIDGO team gives these changes its full check.
           </span>
         </span>
         <ChevronRight className="text-text-muted size-5 shrink-0" aria-hidden />

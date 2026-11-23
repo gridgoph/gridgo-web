@@ -9,7 +9,11 @@
 
 import { isApiError } from "@/lib/api/client";
 import { pesosToMinor } from "@/lib/format";
-import type { ProductTemplate, SetupRequest, TemplateUnit } from "@/lib/product-templates";
+import type {
+  ProductTemplate,
+  SetupRequest,
+  TemplateUnit,
+} from "@/lib/product-templates";
 import { minorToInput, TEMPLATE_UNITS } from "@/lib/product-templates";
 import type { Listing } from "@/lib/listings";
 import { timeFields } from "@/lib/production-time";
@@ -19,7 +23,9 @@ import { timeFields } from "@/lib/production-time";
 /** Waiting ones first, oldest first (they have waited longest); then the rest, newest first. */
 export function orderRequests(requests: readonly SetupRequest[]): SetupRequest[] {
   const at = (r: SetupRequest) => r.createdAt ?? "";
-  const waiting = requests.filter((r) => r.status === "pending").sort((a, b) => at(a).localeCompare(at(b)));
+  const waiting = requests
+    .filter((r) => r.status === "pending")
+    .sort((a, b) => at(a).localeCompare(at(b)));
   const rest = requests
     .filter((r) => r.status !== "pending")
     .sort((a, b) => (b.updatedAt ?? at(b)).localeCompare(a.updatedAt ?? at(a)));
@@ -40,7 +46,10 @@ export function staffRequestStatus(request: Pick<SetupRequest, "status">): strin
 export const DECISION_REASON_MAX = 2000;
 
 /** Ready-made words the shop reads; the reviewer can edit them. */
-export function completeReasonSuggestion(request: Pick<SetupRequest, "kind">, templateName?: string | null): string {
+export function completeReasonSuggestion(
+  request: Pick<SetupRequest, "kind">,
+  templateName?: string | null,
+): string {
   return request.kind === "template"
     ? `${templateName ?? "The product you asked for"} is now in the list. Open Products, Add a product, and tick it.`
     : "Your products are ready. Open Products, check each price, and confirm them so they can go live.";
@@ -58,16 +67,25 @@ export function decisionBlocker(input: {
   reason: string;
   templateId: string | null;
 }): string | null {
-  if (input.status === "completed" && input.request.kind === "template" && !input.templateId)
+  if (
+    input.status === "completed" &&
+    input.request.kind === "template" &&
+    !input.templateId
+  )
     return "Choose the template that answers this request.";
   if (!input.reason.trim()) return "Write what the shop reads.";
-  if (input.reason.trim().length > DECISION_REASON_MAX) return "Keep it under 2,000 characters.";
+  if (input.reason.trim().length > DECISION_REASON_MAX)
+    return "Keep it under 2,000 characters.";
   return null;
 }
 
 /* ------------------------------------------------------------ templates -- */
 
-export type OptionDraft = { key: string; label: string; specBinding: { fieldCode: string; valueCode: string } | null };
+export type OptionDraft = {
+  key: string;
+  label: string;
+  specBinding: { fieldCode: string; valueCode: string } | null;
+};
 export type OptionListDraft = { name: string; values: string };
 
 export type TemplateDraft = {
@@ -131,12 +149,21 @@ export function draftFromTemplate(t: ProductTemplate): TemplateDraft {
     unit: t.unit,
     active: t.active,
     express: t.express,
-    options: t.options.map((o) => ({ key: o.key, label: o.label, specBinding: o.specBinding })),
-    optionLists: t.optionLists.map((l) => ({ name: l.name, values: l.options.join(", ") })),
+    options: t.options.map((o) => ({
+      key: o.key,
+      label: o.label,
+      specBinding: o.specBinding,
+    })),
+    optionLists: t.optionLists.map((l) => ({
+      name: l.name,
+      values: l.options.join(", "),
+    })),
     fileTypes: [...t.fileTypes],
     clientTips: t.clientTips.join("\n"),
     machinesNeeded: t.machinesNeeded.join(", "),
-    stockPhotos: t.stockPhotos.filter((p) => p.url).map((p) => ({ url: p.url, altText: p.altText ?? t.name })),
+    stockPhotos: t.stockPhotos
+      .filter((p) => p.url)
+      .map((p) => ({ url: p.url, altText: p.altText ?? t.name })),
     priceMin: t.priceRange ? minorToInput(t.priceRange.minMinor) : "",
     priceMax: t.priceRange ? minorToInput(t.priceRange.maxMinor) : "",
   };
@@ -164,17 +191,25 @@ type ValidationContext = {
  * What stops the template being saved, field by field, mirroring the API's
  * checks so the team reads the fix before a `400 invalid_template_request`.
  */
-export function templateErrors(draft: TemplateDraft, ctx: ValidationContext): Record<string, string> {
+export function templateErrors(
+  draft: TemplateDraft,
+  ctx: ValidationContext,
+): Record<string, string> {
   const errors: Record<string, string> = {};
-  if (!TEMPLATE_ID.test(draft.id)) errors.id = "Lowercase letters, numbers and _ only, starting with a letter.";
+  if (!TEMPLATE_ID.test(draft.id))
+    errors.id = "Lowercase letters, numbers and _ only, starting with a letter.";
   if (!draft.name.trim()) errors.name = "Give it a name.";
-  else if (draft.name.trim().length > 120) errors.name = "Keep the name under 120 characters.";
+  else if (draft.name.trim().length > 120)
+    errors.name = "Keep the name under 120 characters.";
   if (!draft.description.trim()) errors.description = "Describe it for clients.";
-  else if (draft.description.trim().length > 4000) errors.description = "Keep it under 4,000 characters.";
+  else if (draft.description.trim().length > 4000)
+    errors.description = "Keep it under 4,000 characters.";
   if (!draft.group.trim()) errors.group = "Choose a group.";
-  else if (draft.group.trim().length > 80) errors.group = "Keep the group under 80 characters.";
+  else if (draft.group.trim().length > 80)
+    errors.group = "Keep the group under 80 characters.";
   const sub = ctx.subcategories.find((s) => s.code === draft.subcategoryCode);
-  if (!sub || sub.categoryCode !== draft.categoryCode) errors.subcategoryCode = "Choose a product type in this category.";
+  if (!sub || sub.categoryCode !== draft.categoryCode)
+    errors.subcategoryCode = "Choose a product type in this category.";
   if (!TEMPLATE_UNITS.includes(draft.unit)) errors.unit = "Choose how it is priced.";
   const options = draft.options;
   if (!options.length) errors.options = "Add at least one option.";
@@ -186,7 +221,8 @@ export function templateErrors(draft: TemplateDraft, ctx: ValidationContext): Re
       const key = o.key.trim();
       const label = o.label.trim();
       if (!key || key.length > 80 || !label || label.length > 100) {
-        errors.options = "Every option needs a key (80 characters or fewer) and a name (100 or fewer).";
+        errors.options =
+          "Every option needs a key (80 characters or fewer) and a name (100 or fewer).";
         break;
       }
       if (keys.has(key) || labels.has(label.toLowerCase())) {
@@ -198,15 +234,22 @@ export function templateErrors(draft: TemplateDraft, ctx: ValidationContext): Re
     }
   }
   const files = draft.fileTypes;
-  if (!files.length || files.length > 20) errors.fileTypes = "Choose 1 to 20 artwork formats.";
-  else if (files.some((c) => !ctx.formatCodes.has(c))) errors.fileTypes = "One format is no longer offered. Untick it.";
+  if (!files.length || files.length > 20)
+    errors.fileTypes = "Choose 1 to 20 artwork formats.";
+  else if (files.some((c) => !ctx.formatCodes.has(c)))
+    errors.fileTypes = "One format is no longer offered. Untick it.";
   const tips = splitList(draft.clientTips, /\n/);
-  if (!tips.length || tips.length > 20) errors.clientTips = "Write 1 to 20 tips, one per line.";
-  else if (tips.some((t) => t.length > 2000)) errors.clientTips = "Keep each tip under 2,000 characters.";
+  if (!tips.length || tips.length > 20)
+    errors.clientTips = "Write 1 to 20 tips, one per line.";
+  else if (tips.some((t) => t.length > 2000))
+    errors.clientTips = "Keep each tip under 2,000 characters.";
   const machines = splitList(draft.machinesNeeded, /[,\n]/);
-  if (!machines.length || machines.length > 20) errors.machinesNeeded = "Name 1 to 20 machines.";
-  if (!draft.stockPhotos.length || draft.stockPhotos.length > 5) errors.stockPhotos = "Choose 1 to 5 photos.";
-  else if (draft.stockPhotos.some((p) => !ctx.photoUrls.has(p.url))) errors.stockPhotos = "Choose photos from GRIDGO's set.";
+  if (!machines.length || machines.length > 20)
+    errors.machinesNeeded = "Name 1 to 20 machines.";
+  if (!draft.stockPhotos.length || draft.stockPhotos.length > 5)
+    errors.stockPhotos = "Choose 1 to 5 photos.";
+  else if (draft.stockPhotos.some((p) => !ctx.photoUrls.has(p.url)))
+    errors.stockPhotos = "Choose photos from GRIDGO's set.";
   const min = pesosToMinor(draft.priceMin);
   const max = pesosToMinor(draft.priceMax);
   if (!min || !max) errors.priceRange = "Enter both ends of the usual price, above ₱0.";
@@ -236,8 +279,14 @@ export function templateBody(draft: TemplateDraft): Record<string, unknown> {
     fileTypes: [...draft.fileTypes],
     clientTips: splitList(draft.clientTips, /\n/),
     machinesNeeded: splitList(draft.machinesNeeded, /[,\n]/),
-    stockPhotos: draft.stockPhotos.map((p) => ({ url: p.url, altText: p.altText.trim() || draft.name.trim() })),
-    priceRange: { minMinor: pesosToMinor(draft.priceMin) ?? 0, maxMinor: pesosToMinor(draft.priceMax) ?? 0 },
+    stockPhotos: draft.stockPhotos.map((p) => ({
+      url: p.url,
+      altText: p.altText.trim() || draft.name.trim(),
+    })),
+    priceRange: {
+      minMinor: pesosToMinor(draft.priceMin) ?? 0,
+      maxMinor: pesosToMinor(draft.priceMax) ?? 0,
+    },
   };
 }
 
@@ -246,11 +295,17 @@ export function templateBody(draft: TemplateDraft): Record<string, unknown> {
  * first catalogue does. Existing options keep their keys (shops' price tables
  * point at them); new combinations get the next free `variant_n` key.
  */
-export function combineOptionLists(lists: OptionListDraft[], existing: OptionDraft[]): OptionDraft[] {
+export function combineOptionLists(
+  lists: OptionListDraft[],
+  existing: OptionDraft[],
+): OptionDraft[] {
   const values = lists.map((l) => splitList(l.values, /,/)).filter((v) => v.length);
   if (!values.length) return existing;
   let labels: string[] = [""];
-  for (const list of values) labels = labels.flatMap((prefix) => list.map((v) => (prefix ? `${prefix} / ${v}` : v)));
+  for (const list of values)
+    labels = labels.flatMap((prefix) =>
+      list.map((v) => (prefix ? `${prefix} / ${v}` : v)),
+    );
   const byLabel = new Map(existing.map((o) => [o.label.trim().toLowerCase(), o]));
   const used = new Set(existing.map((o) => o.key));
   let next = 1;
@@ -264,7 +319,10 @@ export function combineOptionLists(lists: OptionListDraft[], existing: OptionDra
     used.add(key);
     return key;
   };
-  return labels.map((label) => byLabel.get(label.toLowerCase()) ?? { key: freshKey(), label, specBinding: null });
+  return labels.map(
+    (label) =>
+      byLabel.get(label.toLowerCase()) ?? { key: freshKey(), label, specBinding: null },
+  );
 }
 
 /** Options a save would drop that shops may have priced. */
@@ -274,11 +332,14 @@ export function removedOptionKeys(before: OptionDraft[], after: OptionDraft[]): 
 }
 
 /** Every governed stock photo already in use, the only ones the API accepts. */
-export function governedPhotos(templates: readonly ProductTemplate[]): { url: string; altText: string; src: string | null }[] {
+export function governedPhotos(
+  templates: readonly ProductTemplate[],
+): { url: string; altText: string; src: string | null }[] {
   const seen = new Map<string, { url: string; altText: string; src: string | null }>();
   for (const t of templates)
     for (const p of t.stockPhotos)
-      if (p.url && !seen.has(p.url)) seen.set(p.url, { url: p.url, altText: p.altText ?? t.name, src: p.src });
+      if (p.url && !seen.has(p.url))
+        seen.set(p.url, { url: p.url, altText: p.altText ?? t.name, src: p.src });
   return [...seen.values()].sort((a, b) => a.altText.localeCompare(b.altText));
 }
 
@@ -310,7 +371,9 @@ export function requestsForTemplate<R extends { status: string; categoryCode: st
   requests: readonly R[],
   template: Pick<ProductTemplate, "categoryCode">,
 ): R[] {
-  return requests.filter((r) => r.status === "pending" && r.categoryCode === template.categoryCode);
+  return requests.filter(
+    (r) => r.status === "pending" && r.categoryCode === template.categoryCode,
+  );
 }
 
 export function resolveRequestsBody(
@@ -327,12 +390,18 @@ export function resolveRequestsBody(
  * team revision carries the shop's own ones forward unchanged.
  */
 export function keepShopExtras(
-  listing: Pick<Listing, "minimumOrderQuantity" | "priceTiers" | "speedTiers" | "printerMaxWidthFeet">,
+  listing: Pick<
+    Listing,
+    "minimumOrderQuantity" | "priceTiers" | "speedTiers" | "printerMaxWidthFeet"
+  >,
   shopTips: string[] | null,
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     minimumOrderQuantity: listing.minimumOrderQuantity ?? null,
-    priceTiers: listing.priceTiers.map((t) => ({ minQuantity: t.minQuantity, unitPriceMinor: t.unitPriceMinor })),
+    priceTiers: listing.priceTiers.map((t) => ({
+      minQuantity: t.minQuantity,
+      unitPriceMinor: t.unitPriceMinor,
+    })),
     speedTiers: listing.speedTiers.map((t) => ({
       label: t.label,
       ...timeFields("turnaround", t.turnaround),
@@ -341,7 +410,8 @@ export function keepShopExtras(
     })),
   };
   if (shopTips?.length) body.clientTips = shopTips.join("\n");
-  if (listing.printerMaxWidthFeet != null) body.printerMaxWidthFeet = listing.printerMaxWidthFeet;
+  if (listing.printerMaxWidthFeet != null)
+    body.printerMaxWidthFeet = listing.printerMaxWidthFeet;
   return body;
 }
 
@@ -373,14 +443,20 @@ export function prepareErrorMessage(err: unknown): string | null {
 
 /* ------------------------------------------------------------ migration -- */
 
-export type MergeDraft = { keepId: string; sourceIds: string[]; labels: Record<string, string> };
+export type MergeDraft = {
+  keepId: string;
+  sourceIds: string[];
+  labels: Record<string, string>;
+};
 
 /** The choices body: only answered ambiguities and complete merge groups. */
 export function migrationChoices(
   templateMatches: Record<string, string>,
   merges: MergeDraft[],
 ): { templateMatches?: Record<string, string>; mergeGroups?: MergeDraft[] } {
-  const matches = Object.fromEntries(Object.entries(templateMatches).filter(([, id]) => id));
+  const matches = Object.fromEntries(
+    Object.entries(templateMatches).filter(([, id]) => id),
+  );
   const groups = merges.filter((m) => m.keepId && m.sourceIds.length);
   return {
     ...(Object.keys(matches).length ? { templateMatches: matches } : {}),
@@ -403,6 +479,9 @@ export function migrationErrorMessage(err: unknown): string | null {
 }
 
 /** Plain words for a ready-time code when the chip list is not loaded. */
-export function readyTimeName(chips: { code: string; label: string }[], code: string | null): string {
+export function readyTimeName(
+  chips: { code: string; label: string }[],
+  code: string | null,
+): string {
   return chips.find((c) => c.code === code)?.label ?? "Not set";
 }

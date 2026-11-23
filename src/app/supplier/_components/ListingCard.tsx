@@ -41,6 +41,7 @@ import {
 } from "@/lib/listings";
 import type { Taxonomy } from "@/lib/api/types";
 import { readyInLine } from "@/lib/production-time";
+import type { TemplateStanding } from "@/lib/product-templates";
 import { PRODUCTION_TIME_REVIEW_TITLE } from "@/lib/production-time-choice";
 
 type Props = {
@@ -62,6 +63,11 @@ type Props = {
   stockPhotoSrc?: string | null;
   /** Where Edit opens: a template product opens its price table. */
   editHref?: string;
+  /**
+   * A template product's standing in the words of gridgo-supplier#268 (Price
+   * check today, Prices to confirm, Needs a price…). Live keeps the board's own.
+   */
+  templateStanding?: TemplateStanding | null;
 };
 
 type ClientFormats = Awaited<ReturnType<typeof listAcceptedFileFormats>>;
@@ -77,6 +83,7 @@ export function ListingCard({
   onSaved,
   stockPhotoSrc = null,
   editHref,
+  templateStanding = null,
 }: Props) {
   const href = editHref ?? `/supplier/catalogue/${listing.id}`;
   const context = boardContextFor(listing, services);
@@ -148,7 +155,25 @@ export function ListingCard({
       ) : null}
     </>
   );
-  const status = preview && standing.kind === "live" ? null : <CardStatus standing={standing} />;
+  const status =
+    templateStanding && templateStanding.label !== "Live" ? (
+      <span className="flex flex-col gap-1">
+        <span className="flex">
+          <StatusChip
+            tone={templateStanding.tone}
+            label={templateStanding.label}
+            icon={templateStanding.icon}
+          />
+        </span>
+        {templateStanding.detail ? (
+          <p className="text-caption text-text-secondary m-0 line-clamp-2">
+            {templateStanding.detail}
+          </p>
+        ) : null}
+      </span>
+    ) : preview && standing.kind === "live" ? null : (
+      <CardStatus standing={standing} />
+    );
 
   /**
    * The editor's board switch: PATCH `active` only. That field does not open

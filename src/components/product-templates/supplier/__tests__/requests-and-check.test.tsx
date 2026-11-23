@@ -31,7 +31,11 @@ import AskTemplatePage from "@/app/supplier/catalogue/ask/page";
 import CheckProductsPage from "@/app/supplier/catalogue/check/page";
 import SetupHelpPage from "@/app/supplier/catalogue/setup/page";
 import { CheckProductsCard } from "@/components/product-templates/supplier/CheckProductsCard";
-import { useCheckProducts, useTemplateSummary } from "@/components/product-templates/supplier/useCheckProducts";
+import { templateStanding } from "@/lib/product-templates";
+import {
+  useCheckProducts,
+  useTemplateSummary,
+} from "@/components/product-templates/supplier/useCheckProducts";
 
 function CardHarness() {
   const { summary } = useTemplateSummary();
@@ -57,11 +61,19 @@ describe("Ask GRIDGO to add a product", () => {
     const user = userEvent.setup();
     render(<AskTemplatePage />);
     await user.click(screen.getByRole("button", { name: "Send request" }));
-    expect(screen.getByText("Name the product, the way a client would ask for it.")).toBeVisible();
+    expect(
+      screen.getByText("Name the product, the way a client would ask for it."),
+    ).toBeVisible();
     expect(mocks.createProductSetupRequest).not.toHaveBeenCalled();
 
-    await user.type(screen.getByRole("textbox", { name: "Product" }), "Acrylic keychains");
-    await user.type(screen.getByRole("textbox", { name: "About it" }), "5 cm, both sides");
+    await user.type(
+      screen.getByRole("textbox", { name: "Product" }),
+      "Acrylic keychains",
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: "About it" }),
+      "5 cm, both sides",
+    );
     await user.click(screen.getByRole("button", { name: "Send request" }));
     await waitFor(() =>
       expect(mocks.createProductSetupRequest).toHaveBeenCalledWith({
@@ -70,7 +82,9 @@ describe("Ask GRIDGO to add a product", () => {
         message: "5 cm, both sides",
       }),
     );
-    expect(await screen.findByTestId("request-sent")).toHaveTextContent("Acrylic keychains");
+    expect(await screen.findByTestId("request-sent")).toHaveTextContent(
+      "Acrylic keychains",
+    );
   });
 
   it("lists the shop's own requests with the GRIDGO team's answer", async () => {
@@ -112,7 +126,10 @@ describe("Let GRIDGO set it up", () => {
       new File(["b"], "note.m4a", { type: "audio/mp4" }),
     ]);
     await waitFor(() => expect(screen.getAllByText("Ready")).toHaveLength(2));
-    await user.type(screen.getByRole("textbox", { name: "Message" }), "Same day before 2 PM");
+    await user.type(
+      screen.getByRole("textbox", { name: "Message" }),
+      "Same day before 2 PM",
+    );
     await user.click(screen.getByRole("button", { name: "Send to GRIDGO" }));
     await waitFor(() =>
       expect(mocks.createProductSetupRequest).toHaveBeenCalledWith({
@@ -139,24 +156,39 @@ describe("Check your products", () => {
   it("counts products that need a price or a confirmation, and links to the list", async () => {
     mocks.listMyProductTemplates.mockResolvedValue(
       catalogue([{ ...FLYERS, addedItemIds: ["sci_1", "sci_2", "sci_3"] }], {
-        checkYourProducts: { supplierId: "u1", actions: [], manual: [], unpricedItemIds: ["sci_4"] },
+        checkYourProducts: {
+          supplierId: "u1",
+          actions: [],
+          manual: [],
+          unpricedItemIds: ["sci_4"],
+        },
       }),
     );
     mocks.getTemplateProduct.mockImplementation(async (id: string) =>
       id === "sci_1"
         ? templateProduct({ item: { id } })
         : id === "sci_4"
-          ? templateProduct({ item: { id, active: false }, template: { needsPrice: true } })
-          : templateProduct({ item: { id, active: false }, template: { shopConfirmed: false } }),
+          ? templateProduct({
+              item: { id, active: false },
+              template: { needsPrice: true },
+            })
+          : templateProduct({
+              item: { id, active: false },
+              template: { shopConfirmed: false },
+            }),
     );
     render(<CardHarness />);
     const card = await screen.findByTestId("check-products-card");
     expect(card).toHaveAttribute("href", "/supplier/catalogue/check");
-    expect(card).toHaveTextContent("1 needs a price, 2 with prices from GRIDGO to confirm.");
+    expect(card).toHaveTextContent(
+      "1 needs a price, 2 with prices from GRIDGO to confirm.",
+    );
   });
 
   it("draws nothing when nothing waits on the shop", async () => {
-    mocks.listMyProductTemplates.mockResolvedValue(catalogue([{ ...FLYERS, addedItemIds: ["sci_1"] }]));
+    mocks.listMyProductTemplates.mockResolvedValue(
+      catalogue([{ ...FLYERS, addedItemIds: ["sci_1"] }]),
+    );
     mocks.getTemplateProduct.mockResolvedValue(templateProduct());
     render(<CardHarness />);
     await waitFor(() => expect(mocks.getTemplateProduct).toHaveBeenCalled());
@@ -168,7 +200,10 @@ describe("Check your products", () => {
       catalogue([{ ...FLYERS, addedItemIds: ["sci_2"] }]),
     );
     mocks.getTemplateProduct.mockResolvedValue(
-      templateProduct({ item: { id: "sci_2", active: false }, template: { shopConfirmed: false } }),
+      templateProduct({
+        item: { id: "sci_2", active: false },
+        template: { shopConfirmed: false },
+      }),
     );
     render(<CheckProductsPage />);
     const link = await screen.findByRole("link", { name: /Flyers/ });
@@ -176,3 +211,35 @@ describe("Check your products", () => {
     expect(link).toHaveTextContent("Prices to confirm");
   });
 });
+
+describe("Board standing words (gridgo-supplier#268)", () => {
+  function FactsHarness() {
+    const { summary } = useTemplateSummary();
+    const { check } = useCheckProducts(summary);
+    if (!check) return null;
+    return (
+      <ul>
+        {[...check.factsByItem.entries()].map(([id, facts]) => (
+          <li key={id}>
+            {id}: {templateStanding({ onTheBoard: false, reviewStatus: "pending", template: facts }).label}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  it("keeps every template product's facts, owed or not, so the board can use the template words", async () => {
+    mocks.listMyProductTemplates.mockResolvedValue(
+      catalogue([{ ...FLYERS, addedItemIds: ["sci_1", "sci_2"] }]),
+    );
+    mocks.getTemplateProduct.mockImplementation(async (id: string) =>
+      id === "sci_1"
+        ? templateProduct({ item: { id } })
+        : templateProduct({ item: { id, active: false }, template: { shopConfirmed: false } }),
+    );
+    render(<FactsHarness />);
+    expect(await screen.findByText("sci_2: Prices to confirm")).toBeInTheDocument();
+    expect(screen.getByText("sci_1: Hidden")).toBeInTheDocument();
+  });
+});
+

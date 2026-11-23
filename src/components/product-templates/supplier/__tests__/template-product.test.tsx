@@ -37,7 +37,8 @@ vi.mock("@/lib/api/product-templates", async () => {
   };
 });
 vi.mock("@/lib/api/client", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
+  const actual =
+    await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
   return { ...actual, updateCatalogItem: mocks.updateCatalogItem };
 });
 
@@ -45,7 +46,9 @@ import TemplateProductPage from "@/app/supplier/catalogue/product/[id]/page";
 
 beforeEach(() => {
   mocks.getTemplateProduct.mockResolvedValue(templateProduct());
-  mocks.listMyProductTemplates.mockResolvedValue(catalogue([{ ...FLYERS, addedItemIds: ["sci_1"] }]));
+  mocks.listMyProductTemplates.mockResolvedValue(
+    catalogue([{ ...FLYERS, addedItemIds: ["sci_1"] }]),
+  );
   mocks.templateReadyPreview.mockResolvedValue({
     scheduling: { earliestReadyBy: "2026-11-25T06:00:00.000Z" },
   });
@@ -66,11 +69,15 @@ describe("one template product", () => {
     );
     const user = userEvent.setup();
     render(<TemplateProductPage />);
-    expect(await screen.findByRole("heading", { name: "Prices to confirm" })).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { name: "Prices to confirm" }),
+    ).toBeVisible();
     // Nothing to hide or show before the shop confirms.
     expect(screen.queryByRole("switch")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Confirm prices" }));
-    await waitFor(() => expect(mocks.confirmTemplateProduct).toHaveBeenCalledWith("sci_1", 4));
+    await waitFor(() =>
+      expect(mocks.confirmTemplateProduct).toHaveBeenCalledWith("sci_1", 4),
+    );
     expect(mocks.updateTemplateProduct).not.toHaveBeenCalled();
   });
 
@@ -80,7 +87,9 @@ describe("one template product", () => {
     );
     const user = userEvent.setup();
     render(<TemplateProductPage />);
-    const price = await screen.findByRole("textbox", { name: /Full price for A5 \/ Gloss/ });
+    const price = await screen.findByRole("textbox", {
+      name: /Full price for A5 \/ Gloss/,
+    });
     await user.clear(price);
     await user.type(price, "15");
     await user.click(screen.getByRole("button", { name: "Save and confirm" }));
@@ -100,7 +109,9 @@ describe("one template product", () => {
   it("hides a live product with its version, and shows no save until something changes", async () => {
     const user = userEvent.setup();
     render(<TemplateProductPage />);
-    const toggle = await screen.findByRole("switch", { name: /Live\. Turn off to hide it/ });
+    const toggle = await screen.findByRole("switch", {
+      name: /Live\. Turn off to hide it/,
+    });
     expect(screen.queryByRole("button", { name: /Save/ })).toBeNull();
     expect(screen.getByText(/A new price is for new orders only/)).toBeVisible();
     await user.click(toggle);
@@ -110,14 +121,20 @@ describe("one template product", () => {
   });
 
   it("explains a stale version in plain words", async () => {
-    mocks.updateTemplateProduct.mockRejectedValue(new ApiError(409, { error: "catalog_item_stale" }));
+    mocks.updateTemplateProduct.mockRejectedValue(
+      new ApiError(409, { error: "catalog_item_stale" }),
+    );
     const user = userEvent.setup();
     render(<TemplateProductPage />);
-    const price = await screen.findByRole("textbox", { name: /Full price for A5 \/ Gloss/ });
+    const price = await screen.findByRole("textbox", {
+      name: /Full price for A5 \/ Gloss/,
+    });
     await user.clear(price);
     await user.type(price, "13");
     await user.click(screen.getByRole("button", { name: "Save changes" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(/changed on another screen/);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      /changed on another screen/,
+    );
   });
 
   it("links photos and extras to the full builder", async () => {

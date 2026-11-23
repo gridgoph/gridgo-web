@@ -17,9 +17,13 @@ import {
 import { MoreOptions } from "@/components/product-templates/supplier/MoreOptions";
 import { PriceTable } from "@/components/product-templates/supplier/PriceTable";
 import { ReadyTimeChips } from "@/components/product-templates/supplier/ReadyTimeChips";
-import { TemplateTile, type TileState } from "@/components/product-templates/supplier/TemplateTile";
+import {
+  TemplateTile,
+  type TileState,
+} from "@/components/product-templates/supplier/TemplateTile";
 import { templateErrorMessage } from "@/components/product-templates/supplier/errors";
 import { Button } from "@/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { ErrorState } from "@/components/ui/ErrorState";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -112,7 +116,11 @@ export default function AddTemplateProductPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState<Saved[]>([]);
-  const [example, setExample] = useState<{ key: string | null; line: string | null; note: string | null }>({
+  const [example, setExample] = useState<{
+    key: string | null;
+    line: string | null;
+    note: string | null;
+  }>({
     key: null,
     line: null,
     note: null,
@@ -186,7 +194,9 @@ export default function AddTemplateProductPage() {
   function pressTile(template: ProductTemplate) {
     const state = tileState(template);
     if (state === "added") {
-      router.push(`/supplier/catalogue/product/${encodeURIComponent(template.addedItemIds[0]!)}`);
+      router.push(
+        `/supplier/catalogue/product/${encodeURIComponent(template.addedItemIds[0]!)}`,
+      );
       return;
     }
     if (state === "no_service") {
@@ -231,7 +241,9 @@ export default function AddTemplateProductPage() {
   const draft = drafts[index] ?? null;
   const patchDraft = useCallback(
     (next: Partial<Draft>) =>
-      setDrafts((current) => current.map((d, i) => (i === index ? { ...d, ...next } : d))),
+      setDrafts((current) =>
+        current.map((d, i) => (i === index ? { ...d, ...next } : d)),
+      ),
     [index],
   );
 
@@ -274,7 +286,9 @@ export default function AddTemplateProductPage() {
 
   // GRIDGO's own ready-by example, asked again whenever the chip changes.
   const previewKey =
-    draft && step === 2 && draft.readyTime ? `${draft.template.id}|${draft.readyTime}` : null;
+    draft && step === 2 && draft.readyTime
+      ? `${draft.template.id}|${draft.readyTime}`
+      : null;
   const previewBody = useMemo(() => {
     if (!previewKey || !draft) return null;
     const request = body(draft);
@@ -285,7 +299,9 @@ export default function AddTemplateProductPage() {
       supplierServiceId: request.supplierServiceId,
       readyTime: request.readyTime,
       prices: request.prices,
-      ...(request.printerMaxWidthFeet != null ? { printerMaxWidthFeet: request.printerMaxWidthFeet } : {}),
+      ...(request.printerMaxWidthFeet != null
+        ? { printerMaxWidthFeet: request.printerMaxWidthFeet }
+        : {}),
     };
     // The example follows the chip only, not every keystroke in More options.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -296,11 +312,20 @@ export default function AddTemplateProductPage() {
     let cancelled = false;
     previewTemplateProduct(previewBody).then(
       (raw) => {
-        if (!cancelled) setExample({ key: previewKey, line: readyByLine(normalizePreview(raw)), note: null });
+        if (!cancelled)
+          setExample({
+            key: previewKey,
+            line: readyByLine(normalizePreview(raw)),
+            note: null,
+          });
       },
       () => {
         if (!cancelled)
-          setExample({ key: previewKey, line: null, note: "Clients see the date worked out on your hours." });
+          setExample({
+            key: previewKey,
+            line: null,
+            note: "Clients see the date worked out on your hours.",
+          });
       },
     );
     return () => {
@@ -324,8 +349,13 @@ export default function AddTemplateProductPage() {
     setSaving(true);
     setSaveError(null);
     try {
-      const raw = (await createTemplateProduct(request)) as { item?: { id?: string } } | null;
-      setSaved((current) => [...current, { id: raw?.item?.id ?? "", name: draft.template.name }]);
+      const raw = (await createTemplateProduct(request)) as {
+        item?: { id?: string };
+      } | null;
+      setSaved((current) => [
+        ...current,
+        { id: raw?.item?.id ?? "", name: draft.template.name },
+      ]);
       setTried(false);
       setIndex(index + 1);
       setStep(1);
@@ -351,14 +381,17 @@ export default function AddTemplateProductPage() {
     );
   }
 
-  const focus = step === 0 ? (ticked[ticked.length - 1] ?? null) : (draft?.template ?? null);
+  const focus =
+    step === 0 ? (ticked[ticked.length - 1] ?? null) : (draft?.template ?? null);
   const clientSees = (compact: boolean) => (
     <ClientSees
       compact={compact}
       name={focus?.name ?? null}
       photoUrl={focus?.photoUrl ?? null}
       photoAlt={focus?.photoAlt}
-      priceLine={draft && step > 0 ? fromPriceLine(draft.rows, draft.template.unit) : null}
+      priceLine={
+        draft && step > 0 ? fromPriceLine(draft.rows, draft.template.unit) : null
+      }
       readyLine={draft && step > 0 ? readyChipLabel(chips, draft.readyTime) : null}
     />
   );
@@ -388,7 +421,9 @@ export default function AddTemplateProductPage() {
         footNote={tried && !ticked.length ? "Tick at least one product you make." : null}
         action={
           <FlowAction
-            label={ticked.length > 1 ? `Next: prices for ${ticked.length}` : "Next: prices"}
+            label={
+              ticked.length > 1 ? `Next: prices for ${ticked.length}` : "Next: prices"
+            }
             hint="Sunod"
             onClick={startPrices}
           />
@@ -400,7 +435,10 @@ export default function AddTemplateProductPage() {
           data-testid="setup-help-row"
         >
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="text-body text-text-primary" style={{ fontFamily: "var(--font-medium)" }}>
+            <span
+              className="text-body text-text-primary"
+              style={{ fontFamily: "var(--font-medium)" }}
+            >
               Let GRIDGO set it up
             </span>
             <span className="text-caption text-text-muted">
@@ -426,24 +464,23 @@ export default function AddTemplateProductPage() {
         </div>
 
         {groups.length ? (
-          <div role="radiogroup" aria-label="Product groups" className="flex flex-wrap gap-2">
-            {["", ...groups].map((code) => {
-              const on = group === code;
-              return (
-                <Button
-                  key={code || "all"}
-                  role="radio"
-                  aria-checked={on}
-                  size="sm"
-                  variant={on ? "default" : "outline"}
-                  className="rounded-pill"
-                  onClick={() => setGroup(code)}
-                >
-                  {code ? groupLabel(code) : "All"}
-                </Button>
-              );
-            })}
-          </div>
+          <ToggleGroup
+            value={[group || "all"]}
+            onValueChange={(values) => {
+              const next = values[0] as string | undefined;
+              if (next != null) setGroup(next === "all" ? "" : next);
+            }}
+            variant="outline"
+            spacing={0}
+            aria-label="Product groups"
+            className="flex flex-wrap gap-1"
+          >
+            {["all", ...groups].map((code) => (
+              <ToggleGroupItem key={code} value={code}>
+                {code === "all" ? "All" : groupLabel(code)}
+              </ToggleGroupItem>
+            ))}
+          </ToggleGroup>
         ) : null}
 
         {serviceAsk ? (
@@ -452,8 +489,8 @@ export default function AddTemplateProductPage() {
             className="rounded-card border-warning bg-surface flex flex-col gap-2 border p-3"
           >
             <p className="text-body text-text-primary m-0">
-              GRIDGO lists {serviceAsk.name} only under a service you have. Add the service, then
-              come back and tick it.
+              GRIDGO lists {serviceAsk.name} only under a service you have. Add the
+              service, then come back and tick it.
             </p>
             <div className="flex flex-wrap gap-2">
               <Button nativeButton={false} render={<Link href="/supplier/services" />}>
@@ -489,7 +526,9 @@ export default function AddTemplateProductPage() {
           </ul>
         ) : (
           <p className="text-body text-text-secondary m-0">
-            {q.trim() ? `Nothing called "${q.trim()}" yet.` : "Nothing in this group yet."}
+            {q.trim()
+              ? `Nothing called "${q.trim()}" yet.`
+              : "Nothing in this group yet."}
           </p>
         )}
 
@@ -511,15 +550,22 @@ export default function AddTemplateProductPage() {
           >
             {back}
             <StepTrack step={1} />
-            {queueLine ? <p className="text-caption text-text-secondary m-0">{queueLine}</p> : null}
+            {queueLine ? (
+              <p className="text-caption text-text-secondary m-0">{queueLine}</p>
+            ) : null}
           </FlowHeading>
         }
         clientSees={clientSees}
         footNote={tried ? (priceProblem ?? capProblem) : null}
-        action={<FlowAction label="Next: ready time" hint="Sunod" onClick={toReadyTime} />}
+        action={
+          <FlowAction label="Next: ready time" hint="Sunod" onClick={toReadyTime} />
+        }
       >
         {lastSaved ? (
-          <p className="rounded-card border border-outline bg-surface-variant text-body text-text-primary m-0 p-3" role="status">
+          <p
+            className="rounded-card border border-outline bg-surface-variant text-body text-text-primary m-0 p-3"
+            role="status"
+          >
             {lastSaved.name} is saved. The GRIDGO team checks its prices today.
           </p>
         ) : null}
@@ -536,7 +582,9 @@ export default function AddTemplateProductPage() {
               value={draft.printerFeet}
               onChange={(printerFeet) => patchDraft({ printerFeet })}
             />
-            {tried && capProblem ? <p className="text-caption text-error m-0">{capProblem}</p> : null}
+            {tried && capProblem ? (
+              <p className="text-caption text-error m-0">{capProblem}</p>
+            ) : null}
           </div>
         ) : null}
         <p className="text-caption text-text-muted m-0">
@@ -555,11 +603,15 @@ export default function AddTemplateProductPage() {
         >
           {back}
           <StepTrack step={2} />
-          {queueLine ? <p className="text-caption text-text-secondary m-0">{queueLine}</p> : null}
+          {queueLine ? (
+            <p className="text-caption text-text-secondary m-0">{queueLine}</p>
+          ) : null}
         </FlowHeading>
       }
       clientSees={clientSees}
-      footNote={tried ? (!draft.readyTime ? "Choose when it is ready." : moreProblem) : saveError}
+      footNote={
+        tried ? (!draft.readyTime ? "Choose when it is ready." : moreProblem) : saveError
+      }
       action={
         <FlowAction
           label="Save product"
@@ -584,7 +636,8 @@ export default function AddTemplateProductPage() {
         defaultTips={draft.template.clientTips}
       />
       <p className="text-caption text-text-muted m-0">
-        The GRIDGO team checks the prices today. It goes live once they do, and we tell you.
+        The GRIDGO team checks the prices today. It goes live once they do, and we tell
+        you.
       </p>
     </FlowLayout>
   );
@@ -603,8 +656,9 @@ function NotInTheList() {
           Not in the list?
         </h2>
         <p className="text-body text-text-secondary m-0 max-w-2xl">
-          Ask GRIDGO to add it: about one working day, and we tell you. Or make it yourself with
-          the full product builder; the GRIDGO team reviews it before it goes live.
+          Ask GRIDGO to add it: about one working day, and we tell you. Or make it
+          yourself with the full product builder; the GRIDGO team reviews it before it
+          goes live.
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -624,11 +678,13 @@ function SavedScreen({ saved }: { saved: Saved[] }) {
   return (
     <div className="flex max-w-2xl flex-col gap-4" data-testid="saved-screen">
       <h1 className="text-h2 text-text-primary m-0">
-        {saved.length === 1 ? `${saved[0]!.name} is saved` : `${saved.length} products saved`}
+        {saved.length === 1
+          ? `${saved[0]!.name} is saved`
+          : `${saved.length} products saved`}
       </h1>
       <p className="text-body text-text-secondary m-0">
-        Price check today. The GRIDGO team checks the prices, and each one goes live once they
-        do. We tell you when it is live.
+        Price check today. The GRIDGO team checks the prices, and each one goes live once
+        they do. We tell you when it is live.
       </p>
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {saved.map(({ id, name }) => (
@@ -636,17 +692,27 @@ function SavedScreen({ saved }: { saved: Saved[] }) {
             key={id || name}
             className="rounded-card border border-outline bg-surface flex flex-wrap items-center gap-3 p-3"
           >
-            <span className="text-body text-text-primary flex-1" style={{ fontFamily: "var(--font-medium)" }}>
+            <span
+              className="text-body text-text-primary flex-1"
+              style={{ fontFamily: "var(--font-medium)" }}
+            >
               {name}
             </span>
             {id ? (
               <>
-                <Button nativeButton={false} render={<Link href={`/supplier/catalogue/${encodeURIComponent(id)}`} />}>
+                <Button
+                  nativeButton={false}
+                  render={<Link href={`/supplier/catalogue/${encodeURIComponent(id)}`} />}
+                >
                   Add your photos
                 </Button>
                 <Button
                   nativeButton={false}
-                  render={<Link href={`/supplier/catalogue/product/${encodeURIComponent(id)}`} />}
+                  render={
+                    <Link
+                      href={`/supplier/catalogue/product/${encodeURIComponent(id)}`}
+                    />
+                  }
                 >
                   Open product
                 </Button>
@@ -656,8 +722,8 @@ function SavedScreen({ saved }: { saved: Saved[] }) {
         ))}
       </ul>
       <p className="text-caption text-text-muted m-0">
-        Your own photos get a &quot;Real photo&quot; badge. Extras like lamination are on the full
-        product page, and the GRIDGO team checks them.
+        Your own photos get a &quot;Real photo&quot; badge. Extras like lamination are on
+        the full product page, and the GRIDGO team checks them.
       </p>
       <Button
         variant="primary"

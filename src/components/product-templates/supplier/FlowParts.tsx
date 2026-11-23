@@ -109,7 +109,9 @@ export function ClientSees({
           className={compact ? "size-11" : "size-16"}
         />
         <div className="flex min-w-0 flex-1 flex-col">
-          {compact ? <span className="text-caption text-text-muted">Clients see</span> : null}
+          {compact ? (
+            <span className="text-caption text-text-muted">Clients see</span>
+          ) : null}
           <span
             className="text-body text-text-primary truncate"
             style={{ fontFamily: "var(--font-medium)" }}
@@ -185,7 +187,11 @@ export function FlowAction({
 export function FootNote({ text }: { text: string | null }) {
   if (!text) return null;
   return (
-    <p className="text-caption text-text-primary m-0" role="status" data-testid="flow-foot-note">
+    <p
+      className="text-caption text-text-primary m-0"
+      role="status"
+      data-testid="flow-foot-note"
+    >
       {text}
     </p>
   );
@@ -212,7 +218,10 @@ export function FlowLayout({
   const desktop = useSupplierDesktop();
   if (desktop) {
     return (
-      <div className="grid grid-cols-[minmax(0,1fr)_21rem] items-start gap-6" data-layout="desktop">
+      <div
+        className="grid grid-cols-[minmax(0,1fr)_21rem] items-start gap-6"
+        data-layout="desktop"
+      >
         <div className="flex min-w-0 flex-col gap-4">
           {header}
           {children}
@@ -252,7 +261,9 @@ export function FlowHeading({
     <div className="flex flex-col gap-2">
       {children}
       <h1 className="text-h2 text-text-primary m-0">{title}</h1>
-      {subtitle ? <p className="text-body text-text-secondary m-0 max-w-2xl">{subtitle}</p> : null}
+      {subtitle ? (
+        <p className="text-body text-text-secondary m-0 max-w-2xl">{subtitle}</p>
+      ) : null}
     </div>
   );
 }

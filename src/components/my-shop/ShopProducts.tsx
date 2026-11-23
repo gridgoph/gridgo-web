@@ -1,5 +1,6 @@
 "use client";
 
+import { templateStanding } from "@/lib/product-templates";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { Plus } from "lucide-react";
@@ -132,6 +133,9 @@ export function ShopProducts({ limit = MY_SHOP_PRODUCT_LIMIT }: { limit?: number
         <ul className="m-0 grid list-none grid-cols-2 gap-3 p-0 md:grid-cols-3 min-[1280px]:grid-cols-4">
           {shown.map(({ listing, standing }) => {
             const template = summary?.byItem.get(listing.id);
+            const facts = check?.factsByItem.get(listing.id);
+            const own = facts ? templateStanding({ ...listing, template: facts }) : null;
+            const mark = own && own.label !== "Live" ? own : standing;
             return (
               <li key={listing.id}>
                 <Link
@@ -159,7 +163,7 @@ export function ShopProducts({ limit = MY_SHOP_PRODUCT_LIMIT }: { limit?: number
                     </span>
                     <span className="text-caption text-text-secondary truncate">{priceLine(listing)}</span>
                     <span className="text-caption text-text-secondary">
-                      <StatusMark tone={standing.tone} icon={standing.icon} label={standing.label} />
+                      <StatusMark tone={mark.tone} icon={mark.icon} label={mark.label} />
                     </span>
                   </span>
                 </Link>

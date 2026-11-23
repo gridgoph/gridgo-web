@@ -19,7 +19,8 @@ export function CheckProductsCard({ check }: { check: CheckProducts | null }) {
   if (!check || !check.items.length) return null;
   const line = checkProductsLine({
     needPrice: check.items.filter((i) => i.facts.needsPrice).length,
-    toConfirm: check.items.filter((i) => !i.facts.needsPrice && !i.facts.shopConfirmed).length,
+    toConfirm: check.items.filter((i) => !i.facts.needsPrice && !i.facts.shopConfirmed)
+      .length,
   });
   return (
     <Link
@@ -35,7 +36,10 @@ export function CheckProductsCard({ check }: { check: CheckProducts | null }) {
         {check.items.length}
       </span>
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="text-body text-text-primary" style={{ fontFamily: "var(--font-medium)" }}>
+        <span
+          className="text-body text-text-primary"
+          style={{ fontFamily: "var(--font-medium)" }}
+        >
           Check your products
         </span>
         <span className="text-caption text-text-secondary">{line}</span>

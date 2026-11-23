@@ -37,7 +37,8 @@ vi.mock("@/lib/api/product-templates", async () => {
   };
 });
 vi.mock("@/lib/api/client", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
+  const actual =
+    await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
   return { ...actual, listMySupplierServices: mocks.listMySupplierServices };
 });
 
@@ -72,14 +73,24 @@ describe("add a product in three steps", () => {
     expect(screen.getByRole("progressbar", { name: /Step 2 of 3/ })).toBeInTheDocument();
 
     await user.click(screen.getByRole("checkbox", { name: "I make A5 / Gloss" }));
-    await user.type(screen.getByRole("textbox", { name: /Full price for A5 \/ Gloss/ }), "12.50");
+    await user.type(
+      screen.getByRole("textbox", { name: /Full price for A5 \/ Gloss/ }),
+      "12.50",
+    );
     await user.click(screen.getByRole("checkbox", { name: "I make A4 / Gloss" }));
-    await user.type(screen.getByRole("textbox", { name: /Full price for A4 \/ Gloss/ }), "20");
-    expect(within(screen.getByTestId("client-sees")).getByText(/From ₱12\.50 per piece/)).toBeVisible();
+    await user.type(
+      screen.getByRole("textbox", { name: /Full price for A4 \/ Gloss/ }),
+      "20",
+    );
+    expect(
+      within(screen.getByTestId("client-sees")).getByText(/From ₱12\.50 per piece/),
+    ).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Next: ready time" }));
     await user.click(await screen.findByRole("radio", { name: "Next working day" }));
-    expect(await screen.findByText("Ordered now, ready by Wed 25 Nov, 2:00 PM")).toBeVisible();
+    expect(
+      await screen.findByText("Ordered now, ready by Wed 25 Nov, 2:00 PM"),
+    ).toBeVisible();
     expect(mocks.previewTemplateProduct).toHaveBeenCalledWith({
       templateId: "tpl_flyers",
       supplierServiceId: "svc_marketing",
@@ -117,12 +128,20 @@ describe("add a product in three steps", () => {
     const user = userEvent.setup();
     await tickFlyersAndGoToPrices(user);
     await user.click(screen.getByRole("checkbox", { name: "I make A5 / Gloss" }));
-    await user.type(screen.getByRole("textbox", { name: /Full price for A5 \/ Gloss/ }), "0");
+    await user.type(
+      screen.getByRole("textbox", { name: /Full price for A5 \/ Gloss/ }),
+      "0",
+    );
     await user.click(screen.getByRole("checkbox", { name: "I make A4 / Gloss" }));
     await user.click(screen.getByRole("button", { name: "Next: ready time" }));
 
-    expect(screen.getByTestId("flow-foot-note")).toHaveTextContent("2 ticked options need a price above ₱0.");
-    expect(screen.getByTestId("price-row-standard")).toHaveAttribute("data-invalid", "true");
+    expect(screen.getByTestId("flow-foot-note")).toHaveTextContent(
+      "2 ticked options need a price above ₱0.",
+    );
+    expect(screen.getByTestId("price-row-standard")).toHaveAttribute(
+      "data-invalid",
+      "true",
+    );
     expect(screen.getAllByText("Enter a price above ₱0, or untick it.")).toHaveLength(2);
     expect(screen.getByRole("heading", { name: "Prices for Flyers" })).toBeVisible();
     expect(mocks.createTemplateProduct).not.toHaveBeenCalled();
@@ -132,32 +151,48 @@ describe("add a product in three steps", () => {
     const user = userEvent.setup();
     await tickFlyersAndGoToPrices(user);
     await user.click(screen.getByRole("checkbox", { name: "I make A5 / Gloss" }));
-    await user.type(screen.getByRole("textbox", { name: /Full price for A5 \/ Gloss/ }), "10");
+    await user.type(
+      screen.getByRole("textbox", { name: /Full price for A5 \/ Gloss/ }),
+      "10",
+    );
     await user.click(screen.getByRole("button", { name: "Next: ready time" }));
     await user.click(await screen.findByRole("radio", { name: "Same day" }));
     await user.click(screen.getByTestId("more-options-toggle"));
-    await user.type(screen.getByRole("textbox", { name: "Bulk discount starts at, how many" }), "100");
+    await user.type(
+      screen.getByRole("textbox", { name: "Bulk discount starts at, how many" }),
+      "100",
+    );
     await user.type(screen.getByRole("textbox", { name: "Bulk price each" }), "8");
     await user.type(screen.getByRole("textbox", { name: "Minimum order" }), "10");
     await user.type(screen.getByRole("textbox", { name: "Rush, hours" }), "2");
     await user.click(screen.getByRole("button", { name: "Save product" }));
-    expect(screen.getByTestId("flow-foot-note")).toHaveTextContent("Rush: enter the extra fee, above ₱0.");
+    expect(screen.getByTestId("flow-foot-note")).toHaveTextContent(
+      "Rush: enter the extra fee, above ₱0.",
+    );
     await user.type(screen.getByRole("textbox", { name: "Rush fee" }), "50");
-    await user.type(screen.getByRole("textbox", { name: "Tips for the client" }), "Send a PDF");
+    await user.type(
+      screen.getByRole("textbox", { name: "Tips for the client" }),
+      "Send a PDF",
+    );
     await user.click(screen.getByRole("button", { name: "Save product" }));
     await waitFor(() => expect(mocks.createTemplateProduct).toHaveBeenCalled());
     expect(mocks.createTemplateProduct.mock.calls[0]![0]).toMatchObject({
       readyTime: "same_day",
       minimumOrderQuantity: 10,
       priceTiers: [{ minQuantity: 100, unitPriceMinor: 800 }],
-      speedTiers: [{ label: "Rush", turnaroundMinutes: 120, priceMinor: null, surchargeMinor: 5000 }],
+      speedTiers: [
+        { label: "Rush", turnaroundMinutes: 120, priceMinor: null, surchargeMinor: 5000 },
+      ],
       clientTips: "Send a PDF",
     });
   });
 
   it("walks two ticked products one after the other", async () => {
     mocks.listMySupplierServices.mockResolvedValue({
-      services: [...SERVICES.services, { id: "svc_gifts", categoryCode: "corporate_gifts", state: "live" }],
+      services: [
+        ...SERVICES.services,
+        { id: "svc_gifts", categoryCode: "corporate_gifts", state: "live" },
+      ],
     });
     const user = userEvent.setup();
     render(<AddTemplateProductPage />);
@@ -182,7 +217,9 @@ describe("add a product in three steps", () => {
     );
     const user = userEvent.setup();
     render(<AddTemplateProductPage />);
-    await user.click(await screen.findByRole("button", { name: /^Mugs\. Add this service first/ }));
+    await user.click(
+      await screen.findByRole("button", { name: /^Mugs\. Add this service first/ }),
+    );
     expect(screen.getByRole("button", { name: "Open my services" })).toHaveAttribute(
       "href",
       "/supplier/services",
@@ -194,33 +231,41 @@ describe("add a product in three steps", () => {
   it("offers asking GRIDGO, a custom product and Let GRIDGO set it up when it is not in the list", async () => {
     render(<AddTemplateProductPage />);
     const box = await screen.findByTestId("not-in-list");
-    expect(within(box).getByRole("button", { name: "Ask GRIDGO to add it" })).toHaveAttribute(
+    expect(
+      within(box).getByRole("button", { name: "Ask GRIDGO to add it" }),
+    ).toHaveAttribute("href", "/supplier/catalogue/ask");
+    expect(
+      within(box).getByRole("button", { name: "Make a custom product" }),
+    ).toHaveAttribute("href", "/supplier/catalogue/new");
+    expect(screen.getByTestId("setup-help-row")).toHaveAttribute(
       "href",
-      "/supplier/catalogue/ask",
+      "/supplier/catalogue/setup",
     );
-    expect(within(box).getByRole("button", { name: "Make a custom product" })).toHaveAttribute(
-      "href",
-      "/supplier/catalogue/new",
-    );
-    expect(screen.getByTestId("setup-help-row")).toHaveAttribute("href", "/supplier/catalogue/setup");
   });
 
   it("filters by search and group", async () => {
     const user = userEvent.setup();
     render(<AddTemplateProductPage />);
     await screen.findByRole("checkbox", { name: /^Flyers/ });
-    await user.click(screen.getByRole("radio", { name: "Gifts" }));
+    await user.click(screen.getByRole("button", { name: "Gifts" }));
     expect(screen.queryByRole("checkbox", { name: /^Flyers/ })).toBeNull();
-    await user.click(screen.getByRole("radio", { name: "All" }));
-    await user.type(screen.getByRole("textbox", { name: "Search GRIDGO products" }), "A4");
+    await user.click(screen.getByRole("button", { name: "All" }));
+    await user.type(
+      screen.getByRole("textbox", { name: "Search GRIDGO products" }),
+      "A4",
+    );
     expect(screen.getByRole("checkbox", { name: /^Flyers/ })).toBeVisible();
     expect(screen.queryByRole("button", { name: /^Mugs/ })).toBeNull();
   });
 
   it("hands over to the custom builder on an API without templates", async () => {
-    mocks.listMyProductTemplates.mockRejectedValue(new ApiError(404, { error: "not_found" }));
+    mocks.listMyProductTemplates.mockRejectedValue(
+      new ApiError(404, { error: "not_found" }),
+    );
     render(<AddTemplateProductPage />);
-    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith("/supplier/catalogue/new"));
+    await waitFor(() =>
+      expect(mocks.replace).toHaveBeenCalledWith("/supplier/catalogue/new"),
+    );
   });
 
   it("says what GRIDGO refused in plain words", async () => {
@@ -235,7 +280,9 @@ describe("add a product in three steps", () => {
     await user.click(await screen.findByRole("radio", { name: "Same day" }));
     await user.click(screen.getByRole("button", { name: "Save product" }));
     expect(
-      await screen.findByText("You already have this product. Open it from Products to change its prices."),
+      await screen.findByText(
+        "You already have this product. Open it from Products to change its prices.",
+      ),
     ).toBeVisible();
   });
 });

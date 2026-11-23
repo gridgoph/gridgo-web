@@ -16,6 +16,7 @@ import { layoutsLine, sameLayouts } from "@/lib/print-layout";
 import type { StatusIconName, StatusTone } from "@/lib/order-state";
 import {
   priceRowsFromItem,
+  stockPhotoSrc,
   templateFactsOf,
   type PriceFlag,
   type TemplateFacts,
@@ -29,6 +30,8 @@ export type ReviewEntry = {
   template?: TemplateFacts | null;
   /** A template product's full prices, rebuilt from the item. */
   prices?: { optionKey: string; priceMinor: number }[];
+  /** GRIDGO's stock photo on a template product with no photo of its own. */
+  stockPhoto?: string | null;
 };
 
 export type ReviewPage = { entries: ReviewEntry[]; nextCursor: string | null };
@@ -51,7 +54,11 @@ export function normalizeReviewPage(body: unknown): ReviewPage {
         ? item.reviewBlockers.filter((code): code is string => typeof code === "string")
         : [];
     const template = templateFactsOf(item);
-    return [template ? { listing, blockers, template, prices: priceRowsFromItem(item) } : { listing, blockers }];
+    return [
+      template
+        ? { listing, blockers, template, prices: priceRowsFromItem(item), stockPhoto: stockPhotoSrc(item) }
+        : { listing, blockers },
+    ];
   });
   return { entries, nextCursor: text(raw.nextCursor) };
 }

@@ -38,7 +38,14 @@ class FakePointerEvent extends MouseEvent {
 vi.stubGlobal("PointerEvent", FakePointerEvent);
 
 vi.mock("next/link", () => ({
-  default: ({ href, children, ...props }: { href: string; children: React.ReactNode }) => (
+  default: ({
+    href,
+    children,
+    ...props
+  }: {
+    href: string;
+    children: React.ReactNode;
+  }) => (
     <a href={href} {...props}>
       {children}
     </a>
@@ -52,12 +59,15 @@ vi.mock("next/navigation", () => ({
 }));
 
 vi.mock("@/lib/api/client", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
+  const actual =
+    await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
   return { ...actual, ...api };
 });
 
 vi.mock("@/lib/api/product-templates", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api/product-templates")>("@/lib/api/product-templates");
+  const actual = await vi.importActual<typeof import("@/lib/api/product-templates")>(
+    "@/lib/api/product-templates",
+  );
   return { ...actual, ...templatesApi };
 });
 
@@ -65,7 +75,11 @@ import { MigrationSection } from "@/components/product-templates/team/MigrationS
 import { PrepareSheet } from "@/components/product-templates/team/PrepareSheet";
 import { RequestsTab } from "@/components/product-templates/team/RequestsTab";
 import { TemplateEditor } from "@/components/product-templates/team/TemplateEditor";
-import { normalizeTemplate, type ProductTemplate, type SetupRequest } from "@/lib/product-templates";
+import {
+  normalizeTemplate,
+  type ProductTemplate,
+  type SetupRequest,
+} from "@/lib/product-templates";
 
 const rawTemplate = {
   id: "tpl_flyers",
@@ -110,15 +124,30 @@ function setupRequest(overrides: Partial<SetupRequest> = {}): SetupRequest {
 }
 
 beforeEach(() => {
-  api.listStaffCatalogItems.mockResolvedValue({ items: [], shops: [{ supplierId: "usr_shop_a", shopName: "Shop A" }] });
+  api.listStaffCatalogItems.mockResolvedValue({
+    items: [],
+    shops: [{ supplierId: "usr_shop_a", shopName: "Shop A" }],
+  });
   api.listUsers.mockResolvedValue([]);
   api.getTaxonomy.mockResolvedValue({
-    categories: [{ id: "c", code: "paper", name: "Paper prints", active: true, productFamilyIds: [] }],
-    subcategories: [{ id: "s", code: "flyers", categoryCode: "paper", name: "Flyers", active: true }],
+    categories: [
+      {
+        id: "c",
+        code: "paper",
+        name: "Paper prints",
+        active: true,
+        productFamilyIds: [],
+      },
+    ],
+    subcategories: [
+      { id: "s", code: "flyers", categoryCode: "paper", name: "Flyers", active: true },
+    ],
     materials: [],
     finishes: [],
   });
-  api.listAcceptedFileFormats.mockResolvedValue([{ code: "pdf", displayName: "PDF", inputKind: "file" }]);
+  api.listAcceptedFileFormats.mockResolvedValue([
+    { code: "pdf", displayName: "PDF", inputKind: "file" },
+  ]);
   api.listProductTypeRequests.mockResolvedValue({
     requests: [
       {
@@ -142,8 +171,13 @@ beforeEach(() => {
       },
     ],
   });
-  templatesApi.listStaffProductTemplates.mockResolvedValue({ templates: [rawTemplate], readyTimes: [] });
-  templatesApi.saveProductTemplate.mockResolvedValue({ template: { ...rawTemplate, version: 4 } });
+  templatesApi.listStaffProductTemplates.mockResolvedValue({
+    templates: [rawTemplate],
+    readyTimes: [],
+  });
+  templatesApi.saveProductTemplate.mockResolvedValue({
+    template: { ...rawTemplate, version: 4 },
+  });
   templatesApi.resolveRequestsWithTemplate.mockResolvedValue({ requests: [] });
   templatesApi.decideProductSetupRequest.mockResolvedValue({ request: {} });
   templatesApi.prepareShopTemplateProduct.mockResolvedValue({ item: {} });
@@ -161,7 +195,10 @@ describe("Requests tab", () => {
     render(
       <RequestsTab
         tree="ops"
-        requests={[setupRequest(), setupRequest({ id: "psr_old", status: "completed", requestedName: "Old ask" })]}
+        requests={[
+          setupRequest(),
+          setupRequest({ id: "psr_old", status: "completed", requestedName: "Old ask" }),
+        ]}
         shops={[{ supplierId: "usr_shop_a", name: "Shop A" }]}
         templates={[template]}
         onDecided={onDecided}
@@ -171,8 +208,12 @@ describe("Requests tab", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("We print flyers.")).toBeVisible();
     const reason = within(dialog).getByRole("textbox", { name: "Shop A reads" });
-    expect(reason).toHaveValue("Flyers is now in the list. Open Products, Add a product, and tick it.");
-    await user.click(within(dialog).getByRole("button", { name: "Mark done and tell the shop" }));
+    expect(reason).toHaveValue(
+      "Flyers is now in the list. Open Products, Add a product, and tick it.",
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "Mark done and tell the shop" }),
+    );
     await waitFor(() =>
       expect(templatesApi.decideProductSetupRequest).toHaveBeenCalledWith("psr_1", 5, {
         status: "completed",
@@ -188,7 +229,13 @@ describe("Requests tab", () => {
     render(
       <RequestsTab
         tree="admin"
-        requests={[setupRequest({ kind: "setup", requestedName: null, message: "Our price list." })]}
+        requests={[
+          setupRequest({
+            kind: "setup",
+            requestedName: null,
+            message: "Our price list.",
+          }),
+        ]}
         shops={[{ supplierId: "usr_shop_a", name: "Shop A" }]}
         templates={[template]}
         onDecided={vi.fn()}
@@ -196,12 +243,13 @@ describe("Requests tab", () => {
     );
     await user.click(screen.getAllByRole("button", { name: /Set up products/ })[0]!);
     const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByRole("button", { name: "Prepare products for this shop" })).toHaveAttribute(
-      "href",
-      "/admin/product-setup/shops/usr_shop_a?request=psr_1",
-    );
+    expect(
+      within(dialog).getByRole("button", { name: "Prepare products for this shop" }),
+    ).toHaveAttribute("href", "/admin/product-setup/shops/usr_shop_a?request=psr_1");
     await user.click(within(dialog).getByRole("button", { name: "Ask for more" }));
-    await user.click(within(dialog).getByRole("button", { name: "Ask the shop for more" }));
+    await user.click(
+      within(dialog).getByRole("button", { name: "Ask the shop for more" }),
+    );
     await waitFor(() =>
       expect(templatesApi.decideProductSetupRequest).toHaveBeenCalledWith("psr_1", 5, {
         status: "needs_revision",
@@ -222,7 +270,9 @@ describe("Template editor", () => {
     const confirm = await screen.findByRole("alertdialog");
     expect(confirm).toHaveTextContent("Save Flyers and leaflets?");
     await user.click(within(confirm).getByRole("button", { name: "Save template" }));
-    await waitFor(() => expect(templatesApi.saveProductTemplate).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(templatesApi.saveProductTemplate).toHaveBeenCalledTimes(1),
+    );
     const [id, body, version] = templatesApi.saveProductTemplate.mock.calls[0]!;
     expect(id).toBe("tpl_flyers");
     expect(version).toBe(3);
@@ -252,17 +302,24 @@ describe("Template editor", () => {
   it("closes waiting product-type requests in its category with their versions", async () => {
     const user = userEvent.setup();
     render(<TemplateEditor tree="ops" templateId="tpl_flyers" />);
-    const section = await screen.findByRole("region", { name: /Waiting product-type requests/ });
+    const section = await screen.findByRole("region", {
+      name: /Waiting product-type requests/,
+    });
     expect(within(section).queryByText("Shirts")).not.toBeInTheDocument();
     await user.click(within(section).getByRole("checkbox"));
-    await user.click(within(section).getByRole("button", { name: /Close 1 with Flyers/ }));
+    await user.click(
+      within(section).getByRole("button", { name: /Close 1 with Flyers/ }),
+    );
     const confirm = await screen.findByRole("alertdialog");
     expect(confirm).toHaveTextContent("A3 flyers");
-    await user.click(within(confirm).getByRole("button", { name: "Close and tell the shops" }));
+    await user.click(
+      within(confirm).getByRole("button", { name: "Close and tell the shops" }),
+    );
     await waitFor(() =>
-      expect(templatesApi.resolveRequestsWithTemplate).toHaveBeenCalledWith("tpl_flyers", [
-        { id: "ptr_a3", expectedVersion: 4 },
-      ]),
+      expect(templatesApi.resolveRequestsWithTemplate).toHaveBeenCalledWith(
+        "tpl_flyers",
+        [{ id: "ptr_a3", expectedVersion: 4 }],
+      ),
     );
   });
 });
@@ -303,7 +360,9 @@ describe("Prepare a product", () => {
         prices: [{ optionKey: "standard", priceMinor: 1200 }],
       }),
     );
-    expect(onDone).toHaveBeenCalledWith(expect.stringContaining("stays hidden until Shop A confirms"));
+    expect(onDone).toHaveBeenCalledWith(
+      expect.stringContaining("stays hidden until Shop A confirms"),
+    );
   });
 });
 
@@ -318,7 +377,14 @@ describe("Match existing products", () => {
     const user = userEvent.setup();
     const plan = {
       dryRun: true,
-      actions: [{ action: "attach_template", itemId: "sci_a", expectedVersion: 2, templateId: "tpl_flyers" }],
+      actions: [
+        {
+          action: "attach_template",
+          itemId: "sci_a",
+          expectedVersion: 2,
+          templateId: "tpl_flyers",
+        },
+      ],
       manual: [
         { itemId: "sci_b", reason: "open_orders" },
         { itemId: "sci_c", reason: "ambiguous_template", templateIds: ["tpl_flyers"] },
@@ -328,12 +394,20 @@ describe("Match existing products", () => {
     templatesApi.applyShopMigration.mockResolvedValue({ ...plan, dryRun: false });
     const onApplied = vi.fn();
     render(
-      <MigrationSection supplierId="usr_shop_a" shopName="Shop A" products={products} templates={[template]} onApplied={onApplied} />,
+      <MigrationSection
+        supplierId="usr_shop_a"
+        shopName="Shop A"
+        products={products}
+        templates={[template]}
+        onApplied={onApplied}
+      />,
     );
     expect(screen.queryByRole("button", { name: /^Apply/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Preview changes" }));
     expect(templatesApi.previewShopMigration).toHaveBeenCalledWith("usr_shop_a", {});
-    expect(await screen.findByRole("heading", { name: "Skipped: open orders (1)" })).toBeVisible();
+    expect(
+      await screen.findByRole("heading", { name: "Skipped: open orders (1)" }),
+    ).toBeVisible();
     expect(screen.getByRole("heading", { name: "Needs a person (1)" })).toBeVisible();
 
     await user.click(screen.getByRole("button", { name: "Apply 1 change" }));
@@ -344,26 +418,47 @@ describe("Match existing products", () => {
     expect(confirm).toHaveTextContent("Not changed, open orders: Flyer rush.");
     await user.click(within(confirm).getByRole("button", { name: "Apply changes" }));
     await waitFor(() =>
-      expect(templatesApi.applyShopMigration).toHaveBeenCalledWith("usr_shop_a", {}, { sci_a: 2 }),
+      expect(templatesApi.applyShopMigration).toHaveBeenCalledWith(
+        "usr_shop_a",
+        {},
+        { sci_a: 2 },
+      ),
     );
-    const versions = templatesApi.applyShopMigration.mock.calls[0]![2] as Record<string, number>;
+    const versions = templatesApi.applyShopMigration.mock.calls[0]![2] as Record<
+      string,
+      number
+    >;
     expect(Object.keys(versions)).not.toContain("sci_b");
-    expect(onApplied).toHaveBeenCalledWith(expect.stringContaining("Applied 1 change to Shop A"));
+    expect(onApplied).toHaveBeenCalledWith(
+      expect.stringContaining("Applied 1 change to Shop A"),
+    );
   });
 
   it("asks for a fresh preview after a template is chosen for an ambiguous product", async () => {
     const user = userEvent.setup();
     templatesApi.previewShopMigration.mockResolvedValue({
       actions: [],
-      manual: [{ itemId: "sci_c", reason: "ambiguous_template", templateIds: ["tpl_flyers"] }],
+      manual: [
+        { itemId: "sci_c", reason: "ambiguous_template", templateIds: ["tpl_flyers"] },
+      ],
     });
     render(
-      <MigrationSection supplierId="usr_shop_a" shopName="Shop A" products={products} templates={[template]} onApplied={vi.fn()} />,
+      <MigrationSection
+        supplierId="usr_shop_a"
+        shopName="Shop A"
+        products={products}
+        templates={[template]}
+        onApplied={vi.fn()}
+      />,
     );
     await user.click(screen.getByRole("button", { name: "Preview changes" }));
-    await user.click(await screen.findByRole("combobox", { name: "Template for Mystery print" }));
+    await user.click(
+      await screen.findByRole("combobox", { name: "Template for Mystery print" }),
+    );
     await user.click(await screen.findByRole("option", { name: "Flyers" }));
-    expect(await screen.findByText("Your choices changed. Preview again to apply.")).toBeVisible();
+    expect(
+      await screen.findByText("Your choices changed. Preview again to apply."),
+    ).toBeVisible();
     expect(screen.queryByRole("button", { name: /^Apply/ })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Preview again" }));
     expect(templatesApi.previewShopMigration).toHaveBeenLastCalledWith("usr_shop_a", {

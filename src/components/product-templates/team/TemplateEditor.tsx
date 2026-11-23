@@ -19,7 +19,15 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorState } from "@/components/ui/ErrorState";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldLegend,
+  FieldSet,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { LoadingBlock } from "@/components/ui/LoadingBlock";
 import {
@@ -33,7 +41,11 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
-import { getTaxonomy, listAcceptedFileFormats, listProductTypeRequests } from "@/lib/api/client";
+import {
+  getTaxonomy,
+  listAcceptedFileFormats,
+  listProductTypeRequests,
+} from "@/lib/api/client";
 import {
   isTemplatesAbsent,
   listStaffProductTemplates,
@@ -42,7 +54,10 @@ import {
 } from "@/lib/api/product-templates";
 import type { Taxonomy } from "@/lib/api/types";
 import { formatDateTime } from "@/lib/format";
-import { normalizeProductTypeRequests, type ProductTypeRequest } from "@/lib/listing-review";
+import {
+  normalizeProductTypeRequests,
+  type ProductTypeRequest,
+} from "@/lib/listing-review";
 import {
   TEMPLATE_UNITS,
   groupLabel,
@@ -53,7 +68,14 @@ import {
   type TemplateUnit,
 } from "@/lib/product-templates";
 
-import { deskHref, readShops, shopNameOf, templateHref, type ShopRef, type Tree } from "./team-data";
+import {
+  deskHref,
+  readShops,
+  shopNameOf,
+  templateHref,
+  type ShopRef,
+  type Tree,
+} from "./team-data";
 import {
   combineOptionLists,
   draftFromTemplate,
@@ -147,7 +169,10 @@ export function TemplateEditor({ tree, templateId }: { tree: Tree; templateId: s
         title="No template with this ID"
         body="It may have been renamed. Open the list to find it."
         action={
-          <Button nativeButton={false} render={<Link href={deskHref(tree, "templates")} />}>
+          <Button
+            nativeButton={false}
+            render={<Link href={deskHref(tree, "templates")} />}
+          >
             All templates
           </Button>
         }
@@ -168,7 +193,13 @@ export function TemplateEditor({ tree, templateId }: { tree: Tree; templateId: s
         }}
         onStale={() => void load()}
       />
-      {original ? <WaitingRequests template={original} requests={loaded.typeRequests} onResolved={() => void load()} /> : null}
+      {original ? (
+        <WaitingRequests
+          template={original}
+          requests={loaded.typeRequests}
+          onResolved={() => void load()}
+        />
+      ) : null}
     </div>
   );
 }
@@ -223,7 +254,11 @@ function TemplateForm({
     setBusy(true);
     setError(null);
     try {
-      const body = (await saveProductTemplate(draft.id, templateBody(draft), draft.isNew ? null : draft.version)) as {
+      const body = (await saveProductTemplate(
+        draft.id,
+        templateBody(draft),
+        draft.isNew ? null : draft.version,
+      )) as {
         template?: unknown;
       };
       const saved = normalizeTemplate({ ...(body.template as object), id: draft.id });
@@ -232,14 +267,25 @@ function TemplateForm({
       if (saved) onSaved(saved);
     } catch (err) {
       setConfirming(false);
-      setError(templateErrorMessage(err) ?? opsErrorMessage(err, "Could not save the template. Try again."));
-      if (err && typeof err === "object" && "code" in err && err.code === "product_template_stale") onStale();
+      setError(
+        templateErrorMessage(err) ??
+          opsErrorMessage(err, "Could not save the template. Try again."),
+      );
+      if (
+        err &&
+        typeof err === "object" &&
+        "code" in err &&
+        err.code === "product_template_stale"
+      )
+        onStale();
     } finally {
       setBusy(false);
     }
   }
 
-  const subsInCategory = subcategories.filter((s) => s.categoryCode === draft.categoryCode);
+  const subsInCategory = subcategories.filter(
+    (s) => s.categoryCode === draft.categoryCode,
+  );
 
   return (
     <form
@@ -253,13 +299,18 @@ function TemplateForm({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-h3 text-text-primary m-0">{draft.isNew ? "New template" : draft.name || "Template"}</h2>
+          <h2 className="text-h3 text-text-primary m-0">
+            {draft.isNew ? "New template" : draft.name || "Template"}
+          </h2>
           <p className="text-body text-text-secondary m-0 mt-1 max-w-2xl">
-            Shops add it by pricing the options they make. Changes reach shops that add it from now on; products
-            already added keep their own prices and facts.
+            Shops add it by pricing the options they make. Changes reach shops that add it
+            from now on; products already added keep their own prices and facts.
           </p>
         </div>
-        <Link href={deskHref(tree, "templates")} className="text-body text-text-secondary underline underline-offset-4">
+        <Link
+          href={deskHref(tree, "templates")}
+          className="text-body text-text-secondary underline underline-offset-4"
+        >
           All templates
         </Link>
       </div>
@@ -275,7 +326,9 @@ function TemplateForm({
             onChange={(e) => set("id", e.target.value.trim())}
           />
           <FieldDescription>
-            {draft.isNew ? "Fixed once saved. For example tpl_a3_posters." : "Fixed: shops' products point at it."}
+            {draft.isNew
+              ? "Fixed once saved. For example tpl_a3_posters."
+              : "Fixed: shops' products point at it."}
           </FieldDescription>
           {show("id") ? <FieldError>{show("id")}</FieldError> : null}
         </Field>
@@ -314,7 +367,10 @@ function TemplateForm({
         </Field>
         <Field>
           <FieldLabel htmlFor={`${id}-unit`}>Priced per</FieldLabel>
-          <Select value={draft.unit} onValueChange={(value) => set("unit", String(value) as TemplateUnit)}>
+          <Select
+            value={draft.unit}
+            onValueChange={(value) => set("unit", String(value) as TemplateUnit)}
+          >
             <SelectTrigger id={`${id}-unit`} className="min-h-11 w-full">
               <SelectValue>{(value) => unitName(value as TemplateUnit)}</SelectValue>
             </SelectTrigger>
@@ -334,12 +390,18 @@ function TemplateForm({
           <Select
             value={draft.categoryCode}
             onValueChange={(value) =>
-              setDraft((c) => ({ ...c, categoryCode: String(value ?? ""), subcategoryCode: "" }))
+              setDraft((c) => ({
+                ...c,
+                categoryCode: String(value ?? ""),
+                subcategoryCode: "",
+              }))
             }
           >
             <SelectTrigger id={`${id}-cat`} className="min-h-11 w-full">
               <SelectValue>
-                {(value) => categories.find((c) => c.code === value)?.name ?? "Choose a category"}
+                {(value) =>
+                  categories.find((c) => c.code === value)?.name ?? "Choose a category"
+                }
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -352,14 +414,26 @@ function TemplateForm({
               </SelectGroup>
             </SelectContent>
           </Select>
-          <FieldDescription>Only shops with this service line can add it.</FieldDescription>
+          <FieldDescription>
+            Only shops with this service line can add it.
+          </FieldDescription>
         </Field>
         <Field data-invalid={show("subcategoryCode") ? true : undefined}>
           <FieldLabel htmlFor={`${id}-sub`}>Product type</FieldLabel>
-          <Select value={draft.subcategoryCode} onValueChange={(value) => set("subcategoryCode", String(value ?? ""))}>
-            <SelectTrigger id={`${id}-sub`} className="min-h-11 w-full" aria-invalid={show("subcategoryCode") ? true : undefined}>
+          <Select
+            value={draft.subcategoryCode}
+            onValueChange={(value) => set("subcategoryCode", String(value ?? ""))}
+          >
+            <SelectTrigger
+              id={`${id}-sub`}
+              className="min-h-11 w-full"
+              aria-invalid={show("subcategoryCode") ? true : undefined}
+            >
               <SelectValue>
-                {(value) => subsInCategory.find((s) => s.code === value)?.name ?? "Choose a product type"}
+                {(value) =>
+                  subsInCategory.find((s) => s.code === value)?.name ??
+                  "Choose a product type"
+                }
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
@@ -372,17 +446,29 @@ function TemplateForm({
               </SelectGroup>
             </SelectContent>
           </Select>
-          {show("subcategoryCode") ? <FieldError>{show("subcategoryCode")}</FieldError> : null}
+          {show("subcategoryCode") ? (
+            <FieldError>{show("subcategoryCode")}</FieldError>
+          ) : null}
         </Field>
         <Field orientation="horizontal">
-          <Switch id={`${id}-active`} checked={draft.active} onCheckedChange={(v) => set("active", Boolean(v))} />
+          <Switch
+            id={`${id}-active`}
+            checked={draft.active}
+            onCheckedChange={(v) => set("active", Boolean(v))}
+          />
           <FieldLabel htmlFor={`${id}-active`}>
             {draft.active ? "Offered to shops" : "Retired: shops cannot add it"}
           </FieldLabel>
         </Field>
         <Field orientation="horizontal">
-          <Switch id={`${id}-express`} checked={draft.express} onCheckedChange={(v) => set("express", Boolean(v))} />
-          <FieldLabel htmlFor={`${id}-express`}>{draft.express ? "Express product" : "Not Express"}</FieldLabel>
+          <Switch
+            id={`${id}-express`}
+            checked={draft.express}
+            onCheckedChange={(v) => set("express", Boolean(v))}
+          />
+          <FieldLabel htmlFor={`${id}-express`}>
+            {draft.express ? "Express product" : "Not Express"}
+          </FieldLabel>
         </Field>
       </FieldGroup>
 
@@ -408,7 +494,9 @@ function TemplateForm({
             aria-invalid={show("clientTips") ? true : undefined}
             onChange={(e) => set("clientTips", e.target.value)}
           />
-          <FieldDescription>One per line. A shop can write its own instead.</FieldDescription>
+          <FieldDescription>
+            One per line. A shop can write its own instead.
+          </FieldDescription>
           {show("clientTips") ? <FieldError>{show("clientTips")}</FieldError> : null}
         </Field>
         <Field data-invalid={show("machinesNeeded") ? true : undefined}>
@@ -420,9 +508,12 @@ function TemplateForm({
             onChange={(e) => set("machinesNeeded", e.target.value)}
           />
           <FieldDescription>
-            Codes, comma separated, for example document_printer, large_format_printer. A hint for shops, not a rule.
+            Codes, comma separated, for example document_printer, large_format_printer. A
+            hint for shops, not a rule.
           </FieldDescription>
-          {show("machinesNeeded") ? <FieldError>{show("machinesNeeded")}</FieldError> : null}
+          {show("machinesNeeded") ? (
+            <FieldError>{show("machinesNeeded")}</FieldError>
+          ) : null}
         </Field>
         <Field data-invalid={show("priceRange") ? true : undefined}>
           <FieldLabel htmlFor={`${id}-min`}>Usual price (₱, low to high)</FieldLabel>
@@ -442,7 +533,9 @@ function TemplateForm({
               onChange={(e) => set("priceMax", e.target.value)}
             />
           </div>
-          <FieldDescription>Prices outside it are flagged at the price check. Never a cap.</FieldDescription>
+          <FieldDescription>
+            Prices outside it are flagged at the price check. Never a cap.
+          </FieldDescription>
           {show("priceRange") ? <FieldError>{show("priceRange")}</FieldError> : null}
         </Field>
       </FieldGroup>
@@ -455,13 +548,18 @@ function TemplateForm({
           {loaded.formats.map((f) => {
             const checked = draft.fileTypes.includes(f.code);
             return (
-              <label key={f.code} className="flex min-h-11 cursor-pointer items-center gap-3">
+              <label
+                key={f.code}
+                className="flex min-h-11 cursor-pointer items-center gap-3"
+              >
                 <Checkbox
                   checked={checked}
                   onCheckedChange={(v) =>
                     set(
                       "fileTypes",
-                      v === true ? [...draft.fileTypes, f.code] : draft.fileTypes.filter((c) => c !== f.code),
+                      v === true
+                        ? [...draft.fileTypes, f.code]
+                        : draft.fileTypes.filter((c) => c !== f.code),
                     )
                   }
                 />
@@ -475,7 +573,10 @@ function TemplateForm({
 
       <FieldSet data-invalid={show("stockPhotos") ? true : undefined}>
         <FieldLegend>Stock photos ({draft.stockPhotos.length} of up to 5)</FieldLegend>
-        <FieldDescription>From GRIDGO&rsquo;s own set. The first is the cover. Shops may add real photos later.</FieldDescription>
+        <FieldDescription>
+          From GRIDGO&rsquo;s own set. The first is the cover. Shops may add real photos
+          later.
+        </FieldDescription>
         <ul className="m-0 grid list-none grid-cols-3 gap-2 p-0 sm:grid-cols-4 lg:grid-cols-6">
           {photos.map((p) => {
             const index = draft.stockPhotos.findIndex((s) => s.url === p.url);
@@ -492,7 +593,10 @@ function TemplateForm({
                       "stockPhotos",
                       on
                         ? draft.stockPhotos.filter((s) => s.url !== p.url)
-                        : [...draft.stockPhotos, { url: p.url, altText: draft.name || p.altText }],
+                        : [
+                            ...draft.stockPhotos,
+                            { url: p.url, altText: draft.name || p.altText },
+                          ],
                     )
                   }
                   className={`relative block w-full overflow-hidden rounded-[var(--radius-field)] border-2 ${on ? "border-foreground" : "border-transparent"} disabled:opacity-50`}
@@ -500,7 +604,11 @@ function TemplateForm({
                   {p.src ? (
                     // Public stock photo path; next/image would proxy it.
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.src} alt="" className="aspect-square w-full object-cover" />
+                    <img
+                      src={p.src}
+                      alt=""
+                      className="aspect-square w-full object-cover"
+                    />
                   ) : (
                     <span className="bg-muted block aspect-square w-full" />
                   )}
@@ -509,7 +617,9 @@ function TemplateForm({
                       {index + 1}
                     </span>
                   ) : null}
-                  <span className="text-caption text-text-secondary block truncate px-1 py-0.5 text-left">{p.altText}</span>
+                  <span className="text-caption text-text-secondary block truncate px-1 py-0.5 text-left">
+                    {p.altText}
+                  </span>
                 </button>
               </li>
             );
@@ -524,7 +634,9 @@ function TemplateForm({
         </Button>
         {touched && errorCount ? (
           <p className="text-body text-destructive m-0" role="alert">
-            {errorCount === 1 ? "One field needs a fix." : `${errorCount} fields need a fix.`}
+            {errorCount === 1
+              ? "One field needs a fix."
+              : `${errorCount} fields need a fix.`}
           </p>
         ) : null}
         {notice && !error ? (
@@ -543,25 +655,34 @@ function TemplateForm({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {draft.isNew ? `Add ${draft.name.trim()} for shops?` : `Save ${draft.name.trim()}?`}
+              {draft.isNew
+                ? `Add ${draft.name.trim()} for shops?`
+                : `Save ${draft.name.trim()}?`}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {draft.active
                 ? `Shops that add it from now on see ${draft.options.length} option${draft.options.length === 1 ? "" : "s"}, priced per ${unitName(draft.unit).toLowerCase()}.`
                 : "It is retired: shops cannot add it. Products already added keep working."}{" "}
               Products already added keep their own prices and facts.
-              {original && original.active && !draft.active ? " Retiring hides it from the add list only." : ""}
+              {original && original.active && !draft.active
+                ? " Retiring hides it from the add list only."
+                : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {removed.length ? (
             <p className="text-body text-text-primary m-0">
               Removed options ({removed.length}): {removed.slice(0, 6).join(", ")}
-              {removed.length > 6 ? "…" : ""}. Shops that priced them keep their price on their own product.
+              {removed.length > 6 ? "…" : ""}. Shops that priced them keep their price on
+              their own product.
             </p>
           ) : null}
           <AlertDialogFooter>
             <AlertDialogCancel>Keep editing</AlertDialogCancel>
-            <AlertDialogAction variant="primary" disabled={busy} onClick={() => void save()}>
+            <AlertDialogAction
+              variant="primary"
+              disabled={busy}
+              onClick={() => void save()}
+            >
               {draft.isNew ? "Add template" : "Save template"}
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -592,7 +713,8 @@ function OptionsEditor({
     <FieldSet data-invalid={error ? true : undefined}>
       <FieldLegend>Options shops price ({draft.options.length} of up to 200)</FieldLegend>
       <FieldDescription>
-        Each option is one full combination with its own full price. Write the lists, then build the combinations.
+        Each option is one full combination with its own full price. Write the lists, then
+        build the combinations.
       </FieldDescription>
       <ul className="m-0 flex list-none flex-col gap-2 p-0">
         {draft.optionLists.map((list, index) => (
@@ -604,7 +726,9 @@ function OptionsEditor({
               onChange={(e) =>
                 setDraft((c) => ({
                   ...c,
-                  optionLists: c.optionLists.map((l, i) => (i === index ? { ...l, name: e.target.value } : l)),
+                  optionLists: c.optionLists.map((l, i) =>
+                    i === index ? { ...l, name: e.target.value } : l,
+                  ),
                 }))
               }
             />
@@ -615,7 +739,9 @@ function OptionsEditor({
               onChange={(e) =>
                 setDraft((c) => ({
                   ...c,
-                  optionLists: c.optionLists.map((l, i) => (i === index ? { ...l, values: e.target.value } : l)),
+                  optionLists: c.optionLists.map((l, i) =>
+                    i === index ? { ...l, values: e.target.value } : l,
+                  ),
                 }))
               }
             />
@@ -624,7 +750,12 @@ function OptionsEditor({
               variant="ghost"
               size="icon"
               aria-label={`Remove list ${list.name || index + 1}`}
-              onClick={() => setDraft((c) => ({ ...c, optionLists: c.optionLists.filter((_, i) => i !== index) }))}
+              onClick={() =>
+                setDraft((c) => ({
+                  ...c,
+                  optionLists: c.optionLists.filter((_, i) => i !== index),
+                }))
+              }
             >
               <Trash2 aria-hidden />
             </Button>
@@ -634,7 +765,12 @@ function OptionsEditor({
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
-          onClick={() => setDraft((c) => ({ ...c, optionLists: [...c.optionLists, { name: "", values: "" }] }))}
+          onClick={() =>
+            setDraft((c) => ({
+              ...c,
+              optionLists: [...c.optionLists, { name: "", values: "" }],
+            }))
+          }
         >
           <Plus data-icon="inline-start" aria-hidden />
           Add a list
@@ -642,7 +778,12 @@ function OptionsEditor({
         <Button
           type="button"
           disabled={!draft.optionLists.some((l) => l.values.trim())}
-          onClick={() => setDraft((c) => ({ ...c, options: combineOptionLists(c.optionLists, c.options) }))}
+          onClick={() =>
+            setDraft((c) => ({
+              ...c,
+              options: combineOptionLists(c.optionLists, c.options),
+            }))
+          }
         >
           <Wand2 data-icon="inline-start" aria-hidden />
           Build options from the lists
@@ -657,14 +798,19 @@ function OptionsEditor({
         </div>
         <ul className="m-0 flex list-none flex-col gap-1.5 p-0">
           {shown.map((option, index) => (
-            <li key={index} className="grid gap-2 sm:grid-cols-[10rem_minmax(0,1fr)_auto]">
+            <li
+              key={index}
+              className="grid gap-2 sm:grid-cols-[10rem_minmax(0,1fr)_auto]"
+            >
               <Input
                 aria-label={`Option ${index + 1} key`}
                 value={option.key}
                 onChange={(e) =>
                   setDraft((c) => ({
                     ...c,
-                    options: c.options.map((o, i) => (i === index ? { ...o, key: e.target.value.trim() } : o)),
+                    options: c.options.map((o, i) =>
+                      i === index ? { ...o, key: e.target.value.trim() } : o,
+                    ),
                   }))
                 }
               />
@@ -674,7 +820,9 @@ function OptionsEditor({
                 onChange={(e) =>
                   setDraft((c) => ({
                     ...c,
-                    options: c.options.map((o, i) => (i === index ? { ...o, label: e.target.value } : o)),
+                    options: c.options.map((o, i) =>
+                      i === index ? { ...o, label: e.target.value } : o,
+                    ),
                   }))
                 }
               />
@@ -683,7 +831,12 @@ function OptionsEditor({
                 variant="ghost"
                 size="icon"
                 aria-label={`Remove option ${option.label || index + 1}`}
-                onClick={() => setDraft((c) => ({ ...c, options: c.options.filter((_, i) => i !== index) }))}
+                onClick={() =>
+                  setDraft((c) => ({
+                    ...c,
+                    options: c.options.filter((_, i) => i !== index),
+                  }))
+                }
               >
                 <Trash2 aria-hidden />
               </Button>
@@ -691,7 +844,12 @@ function OptionsEditor({
           ))}
         </ul>
         {!showAll ? (
-          <Button type="button" variant="ghost" className="self-start" onClick={() => setShowAll(true)}>
+          <Button
+            type="button"
+            variant="ghost"
+            className="self-start"
+            onClick={() => setShowAll(true)}
+          >
             Show all {draft.options.length} options
           </Button>
         ) : null}
@@ -703,7 +861,13 @@ function OptionsEditor({
               const used = new Set(c.options.map((o) => o.key));
               let n = c.options.length;
               while (used.has(`variant_${n}`)) n += 1;
-              return { ...c, options: [...c.options, { key: `variant_${n}`, label: "", specBinding: null }] };
+              return {
+                ...c,
+                options: [
+                  ...c.options,
+                  { key: `variant_${n}`, label: "", specBinding: null },
+                ],
+              };
             })
           }
         >
@@ -751,12 +915,17 @@ function WaitingRequests({
       await resolveRequestsWithTemplate(template.id, resolveRequestsBody(chosen));
       setConfirming(false);
       setSelected(new Set());
-      setMessage(`Closed ${chosen.length} request${chosen.length === 1 ? "" : "s"}. Each shop was told it can add ${template.name}.`);
+      setMessage(
+        `Closed ${chosen.length} request${chosen.length === 1 ? "" : "s"}. Each shop was told it can add ${template.name}.`,
+      );
       onResolved();
     } catch (err) {
       setConfirming(false);
       setError(
-        err && typeof err === "object" && "code" in err && err.code === "product_type_request_not_pending"
+        err &&
+          typeof err === "object" &&
+          "code" in err &&
+          err.code === "product_type_request_not_pending"
           ? "Someone answered one of these already. The list is refreshed."
           : opsErrorMessage(err, "Could not close the requests. Try again."),
       );
@@ -767,7 +936,10 @@ function WaitingRequests({
   }
 
   return (
-    <section aria-labelledby="waiting-requests" className="gg-card flex flex-col gap-3 p-4">
+    <section
+      aria-labelledby="waiting-requests"
+      className="gg-card flex flex-col gap-3 p-4"
+    >
       <h2 id="waiting-requests" className="text-h3 text-text-primary m-0">
         Waiting product-type requests this template can answer
       </h2>
@@ -777,9 +949,13 @@ function WaitingRequests({
         </p>
       ) : null}
       {!template.active ? (
-        <p className="text-body text-text-secondary m-0">Offer the template to shops before closing requests with it.</p>
+        <p className="text-body text-text-secondary m-0">
+          Offer the template to shops before closing requests with it.
+        </p>
       ) : !matching.length ? (
-        <p className="text-body text-text-secondary m-0">No request in this category is waiting.</p>
+        <p className="text-body text-text-secondary m-0">
+          No request in this category is waiting.
+        </p>
       ) : (
         <>
           <ul className="m-0 flex list-none flex-col gap-1 p-0">
@@ -805,14 +981,20 @@ function WaitingRequests({
                       {r.createdAt ? ` · asked ${formatDateTime(r.createdAt)}` : ""}
                     </span>
                     {r.description ? (
-                      <span className="text-caption text-text-secondary line-clamp-2">{r.description}</span>
+                      <span className="text-caption text-text-secondary line-clamp-2">
+                        {r.description}
+                      </span>
                     ) : null}
                   </span>
                 </label>
               </li>
             ))}
           </ul>
-          <Button className="self-start" disabled={!chosen.length || busy} onClick={() => setConfirming(true)}>
+          <Button
+            className="self-start"
+            disabled={!chosen.length || busy}
+            onClick={() => setConfirming(true)}
+          >
             Close {chosen.length || ""} with {template.name}
           </Button>
         </>
@@ -825,7 +1007,10 @@ function WaitingRequests({
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Close {chosen.length === 1 ? "this request" : `${chosen.length} requests`} with {template.name}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Close {chosen.length === 1 ? "this request" : `${chosen.length} requests`}{" "}
+              with {template.name}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               Each shop is told it can now add {template.name} from Products.
             </AlertDialogDescription>
@@ -833,7 +1018,10 @@ function WaitingRequests({
           <ul className="m-0 flex list-none flex-col gap-1 p-0">
             {chosen.map((r) => (
               <li key={r.id} className="text-body text-text-primary">
-                {r.name} <span className="text-text-muted">({shopNameOf(shops, r.supplierId)})</span>
+                {r.name}{" "}
+                <span className="text-text-muted">
+                  ({shopNameOf(shops, r.supplierId)})
+                </span>
               </li>
             ))}
           </ul>

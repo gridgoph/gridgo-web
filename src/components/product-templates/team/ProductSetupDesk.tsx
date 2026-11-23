@@ -74,7 +74,10 @@ export function ProductSetupDesk({ tree }: { tree: Tree }) {
         else
           setState({
             kind: "failed",
-            message: opsErrorMessage(err, "Could not load product setup. Check your connection and try again."),
+            message: opsErrorMessage(
+              err,
+              "Could not load product setup. Check your connection and try again.",
+            ),
           });
       }
     }, []),
@@ -123,8 +126,9 @@ export function ProductSetupDesk({ tree }: { tree: Tree }) {
   return (
     <div className="flex flex-col gap-4">
       <p className="text-body text-text-secondary m-0 max-w-2xl">
-        Shops add GRIDGO&rsquo;s templates with their own full prices. Answer what they ask for, keep the template list
-        right, and set up products for a shop that sent its price list.
+        Shops add GRIDGO&rsquo;s templates with their own full prices. Answer what they
+        ask for, keep the template list right, and set up products for a shop that sent
+        its price list.
       </p>
       {notice ? (
         <p role="status" className="text-body text-text-primary m-0">
@@ -140,8 +144,12 @@ export function ProductSetupDesk({ tree }: { tree: Tree }) {
       ) : null}
       <Tabs value={tab} onValueChange={(value) => switchTab(tabOf(String(value)))}>
         <TabsList className="flex-wrap">
-          <TabsTrigger value="requests">Requests{ready ? ` (${waiting} waiting)` : ""}</TabsTrigger>
-          <TabsTrigger value="templates">Templates{ready ? ` (${ready.templates.length})` : ""}</TabsTrigger>
+          <TabsTrigger value="requests">
+            Requests{ready ? ` (${waiting} waiting)` : ""}
+          </TabsTrigger>
+          <TabsTrigger value="templates">
+            Templates{ready ? ` (${ready.templates.length})` : ""}
+          </TabsTrigger>
           <TabsTrigger value="shops">Shops</TabsTrigger>
         </TabsList>
         <TabsContent value="requests" className="mt-4">
@@ -157,7 +165,11 @@ export function ProductSetupDesk({ tree }: { tree: Tree }) {
           />
         </TabsContent>
         <TabsContent value="templates" className="mt-4">
-          <TemplatesTab tree={tree} templates={ready?.templates ?? null} waitingByCategory={typeWaiting} />
+          <TemplatesTab
+            tree={tree}
+            templates={ready?.templates ?? null}
+            waitingByCategory={typeWaiting}
+          />
         </TabsContent>
         <TabsContent value="shops" className="mt-4">
           <ShopsTab tree={tree} shops={shops} requests={ready?.requests ?? null} />

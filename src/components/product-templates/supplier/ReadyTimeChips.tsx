@@ -31,7 +31,11 @@ export function ReadyTimeChips({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <div role="radiogroup" aria-label="When is it ready?" className="flex flex-wrap gap-2">
+      <div
+        role="radiogroup"
+        aria-label="When is it ready?"
+        className="flex flex-wrap gap-2"
+      >
         {chips.map((chip) => {
           const on = chip.code === value;
           return (
@@ -53,11 +57,15 @@ export function ReadyTimeChips({
           className="rounded-card border border-outline bg-surface-variant flex items-center gap-2 p-3"
           aria-live="polite"
         >
-          {loadingExample ? <Loader2 className="text-text-muted size-4 animate-spin" aria-hidden /> : null}
+          {loadingExample ? (
+            <Loader2 className="text-text-muted size-4 animate-spin" aria-hidden />
+          ) : null}
           <p className="text-body text-text-primary m-0" data-testid="ready-by-example">
             {loadingExample
               ? "Working out the date…"
-              : (example ?? exampleNote ?? "Clients see the date worked out on your hours.")}
+              : (example ??
+                exampleNote ??
+                "Clients see the date worked out on your hours.")}
           </p>
         </div>
       ) : null}

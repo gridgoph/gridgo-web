@@ -632,7 +632,7 @@ export function ListingReviewsDesk({ tree }: { tree: "ops" | "admin" }) {
                       active={entry.listing.id === selectedId}
                       fresh={fresh.has(`listing:${entry.listing.id}`)}
                       onOpen={open}
-                      thumb={entry.listing.photos[0]?.downloadUrl ?? null}
+                      thumb={entry.listing.photos[0]?.downloadUrl ?? entry.stockPhoto ?? null}
                       title={entry.listing.name || "Untitled listing"}
                       lines={[
                         `${shopName(entry.listing.supplierId)} · ${typeName(entry.listing.subcategoryCode)}`,

@@ -1858,7 +1858,7 @@ export async function resolveEscalation(
 // ---------------------------------------------------------------------------
 
 export async function getFile(fileId: string): Promise<StoredFile> {
-  const result = await request<{ file: StoredFile }>(`/files/${fileId}`);
+  const result = await request<{ file: StoredFile }>(`/files/${encodeURIComponent(fileId)}`);
   return result.file;
 }
 
@@ -1869,7 +1869,7 @@ export async function getFileDownloadUrl(
 ): Promise<string> {
   // A shop's artwork read is recorded per device (gridgo-api EXPRESS_API.md).
   const result = await request<{ url: string }>(
-    `/files/${fileId}/download-url`,
+    `/files/${encodeURIComponent(fileId)}/download-url`,
     options.deviceId ? { headers: { "X-GRIDGO-Device-Id": options.deviceId } } : {},
   );
   return result.url;

@@ -5,7 +5,11 @@ import { useEffect, useId, useMemo, useState } from "react";
 import { FileAudio, FileText, ImageIcon, PanelRightOpen } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { DataTable, DataTableRowAction, type DataTableColumn } from "@/components/ui/data-table";
+import {
+  DataTable,
+  DataTableRowAction,
+  type DataTableColumn,
+} from "@/components/ui/data-table";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import {
@@ -16,7 +20,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -65,21 +75,27 @@ export function RequestsTab({ tree, requests, shops, templates, onDecided }: Pro
       header: "Request",
       primary: true,
       alwaysVisible: true,
-      filterValue: (r) => `${r.requestedName ?? ""} ${r.message ?? ""} ${shopNameOf(shops, r.supplierId)}`,
+      filterValue: (r) =>
+        `${r.requestedName ?? ""} ${r.message ?? ""} ${shopNameOf(shops, r.supplierId)}`,
       cell: (r) => (
         <button
           type="button"
           onClick={() => setOpenId(r.id)}
-          className="flex min-w-0 max-w-[22rem] flex-col text-left"
+          className="flex w-full min-w-0 max-w-[22rem] flex-col text-left"
         >
           <span
             className="text-body text-text-primary truncate underline-offset-4 hover:underline"
             style={{ fontFamily: "var(--font-medium)" }}
           >
-            {r.kind === "template" ? (r.requestedName ?? "A template") : "Set up products"}
+            {r.kind === "template"
+              ? (r.requestedName ?? "A template")
+              : "Set up products"}
           </span>
           <span className="text-caption text-text-muted truncate">
-            {r.message ?? (r.fileIds.length ? `${r.fileIds.length} file${r.fileIds.length === 1 ? "" : "s"}` : "")}
+            {r.message ??
+              (r.fileIds.length
+                ? `${r.fileIds.length} file${r.fileIds.length === 1 ? "" : "s"}`
+                : "")}
           </span>
         </button>
       ),
@@ -88,14 +104,20 @@ export function RequestsTab({ tree, requests, shops, templates, onDecided }: Pro
       id: "shop",
       header: "Shop",
       sortValue: (r) => shopNameOf(shops, r.supplierId),
-      cell: (r) => <span className="text-body text-text-primary">{shopNameOf(shops, r.supplierId)}</span>,
+      cell: (r) => (
+        <span className="text-body text-text-primary">
+          {shopNameOf(shops, r.supplierId)}
+        </span>
+      ),
     },
     {
       id: "kind",
       header: "Asks for",
       sortValue: (r) => r.kind,
       hideOnMobile: true,
-      cell: (r) => <span className="text-body text-text-secondary">{requestKindLabel(r)}</span>,
+      cell: (r) => (
+        <span className="text-body text-text-secondary">{requestKindLabel(r)}</span>
+      ),
     },
     {
       id: "sent",
@@ -111,7 +133,9 @@ export function RequestsTab({ tree, requests, shops, templates, onDecided }: Pro
       id: "status",
       header: "Status",
       sortValue: (r) => r.status,
-      cell: (r) => <StatusChip {...setupRequestTone(r.status)} label={staffRequestStatus(r)} />,
+      cell: (r) => (
+        <StatusChip {...setupRequestTone(r.status)} label={staffRequestStatus(r)} />
+      ),
     },
   ];
 
@@ -146,7 +170,11 @@ export function RequestsTab({ tree, requests, shops, templates, onDecided }: Pro
           },
         ]}
         rowActions={(r) => (
-          <DataTableRowAction label="Open request" icon={PanelRightOpen} onClick={() => setOpenId(r.id)} />
+          <DataTableRowAction
+            label="Open request"
+            icon={PanelRightOpen}
+            onClick={() => setOpenId(r.id)}
+          />
         )}
         pageSize={25}
       />
@@ -189,12 +217,15 @@ function RequestDetail({
   const active = templates.filter((t) => t.active);
   const guess =
     request.kind === "template" && request.requestedName
-      ? (active.find((t) => t.name.toLowerCase() === request.requestedName!.toLowerCase())?.id ?? null)
+      ? (active.find((t) => t.name.toLowerCase() === request.requestedName!.toLowerCase())
+          ?.id ?? null)
       : null;
   const [status, setStatus] = useState<"completed" | "needs_revision">("completed");
   const [templateId, setTemplateId] = useState<string | null>(guess);
   const templateName = active.find((t) => t.id === templateId)?.name ?? null;
-  const [reason, setReason] = useState(() => completeReasonSuggestion(request, templateName));
+  const [reason, setReason] = useState(() =>
+    completeReasonSuggestion(request, templateName),
+  );
   const [edited, setEdited] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -204,7 +235,11 @@ function RequestDetail({
     setStatus(next);
     if (!edited) {
       const name = active.find((t) => t.id === nextTemplate)?.name ?? null;
-      setReason(next === "completed" ? completeReasonSuggestion(request, name) : NEEDS_MORE_SUGGESTIONS[0]);
+      setReason(
+        next === "completed"
+          ? completeReasonSuggestion(request, name)
+          : NEEDS_MORE_SUGGESTIONS[0],
+      );
     }
   }
 
@@ -216,7 +251,9 @@ function RequestDetail({
       await decideProductSetupRequest(request.id, request.version, {
         status,
         reason: reason.trim(),
-        ...(status === "completed" && request.kind === "template" && templateId ? { templateId } : {}),
+        ...(status === "completed" && request.kind === "template" && templateId
+          ? { templateId }
+          : {}),
       });
       await onDecided(
         status === "completed"
@@ -224,9 +261,7 @@ function RequestDetail({
           : `Asked ${shopName} for more. They have your note.`,
       );
     } catch (err) {
-      setError(
-        opsErrorMessage(err, "Could not save the decision. Try again.") ,
-      );
+      setError(opsErrorMessage(err, "Could not save the decision. Try again."));
     } finally {
       setBusy(false);
     }
@@ -236,7 +271,9 @@ function RequestDetail({
     <div className="flex flex-col gap-5 p-4">
       <SheetHeader className="p-0">
         <SheetTitle>
-          {request.kind === "template" ? (request.requestedName ?? "A template") : "Set up products"}
+          {request.kind === "template"
+            ? (request.requestedName ?? "A template")
+            : "Set up products"}
         </SheetTitle>
         <SheetDescription>
           {shopName} · {requestKindLabel(request)}
@@ -244,20 +281,33 @@ function RequestDetail({
         </SheetDescription>
       </SheetHeader>
 
-      <StatusChip {...setupRequestTone(request.status)} label={staffRequestStatus(request)} />
+      <StatusChip
+        {...setupRequestTone(request.status)}
+        label={staffRequestStatus(request)}
+      />
 
       {request.message ? (
         <section className="flex flex-col gap-1" aria-labelledby={`${id}-msg`}>
-          <h3 id={`${id}-msg`} className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+          <h3
+            id={`${id}-msg`}
+            className="text-body text-text-primary m-0"
+            style={{ fontFamily: "var(--font-medium)" }}
+          >
             The shop wrote
           </h3>
-          <p className="text-body text-text-secondary m-0 whitespace-pre-line break-words">{request.message}</p>
+          <p className="text-body text-text-secondary m-0 whitespace-pre-line break-words">
+            {request.message}
+          </p>
         </section>
       ) : null}
 
       {request.fileIds.length ? (
         <section className="flex flex-col gap-2" aria-labelledby={`${id}-files`}>
-          <h3 id={`${id}-files`} className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+          <h3
+            id={`${id}-files`}
+            className="text-body text-text-primary m-0"
+            style={{ fontFamily: "var(--font-medium)" }}
+          >
             Price list files
           </h3>
           <ul className="m-0 flex list-none flex-col gap-2 p-0">
@@ -273,7 +323,8 @@ function RequestDetail({
       {request.kind === "setup" && request.supplierId ? (
         <div className="rounded-[var(--radius-field)] border border-outline flex flex-col gap-2 p-3">
           <p className="text-body text-text-secondary m-0">
-            Prepare each product from the price list. They stay hidden until {shopName} confirms the prices.
+            Prepare each product from the price list. They stay hidden until {shopName}{" "}
+            confirms the prices.
           </p>
           <Button
             className="self-start"
@@ -287,15 +338,23 @@ function RequestDetail({
 
       {request.reason && !waiting ? (
         <section className="flex flex-col gap-1">
-          <h3 className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+          <h3
+            className="text-body text-text-primary m-0"
+            style={{ fontFamily: "var(--font-medium)" }}
+          >
             The shop read
           </h3>
-          <p className="text-body text-text-secondary m-0 whitespace-pre-line">{request.reason}</p>
+          <p className="text-body text-text-secondary m-0 whitespace-pre-line">
+            {request.reason}
+          </p>
         </section>
       ) : null}
 
       {waiting ? (
-        <section className="flex flex-col gap-4 border-t border-outline pt-4" aria-labelledby={`${id}-decide`}>
+        <section
+          className="flex flex-col gap-4 border-t border-outline pt-4"
+          aria-labelledby={`${id}-decide`}
+        >
           <h3 id={`${id}-decide`} className="text-h3 text-text-primary m-0">
             Answer the shop
           </h3>
@@ -327,7 +386,9 @@ function RequestDetail({
               >
                 <SelectTrigger id={`${id}-tpl`} className="min-h-11 w-full">
                   <SelectValue>
-                    {(value) => active.find((t) => t.id === value)?.name ?? "Choose a template"}
+                    {(value) =>
+                      active.find((t) => t.id === value)?.name ?? "Choose a template"
+                    }
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
@@ -341,8 +402,8 @@ function RequestDetail({
                 </SelectContent>
               </Select>
               <FieldDescription>
-                Not in the list yet? Add it on the Templates tab first. Saving a template with this exact name also
-                closes the request.
+                Not in the list yet? Add it on the Templates tab first. Saving a template
+                with this exact name also closes the request.
               </FieldDescription>
             </Field>
           ) : null}
@@ -363,10 +424,20 @@ function RequestDetail({
           </Field>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="primary" disabled={busy || blocker != null} onClick={() => void send()}>
-              {busy ? "Saving" : status === "completed" ? "Mark done and tell the shop" : "Ask the shop for more"}
+            <Button
+              variant="primary"
+              disabled={busy || blocker != null}
+              onClick={() => void send()}
+            >
+              {busy
+                ? "Saving"
+                : status === "completed"
+                  ? "Mark done and tell the shop"
+                  : "Ask the shop for more"}
             </Button>
-            {blocker ? <p className="text-caption text-text-muted m-0">{blocker}</p> : null}
+            {blocker ? (
+              <p className="text-caption text-text-muted m-0">{blocker}</p>
+            ) : null}
           </div>
           {error ? (
             <p role="alert" className="text-body text-destructive m-0">
@@ -391,7 +462,15 @@ function SetupFile({ fileId, index }: { fileId: string; index: number }) {
       .then((file) => !gone && setMeta(file))
       .catch(() => !gone && setFailed(true));
     void getFileDownloadUrl(fileId)
-      .then((link) => !gone && setUrl(link))
+      .then(
+        (link) =>
+          !gone &&
+          setUrl(
+            /^https?:\/\//i.test(link) || (link.startsWith("/") && !link.startsWith("//"))
+              ? link
+              : null,
+          ),
+      )
       .catch(() => !gone && setFailed(true));
     return () => {
       gone = true;
@@ -400,15 +479,26 @@ function SetupFile({ fileId, index }: { fileId: string; index: number }) {
 
   const type = meta?.detectedContentType ?? meta?.declaredContentType ?? "";
   const name = meta?.originalFilename ?? `File ${index + 1}`;
-  const Icon = type.startsWith("audio/") ? FileAudio : type.startsWith("image/") ? ImageIcon : FileText;
+  const Icon = type.startsWith("audio/")
+    ? FileAudio
+    : type.startsWith("image/")
+      ? ImageIcon
+      : FileText;
 
   return (
     <div className="flex flex-col gap-2 rounded-[var(--radius-field)] border border-outline p-3">
       <div className="flex items-center gap-2">
         <Icon aria-hidden className="size-4 shrink-0 text-text-muted" />
-        <span className="text-body text-text-primary min-w-0 flex-1 truncate">{name}</span>
+        <span className="text-body text-text-primary min-w-0 flex-1 truncate">
+          {name}
+        </span>
         {url && !type.startsWith("audio/") ? (
-          <a href={url} target="_blank" rel="noopener noreferrer" className="text-body text-text-primary underline">
+          <a
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-body text-text-primary underline"
+          >
             Open
           </a>
         ) : null}
@@ -416,7 +506,11 @@ function SetupFile({ fileId, index }: { fileId: string; index: number }) {
       {type.startsWith("image/") && url ? (
         // Signed, short-lived link: next/image would cache it.
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={url} alt={`Price list ${index + 1}`} className="max-h-64 w-full rounded-md object-contain bg-muted" />
+        <img
+          src={url}
+          alt={`Price list ${index + 1}`}
+          className="max-h-64 w-full rounded-md object-contain bg-muted"
+        />
       ) : null}
       {type.startsWith("audio/") && url ? (
         <audio controls preload="none" src={url} className="w-full">
@@ -424,7 +518,9 @@ function SetupFile({ fileId, index }: { fileId: string; index: number }) {
         </audio>
       ) : null}
       {failed ? (
-        <p className="text-caption text-text-muted m-0">Could not open this file. Refresh for a new link.</p>
+        <p className="text-caption text-text-muted m-0">
+          Could not open this file. Refresh for a new link.
+        </p>
       ) : null}
     </div>
   );

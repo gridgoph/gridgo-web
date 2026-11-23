@@ -20,10 +20,19 @@ import type { StatusIconName, StatusTone } from "@/lib/order-state";
  */
 
 export type TemplateUnit = "page" | "sheet" | "sq_ft" | "piece";
-export const TEMPLATE_UNITS: readonly TemplateUnit[] = ["page", "sheet", "sq_ft", "piece"];
+export const TEMPLATE_UNITS: readonly TemplateUnit[] = [
+  "page",
+  "sheet",
+  "sq_ft",
+  "piece",
+];
 
 export type SpecBinding = { fieldCode: string; valueCode: string };
-export type TemplateOption = { key: string; label: string; specBinding: SpecBinding | null };
+export type TemplateOption = {
+  key: string;
+  label: string;
+  specBinding: SpecBinding | null;
+};
 export type OptionList = { name: string; options: string[] };
 export type StockPhoto = { url: string; altText: string | null; src: string | null };
 export type PriceRange = { minMinor: number; maxMinor: number };
@@ -160,7 +169,9 @@ export type SetupRequest = {
 type Raw = Record<string, unknown>;
 
 function record(value: unknown): Raw | null {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Raw) : null;
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Raw)
+    : null;
 }
 
 function text(value: unknown): string {
@@ -169,12 +180,16 @@ function text(value: unknown): string {
 
 function strings(value: unknown): string[] {
   return Array.isArray(value)
-    ? value.filter((v): v is string => typeof v === "string" && v.trim() !== "").map((v) => v.trim())
+    ? value
+        .filter((v): v is string => typeof v === "string" && v.trim() !== "")
+        .map((v) => v.trim())
     : [];
 }
 
 function positiveInt(value: unknown): number | null {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 ? value : null;
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : null;
 }
 
 function int(value: unknown): number | null {
@@ -210,8 +225,11 @@ export function stockPhotoSrc(rawItem: unknown): string | null {
   const raw = record(rawItem);
   if (!raw) return null;
   const photos = Array.isArray(raw.photos) ? raw.photos.map(record) : [];
-  const stock = photos.find((p) => p && !text(p.fileId) && (text(p.url) || text(p.downloadUrl)));
-  if (stock) return templatePhotoUrl(text(stock.url)) ?? templatePhotoUrl(text(stock.downloadUrl));
+  const stock = photos.find(
+    (p) => p && !text(p.fileId) && (text(p.url) || text(p.downloadUrl)),
+  );
+  if (stock)
+    return templatePhotoUrl(text(stock.url)) ?? templatePhotoUrl(text(stock.downloadUrl));
   const template = record(raw.template);
   const first = (Array.isArray(template?.stockPhotos) ? template.stockPhotos : [])
     .map(readStockPhoto)
@@ -242,7 +260,11 @@ export function normalizeTemplate(value: unknown): ProductTemplate | null {
   const options = (Array.isArray(raw.options) ? raw.options : [])
     .map(record)
     .filter((o): o is Raw => o != null)
-    .map((o) => ({ key: text(o.key), label: text(o.label), specBinding: readSpecBinding(o.specBinding) }))
+    .map((o) => ({
+      key: text(o.key),
+      label: text(o.label),
+      specBinding: readSpecBinding(o.specBinding),
+    }))
     .filter((o) => o.key && o.label);
   if (!options.length) return null;
   const stockPhotos = (Array.isArray(raw.stockPhotos) ? raw.stockPhotos : [])
@@ -258,7 +280,9 @@ export function normalizeTemplate(value: unknown): ProductTemplate | null {
     categoryCode: text(raw.categoryCode),
     subcategoryCode: text(raw.subcategoryCode),
     group: text(raw.group),
-    unit: TEMPLATE_UNITS.includes(raw.unit as TemplateUnit) ? (raw.unit as TemplateUnit) : "piece",
+    unit: TEMPLATE_UNITS.includes(raw.unit as TemplateUnit)
+      ? (raw.unit as TemplateUnit)
+      : "piece",
     options,
     optionLists: (Array.isArray(raw.optionLists) ? raw.optionLists : [])
       .map(record)
@@ -305,7 +329,11 @@ function readMigrationManual(value: unknown): MigrationManual | null {
   const raw = record(value);
   const itemId = text(raw?.itemId);
   if (!raw || !itemId) return null;
-  return { itemId, reason: text(raw.reason) || "manual", templateIds: strings(raw.templateIds) };
+  return {
+    itemId,
+    reason: text(raw.reason) || "manual",
+    templateIds: strings(raw.templateIds),
+  };
 }
 
 export function normalizeMigrationPlan(body: unknown): MigrationPlan {
@@ -354,7 +382,9 @@ export function readTemplateFacts(value: unknown): TemplateFacts | null {
   const check = record(raw.priceCheck);
   const optionKeys: Record<string, string> = {};
   const keys = record(raw.optionKeys);
-  if (keys) for (const [id, key] of Object.entries(keys)) if (typeof key === "string") optionKeys[id] = key;
+  if (keys)
+    for (const [id, key] of Object.entries(keys))
+      if (typeof key === "string") optionKeys[id] = key;
   return {
     templateId: text(raw.templateId) || null,
     templateVersion: int(raw.templateVersion),
@@ -363,7 +393,9 @@ export function readTemplateFacts(value: unknown): TemplateFacts | null {
     shopConfirmed: raw.shopConfirmed !== false,
     needsPrice: raw.needsPrice === true,
     readyTime: text(raw.readyTime) || null,
-    unit: TEMPLATE_UNITS.includes(raw.unit as TemplateUnit) ? (raw.unit as TemplateUnit) : null,
+    unit: TEMPLATE_UNITS.includes(raw.unit as TemplateUnit)
+      ? (raw.unit as TemplateUnit)
+      : null,
     clientTips: strings(raw.clientTips),
     mergedInto: text(raw.mergedInto) || null,
     optionKeys,
@@ -397,11 +429,18 @@ export function normalizePriceRows(value: unknown): PriceRow[] {
   return (Array.isArray(value) ? value : [])
     .map(record)
     .filter((r): r is Raw => r != null)
-    .map((r) => ({ optionKey: text(r.optionKey), priceMinor: positiveInt(r.priceMinor) ?? 0 }))
+    .map((r) => ({
+      optionKey: text(r.optionKey),
+      priceMinor: positiveInt(r.priceMinor) ?? 0,
+    }))
     .filter((r) => r.optionKey);
 }
 
-const SETUP_STATUSES: readonly SetupRequestStatus[] = ["pending", "completed", "needs_revision"];
+const SETUP_STATUSES: readonly SetupRequestStatus[] = [
+  "pending",
+  "completed",
+  "needs_revision",
+];
 
 export function normalizeSetupRequest(value: unknown): SetupRequest | null {
   const raw = record(value);
@@ -414,7 +453,8 @@ export function normalizeSetupRequest(value: unknown): SetupRequest | null {
     kind: raw.kind === "template" ? "template" : "setup",
     requestedName: text(raw.requestedName) || null,
     message: text(raw.message) || null,
-    fileIds: strings(raw.fileIds),
+    // File ids go into `/files/:id` paths; anything not id-shaped is dropped.
+    fileIds: strings(raw.fileIds).filter((id) => /^[A-Za-z0-9_-]{1,120}$/.test(id)),
     status: SETUP_STATUSES.includes(raw.status as SetupRequestStatus)
       ? (raw.status as SetupRequestStatus)
       : "pending",
@@ -491,8 +531,12 @@ const MACHINE_NAMES: Record<string, string> = {
 };
 
 /** "Needs a large-format printer", or null when GRIDGO names nothing. */
-export function machinesLine(template: Pick<ProductTemplate, "machinesNeeded">): string | null {
-  const names = template.machinesNeeded.map((m) => MACHINE_NAMES[m] ?? m.replace(/_/g, " "));
+export function machinesLine(
+  template: Pick<ProductTemplate, "machinesNeeded">,
+): string | null {
+  const names = template.machinesNeeded.map(
+    (m) => MACHINE_NAMES[m] ?? m.replace(/_/g, " "),
+  );
   return names.length ? `Needs ${names.join(" and ")}` : null;
 }
 
@@ -514,7 +558,9 @@ export function serviceFor<S extends ServiceLineLike>(
   services: S[],
   resolve: (code: string) => string = (code) => code,
 ): S | null {
-  const usable = services.filter((s) => s.state !== "withdrawn" && s.state !== "rejected");
+  const usable = services.filter(
+    (s) => s.state !== "withdrawn" && s.state !== "rejected",
+  );
   return usable.find((s) => resolve(s.categoryCode) === template.categoryCode) ?? null;
 }
 
@@ -566,7 +612,10 @@ export function pricesBody(rows: DraftRow[]): PriceRow[] {
 }
 
 /** Rows for a template, filled from a saved table when there is one. */
-export function draftRows(template: Pick<ProductTemplate, "options">, saved: PriceRow[] = []): DraftRow[] {
+export function draftRows(
+  template: Pick<ProductTemplate, "options">,
+  saved: PriceRow[] = [],
+): DraftRow[] {
   const byKey = new Map(saved.map((r) => [r.optionKey, r.priceMinor]));
   // A fresh table with a single option is ticked for the shop: there is nothing to choose.
   const only = template.options.length === 1 && saved.length === 0;
@@ -588,28 +637,42 @@ export function minorToInput(minor: number): string {
 }
 
 /** "From ₱12.00 per page", for the client-sees bar. Null while nothing is priced. */
-export function fromPriceLine(rows: DraftRow[], unit: TemplateUnit | null): string | null {
-  const prices = pricesBody(rows).map((r) => r.priceMinor).filter((m) => m > 0);
+export function fromPriceLine(
+  rows: DraftRow[],
+  unit: TemplateUnit | null,
+): string | null {
+  const prices = pricesBody(rows)
+    .map((r) => r.priceMinor)
+    .filter((m) => m > 0);
   if (!prices.length) return null;
   const low = Math.min(...prices);
   return `${prices.length > 1 ? "From " : ""}${formatPhp(low)} ${unitLabel(unit)}`;
 }
 
 /** "From ₱12.00 per page" for a saved table. */
-export function fromPriceOfRows(rows: PriceRow[], unit: TemplateUnit | null): string | null {
+export function fromPriceOfRows(
+  rows: PriceRow[],
+  unit: TemplateUnit | null,
+): string | null {
   const prices = rows.map((r) => r.priceMinor).filter((m) => m > 0);
   if (!prices.length) return null;
   return `${prices.length > 1 ? "From " : ""}${formatPhp(Math.min(...prices))} ${unitLabel(unit)}`;
 }
 
 /** Ticked option labels, in the template's order. */
-export function tickedLabels(template: Pick<ProductTemplate, "options">, rows: DraftRow[]): string[] {
+export function tickedLabels(
+  template: Pick<ProductTemplate, "options">,
+  rows: DraftRow[],
+): string[] {
   const on = new Set(rows.filter((r) => r.on).map((r) => r.optionKey));
   return template.options.filter((o) => on.has(o.key)).map((o) => o.label);
 }
 
 /** Is a ticked price outside GRIDGO's usual range? A hint, never a block. */
-export function outsideUsualRange(template: Pick<ProductTemplate, "priceRange">, row: DraftRow): boolean {
+export function outsideUsualRange(
+  template: Pick<ProductTemplate, "priceRange">,
+  row: DraftRow,
+): boolean {
   if (!row.on || !template.priceRange) return false;
   const minor = typedMinor(row.price);
   if (minor == null) return false;
@@ -617,7 +680,10 @@ export function outsideUsualRange(template: Pick<ProductTemplate, "priceRange">,
 }
 
 /** "Usually ₱10.00 to ₱300.00 per sq ft". */
-export function usualRangeLine(range: PriceRange | null, unit: TemplateUnit | null): string | null {
+export function usualRangeLine(
+  range: PriceRange | null,
+  unit: TemplateUnit | null,
+): string | null {
   if (!range) return null;
   return `Usually ${formatPhp(range.minMinor)} to ${formatPhp(range.maxMinor)} ${unitLabel(unit)}`;
 }
@@ -683,14 +749,17 @@ export function moreOptionsBlocker(more: MoreOptionsDraft): string | null {
   if (more.bulkFrom.trim() || more.bulkPrice.trim()) {
     if ((wholeNumber(more.bulkFrom) ?? 0) < 2)
       return "Bulk discount: enter how many it starts at (2 or more).";
-    if (typedMinor(more.bulkPrice) == null) return "Bulk discount: enter the price each, above ₱0.";
+    if (typedMinor(more.bulkPrice) == null)
+      return "Bulk discount: enter the price each, above ₱0.";
   }
   if (more.rushHours.trim() || more.rushFee.trim()) {
     const hours = wholeNumber(more.rushHours);
-    if (hours == null || hours > 24) return "Rush: enter how many hours it takes, 1 to 24.";
+    if (hours == null || hours > 24)
+      return "Rush: enter how many hours it takes, 1 to 24.";
     if (typedMinor(more.rushFee) == null) return "Rush: enter the extra fee, above ₱0.";
   }
-  if (more.tips.length > 2000) return "Tips for the client: keep it under 2,000 characters.";
+  if (more.tips.length > 2000)
+    return "Tips for the client: keep it under 2,000 characters.";
   return null;
 }
 
@@ -710,7 +779,12 @@ export function moreOptionsBody(more: MoreOptionsDraft): Record<string, unknown>
   const fee = typedMinor(more.rushFee);
   if (hours && hours <= 24 && fee) {
     body.speedTiers = [
-      { label: "Rush", turnaroundMinutes: hours * 60, priceMinor: null, surchargeMinor: fee },
+      {
+        label: "Rush",
+        turnaroundMinutes: hours * 60,
+        priceMinor: null,
+        surchargeMinor: fee,
+      },
     ];
   }
   if (more.tips.trim()) body.clientTips = more.tips.trim();
@@ -739,13 +813,17 @@ export function moreOptionsFrom(input: {
   templateTips: string[];
 }): MoreOptionsDraft {
   const bulk = input.priceTiers[0];
-  const rush = input.speedTiers.find((t) => t.turnaroundMinutes != null && t.surchargeMinor != null);
+  const rush = input.speedTiers.find(
+    (t) => t.turnaroundMinutes != null && t.surchargeMinor != null,
+  );
   const tips = input.clientTips.join("\n");
   return {
     minimumOrder: input.minimumOrderQuantity ? String(input.minimumOrderQuantity) : "",
     bulkFrom: bulk ? String(bulk.minQuantity) : "",
     bulkPrice: bulk ? minorToInput(bulk.unitPriceMinor) : "",
-    rushHours: rush?.turnaroundMinutes ? String(Math.max(1, Math.round(rush.turnaroundMinutes / 60))) : "",
+    rushHours: rush?.turnaroundMinutes
+      ? String(Math.max(1, Math.round(rush.turnaroundMinutes / 60)))
+      : "",
     rushFee: rush?.surchargeMinor ? minorToInput(rush.surchargeMinor) : "",
     // GRIDGO's own tips are the default; only the shop's own words are kept here.
     tips: tips && tips !== input.templateTips.join("\n") ? tips : "",
@@ -757,10 +835,14 @@ export function moreOptionsFrom(input: {
    -------------------------------------------------------------------------- */
 
 /** The shop's view of its own request. */
-export function setupRequestStatus(request: Pick<SetupRequest, "kind" | "status">): string {
+export function setupRequestStatus(
+  request: Pick<SetupRequest, "kind" | "status">,
+): string {
   switch (request.status) {
     case "completed":
-      return request.kind === "template" ? "Added: find it in the list" : "Done: check your products";
+      return request.kind === "template"
+        ? "Added: find it in the list"
+        : "Done: check your products";
     case "needs_revision":
       return "The GRIDGO team needs more from you";
     default:
@@ -770,7 +852,10 @@ export function setupRequestStatus(request: Pick<SetupRequest, "kind" | "status"
   }
 }
 
-export function setupRequestTone(status: SetupRequestStatus): { tone: StatusTone; icon: StatusIconName } {
+export function setupRequestTone(status: SetupRequestStatus): {
+  tone: StatusTone;
+  icon: StatusIconName;
+} {
   if (status === "completed") return { tone: "success", icon: "circle-check" };
   if (status === "needs_revision") return { tone: "warning", icon: "triangle-alert" };
   return { tone: "info", icon: "clock" };
@@ -793,13 +878,18 @@ export const REQUEST_MESSAGE_MAX = 2000;
  * order placed now, on the shop's hours and queue. Never worked out from the
  * chip in the browser ("next day" on a Saturday is not Sunday).
  */
-export function readyByLine(preview: { earliestReadyBy: string | null } | null): string | null {
+export function readyByLine(
+  preview: { earliestReadyBy: string | null } | null,
+): string | null {
   if (!preview?.earliestReadyBy) return null;
   return `Ordered now, ready by ${manilaDateTime(preview.earliestReadyBy)}`;
 }
 
 /** The chip's own words, for the client-sees bar. */
-export function readyChipLabel(chips: ReadyTimeChip[], code: string | null): string | null {
+export function readyChipLabel(
+  chips: ReadyTimeChip[],
+  code: string | null,
+): string | null {
   const chip = chips.find((c) => c.code === code);
   return chip ? `Ready: ${chip.label.toLowerCase()}` : null;
 }
@@ -893,7 +983,8 @@ export function templateStanding(item: StandingInput): TemplateStanding {
       label: "Price check today",
       tone: "info",
       icon: "clock",
-      detail: "The GRIDGO team checks the prices today. It goes live once they do, and we tell you.",
+      detail:
+        "The GRIDGO team checks the prices today. It goes live once they do, and we tell you.",
       switchable: true,
     };
   return {
@@ -913,7 +1004,10 @@ export function opensPriceTable(template: TemplateFacts | null | undefined): boo
 }
 
 /** "2 need a price, 1 with prices from GRIDGO to confirm. Hidden from clients until you do." */
-export function checkProductsLine(counts: { needPrice: number; toConfirm: number }): string {
+export function checkProductsLine(counts: {
+  needPrice: number;
+  toConfirm: number;
+}): string {
   const { needPrice, toConfirm } = counts;
   const parts = [
     needPrice ? `${needPrice} ${needPrice === 1 ? "needs" : "need"} a price` : null,
@@ -927,7 +1021,10 @@ export function checkProductsLine(counts: { needPrice: number; toConfirm: number
    -------------------------------------------------------------------------- */
 
 /** "Today, Tue 24 Nov" / "Overdue since Mon 23 Nov": the same-day target, on Manila days. */
-export function priceCheckTargetLine(targetBy: string | null, today: string): string | null {
+export function priceCheckTargetLine(
+  targetBy: string | null,
+  today: string,
+): string | null {
   if (!targetBy) return null;
   const label = manilaDayLabel(targetBy);
   if (targetBy === today) return `Check today, ${label}`;
@@ -946,7 +1043,10 @@ export function manilaToday(now: Date = new Date()): string {
 }
 
 /** What a migration action does, in one sentence. */
-export function migrationActionLine(action: MigrationAction, templateName: (id: string | null) => string): string {
+export function migrationActionLine(
+  action: MigrationAction,
+  templateName: (id: string | null) => string,
+): string {
   switch (action.action) {
     case "match":
       return `Link to ${templateName(action.templateId)}. Prices and photos stay as they are.`;
@@ -989,11 +1089,14 @@ export function isOpenOrderSkip(reason: string): boolean {
 }
 
 /** Every version the apply call needs, from a dry run's actions. */
-export function expectedVersionsOf(plan: Pick<MigrationPlan, "actions">): Record<string, number> {
+export function expectedVersionsOf(
+  plan: Pick<MigrationPlan, "actions">,
+): Record<string, number> {
   const versions: Record<string, number> = {};
   for (const action of plan.actions) {
     const rows = action.variants.length ? action.variants : [action];
-    for (const row of rows) if (row.expectedVersion != null) versions[row.itemId] = row.expectedVersion;
+    for (const row of rows)
+      if (row.expectedVersion != null) versions[row.itemId] = row.expectedVersion;
   }
   return versions;
 }
@@ -1015,7 +1118,11 @@ export function priceRowsFromItem(rawItem: unknown): PriceRow[] {
     for (const option of Array.isArray(group?.options) ? group.options.map(record) : []) {
       if (!option || option.active === false) continue;
       const key = facts.optionKeys[text(option.id)];
-      if (key) rows.push({ optionKey: key, priceMinor: base + (int(option.priceModifierMinor) ?? 0) });
+      if (key)
+        rows.push({
+          optionKey: key,
+          priceMinor: base + (int(option.priceModifierMinor) ?? 0),
+        });
     }
   }
   return rows;

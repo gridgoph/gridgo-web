@@ -4,10 +4,19 @@ import Link from "next/link";
 import { Pencil, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { DataTable, DataTableRowAction, type DataTableColumn } from "@/components/ui/data-table";
+import {
+  DataTable,
+  DataTableRowAction,
+  type DataTableColumn,
+} from "@/components/ui/data-table";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { formatPhp } from "@/lib/format";
-import { groupLabel, groupsOf, unitLabel, type ProductTemplate } from "@/lib/product-templates";
+import {
+  groupLabel,
+  groupsOf,
+  unitLabel,
+  type ProductTemplate,
+} from "@/lib/product-templates";
 
 import { templateHref, type Tree } from "./team-data";
 
@@ -38,9 +47,16 @@ export function TemplatesTab({
           {t.photoUrl ? (
             // Public stock photo path; next/image would proxy it.
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={t.photoUrl} alt="" className="size-12 shrink-0 rounded-md border border-outline object-cover" />
+            <img
+              src={t.photoUrl}
+              alt=""
+              className="size-12 shrink-0 rounded-md border border-outline object-cover"
+            />
           ) : (
-            <span aria-hidden className="bg-muted size-12 shrink-0 rounded-md border border-outline" />
+            <span
+              aria-hidden
+              className="bg-muted size-12 shrink-0 rounded-md border border-outline"
+            />
           )}
           <Link
             href={templateHref(tree, t.id)}
@@ -56,7 +72,9 @@ export function TemplatesTab({
       id: "group",
       header: "Group",
       sortValue: (t) => t.group,
-      cell: (t) => <span className="text-body text-text-secondary">{groupLabel(t.group)}</span>,
+      cell: (t) => (
+        <span className="text-body text-text-secondary">{groupLabel(t.group)}</span>
+      ),
     },
     {
       id: "options",
@@ -76,7 +94,9 @@ export function TemplatesTab({
       sortValue: (t) => t.priceRange?.minMinor ?? 0,
       cell: (t) => (
         <span className="text-body text-text-secondary tabular-nums">
-          {t.priceRange ? `${formatPhp(t.priceRange.minMinor)} to ${formatPhp(t.priceRange.maxMinor)}` : "—"}
+          {t.priceRange
+            ? `${formatPhp(t.priceRange.minMinor)} to ${formatPhp(t.priceRange.maxMinor)}`
+            : "—"}
         </span>
       ),
     },
@@ -92,7 +112,11 @@ export function TemplatesTab({
             <StatusChip tone="neutral" icon="circle-dashed" label="Retired" />
           )}
           {waitingByCategory.get(t.categoryCode) ? (
-            <StatusChip tone="info" icon="clock" label={`${waitingByCategory.get(t.categoryCode)} requests in its category`} />
+            <StatusChip
+              tone="info"
+              icon="clock"
+              label={`${waitingByCategory.get(t.categoryCode)} requests in its category`}
+            />
           ) : null}
         </span>
       ),
@@ -111,13 +135,21 @@ export function TemplatesTab({
       itemLabel="templates"
       filterPlaceholder="Search templates or options"
       toolbar={
-        <Button variant="primary" nativeButton={false} render={<Link href={templateHref(tree, "new")} />}>
+        <Button
+          variant="primary"
+          nativeButton={false}
+          render={<Link href={templateHref(tree, "new")} />}
+        >
           <Plus data-icon="inline-start" aria-hidden />
           New template
         </Button>
       }
       facets={[
-        { columnId: "group", title: "Group", options: groups.map((g) => ({ value: g, label: groupLabel(g) })) },
+        {
+          columnId: "group",
+          title: "Group",
+          options: groups.map((g) => ({ value: g, label: groupLabel(g) })),
+        },
         {
           columnId: "status",
           title: "Status",
@@ -127,7 +159,13 @@ export function TemplatesTab({
           ],
         },
       ]}
-      rowActions={(t) => <DataTableRowAction label="Edit template" icon={Pencil} href={templateHref(tree, t.id)} />}
+      rowActions={(t) => (
+        <DataTableRowAction
+          label="Edit template"
+          icon={Pencil}
+          href={templateHref(tree, t.id)}
+        />
+      )}
       pageSize={25}
     />
   );

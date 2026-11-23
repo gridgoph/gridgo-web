@@ -82,8 +82,10 @@ export function MigrationSection({
   const choices = useMemo(() => migrationChoices(matches, merges), [matches, merges]);
   const key = JSON.stringify(choices);
   const stale = plan != null && previewedKey !== key;
-  const nameOf = (itemId: string) => products.find((p) => p.id === itemId)?.name || "Untitled product";
-  const templateName = (tid: string | null) => templates.find((t) => t.id === tid)?.name ?? "a template";
+  const nameOf = (itemId: string) =>
+    products.find((p) => p.id === itemId)?.name || "Untitled product";
+  const templateName = (tid: string | null) =>
+    templates.find((t) => t.id === tid)?.name ?? "a template";
   const split = plan ? splitPlan(plan) : null;
 
   async function preview() {
@@ -94,7 +96,10 @@ export function MigrationSection({
       setPlan(normalizeMigrationPlan(await previewShopMigration(supplierId, choices)));
       setPreviewedKey(key);
     } catch (err) {
-      setError(migrationErrorMessage(err) ?? opsErrorMessage(err, "Could not preview. Try again."));
+      setError(
+        migrationErrorMessage(err) ??
+          opsErrorMessage(err, "Could not preview. Try again."),
+      );
     } finally {
       setBusy(false);
     }
@@ -118,7 +123,10 @@ export function MigrationSection({
       );
     } catch (err) {
       setConfirming(false);
-      setError(migrationErrorMessage(err) ?? opsErrorMessage(err, "Could not apply. Preview again, then apply."));
+      setError(
+        migrationErrorMessage(err) ??
+          opsErrorMessage(err, "Could not apply. Preview again, then apply."),
+      );
     } finally {
       setBusy(false);
     }
@@ -131,8 +139,9 @@ export function MigrationSection({
           Match existing products to templates
         </h2>
         <p className="text-body text-text-secondary m-0 max-w-2xl">
-          Preview first: nothing changes until you apply. Exact copies are hidden, ₱0 products are hidden until priced,
-          and nothing is deleted. Products with open orders are never changed.
+          Preview first: nothing changes until you apply. Exact copies are hidden, ₱0
+          products are hidden until priced, and nothing is deleted. Products with open
+          orders are never changed.
         </p>
       </div>
 
@@ -143,11 +152,18 @@ export function MigrationSection({
           {busy && !confirming ? "Checking" : plan ? "Preview again" : "Preview changes"}
         </Button>
         {plan && !stale ? (
-          <Button disabled={busy || !plan.actions.length} onClick={() => setConfirming(true)}>
+          <Button
+            disabled={busy || !plan.actions.length}
+            onClick={() => setConfirming(true)}
+          >
             Apply {plan.actions.length} change{plan.actions.length === 1 ? "" : "s"}
           </Button>
         ) : null}
-        {stale ? <p className="text-caption text-text-muted m-0">Your choices changed. Preview again to apply.</p> : null}
+        {stale ? (
+          <p className="text-caption text-text-muted m-0">
+            Your choices changed. Preview again to apply.
+          </p>
+        ) : null}
       </div>
       {error ? (
         <p role="alert" className="text-body text-destructive m-0">
@@ -158,7 +174,11 @@ export function MigrationSection({
       {applied ? (
         <PlanList
           title={`Applied (${applied.actions.length})`}
-          items={applied.actions.map((a) => ({ id: a.itemId, name: nameOf(a.itemId), line: migrationActionLine(a, templateName) }))}
+          items={applied.actions.map((a) => ({
+            id: a.itemId,
+            name: nameOf(a.itemId),
+            line: migrationActionLine(a, templateName),
+          }))}
           tone="success"
           empty="Nothing needed changing."
         />
@@ -175,7 +195,9 @@ export function MigrationSection({
               name: nameOf(a.itemId),
               line: migrationActionLine(a, templateName),
               extra: a.variants.length
-                ? a.variants.map((v) => `${v.label}: ${formatPhp(v.priceMinor)}`).join(", ")
+                ? a.variants
+                    .map((v) => `${v.label}: ${formatPhp(v.priceMinor)}`)
+                    .join(", ")
                 : undefined,
             }))}
           />
@@ -183,27 +205,46 @@ export function MigrationSection({
             title={`Skipped: open orders (${split.openOrders.length})`}
             tone="warning"
             empty="No product here has open orders."
-            items={split.openOrders.map((m) => ({ id: m.itemId, name: nameOf(m.itemId), line: migrationManualLine(m.reason) }))}
+            items={split.openOrders.map((m) => ({
+              id: m.itemId,
+              name: nameOf(m.itemId),
+              line: migrationManualLine(m.reason),
+            }))}
           />
           <div className="flex flex-col gap-2">
-            <h3 className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+            <h3
+              className="text-body text-text-primary m-0"
+              style={{ fontFamily: "var(--font-medium)" }}
+            >
               Needs a person ({split.manual.length})
             </h3>
             {split.manual.length ? (
               <ul className="m-0 flex list-none flex-col gap-2 p-0">
                 {split.manual.map((m) => (
                   <li key={`${m.itemId}:${m.reason}`} className="flex flex-col gap-1">
-                    <span className="text-body text-text-primary">{nameOf(m.itemId)}</span>
-                    <span className="text-caption text-text-secondary">{migrationManualLine(m.reason)}</span>
+                    <span className="text-body text-text-primary">
+                      {nameOf(m.itemId)}
+                    </span>
+                    <span className="text-caption text-text-secondary">
+                      {migrationManualLine(m.reason)}
+                    </span>
                     {m.reason === "ambiguous_template" && m.templateIds.length ? (
                       <Select
                         value={matches[m.itemId] ?? ""}
                         onValueChange={(v) =>
-                          setMatches((c) => ({ ...c, [m.itemId]: typeof v === "string" ? v : "" }))
+                          setMatches((c) => ({
+                            ...c,
+                            [m.itemId]: typeof v === "string" ? v : "",
+                          }))
                         }
                       >
-                        <SelectTrigger className="min-h-11 w-full" aria-label={`Template for ${nameOf(m.itemId)}`}>
-                          <SelectValue>{(v) => (v ? templateName(String(v)) : "Choose its template")}</SelectValue>
+                        <SelectTrigger
+                          className="min-h-11 w-full"
+                          aria-label={`Template for ${nameOf(m.itemId)}`}
+                        >
+                          <SelectValue>
+                            {(v) => (v ? templateName(String(v)) : "Choose its template")}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
@@ -229,9 +270,13 @@ export function MigrationSection({
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogContent className="sm:max-w-lg">
           <AlertDialogHeader>
-            <AlertDialogTitle>Apply {plan?.actions.length} change{plan?.actions.length === 1 ? "" : "s"} to {shopName}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Apply {plan?.actions.length} change{plan?.actions.length === 1 ? "" : "s"}{" "}
+              to {shopName}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Exactly these products change. Nothing is deleted, and the shop is asked to check its products.
+              Exactly these products change. Nothing is deleted, and the shop is asked to
+              check its products.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {split ? (
@@ -239,13 +284,17 @@ export function MigrationSection({
               <ul className="m-0 flex list-none flex-col gap-1 p-0">
                 {split.changes.map((a) => (
                   <li key={a.itemId} className="text-body text-text-primary">
-                    {nameOf(a.itemId)}: <span className="text-text-secondary">{migrationActionLine(a, templateName)}</span>
+                    {nameOf(a.itemId)}:{" "}
+                    <span className="text-text-secondary">
+                      {migrationActionLine(a, templateName)}
+                    </span>
                   </li>
                 ))}
               </ul>
               {split.openOrders.length ? (
                 <p className="text-body text-text-secondary m-0">
-                  Not changed, open orders: {split.openOrders.map((m) => nameOf(m.itemId)).join(", ")}.
+                  Not changed, open orders:{" "}
+                  {split.openOrders.map((m) => nameOf(m.itemId)).join(", ")}.
                 </p>
               ) : null}
             </div>
@@ -273,10 +322,14 @@ function PlanList({
   tone: "info" | "warning" | "success";
   empty: string;
 }) {
-  const icon = tone === "warning" ? "ban" : tone === "success" ? "circle-check" : "square-pen";
+  const icon =
+    tone === "warning" ? "ban" : tone === "success" ? "circle-check" : "square-pen";
   return (
     <div className="flex flex-col gap-2">
-      <h3 className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+      <h3
+        className="text-body text-text-primary m-0"
+        style={{ fontFamily: "var(--font-medium)" }}
+      >
         {title}
       </h3>
       {items.length ? (
@@ -287,7 +340,11 @@ function PlanList({
                 <StatusChip tone={tone} icon={icon} label={item.name} />
               </span>
               <span className="text-caption text-text-secondary">{item.line}</span>
-              {item.extra ? <span className="text-caption text-text-muted tabular-nums">{item.extra}</span> : null}
+              {item.extra ? (
+                <span className="text-caption text-text-muted tabular-nums">
+                  {item.extra}
+                </span>
+              ) : null}
             </li>
           ))}
         </ul>
@@ -317,16 +374,27 @@ function MergeBuilder({
   const [labels, setLabels] = useState<Record<string, string>>({});
   const inMerge = new Set(merges.flatMap((m) => [m.keepId, ...m.sourceIds]));
   const free = products.filter((p) => !inMerge.has(p.id));
-  const nameOf = (pid: string) => products.find((p) => p.id === pid)?.name || "Untitled product";
+  const nameOf = (pid: string) =>
+    products.find((p) => p.id === pid)?.name || "Untitled product";
 
   return (
     <div className="flex flex-col gap-2">
       {merges.length ? (
         <ul className="m-0 flex list-none flex-col gap-1 p-0">
           {merges.map((m, index) => (
-            <li key={m.keepId} className="text-body text-text-primary flex flex-wrap items-center gap-2">
-              Merge into {nameOf(m.keepId)}: {[m.keepId, ...m.sourceIds].map((pid) => m.labels[pid] || nameOf(pid)).join(", ")}
-              <Button size="sm" variant="ghost" onClick={() => onChange(merges.filter((_, i) => i !== index))}>
+            <li
+              key={m.keepId}
+              className="text-body text-text-primary flex flex-wrap items-center gap-2"
+            >
+              Merge into {nameOf(m.keepId)}:{" "}
+              {[m.keepId, ...m.sourceIds]
+                .map((pid) => m.labels[pid] || nameOf(pid))
+                .join(", ")}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => onChange(merges.filter((_, i) => i !== index))}
+              >
                 Remove
               </Button>
             </li>
@@ -336,21 +404,31 @@ function MergeBuilder({
       {open ? (
         <div className="flex flex-col gap-2 rounded-[var(--radius-field)] border border-outline p-3">
           <p className="text-body text-text-secondary m-0">
-            Tick the products to merge. The first ticked one stays; the others become its options and are hidden.
+            Tick the products to merge. The first ticked one stays; the others become its
+            options and are hidden.
           </p>
           <ul className="m-0 flex list-none flex-col gap-1 p-0">
             {free.map((p) => {
               const on = picked.includes(p.id);
               return (
-                <li key={p.id} className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 sm:grid-cols-[auto_minmax(0,1fr)_14rem]">
+                <li
+                  key={p.id}
+                  className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 sm:grid-cols-[auto_minmax(0,1fr)_14rem]"
+                >
                   <Checkbox
                     aria-label={`Merge ${p.name}`}
                     checked={on}
-                    onCheckedChange={(v) => setPicked((c) => (v === true ? [...c, p.id] : c.filter((x) => x !== p.id)))}
+                    onCheckedChange={(v) =>
+                      setPicked((c) =>
+                        v === true ? [...c, p.id] : c.filter((x) => x !== p.id),
+                      )
+                    }
                   />
                   <span className="text-body text-text-primary min-w-0 truncate">
                     {p.name || "Untitled product"}
-                    {picked[0] === p.id ? <span className="text-text-muted"> (stays)</span> : null}
+                    {picked[0] === p.id ? (
+                      <span className="text-text-muted"> (stays)</span>
+                    ) : null}
                   </span>
                   {on ? (
                     <Input
@@ -358,7 +436,9 @@ function MergeBuilder({
                       placeholder="Option name, e.g. A4"
                       value={labels[p.id] ?? ""}
                       maxLength={100}
-                      onChange={(e) => setLabels((c) => ({ ...c, [p.id]: e.target.value }))}
+                      onChange={(e) =>
+                        setLabels((c) => ({ ...c, [p.id]: e.target.value }))
+                      }
                     />
                   ) : null}
                 </li>
@@ -375,7 +455,11 @@ function MergeBuilder({
                   {
                     keepId: keepId!,
                     sourceIds,
-                    labels: Object.fromEntries(picked.filter((pid) => labels[pid]?.trim()).map((pid) => [pid, labels[pid]!.trim()])),
+                    labels: Object.fromEntries(
+                      picked
+                        .filter((pid) => labels[pid]?.trim())
+                        .map((pid) => [pid, labels[pid]!.trim()]),
+                    ),
                   },
                 ]);
                 setPicked([]);
@@ -391,7 +475,12 @@ function MergeBuilder({
           </div>
         </div>
       ) : (
-        <Button variant="ghost" className="self-start" disabled={free.length < 2} onClick={() => setOpen(true)}>
+        <Button
+          variant="ghost"
+          className="self-start"
+          disabled={free.length < 2}
+          onClick={() => setOpen(true)}
+        >
           Merge products into one with options
         </Button>
       )}

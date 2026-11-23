@@ -53,7 +53,9 @@ export function MoneyInput({
         aria-invalid={invalid || undefined}
         placeholder={placeholder}
         className="pl-7"
-        onChange={(event) => onChange(event.target.value.replace(/[^\d.,]/g, "").slice(0, 12))}
+        onChange={(event) =>
+          onChange(event.target.value.replace(/[^\d.,]/g, "").slice(0, 12))
+        }
       />
     </div>
   );
@@ -86,7 +88,10 @@ export function PriceTable({
   /** Options the price check flagged on a saved product. */
   flagged?: string[];
 }) {
-  const labels = useMemo(() => new Map(template.options.map((o) => [o.key, o.label])), [template]);
+  const labels = useMemo(
+    () => new Map(template.options.map((o) => [o.key, o.label])),
+    [template],
+  );
   const unit = unitLabel(template.unit);
   const big = template.options.length > BIG_TABLE;
   const [chosen, setChosen] = useState<Record<string, string>>({});
@@ -129,13 +134,16 @@ export function PriceTable({
           {filterLists.map((list) => (
             <div key={list.name} className="flex flex-col gap-1.5">
               <span className="text-caption text-text-secondary">{list.name}</span>
-              <div className="flex flex-wrap gap-1.5" role="group" aria-label={`Show only ${list.name}`}>
+              <div
+                className="flex flex-wrap gap-1.5"
+                role="group"
+                aria-label={`Show only ${list.name}`}
+              >
                 {list.options.map((value) => {
                   const on = chosen[list.name] === value;
                   return (
                     <Button
                       key={value}
-                      size="sm"
                       variant={on ? "default" : "outline"}
                       aria-pressed={on}
                       onClick={() =>
@@ -158,7 +166,11 @@ export function PriceTable({
             <Button size="sm" onClick={() => patchShown((r) => ({ ...r, on: true }))}>
               Tick all {visible.length} shown
             </Button>
-            <Button size="sm" variant="ghost" onClick={() => patchShown((r) => ({ ...r, on: false }))}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => patchShown((r) => ({ ...r, on: false }))}
+            >
               Untick shown
             </Button>
             <div className="flex flex-wrap items-center gap-2">
@@ -188,7 +200,9 @@ export function PriceTable({
         {visible.map((row) => {
           const label = labels.get(row.optionKey) ?? row.optionKey;
           const error = showErrors ? errors[row.optionKey] : undefined;
-          const unusual = !error && (outsideUsualRange(template, row) || flagged.includes(row.optionKey));
+          const unusual =
+            !error &&
+            (outsideUsualRange(template, row) || flagged.includes(row.optionKey));
           return (
             <li
               key={row.optionKey}
@@ -209,7 +223,10 @@ export function PriceTable({
                 {/* The checkbox already says "I make …"; the text is for the eye. */}
                 <span
                   aria-hidden
-                  className={cn("text-body min-w-0", row.on ? "text-text-primary" : "text-text-muted")}
+                  className={cn(
+                    "text-body min-w-0",
+                    row.on ? "text-text-primary" : "text-text-muted",
+                  )}
                 >
                   {label}
                 </span>
@@ -223,7 +240,9 @@ export function PriceTable({
                     invalid={Boolean(error)}
                     className="flex-1"
                   />
-                  <span className="text-caption text-text-muted w-20 shrink-0">{unit}</span>
+                  <span className="text-caption text-text-muted w-20 shrink-0">
+                    {unit}
+                  </span>
                 </div>
               ) : null}
               {error ? (
@@ -248,7 +267,9 @@ export function PriceTable({
         </p>
       ) : null}
       {big && !visible.length ? (
-        <p className="text-body text-text-secondary m-0">No option matches those choices. Clear one.</p>
+        <p className="text-body text-text-secondary m-0">
+          No option matches those choices. Clear one.
+        </p>
       ) : null}
     </div>
   );

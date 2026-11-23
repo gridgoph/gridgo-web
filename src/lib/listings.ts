@@ -1007,7 +1007,7 @@ const SHOP_READINESS_CODES = new Set([
 const STANDING_READINESS_CODES = new Set(["item_inactive", "listing_not_approved"]);
 
 const SHOP_NOT_APPROVED =
-  "Your shop needs Operations approval before clients can match with it.";
+  "Your shop needs the GRIDGO team's approval before clients can match with it.";
 
 /** Readiness steps worth listing under Not ready yet: the listing's own first. */
 export function readinessSteps(readiness: ListingReadiness | null | undefined): string[] {
@@ -1042,7 +1042,7 @@ function standing(
 }
 
 export const CHANGES_IN_REVIEW_NOTE =
-  "Your latest changes are waiting for Operations. Clients see the approved version until then.";
+  "Your latest changes are waiting for the GRIDGO team. Clients see the approved version until then.";
 
 /**
  * The listing's standing, as the supplier app shows it.
@@ -1067,7 +1067,7 @@ export function boardStanding(
   const pending = listing.reviewStatus === "pending";
   const sentBack = listing.reviewStatus === "needs_revision";
   const reason =
-    listing.reviewReason ?? "Operations sent this back. Open it to see what to change.";
+    listing.reviewReason ?? "The GRIDGO team sent this back. Open it to see what to change.";
   if (readiness?.ready) {
     if (sentBack) return standing("live", reason, { secondary: "needs_changes" });
     return standing("live", pending ? CHANGES_IN_REVIEW_NOTE : null, {
@@ -1084,7 +1084,7 @@ export function boardStanding(
       "pending_review",
       listing.hasApprovedVersion
         ? CHANGES_IN_REVIEW_NOTE
-        : "Operations checks every new listing before clients see it.",
+        : "The GRIDGO team checks every new product before clients see it.",
       { steps: blockers },
     );
   }

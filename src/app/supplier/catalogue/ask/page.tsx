@@ -8,7 +8,13 @@ import { RequestList } from "@/components/product-templates/supplier/RequestList
 import { templateErrorMessage } from "@/components/product-templates/supplier/errors";
 import { useSetupRequests } from "@/components/product-templates/supplier/useSetupRequests";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { createProductSetupRequest } from "@/lib/api/product-templates";
@@ -30,8 +36,12 @@ export default function AskTemplatePage() {
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<string | null>(null);
 
-  const nameProblem = !name.trim() ? "Name the product, the way a client would ask for it." : null;
-  const messageProblem = !message.trim() ? "Say a little about it: sizes, paper or material." : null;
+  const nameProblem = !name.trim()
+    ? "Name the product, the way a client would ask for it."
+    : null;
+  const messageProblem = !message.trim()
+    ? "Say a little about it: sizes, paper or material."
+    : null;
 
   async function send() {
     if (nameProblem || messageProblem) {
@@ -63,8 +73,8 @@ export default function AskTemplatePage() {
       <div className="flex flex-col gap-1">
         <h1 className="text-h2 text-text-primary m-0">Ask GRIDGO to add a product</h1>
         <p className="text-body text-text-secondary m-0">
-          The GRIDGO team adds it to the list, usually within one working day, and tells you. Then
-          you tick it and price it like any other.
+          The GRIDGO team adds it to the list, usually within one working day, and tells
+          you. Then you tick it and price it like any other.
         </p>
       </div>
 
@@ -74,10 +84,15 @@ export default function AskTemplatePage() {
           role="status"
           data-testid="request-sent"
         >
-          <p className="text-body text-text-primary m-0" style={{ fontFamily: "var(--font-medium)" }}>
+          <p
+            className="text-body text-text-primary m-0"
+            style={{ fontFamily: "var(--font-medium)" }}
+          >
             Sent: &ldquo;{sent}&rdquo;
           </p>
-          <p className="text-body text-text-secondary m-0">We tell you when it is in the list.</p>
+          <p className="text-body text-text-secondary m-0">
+            We tell you when it is in the list.
+          </p>
         </div>
       ) : null}
 
@@ -105,8 +120,12 @@ export default function AskTemplatePage() {
             aria-invalid={tried && messageProblem ? true : undefined}
             onChange={(event) => setMessage(event.target.value)}
           />
-          <FieldDescription>Sizes, paper or material, and how you price it.</FieldDescription>
-          {tried && !nameProblem && messageProblem ? <FieldError>{messageProblem}</FieldError> : null}
+          <FieldDescription>
+            Sizes, paper or material, and how you price it.
+          </FieldDescription>
+          {tried && !nameProblem && messageProblem ? (
+            <FieldError>{messageProblem}</FieldError>
+          ) : null}
         </Field>
       </FieldGroup>
 

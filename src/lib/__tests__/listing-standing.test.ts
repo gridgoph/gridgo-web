@@ -156,7 +156,7 @@ describe("listing standing (gridgo-web#111)", () => {
     expect(standing).toMatchObject({
       kind: "pending_review",
       label: "Pending review",
-      note: "Operations checks every new listing before clients see it.",
+      note: "The GRIDGO team checks every new product before clients see it.",
     });
     expect(standing.steps).toEqual([
       "Say what this is, so a client knows what they are ordering.",
@@ -240,7 +240,7 @@ describe("listing standing (gridgo-web#111)", () => {
   it("says a shop awaiting approval is Not ready yet when readiness is unavailable", () => {
     const standing = boardStanding(listing(), context, false, null);
     expect(standing.kind).toBe("not_ready");
-    expect(standing.note).toMatch(/Operations approval/);
+    expect(standing.note).toMatch(/GRIDGO team's approval/);
   });
 
   it("never lists a step the chip already says", () => {

@@ -53,7 +53,11 @@ export function TeamPriceTable({
         {range ? ` ${range}.` : ""}
       </p>
       {template.optionLists.length && template.options.length > 8 ? (
-        <div className="flex flex-col gap-2" role="group" aria-label="Show only options with">
+        <div
+          className="flex flex-col gap-2"
+          role="group"
+          aria-label="Show only options with"
+        >
           {template.optionLists.map((list) => (
             <div key={list.name} className="flex flex-wrap items-center gap-1.5">
               <span className="text-caption text-text-muted mr-1">{list.name}</span>
@@ -63,10 +67,13 @@ export function TeamPriceTable({
                   <Button
                     key={value}
                     type="button"
-                    size="sm"
                     variant={on ? "default" : "outline"}
                     aria-pressed={on}
-                    onClick={() => setChosen((c) => (on ? c.filter((v) => v !== value) : [...c, value]))}
+                    onClick={() =>
+                      setChosen((c) =>
+                        on ? c.filter((v) => v !== value) : [...c, value],
+                      )
+                    }
                   >
                     {value}
                   </Button>
@@ -87,7 +94,11 @@ export function TeamPriceTable({
               type="button"
               disabled={!fill.trim()}
               onClick={() =>
-                onChange(rows.map((r) => (visible.has(r.optionKey) ? { ...r, on: true, price: fill.trim() } : r)))
+                onChange(
+                  rows.map((r) =>
+                    visible.has(r.optionKey) ? { ...r, on: true, price: fill.trim() } : r,
+                  ),
+                )
               }
             >
               Tick and price the {shown.length} shown
@@ -113,15 +124,24 @@ export function TeamPriceTable({
                 checked={row.on}
                 onCheckedChange={(v) => patch(row.optionKey, { on: v === true })}
               />
-              <label htmlFor={`${id}-${row.optionKey}`} className="text-body text-text-primary min-w-0 break-words">
+              <label
+                htmlFor={`${id}-${row.optionKey}`}
+                className="text-body text-text-primary min-w-0 break-words"
+              >
                 {label}
                 {unusual ? (
                   <span className="text-caption text-text-muted flex items-center gap-1">
-                    <TriangleAlert aria-hidden className="size-3.5" style={{ color: "var(--color-warning)" }} />
+                    <TriangleAlert
+                      aria-hidden
+                      className="size-3.5"
+                      style={{ color: "var(--color-warning)" }}
+                    />
                     Outside the usual price
                   </span>
                 ) : null}
-                {error ? <span className="text-caption text-destructive block">{error}</span> : null}
+                {error ? (
+                  <span className="text-caption text-destructive block">{error}</span>
+                ) : null}
               </label>
               <Input
                 aria-label={`Full price for ${label}`}
@@ -129,7 +149,9 @@ export function TeamPriceTable({
                 placeholder="₱"
                 value={row.price}
                 aria-invalid={error ? true : undefined}
-                onChange={(e) => patch(row.optionKey, { price: e.target.value, on: true })}
+                onChange={(e) =>
+                  patch(row.optionKey, { price: e.target.value, on: true })
+                }
               />
             </li>
           );

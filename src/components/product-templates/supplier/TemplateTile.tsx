@@ -62,11 +62,19 @@ export function TemplateTile({
         )}
       </span>
       <span className="flex flex-col gap-0.5 p-2.5">
-        <span className="text-body text-text-primary" style={{ fontFamily: "var(--font-medium)" }}>
+        <span
+          className="text-body text-text-primary"
+          style={{ fontFamily: "var(--font-medium)" }}
+        >
           {template.name}
         </span>
         {caption ? (
-          <span className={cn("text-caption", state === "added" ? "text-success" : "text-text-muted")}>
+          <span
+            className={cn(
+              "text-caption",
+              state === "added" ? "text-success" : "text-text-muted",
+            )}
+          >
             {caption}
           </span>
         ) : null}
@@ -76,7 +84,9 @@ export function TemplateTile({
           aria-hidden
           className={cn(
             "absolute top-2 right-2 flex size-7 items-center justify-center rounded-pill",
-            ticked ? "bg-foreground text-background" : "border-success bg-surface text-success border",
+            ticked
+              ? "bg-foreground text-background"
+              : "border-success bg-surface text-success border",
           )}
         >
           <Check className="size-4" strokeWidth={3} />

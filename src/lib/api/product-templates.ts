@@ -34,12 +34,16 @@ function catalogueSearch(query: TemplateCatalogueQuery): string {
 }
 
 /** `{templates, readyTimes, checkYourProducts}` for the signed-in shop. */
-export async function listMyProductTemplates(query: TemplateCatalogueQuery = {}): Promise<unknown> {
+export async function listMyProductTemplates(
+  query: TemplateCatalogueQuery = {},
+): Promise<unknown> {
   return apiRequest<unknown>(`/me/product-templates${catalogueSearch(query)}`);
 }
 
 /** Client view and ready-by example for a table not saved yet. Saves nothing. */
-export async function previewTemplateProduct(body: Record<string, unknown>): Promise<unknown> {
+export async function previewTemplateProduct(
+  body: Record<string, unknown>,
+): Promise<unknown> {
   return apiRequest<unknown>("/me/template-products/preview", {
     method: "POST",
     body: JSON.stringify(body),
@@ -47,7 +51,9 @@ export async function previewTemplateProduct(body: Record<string, unknown>): Pro
 }
 
 /** `201 {item}`; `409 template_already_added` means edit the existing one. */
-export async function createTemplateProduct(body: Record<string, unknown>): Promise<unknown> {
+export async function createTemplateProduct(
+  body: Record<string, unknown>,
+): Promise<unknown> {
   return apiRequest<unknown>("/me/template-products", {
     method: "POST",
     body: JSON.stringify(body),
@@ -72,7 +78,10 @@ export async function updateTemplateProduct(
 }
 
 /** Ready-by example for a saved product under another chip. */
-export async function templateReadyPreview(itemId: string, readyTime: string): Promise<unknown> {
+export async function templateReadyPreview(
+  itemId: string,
+  readyTime: string,
+): Promise<unknown> {
   return apiRequest<unknown>(
     `/me/template-products/${encodeURIComponent(itemId)}/ready-preview`,
     { method: "POST", body: JSON.stringify({ readyTime }) },
@@ -80,18 +89,26 @@ export async function templateReadyPreview(itemId: string, readyTime: string): P
 }
 
 /** Confirm GRIDGO-prepared prices. Queues the price check; does not approve. */
-export async function confirmTemplateProduct(itemId: string, expectedVersion: number): Promise<unknown> {
-  return apiRequest<unknown>(`/me/template-products/${encodeURIComponent(itemId)}/confirm`, {
-    method: "POST",
-    body: JSON.stringify({ expectedVersion }),
-  });
+export async function confirmTemplateProduct(
+  itemId: string,
+  expectedVersion: number,
+): Promise<unknown> {
+  return apiRequest<unknown>(
+    `/me/template-products/${encodeURIComponent(itemId)}/confirm`,
+    {
+      method: "POST",
+      body: JSON.stringify({ expectedVersion }),
+    },
+  );
 }
 
 export type SetupRequestBody =
   | { kind: "template"; requestedName: string; message: string }
   | { kind: "setup"; message?: string; fileIds?: string[] };
 
-export async function createProductSetupRequest(body: SetupRequestBody): Promise<unknown> {
+export async function createProductSetupRequest(
+  body: SetupRequestBody,
+): Promise<unknown> {
   return apiRequest<unknown>("/me/product-setup-requests", {
     method: "POST",
     body: JSON.stringify(body),
@@ -111,14 +128,19 @@ export async function uploadProductSetupFile(file: File): Promise<StoredFile> {
   const body = new FormData();
   body.append("purpose", "product_setup");
   body.append("file", file);
-  const uploaded = await apiRequest<{ file: StoredFile }>("/files", { method: "POST", body });
+  const uploaded = await apiRequest<{ file: StoredFile }>("/files", {
+    method: "POST",
+    body,
+  });
   return uploaded.file;
 }
 
 /* -------------------------------------------------------- GRIDGO team --- */
 
 /** Every template, retired ones included. */
-export async function listStaffProductTemplates(query: { q?: string; group?: string } = {}): Promise<unknown> {
+export async function listStaffProductTemplates(
+  query: { q?: string; group?: string } = {},
+): Promise<unknown> {
   return apiRequest<unknown>(`/ops/product-templates${catalogueSearch(query)}`);
 }
 
@@ -130,7 +152,9 @@ export async function saveProductTemplate(
 ): Promise<unknown> {
   return apiRequest<unknown>(`/ops/product-templates/${encodeURIComponent(templateId)}`, {
     method: "PUT",
-    body: JSON.stringify(expectedVersion == null ? { template } : { expectedVersion, template }),
+    body: JSON.stringify(
+      expectedVersion == null ? { template } : { expectedVersion, template },
+    ),
   });
 }
 
@@ -172,10 +196,13 @@ export async function prepareShopTemplateProduct(
   supplierId: string,
   body: Record<string, unknown>,
 ): Promise<unknown> {
-  return apiRequest<unknown>(`/ops/shops/${encodeURIComponent(supplierId)}/template-products`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
+  return apiRequest<unknown>(
+    `/ops/shops/${encodeURIComponent(supplierId)}/template-products`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
 }
 
 /** Revise a prepared product. Asks the shop for a fresh confirmation. */
@@ -193,15 +220,25 @@ export async function reviseShopTemplateProduct(
 
 export type MigrationChoices = {
   templateMatches?: Record<string, string>;
-  mergeGroups?: { keepId: string; sourceIds: string[]; labels?: Record<string, string> }[];
+  mergeGroups?: {
+    keepId: string;
+    sourceIds: string[];
+    labels?: Record<string, string>;
+  }[];
 };
 
 /** Read-only preview. Never changes a product. */
-export async function previewShopMigration(supplierId: string, choices: MigrationChoices = {}): Promise<unknown> {
-  return apiRequest<unknown>(`/ops/shops/${encodeURIComponent(supplierId)}/template-migration`, {
-    method: "POST",
-    body: JSON.stringify({ ...choices, dryRun: true }),
-  });
+export async function previewShopMigration(
+  supplierId: string,
+  choices: MigrationChoices = {},
+): Promise<unknown> {
+  return apiRequest<unknown>(
+    `/ops/shops/${encodeURIComponent(supplierId)}/template-migration`,
+    {
+      method: "POST",
+      body: JSON.stringify({ ...choices, dryRun: true }),
+    },
+  );
 }
 
 /**
@@ -214,8 +251,11 @@ export async function applyShopMigration(
   choices: MigrationChoices,
   expectedVersions: Record<string, number>,
 ): Promise<unknown> {
-  return apiRequest<unknown>(`/ops/shops/${encodeURIComponent(supplierId)}/template-migration`, {
-    method: "POST",
-    body: JSON.stringify({ ...choices, dryRun: false, expectedVersions }),
-  });
+  return apiRequest<unknown>(
+    `/ops/shops/${encodeURIComponent(supplierId)}/template-migration`,
+    {
+      method: "POST",
+      body: JSON.stringify({ ...choices, dryRun: false, expectedVersions }),
+    },
+  );
 }

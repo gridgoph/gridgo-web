@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import { ApiError } from "@/lib/api/client";
 import type { PriceTier } from "@/lib/listings";
-import { normalizeMigrationPlan, type ProductTemplate, type SetupRequest } from "@/lib/product-templates";
+import {
+  normalizeMigrationPlan,
+  type ProductTemplate,
+  type SetupRequest,
+} from "@/lib/product-templates";
 
 import { splitPlan } from "../MigrationSection";
 import { categoryResolver } from "../ShopTemplateProducts";
@@ -62,7 +66,11 @@ const template: ProductTemplate = {
   express: false,
   machinesNeeded: ["document_printer"],
   stockPhotos: [
-    { url: "/product-template-photos/flyers.jpg", altText: "Flyers", src: "http://api/product-template-photos/flyers.jpg" },
+    {
+      url: "/product-template-photos/flyers.jpg",
+      altText: "Flyers",
+      src: "http://api/product-template-photos/flyers.jpg",
+    },
   ],
   photoUrl: "http://api/product-template-photos/flyers.jpg",
   photoAlt: "Flyers",
@@ -82,24 +90,55 @@ describe("setup requests", () => {
     const ordered = orderRequests([
       request({ id: "done_old", status: "completed", updatedAt: "2026-11-01T00:00:00Z" }),
       request({ id: "wait_new", createdAt: "2026-11-22T00:00:00Z" }),
-      request({ id: "done_new", status: "needs_revision", updatedAt: "2026-11-23T00:00:00Z" }),
+      request({
+        id: "done_new",
+        status: "needs_revision",
+        updatedAt: "2026-11-23T00:00:00Z",
+      }),
       request({ id: "wait_old", createdAt: "2026-11-19T00:00:00Z" }),
     ]);
-    expect(ordered.map((r) => r.id)).toEqual(["wait_old", "wait_new", "done_new", "done_old"]);
+    expect(ordered.map((r) => r.id)).toEqual([
+      "wait_old",
+      "wait_new",
+      "done_new",
+      "done_old",
+    ]);
   });
 
   it("needs a reason the shop reads, and a template to complete a template request", () => {
     const tpl = request({ kind: "template" });
-    expect(decisionBlocker({ request: tpl, status: "completed", reason: "Added.", templateId: null })).toMatch(
-      /Choose the template/,
-    );
-    expect(decisionBlocker({ request: tpl, status: "completed", reason: "Added.", templateId: "tpl_flyers" })).toBeNull();
-    expect(decisionBlocker({ request: tpl, status: "needs_revision", reason: "  ", templateId: null })).toMatch(
-      /Write what the shop reads/,
-    );
-    expect(decisionBlocker({ request: request({}), status: "completed", reason: "x".repeat(2001), templateId: null })).toMatch(
-      /2,000/,
-    );
+    expect(
+      decisionBlocker({
+        request: tpl,
+        status: "completed",
+        reason: "Added.",
+        templateId: null,
+      }),
+    ).toMatch(/Choose the template/);
+    expect(
+      decisionBlocker({
+        request: tpl,
+        status: "completed",
+        reason: "Added.",
+        templateId: "tpl_flyers",
+      }),
+    ).toBeNull();
+    expect(
+      decisionBlocker({
+        request: tpl,
+        status: "needs_revision",
+        reason: "  ",
+        templateId: null,
+      }),
+    ).toMatch(/Write what the shop reads/);
+    expect(
+      decisionBlocker({
+        request: request({}),
+        status: "completed",
+        reason: "x".repeat(2001),
+        templateId: null,
+      }),
+    ).toMatch(/2,000/);
   });
 });
 
@@ -164,7 +203,11 @@ describe("template editor", () => {
   it("refuses more than 200 options", () => {
     const draft = {
       ...draftFromTemplate(template),
-      options: Array.from({ length: 201 }, (_, i) => ({ key: `k${i}`, label: `L${i}`, specBinding: null })),
+      options: Array.from({ length: 201 }, (_, i) => ({
+        key: `k${i}`,
+        label: `L${i}`,
+        specBinding: null,
+      })),
     };
     expect(templateErrors(draft, ctx).options).toMatch(/200/);
   });
@@ -183,7 +226,10 @@ describe("template editor", () => {
       { key: "variant_2", label: "A5 / Glossy", specBinding: null },
       { key: "variant_3", label: "A5 / Matte", specBinding: null },
     ]);
-    expect(removedOptionKeys(options, options.slice(0, 2))).toEqual(["A5 / Glossy", "A5 / Matte"]);
+    expect(removedOptionKeys(options, options.slice(0, 2))).toEqual([
+      "A5 / Glossy",
+      "A5 / Matte",
+    ]);
   });
 
   it("offers only the stock photos templates already use", () => {
@@ -197,7 +243,9 @@ describe("template editor", () => {
   });
 
   it("explains a stale save", () => {
-    expect(templateErrorMessage(new ApiError(409, { error: "product_template_stale" }))).toMatch(/Someone else saved/);
+    expect(
+      templateErrorMessage(new ApiError(409, { error: "product_template_stale" })),
+    ).toMatch(/Someone else saved/);
     expect(templateErrorMessage(new Error("x"))).toBeNull();
   });
 });
@@ -219,7 +267,12 @@ describe("shop products", () => {
   it("carries the shop's own offers forward on a revision", () => {
     const tiers: PriceTier[] = [{ minQuantity: 100, unitPriceMinor: 400 }];
     const body = keepShopExtras(
-      { minimumOrderQuantity: 50, priceTiers: tiers, speedTiers: [], printerMaxWidthFeet: null },
+      {
+        minimumOrderQuantity: 50,
+        priceTiers: tiers,
+        speedTiers: [],
+        printerMaxWidthFeet: null,
+      },
       ["Bring your own paper."],
     );
     expect(body).toEqual({
@@ -245,23 +298,40 @@ describe("shop products", () => {
 
 describe("existing-product migration", () => {
   it("sends only answered matches and complete merges", () => {
-    expect(migrationChoices({ sci_a: "tpl_flyers", sci_b: "" }, [])).toEqual({ templateMatches: { sci_a: "tpl_flyers" } });
+    expect(migrationChoices({ sci_a: "tpl_flyers", sci_b: "" }, [])).toEqual({
+      templateMatches: { sci_a: "tpl_flyers" },
+    });
     expect(
       migrationChoices({}, [
         { keepId: "sci_a", sourceIds: ["sci_b"], labels: { sci_a: "A4", sci_b: "A3" } },
         { keepId: "sci_c", sourceIds: [], labels: {} },
       ]),
-    ).toEqual({ mergeGroups: [{ keepId: "sci_a", sourceIds: ["sci_b"], labels: { sci_a: "A4", sci_b: "A3" } }] });
+    ).toEqual({
+      mergeGroups: [
+        { keepId: "sci_a", sourceIds: ["sci_b"], labels: { sci_a: "A4", sci_b: "A3" } },
+      ],
+    });
     expect(migrationChoices({}, [])).toEqual({});
   });
 
   it("splits a plan into changes, open-order skips and what needs a person", () => {
     const plan = normalizeMigrationPlan({
-      actions: [{ action: "attach_template", itemId: "sci_a", expectedVersion: 2, templateId: "tpl_flyers" }],
+      actions: [
+        {
+          action: "attach_template",
+          itemId: "sci_a",
+          expectedVersion: 2,
+          templateId: "tpl_flyers",
+        },
+      ],
       manual: [
         { itemId: "sci_b", reason: "open_orders" },
         { itemId: "sci_c", reason: "merge_has_open_orders" },
-        { itemId: "sci_d", reason: "ambiguous_template", templateIds: ["tpl_flyers", "tpl_posters"] },
+        {
+          itemId: "sci_d",
+          reason: "ambiguous_template",
+          templateIds: ["tpl_flyers", "tpl_posters"],
+        },
       ],
     });
     const split = splitPlan(plan);

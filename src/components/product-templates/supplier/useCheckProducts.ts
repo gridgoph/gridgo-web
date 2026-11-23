@@ -2,10 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import {
-  getTemplateProduct,
-  listMyProductTemplates,
-} from "@/lib/api/product-templates";
+import { getTemplateProduct, listMyProductTemplates } from "@/lib/api/product-templates";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { normalizeListing, type Listing } from "@/lib/listings";
 import {
@@ -48,10 +45,18 @@ export function summarize(body: unknown): TemplateSummary {
   for (const template of catalogue.templates) {
     for (const id of template.addedItemIds) byItem.set(id, template);
   }
-  return { offered: true, templates: catalogue.templates, byItem, check: catalogue.check };
+  return {
+    offered: true,
+    templates: catalogue.templates,
+    byItem,
+    check: catalogue.check,
+  };
 }
 
-export function useTemplateSummary(): { summary: TemplateSummary | null; reload: () => Promise<void> } {
+export function useTemplateSummary(): {
+  summary: TemplateSummary | null;
+  reload: () => Promise<void>;
+} {
   const [summary, setSummary] = useState<TemplateSummary | null>(null);
   const reload = useCallback(async () => {
     try {
@@ -78,6 +83,8 @@ export type CheckProducts = {
   items: ProductToCheck[];
   /** Tidy-ups the GRIDGO team has lined up (matches, duplicates). Theirs, not the shop's. */
   suggested: number;
+  /** Every template product read, owed or not: the board's standing words come from these. */
+  factsByItem: Map<string, TemplateFacts>;
 };
 
 /** At most this many products are read one by one. */
@@ -89,7 +96,9 @@ function owes(facts: TemplateFacts | null): facts is TemplateFacts {
 
 /** Products needing a price first: clients cannot see those at all. */
 export function orderToCheck(items: ProductToCheck[]): ProductToCheck[] {
-  return [...items].sort((a, b) => Number(b.facts.needsPrice) - Number(a.facts.needsPrice));
+  return [...items].sort(
+    (a, b) => Number(b.facts.needsPrice) - Number(a.facts.needsPrice),
+  );
 }
 
 /**
@@ -106,7 +115,7 @@ export function useCheckProducts(summary: TemplateSummary | null): {
   const reload = useCallback(async () => {
     if (!summary) return;
     if (!summary.offered) {
-      setCheck({ items: [], suggested: 0 });
+      setCheck({ items: [], suggested: 0, factsByItem: new Map() });
       return;
     }
     const ids = [
@@ -116,18 +125,25 @@ export function useCheckProducts(summary: TemplateSummary | null): {
       ids.map((id) => getTemplateProduct(id).catch(() => null)),
     );
     const items: ProductToCheck[] = [];
+    const factsByItem = new Map<string, TemplateFacts>();
     for (const body of reads) {
       const facts = templateFactsOf(body);
       const listing = normalizeListing(body);
+      if (listing && facts) factsByItem.set(listing.id, facts);
       if (!listing || !owes(facts)) continue;
-      const raw = body && typeof body === "object" ? (body as { item?: unknown }).item : null;
+      const raw =
+        body && typeof body === "object" ? (body as { item?: unknown }).item : null;
       items.push({
         listing,
         facts,
         photoSrc: stockPhotoSrc(raw) ?? summary.byItem.get(listing.id)?.photoUrl ?? null,
       });
     }
-    setCheck({ items: orderToCheck(items), suggested: summary.check?.suggestedCount ?? 0 });
+    setCheck({
+      items: orderToCheck(items),
+      suggested: summary.check?.suggestedCount ?? 0,
+      factsByItem,
+    });
   }, [summary]);
 
   useEffect(() => {

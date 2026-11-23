@@ -4,7 +4,11 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { Store } from "lucide-react";
 
-import { DataTable, DataTableRowAction, type DataTableColumn } from "@/components/ui/data-table";
+import {
+  DataTable,
+  DataTableRowAction,
+  type DataTableColumn,
+} from "@/components/ui/data-table";
 import { StatusChip } from "@/components/ui/StatusChip";
 import type { SetupRequest } from "@/lib/product-templates";
 
@@ -74,7 +78,13 @@ export function ShopsTab({
       getRowId={(r) => r.supplierId}
       itemLabel="shops"
       filterPlaceholder="Find a shop"
-      rowActions={(r) => <DataTableRowAction label="Open shop products" icon={Store} href={shopHref(tree, r.supplierId)} />}
+      rowActions={(r) => (
+        <DataTableRowAction
+          label="Open shop products"
+          icon={Store}
+          href={shopHref(tree, r.supplierId)}
+        />
+      )}
       pageSize={25}
     />
   );

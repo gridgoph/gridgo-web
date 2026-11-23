@@ -49,7 +49,11 @@ const RAW_TEMPLATE = {
   unit: "piece",
   options: [
     { key: "standard", label: "A5 / Gloss", specBinding: null },
-    { key: "variant_1", label: "A4 / Gloss", specBinding: { fieldCode: "size", valueCode: "a4" } },
+    {
+      key: "variant_1",
+      label: "A4 / Gloss",
+      specBinding: { fieldCode: "size", valueCode: "a4" },
+    },
     { key: "variant_2", label: "A4 / Matte" },
     { key: "", label: "dropped" },
   ],
@@ -97,12 +101,16 @@ describe("reading templates", () => {
     expect(templatePhotoUrl("https://x.test/a.jpg")).toBe("https://x.test/a.jpg");
     expect(templatePhotoUrl("//evil.test/a.jpg")).toBeNull();
     expect(templatePhotoUrl("javascript:alert(1)")).toBeNull();
-    expect(templatePhotoUrl("/product-template-photos/a.jpg")).toMatch(/\/product-template-photos\/a\.jpg$/);
+    expect(templatePhotoUrl("/product-template-photos/a.jpg")).toMatch(
+      /\/product-template-photos\/a\.jpg$/,
+    );
   });
 
   it("finds an item's stock photo when it has no photo of its own", () => {
     expect(
-      stockPhotoSrc({ photos: [{ url: "/product-template-photos/b.jpg", realPhoto: false }] }),
+      stockPhotoSrc({
+        photos: [{ url: "/product-template-photos/b.jpg", realPhoto: false }],
+      }),
     ).toMatch(/b\.jpg$/);
     expect(stockPhotoSrc({ photos: [{ fileId: "f1" }] })).toBeNull();
   });
@@ -140,7 +148,10 @@ describe("the price table", () => {
       { optionKey: "variant_1", on: true, price: "0" },
       { optionKey: "variant_2", on: false, price: "" },
     ];
-    expect(priceErrors(rows)).toEqual({ standard: PRICE_REQUIRED, variant_1: PRICE_REQUIRED });
+    expect(priceErrors(rows)).toEqual({
+      standard: PRICE_REQUIRED,
+      variant_1: PRICE_REQUIRED,
+    });
     expect(priceBlocker(rows)).toBe("2 ticked options need a price above ₱0.");
     expect(priceBlocker(rows.map((r) => ({ ...r, on: false })))).toBe(
       "Tick at least one option you make.",
@@ -162,9 +173,15 @@ describe("the price table", () => {
   });
 
   it("hints, never blocks, a price outside the usual range", () => {
-    expect(outsideUsualRange(t, { optionKey: "standard", on: true, price: "100" })).toBe(true);
-    expect(outsideUsualRange(t, { optionKey: "standard", on: true, price: "10" })).toBe(false);
-    expect(outsideUsualRange(t, { optionKey: "standard", on: false, price: "100" })).toBe(false);
+    expect(outsideUsualRange(t, { optionKey: "standard", on: true, price: "100" })).toBe(
+      true,
+    );
+    expect(outsideUsualRange(t, { optionKey: "standard", on: true, price: "10" })).toBe(
+      false,
+    );
+    expect(outsideUsualRange(t, { optionKey: "standard", on: false, price: "100" })).toBe(
+      false,
+    );
   });
 
   it("filters rows by chosen option-list values", () => {
@@ -200,9 +217,15 @@ describe("the price table", () => {
 describe("more options", () => {
   it("says what to fix when half-filled", () => {
     expect(moreOptionsBlocker({ ...EMPTY_MORE, bulkFrom: "10" })).toMatch(/price each/);
-    expect(moreOptionsBlocker({ ...EMPTY_MORE, bulkFrom: "1", bulkPrice: "5" })).toMatch(/2 or more/);
-    expect(moreOptionsBlocker({ ...EMPTY_MORE, rushHours: "30", rushFee: "50" })).toMatch(/1 to 24/);
-    expect(moreOptionsBlocker({ ...EMPTY_MORE, minimumOrder: "1.5" })).toMatch(/whole number/);
+    expect(moreOptionsBlocker({ ...EMPTY_MORE, bulkFrom: "1", bulkPrice: "5" })).toMatch(
+      /2 or more/,
+    );
+    expect(moreOptionsBlocker({ ...EMPTY_MORE, rushHours: "30", rushFee: "50" })).toMatch(
+      /1 to 24/,
+    );
+    expect(moreOptionsBlocker({ ...EMPTY_MORE, minimumOrder: "1.5" })).toMatch(
+      /whole number/,
+    );
     expect(moreOptionsBlocker(EMPTY_MORE)).toBeNull();
   });
 
@@ -223,7 +246,9 @@ describe("more options", () => {
     expect(moreOptionsBody(more)).toEqual({
       minimumOrderQuantity: 10,
       priceTiers: [{ minQuantity: 100, unitPriceMinor: 800 }],
-      speedTiers: [{ label: "Rush", turnaroundMinutes: 180, priceMinor: null, surchargeMinor: 5000 }],
+      speedTiers: [
+        { label: "Rush", turnaroundMinutes: 180, priceMinor: null, surchargeMinor: 5000 },
+      ],
       clientTips: "Send PDF",
     });
     expect(moreOptionsCount(more)).toBe(4);
@@ -255,8 +280,12 @@ describe("standing in plain words", () => {
   it("says Live, Price check today and Hidden", () => {
     expect(templateStanding({ onTheBoard: true, template: facts }).label).toBe("Live");
     expect(
-      templateStanding({ onTheBoard: true, reviewStatus: "pending", hasApprovedVersion: false, template: facts })
-        .label,
+      templateStanding({
+        onTheBoard: true,
+        reviewStatus: "pending",
+        hasApprovedVersion: false,
+        template: facts,
+      }).label,
     ).toBe("Price check today");
     expect(templateStanding({ onTheBoard: false, template: facts }).label).toBe("Hidden");
   });
@@ -266,15 +295,18 @@ describe("standing in plain words", () => {
     const s = templateStanding({ onTheBoard: false, template: prepared });
     expect(s.label).toBe("Prices to confirm");
     expect(s.switchable).toBe(false);
-    expect(templateStanding({ onTheBoard: false, template: readTemplateFacts({ needsPrice: true }) }).label).toBe(
-      "Needs a price",
-    );
+    expect(
+      templateStanding({
+        onTheBoard: false,
+        template: readTemplateFacts({ needsPrice: true }),
+      }).label,
+    ).toBe("Needs a price");
   });
 
   it("puts a take-down above everything but a merge", () => {
-    expect(templateStanding({ onTheBoard: false, suspendReason: "x", template: facts }).label).toBe(
-      "Taken down by GRIDGO",
-    );
+    expect(
+      templateStanding({ onTheBoard: false, suspendReason: "x", template: facts }).label,
+    ).toBe("Taken down by GRIDGO");
   });
 
   it("writes the check card line", () => {
@@ -290,9 +322,9 @@ describe("ready time", () => {
       "Ordered now, ready by Tue 24 Nov, 2:00 PM",
     );
     expect(readyByLine({ earliestReadyBy: null })).toBeNull();
-    expect(readyChipLabel([{ code: "next_day", label: "Next working day" }], "next_day")).toBe(
-      "Ready: next working day",
-    );
+    expect(
+      readyChipLabel([{ code: "next_day", label: "Next working day" }], "next_day"),
+    ).toBe("Ready: next working day");
   });
 });
 
@@ -300,13 +332,21 @@ describe("requests and the team's desk", () => {
   it("reads requests newest first", () => {
     const list = normalizeSetupRequests({
       requests: [
-        { id: "a", kind: "template", status: "pending", requestedName: "A3 posters", version: 1 },
+        {
+          id: "a",
+          kind: "template",
+          status: "pending",
+          requestedName: "A3 posters",
+          version: 1,
+        },
         { id: "b", kind: "setup", status: "completed", fileIds: ["f1"], version: 2 },
       ],
     });
     expect(list.map((r) => r.id)).toEqual(["b", "a"]);
     expect(list[0]!.fileIds).toEqual(["f1"]);
-    expect(setupRequestStatus(list[1]!)).toBe("With the GRIDGO team, about one working day");
+    expect(setupRequestStatus(list[1]!)).toBe(
+      "With the GRIDGO team, about one working day",
+    );
   });
 
   it("picks the shop's live service line for the template's category", () => {
@@ -342,7 +382,11 @@ describe("requests and the team's desk", () => {
   });
 
   it("says when the same-day price check is due", () => {
-    expect(priceCheckTargetLine("2026-11-24", "2026-11-24")).toBe("Check today, Tue 24 Nov");
-    expect(priceCheckTargetLine("2026-11-23", "2026-11-24")).toBe("Overdue since Mon 23 Nov");
+    expect(priceCheckTargetLine("2026-11-24", "2026-11-24")).toBe(
+      "Check today, Tue 24 Nov",
+    );
+    expect(priceCheckTargetLine("2026-11-23", "2026-11-24")).toBe(
+      "Overdue since Mon 23 Nov",
+    );
   });
 });
