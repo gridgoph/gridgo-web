@@ -28,6 +28,10 @@ import { ApiError, listIssues, listJobs } from "@/lib/api/client";
 import type { Issue, Order } from "@/lib/api/types";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { formatDateTime, formatPhp } from "@/lib/format";
+import { VerifyNoticeCard } from "@/components/shop-verification/VerifyNoticeCard";
+import { WaitingPayoutList } from "@/components/shop-verification/WaitingPayoutList";
+import { useShopVerification } from "@/components/shop-verification/useShopVerification";
+import { missingPapers, moneyVerifyBanner } from "@/lib/shop-verification";
 
 type LoadState = {
   jobs: Order[];
@@ -40,6 +44,12 @@ export default function SupplierPayoutsPage() {
   const [loading, setLoading] = useState(true);
   const [issuesNote, setIssuesNote] = useState<string | null>(null);
   const [filter, setFilter] = useState<LedgerFilter>("unsettled");
+  // While the shop is not verified (gridgo-api#411): the cap banner and what waits on it.
+  const { state: verification } = useShopVerification();
+  const verifyRead = verification.kind === "ready" ? verification.read : null;
+  const verifyBanner = verifyRead
+    ? moneyVerifyBanner(verifyRead.verification, missingPapers(verifyRead.files))
+    : null;
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -116,6 +126,10 @@ export default function SupplierPayoutsPage() {
 
   return (
     <div className="flex flex-col gap-3">
+      {verifyBanner ? <VerifyNoticeCard notice={verifyBanner} testId="money-verify" /> : null}
+      {verifyRead && !verifyRead.verification.verified ? (
+        <WaitingPayoutList waiting={verifyRead.waiting} />
+      ) : null}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="max-w-prose">
           <p className="text-body text-text-secondary m-0">

@@ -20,6 +20,13 @@ import type {
   AccountDeletionRequest,
   ApprovalProofRead,
   ClientAccount,
+  ShopMoneyDesk,
+  ShopMoneyPolicy,
+  ShopMoneyRun,
+  ShopMoneyShop,
+  ShopMoneyTransfer,
+  ShopMoneyTransferOutcome,
+  ShopMoneyTransferStatus,
   ClientShopChatList,
   ClientShopChatPosted,
   ClientShopChatRead,
@@ -3246,6 +3253,36 @@ export async function submitCatalogItemForReview(
 }
 
 /** Whether matching can use each of this shop's listings, and the missing steps. */
+/**
+ * The Owner's verification summary, papers and ledger (gridgo-api#411,
+ * `SUPPLIER_VERIFICATION_API.md`). Staff are refused; an older API answers
+ * 404. Read it through `readShopVerification` in `src/lib/shop-verification.ts`.
+ */
+export async function getMySupplierVerification(): Promise<unknown> {
+  return request<unknown>("/me/supplier-verification");
+}
+
+/**
+ * Operations / Super Admin: shops on the verification queue, with their
+ * papers, days left, the amount paid before verification and money to
+ * recover. `status` is the approval status (default pending). No decision
+ * history here; decisions stay on `/approval-cases` (Super Admin).
+ */
+export async function listSupplierVerificationQueue(
+  params: { status?: string; cursor?: string | null } = {},
+): Promise<unknown> {
+  const search = new URLSearchParams();
+  if (params.status) search.set("status", params.status);
+  if (params.cursor) search.set("cursor", params.cursor);
+  const qs = search.toString();
+  return request<unknown>(`/ops/supplier-verification${qs ? `?${qs}` : ""}`);
+}
+
+/** One shop on the verification queue, with its verification ledger. */
+export async function getSupplierVerificationDetail(supplierId: string): Promise<unknown> {
+  return request<unknown>(`/ops/supplier-verification/${encodeURIComponent(supplierId)}`);
+}
+
 export async function getSupplierReadiness(): Promise<unknown> {
   return request<unknown>("/me/supplier-readiness");
 }
@@ -3902,7 +3939,7 @@ export async function uploadVerificationDocument(file: File): Promise<StoredFile
   return uploadPurpose("verification_document", file);
 }
 
-/** `documentType` is `business_permit`, `valid_id` or `sample_work`; any other field is `400 unexpected_target_field`. */
+/** `documentType` is `valid_id`, `id_selfie`, `business_permit` or the older `sample_work`; any other field is `400 unexpected_target_field`. */
 export async function attachVerificationDocument(
   fileId: string,
   documentType: string,
@@ -4506,4 +4543,125 @@ export async function getPortalBuild(): Promise<{ commit: string; builtAt: strin
     }
     return { commit: body.commit, builtAt: body.builtAt };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Shop money: balances, the daily run, prepared transfers, Pay GRIDGO
+// (gridgo-api#416, docs/SHOP_MONEY_API.md). Operations and Super Admin.
+// ---------------------------------------------------------------------------
+
+/** Every shop's balances, the latest 31 runs and the latest 100 prepared transfers. */
+export async function getShopMoneyDesk(): Promise<ShopMoneyDesk> {
+  const body = await request<Partial<ShopMoneyDesk>>("/ops/shop-money");
+  return { shops: body.shops ?? [], runs: body.runs ?? [], transfers: body.transfers ?? [] };
+}
+
+/** One shop's balances, ledger history, jobs and any open Pay GRIDGO request. */
+export async function getShopMoneyShop(
+  supplierId: string,
+  query: { period?: "week" | "month" } = {},
+): Promise<ShopMoneyShop> {
+  return request<ShopMoneyShop>(
+    `/ops/shop-money/shops/${encodeURIComponent(supplierId)}${buildQuery({ period: query.period })}`,
+  );
+}
+
+/**
+ * Get today's due run. A retry returns the same run; before the cutoff or on a
+ * non-business day the API answers `run: null`.
+ */
+export async function requestShopMoneyRun(): Promise<ShopMoneyRun | null> {
+  const body = await request<{ run: ShopMoneyRun | null }>("/ops/shop-money/run", {
+    method: "POST",
+    body: "{}",
+  });
+  return body.run ?? null;
+}
+
+/**
+ * Freeze one shop's transfer: rechecks its items and the minimum, freezes the
+ * payout account and reserves every item. A replay returns the same transfer
+ * to its payer only (`403 verification_payer_required` for anyone else).
+ */
+export async function prepareShopTransfer(
+  runId: string,
+  supplierId: string,
+): Promise<{ transfer: ShopMoneyTransfer; status: ShopMoneyTransferStatus | null }> {
+  const body = await request<{ transfer: ShopMoneyTransfer; status?: string }>(
+    `/ops/shop-money/runs/${encodeURIComponent(runId)}/shops/${encodeURIComponent(supplierId)}/prepare`,
+    { method: "POST", body: "{}" },
+  );
+  const status = body.status === "reserved" ? "transfer_reserved" : (body.status as ShopMoneyTransferStatus | undefined);
+  return { transfer: body.transfer, status: status ?? null };
+}
+
+export type ConfirmShopTransferInput =
+  | {
+      amountMinor: number;
+      paidAt: string;
+      reference: string;
+      receiptFileId: string;
+      fundsSentConfirmed: true;
+      reason: string;
+    }
+  | { amountMinor: 0; paidAt: string; offsetConfirmed: true; reason: string };
+
+/** Record the one transfer that was sent. An exact retry answers `replayed: true`. */
+export async function confirmShopTransfer(
+  transferId: string,
+  input: ConfirmShopTransferInput,
+): Promise<{ transfer: ShopMoneyTransferOutcome; replayed: boolean }> {
+  const body = await request<{ transfer: ShopMoneyTransferOutcome; replayed?: boolean }>(
+    `/ops/shop-money/transfers/${encodeURIComponent(transferId)}/confirm`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return { transfer: body.transfer, replayed: Boolean(body.replayed) };
+}
+
+/** The transfer's outcome is not known: it stays reserved and must not be sent again. */
+export async function markShopTransferUnknown(
+  transferId: string,
+  reason: string,
+): Promise<ShopMoneyTransferOutcome> {
+  const body = await request<{ transfer: ShopMoneyTransferOutcome }>(
+    `/ops/shop-money/transfers/${encodeURIComponent(transferId)}/unknown`,
+    { method: "POST", body: JSON.stringify({ reason }) },
+  );
+  return body.transfer;
+}
+
+/** After checking that no money moved: retire the attempt; its balance rolls into a later run. */
+export async function cancelShopTransfer(
+  transferId: string,
+  reason: string,
+): Promise<ShopMoneyTransferOutcome> {
+  const body = await request<{ transfer: ShopMoneyTransferOutcome }>(
+    `/ops/shop-money/transfers/${encodeURIComponent(transferId)}/cancel`,
+    { method: "POST", body: JSON.stringify({ noFundsSentConfirmed: true, reason }) },
+  );
+  return body.transfer;
+}
+
+/** Pay GRIDGO received: the current exact amount and the incoming bank reference. */
+export async function confirmShopPayment(
+  requestId: string,
+  input: { amountMinor: number; reference: string; reason: string },
+): Promise<{ replayed: boolean }> {
+  const body = await request<{ replayed?: boolean }>(
+    `/ops/shop-money/payments/${encodeURIComponent(requestId)}/confirm`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+  return { replayed: Boolean(body.replayed) };
+}
+
+/** Super Admin only: the per-shop counter-cash switch, for a future controlled rollout. */
+export async function updateShopMoneyPolicy(
+  supplierId: string,
+  input: { expectedVersion: number; counterCashEnabled: boolean; reason: string },
+): Promise<ShopMoneyPolicy> {
+  const body = await request<{ policy: ShopMoneyPolicy }>(
+    `/ops/shop-money/shops/${encodeURIComponent(supplierId)}/policy`,
+    { method: "PATCH", body: JSON.stringify(input) },
+  );
+  return body.policy;
 }
