@@ -2,7 +2,15 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowUpToLine, BadgeCheck, CalendarCheck, FileText, IdCard, ScanFace, Wallet } from "lucide-react";
+import {
+  ArrowUpToLine,
+  BadgeCheck,
+  CalendarCheck,
+  FileText,
+  IdCard,
+  ScanFace,
+  Wallet,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -63,7 +71,10 @@ export function GetVerified({
     } catch (err) {
       setErrors((current) => ({
         ...current,
-        [paper]: uploadErrorMessage(err, { what: "this photo", notSent: "was not sent to GRIDGO" }),
+        [paper]: uploadErrorMessage(err, {
+          what: "this photo",
+          notSent: "was not sent to GRIDGO",
+        }),
       }));
     } finally {
       setSending(null);
@@ -79,8 +90,8 @@ export function GetVerified({
             <StatusChip tone="success" icon="circle-check" label="Verified" />
           </div>
           <p className="text-body text-text-secondary m-0 max-w-prose">
-            Clients see the Verified badge next to your shop name. Your payouts have no limit
-            and new orders keep coming.
+            Clients see the Verified badge next to your shop name. Your payouts have no
+            limit and new orders keep coming.
           </p>
         </header>
       </div>
@@ -88,7 +99,9 @@ export function GetVerified({
   }
 
   const allSent = missing.length === 0;
-  const title = allSent ? "GRIDGO is checking your papers" : "Verified shops get more jobs";
+  const title = allSent
+    ? "GRIDGO is checking your papers"
+    : "Verified shops get more jobs";
 
   const intro = (
     <header className="flex flex-col gap-2">
@@ -119,15 +132,18 @@ export function GetVerified({
               className="border-outline-subtle flex flex-col gap-2 border-t py-3 first:border-t-0"
               data-testid={`paper-${definition.paper}`}
             >
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <span
                   className="bg-surface-variant text-text-primary flex size-11 shrink-0 items-center justify-center rounded-field"
                   aria-hidden
                 >
                   <Icon className="size-5" strokeWidth={1.75} />
                 </span>
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-body text-text-primary" style={{ fontFamily: "var(--font-medium)" }}>
+                <span className="flex min-w-[9rem] flex-1 basis-0 flex-col">
+                  <span
+                    className="text-body text-text-primary"
+                    style={{ fontFamily: "var(--font-medium)" }}
+                  >
                     {definition.title}
                   </span>
                   <span className="text-caption text-text-muted">
@@ -138,30 +154,34 @@ export function GetVerified({
                       : definition.detail}
                   </span>
                 </span>
-                {file && !busy ? <StatusChip tone="info" icon="clock" label="Checking" /> : null}
-                <input
-                  ref={(node) => {
-                    inputs.current[definition.paper] = node;
-                  }}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,application/pdf"
-                  className="sr-only"
-                  tabIndex={-1}
-                  aria-label={`${definition.title} file`}
-                  onChange={(event) => {
-                    const picked = event.target.files?.[0];
-                    event.target.value = "";
-                    void send(definition.paper, picked);
-                  }}
-                />
-                <Button
-                  variant={file ? "ghost" : "outline"}
-                  disabled={Boolean(sending)}
-                  onClick={() => inputs.current[definition.paper]?.click()}
-                  aria-label={`${file ? "Send a new" : "Upload"} ${definition.title.toLowerCase()}`}
-                >
-                  {busy ? "Sending…" : file ? "Send a new one" : "Upload"}
-                </Button>
+                <span className="ml-auto flex items-center gap-2">
+                  {file && !busy ? (
+                    <StatusChip tone="info" icon="clock" label="Checking" />
+                  ) : null}
+                  <input
+                    ref={(node) => {
+                      inputs.current[definition.paper] = node;
+                    }}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,application/pdf"
+                    className="sr-only"
+                    tabIndex={-1}
+                    aria-label={`${definition.title} file`}
+                    onChange={(event) => {
+                      const picked = event.target.files?.[0];
+                      event.target.value = "";
+                      void send(definition.paper, picked);
+                    }}
+                  />
+                  <Button
+                    variant={file ? "ghost" : "outline"}
+                    disabled={Boolean(sending)}
+                    onClick={() => inputs.current[definition.paper]?.click()}
+                    aria-label={`${file ? "Send a new" : "Upload"} ${definition.title.toLowerCase()}`}
+                  >
+                    {busy ? "Sending…" : file ? "Send a new one" : "Upload"}
+                  </Button>
+                </span>
               </div>
               {error ? (
                 <p className="text-body text-error m-0" role="alert">
@@ -185,9 +205,16 @@ export function GetVerified({
           const Icon = BENEFIT_ICON[index] ?? BadgeCheck;
           return (
             <li key={benefit.title} className="gg-card flex items-start gap-3 p-3">
-              <Icon className="mt-0.5 size-5 shrink-0" style={{ color: "var(--color-success)" }} aria-hidden />
+              <Icon
+                className="mt-0.5 size-5 shrink-0"
+                style={{ color: "var(--color-success)" }}
+                aria-hidden
+              />
               <span className="flex min-w-0 flex-col">
-                <span className="text-body text-text-primary" style={{ fontFamily: "var(--font-medium)" }}>
+                <span
+                  className="text-body text-text-primary"
+                  style={{ fontFamily: "var(--font-medium)" }}
+                >
                   {benefit.title}
                 </span>
                 <span className="text-caption text-text-muted">{benefit.detail}</span>
@@ -207,20 +234,30 @@ export function GetVerified({
         : "No time now? You can take jobs today and send these later.";
 
   const status = (
-    <section aria-label="Your time and payouts" className="gg-card flex flex-col gap-2 p-4">
+    <section
+      aria-label="Your time and payouts"
+      className="gg-card flex flex-col gap-2 p-4"
+    >
       <p className="text-body text-text-primary m-0">{timeLine}</p>
       {v.payoutCapMinor > 0 ? (
         <p className="text-body text-text-secondary m-0">
-          {formatPhp(v.paidBeforeVerificationMinor)} of {formatPhp(v.payoutCapMinor)} paid out so far.
-          {v.heldMinor > 0 ? ` ${formatPhp(v.heldMinor)} is waiting and is paid once you're verified.` : ""}
+          {formatPhp(v.paidBeforeVerificationMinor)} of {formatPhp(v.payoutCapMinor)} paid
+          out so far.
+          {v.heldMinor > 0
+            ? ` ${formatPhp(v.heldMinor)} is waiting and is paid once you're verified.`
+            : ""}
         </p>
       ) : null}
       {v.recoveryDueMinor > 0 ? (
         <p className="text-body text-text-secondary m-0">
-          {formatPhp(v.recoveryDueMinor)} from a dropped job will come out of your next payouts.
+          {formatPhp(v.recoveryDueMinor)} from a dropped job will come out of your next
+          payouts.
         </p>
       ) : null}
-      <Link href="/supplier/dashboard" className="text-body text-text-primary flex min-h-11 items-center underline">
+      <Link
+        href="/supplier/dashboard"
+        className="text-body text-text-primary flex min-h-11 items-center underline"
+      >
         {allSent ? "Back to To do" : "Not now, back to To do"}
       </Link>
     </section>
@@ -228,7 +265,11 @@ export function GetVerified({
 
   if (!desktop) {
     return (
-      <div className="flex w-full flex-col gap-4" data-testid="get-verified" data-layout="phone">
+      <div
+        className="flex w-full flex-col gap-4"
+        data-testid="get-verified"
+        data-layout="phone"
+      >
         {intro}
         {allSent ? null : benefits}
         {papers}
