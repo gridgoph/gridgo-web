@@ -3,7 +3,7 @@
  * GRIDGO.
  *
  * The API holds the rider's share in basis points (`riderCommissionBps`,
- * 8,500 = the rider keeps 85%) and snapshots it on every order when the
+ * 8,000 = the rider keeps 80%) and snapshots it on every order when the
  * delivery fee is set, so a settings change never reprices an order already
  * placed. The rider's amount rounds half-up and GRIDGO gets the exact
  * remainder — the same arithmetic as `deliverySplit` in gridgo-api, so an
@@ -18,8 +18,8 @@
 import { applyRateBps, formatRatePercent } from "@/components/settings/service-fee";
 import type { Order } from "@/lib/api/types";
 
-/** The API's seed: 85% to the rider, 15% to GRIDGO. */
-export const DEFAULT_RIDER_COMMISSION_BPS = 8_500;
+/** The API's seed: 80% to the rider, 20% to GRIDGO (gridgo-api#416). */
+export const DEFAULT_RIDER_COMMISSION_BPS = 8_000;
 
 /** 0 to 10,000 basis points — the rider keeps none of it, or all of it. */
 export const RIDER_COMMISSION_MAX_BPS = 10_000;
