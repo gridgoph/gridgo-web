@@ -87,6 +87,11 @@ export const NAV_COUNT_MEANING: Record<NavCountKey, CountMeaning> = {
     phrase: (count) => `${compactCount(count)} ${count === 1 ? "top-up" : "top-ups"} to check`,
     attention: false,
   },
+  // Prepared or unknown shop transfers: money may be in flight. No order waits: monochrome.
+  "shop-money-open": {
+    phrase: (count) => `${compactCount(count)} ${count === 1 ? "transfer" : "transfers"} to record`,
+    attention: false,
+  },
   "tracker-needs-decision": {
     phrase: (count) => `${compactCount(count)} ${count === 1 ? "needs" : "need"} a decision`,
     attention: false,
