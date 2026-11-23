@@ -88,6 +88,7 @@ export type NavIconKey =
   | "team"
   | "today"
   | "my-shop"
+  | "kiosk"
   // Labeled rail groups: the parent row that folds a section's pages away.
   | "group-shop"
   | "group-todo"
@@ -1342,6 +1343,15 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Operational settings",
           title: "Operational settings",
           icon: "settings",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          id: "admin-kiosk",
+          href: "/admin/kiosk",
+          label: "Kiosk",
+          title: "Print kiosk",
+          icon: "kiosk",
           ready: true,
           placeholderBody: "",
         },
