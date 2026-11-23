@@ -455,7 +455,6 @@ export function RecordTransferDialog({
           <AlertDialogAction
             variant="primary"
             disabled={busy}
-            aria-disabled={blockers.length > 0 || undefined}
             onClick={(event) => {
               // Keep the dialog open on a refused press; it shows what is missing.
               event.preventDefault();

@@ -182,7 +182,7 @@ describe("ShopMoneyDesk: the daily run", () => {
     expect(within(shops).getByRole("heading", { name: /Ready to prepare/ })).toBeInTheDocument();
     expect(within(shops).getByText("Below the minimum")).toBeInTheDocument();
     expect(within(shops).getByText("Rolls over")).toBeInTheDocument();
-    expect(within(shops).getByText(/1 a claim, issue or refund request holds it/)).toBeInTheDocument();
+    expect(within(shops).getByText("A claim, issue or refund request holds it")).toBeInTheDocument();
   });
 
   it("says when today's run starts, before its cutoff", async () => {

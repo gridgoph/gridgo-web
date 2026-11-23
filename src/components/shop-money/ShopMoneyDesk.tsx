@@ -27,6 +27,7 @@ import {
   manilaWhenWords,
   netWords,
   openTransfers,
+  paidSinceRun,
   RUN_LANES,
   runDateWords,
   runRows,
@@ -289,7 +290,7 @@ function RunList({
   onGetRun: () => void;
   onOpen: (id: string) => void;
 }) {
-  const rows = useMemo(() => (run ? runRows(run, desk.transfers) : []), [run, desk.transfers]);
+  const rows = useMemo(() => (run ? runRows(run, desk.transfers, desk.shops) : []), [run, desk.transfers, desk.shops]);
   const totals = runTotals(rows);
   const today = run ? isTodaysRun(run) : false;
   const nextPayoutAt = desk.shops.find((s) => s.nextPayoutAt)?.nextPayoutAt ?? null;
@@ -388,14 +389,29 @@ function RunRowCard({ row, name, selected, onOpen }: { row: RunRow; name: string
   const { shop, status, transfer } = row;
   const state = status ? TRANSFER_STATE[status] : null;
   const amount =
-    transfer && status ? transfer.data.netAmountMinor : row.lane === "rolled_over" ? shop.rolloverMinor : shop.amountMinor;
+    transfer && status
+      ? transfer.data.netAmountMinor
+      : row.lane === "rolled_over"
+        ? shop.rolloverMinor
+        : row.lane === "owes" || paidSinceRun(row)
+          ? -shop.netMinor
+          : shop.amountMinor;
   const holds = heldSummary(shop.held);
   return (
-    <RowButton name={name} selected={selected} onOpen={onOpen} amount={row.lane === "held" ? null : formatPhp(amount)}>
+    <RowButton
+      name={name}
+      selected={selected}
+      onOpen={onOpen}
+      amount={row.lane === "held" ? null : row.lane === "owes" || paidSinceRun(row) ? `${formatPhp(amount)} to GRIDGO` : formatPhp(amount)}
+    >
       {state ? (
         <StatusChip tone={state.tone} icon={state.icon} label={state.label} />
       ) : row.lane === "to_send" ? (
         <StatusChip tone="info" icon="clock" label={shop.amountMinor === 0 ? "Settle from debt" : "Ready to prepare"} />
+      ) : paidSinceRun(row) ? (
+        <StatusChip tone="success" icon="circle-check" label="Paid GRIDGO" />
+      ) : row.lane === "owes" ? (
+        <StatusChip tone={shop.paused ? "error" : "warning"} icon="triangle-alert" label={shop.paused ? "New orders paused" : "Pay GRIDGO"} />
       ) : row.lane === "rolled_over" ? (
         <StatusChip tone="neutral" icon="circle-dashed" label="Rolls over" />
       ) : (
@@ -405,7 +421,7 @@ function RunRowCard({ row, name, selected, onOpen }: { row: RunRow; name: string
         <span className="text-caption text-text-muted">
           {holds
             .slice(0, 2)
-            .map((h) => `${h.count} ${h.label.toLowerCase()}`)
+            .map((h) => (h.count > 1 ? `${h.label} (${h.count})` : h.label))
             .join("; ")}
           {holds.length > 2 ? "; more" : ""}
         </span>

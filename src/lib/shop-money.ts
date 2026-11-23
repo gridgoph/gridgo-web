@@ -108,7 +108,7 @@ export function transferFor(
 // ---------------------------------------------------------------------------
 
 /** Where one shop stands in a run, in the order the desk lists them. */
-export type RunLane = "to_send" | "in_flight" | "done" | "rolled_over" | "held" | "nothing";
+export type RunLane = "to_send" | "in_flight" | "done" | "owes" | "rolled_over" | "held" | "nothing";
 
 export type RunRow = {
   shop: ShopMoneyRunShop;
@@ -121,29 +121,37 @@ export const RUN_LANES: { lane: RunLane; title: string; empty: string }[] = [
   { lane: "to_send", title: "Ready to prepare", empty: "No shop is waiting to be prepared." },
   { lane: "in_flight", title: "Prepared or unknown", empty: "No transfer is waiting to be recorded." },
   { lane: "done", title: "Recorded", empty: "Nothing recorded from this run yet." },
+  { lane: "owes", title: "Owes GRIDGO", empty: "" },
   { lane: "rolled_over", title: "Below the minimum", empty: "" },
   { lane: "held", title: "Held", empty: "" },
 ];
 
-function laneOf(shop: ShopMoneyRunShop, status: ShopMoneyTransferStatus | null): RunLane {
+function laneOf(shop: ShopMoneyRunShop, status: ShopMoneyTransferStatus | null, currentNetMinor: number | undefined): RunLane {
   if (status && transferOpen(status)) return "in_flight";
   if (status === "transfer_paid") return "done";
   // A cancelled attempt's balance rolls into a later run, not this one.
   if (status === "transfer_cancelled") return "done";
   if (shop.items.length > 0) return "to_send";
+  // The run is a snapshot; a debt paid since then is done, not still owed.
+  if (shop.netMinor < 0) return (currentNetMinor ?? shop.netMinor) < 0 ? "owes" : "done";
   if (shop.rolloverMinor > 0) return "rolled_over";
   if (shop.held.length > 0) return "held";
   return "nothing";
 }
 
 /** Every shop in a run with its lane and transfer; shops with nothing at all are left out. */
-export function runRows(run: ShopMoneyRun, transfers: readonly ShopMoneyTransfer[]): RunRow[] {
-  const order: RunLane[] = ["in_flight", "to_send", "done", "rolled_over", "held", "nothing"];
+export function runRows(
+  run: ShopMoneyRun,
+  transfers: readonly ShopMoneyTransfer[],
+  current: readonly Pick<ShopMoneyShopRow, "supplierId" | "netMinor">[] = [],
+): RunRow[] {
+  const now = new Map(current.map((s) => [s.supplierId, s.netMinor]));
+  const order: RunLane[] = ["in_flight", "to_send", "done", "owes", "rolled_over", "held", "nothing"];
   return run.data.shops
     .map((shop) => {
       const transfer = transferFor(transfers, run.id, shop.supplierId);
       const status = transfer ? transferStatusOf(transfer) : null;
-      return { shop, transfer, status, lane: laneOf(shop, status) };
+      return { shop, transfer, status, lane: laneOf(shop, status, now.get(shop.supplierId)) };
     })
     .filter((row) => row.lane !== "nothing")
     .sort(
@@ -184,6 +192,11 @@ export function openTransfers(transfers: readonly ShopMoneyTransfer[]): ShopMone
     });
 }
 
+/** A run row whose debt to GRIDGO was paid after the run. */
+export function paidSinceRun(row: RunRow): boolean {
+  return row.lane === "done" && !row.status && row.shop.netMinor < 0;
+}
+
 /** Rail count: transfers prepared or unknown, the only shop-money work that can leave money in limbo. */
 export function shopMoneyNeedsAction(desk: Pick<ShopMoneyDesk, "transfers">): number {
   return openTransfers(desk.transfers).length;
@@ -218,6 +231,7 @@ export function itemOrderId(key: string): string | null {
 /** Why an item is not in today's transfer, in words the team can act on. */
 const HELD_COPY: Record<string, string> = {
   transfer_pending: "Already in a prepared transfer",
+  supplier_principal_not_collected: "The client's payment is not confirmed yet",
   payout_held: "A claim, issue or refund request holds it",
   pof_required: "Waiting for the shop's proof",
   milestone_not_reached: "The job has not reached this stage",

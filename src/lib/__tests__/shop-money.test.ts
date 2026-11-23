@@ -13,6 +13,7 @@ import {
   manilaInputToIso,
   manilaLocalInput,
   openTransfers,
+  paidSinceRun,
   parseDateList,
   runRows,
   runTotals,
@@ -65,6 +66,7 @@ const run: ShopMoneyRun = {
       runShop("small", { availableMinor: 4800, rolloverMinor: 4800 }),
       runShop("held", { held: [{ key: "stage:o3:delivered", reason: "payout_held" }] }),
       runShop("idle"),
+      runShop("owes", { netMinor: -25000, owingMinor: 25000 }),
       runShop("prepared", { amountMinor: 50000, items: [{ key: "stage:o1:delivered", orderId: "o1", amountMinor: 50000, netAmountMinor: 50000 }] }),
       runShop("sent", { amountMinor: 30000, items: [{ key: "stage:o4:delivered", orderId: "o4", amountMinor: 30000, netAmountMinor: 30000 }] }),
     ],
@@ -80,10 +82,19 @@ describe("the daily run", () => {
       ["prepared", "in_flight"],
       ["ready", "to_send"],
       ["sent", "done"],
+      ["owes", "owes"],
       ["small", "rolled_over"],
       ["held", "held"],
     ]);
     expect(runTotals(rows)).toEqual({ toSendMinor: 120000, toSend: 1, inFlight: 1, done: 1 });
+  });
+
+  it("moves a debt paid since the run out of the owes lane", () => {
+    const rows = runRows(run, transfers, [{ supplierId: "owes", netMinor: 0 }]);
+    const row = rows.find((r) => r.shop.supplierId === "owes")!;
+    expect(row.lane).toBe("done");
+    expect(paidSinceRun(row)).toBe(true);
+    expect(runRows(run, transfers, [{ supplierId: "owes", netMinor: -25000 }]).find((r) => r.shop.supplierId === "owes")?.lane).toBe("owes");
   });
 
   it("matches a transfer to its own run only", () => {

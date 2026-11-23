@@ -106,8 +106,8 @@ export function ShopMoneyPanel({
 
   const run = latestRun(desk);
   const runRow = useMemo(
-    () => (run ? runRows(run, desk.transfers).find((r) => r.shop.supplierId === supplierId) ?? null : null),
-    [run, desk.transfers, supplierId],
+    () => (run ? runRows(run, desk.transfers, desk.shops).find((r) => r.shop.supplierId === supplierId) ?? null : null),
+    [run, desk.transfers, desk.shops, supplierId],
   );
   const shopTransfers = desk.transfers.filter((t) => t.supplierId === supplierId);
   const open = shopTransfers.filter((t) => transferOpen(transferStatusOf(t)));
@@ -210,7 +210,7 @@ export function ShopMoneyPanel({
               const s = TRANSFER_STATE[transferStatusOf(t)];
               return (
                 <li key={t.id} className="border-outline-subtle flex flex-wrap items-center justify-between gap-2 border-t py-2 first:border-t-0">
-                  <span className="flex flex-col">
+                  <span className="flex flex-col items-start">
                     <StatusChip tone={s.tone} icon={s.icon} label={s.label} />
                     <span className="text-caption text-text-muted pt-1">Prepared {manilaWhenWords(t.at)}</span>
                   </span>
