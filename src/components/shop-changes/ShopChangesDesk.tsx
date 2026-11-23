@@ -16,7 +16,7 @@
  * Contracts: gridgo-api SHOP_RECOVERY_API.md and ORDER_RESCHEDULE_API.md.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Eye, NotebookPen } from "lucide-react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
@@ -83,6 +83,13 @@ export function ShopChangesDesk({ tree }: { tree: Tree }) {
   const [tab, setTab] = useState("dropouts");
   // GRIDGO's cover for a dearer replacement, shown read-only. Best effort.
   const [settings, setSettings] = useState<PlatformSettings | null>(null);
+  const lifetime = useRef<object | null>(null);
+  useEffect(() => {
+    lifetime.current = {};
+    return () => {
+      lifetime.current = null;
+    };
+  }, []);
 
   const orderHref = useCallback(
     (orderId: string) => `/${tree}/orders/${encodeURIComponent(orderId)}`,
@@ -91,10 +98,21 @@ export function ShopChangesDesk({ tree }: { tree: Tree }) {
 
   const load = useSerializedLoad(
     useCallback(async () => {
+      const startedIn = lifetime.current;
+      if (!startedIn) return;
+      // Also distinguish effect lifetimes when Strict Mode mounts again.
+      const current = () => lifetime.current === startedIn;
       setLoading(true);
       setError(null);
       try {
-        void getSettings().then(setSettings, () => setSettings(null));
+        void getSettings().then(
+          (next) => {
+            if (current()) setSettings(next);
+          },
+          () => {
+            if (current()) setSettings(null);
+          },
+        );
         const [events, requests, orders] = await Promise.all([
           listShopFailures(),
           listRescheduleRequests().then(
@@ -108,11 +126,18 @@ export function ShopChangesDesk({ tree }: { tree: Tree }) {
           // Titles only; a failed read leaves the order ids showing.
           listOrders().catch(() => [] as Order[]),
         ]);
-        setData({ events, requests, orders: new Map(orders.map((o) => [o.id, o])) });
+        if (current())
+          setData({ events, requests, orders: new Map(orders.map((o) => [o.id, o])) });
       } catch (err) {
-        setError(opsErrorMessage(err, "Shop dropouts and deadline requests could not be loaded."));
+        if (current())
+          setError(
+            opsErrorMessage(
+              err,
+              "Shop dropouts and deadline requests could not be loaded.",
+            ),
+          );
       } finally {
-        setLoading(false);
+        if (current()) setLoading(false);
       }
     }, []),
   );
