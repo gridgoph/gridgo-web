@@ -480,6 +480,7 @@ const SHARED_LIST_PATHS = new Set([
   "/refund-requests",
   "/ops/catalog-reviews",
   "/ops/product-type-requests",
+  "/ops/product-setup-requests",
   "/ops/colour-price-checks",
   "/ops/quote-requests",
   "/admin/privacy-requests",
@@ -1864,7 +1865,7 @@ export async function resolveEscalation(
 // ---------------------------------------------------------------------------
 
 export async function getFile(fileId: string): Promise<StoredFile> {
-  const result = await request<{ file: StoredFile }>(`/files/${fileId}`);
+  const result = await request<{ file: StoredFile }>(`/files/${encodeURIComponent(fileId)}`);
   return result.file;
 }
 
@@ -1875,7 +1876,7 @@ export async function getFileDownloadUrl(
 ): Promise<string> {
   // A shop's artwork read is recorded per device (gridgo-api EXPRESS_API.md).
   const result = await request<{ url: string }>(
-    `/files/${fileId}/download-url`,
+    `/files/${encodeURIComponent(fileId)}/download-url`,
     options.deviceId ? { headers: { "X-GRIDGO-Device-Id": options.deviceId } } : {},
   );
   return result.url;
@@ -3176,6 +3177,12 @@ export async function listCatalogReviews(
 
 export type CatalogReviewDecision =
   | { status: "approved"; photosUnbranded: true }
+  /**
+   * Only for a template price check on a product that shows GRIDGO's stock
+   * photos alone (`skipsPhotoChecks` in `@/lib/listing-review`): there is no
+   * shop photo to attest, and the API accepts the approval without it.
+   */
+  | { status: "approved" }
   | { status: "needs_revision"; reason: string };
 
 export async function decideCatalogReview(

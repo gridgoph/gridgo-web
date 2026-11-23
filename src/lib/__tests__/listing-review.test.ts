@@ -270,3 +270,24 @@ describe("review errors", () => {
     expect(reviewErrorMessage(error("forbidden", 403))).toBeNull();
   });
 });
+
+describe("template price check photo (gridgo-supplier#268)", () => {
+  it("carries GRIDGO's stock photo for a template product with no photo of its own", () => {
+    const [entry] = normalizeReviewPage({
+      items: [
+        item({
+          photos: [{ url: "/product-template-photos/lst_flyers.jpg" }],
+          template: { templateId: "tpl_flyers", managed: true, priceOnly: true },
+        }),
+      ],
+    }).entries;
+    expect(entry.listing.photos).toHaveLength(0);
+    expect(entry.stockPhoto).toMatch(/\/product-template-photos\/lst_flyers\.jpg$/);
+  });
+
+  it("has no stock photo outside templates", () => {
+    const [entry] = normalizeReviewPage({ items: [item()] }).entries;
+    expect(entry.stockPhoto).toBeUndefined();
+  });
+});
+

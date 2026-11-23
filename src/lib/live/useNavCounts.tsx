@@ -55,6 +55,8 @@ import { needsSupplierAction } from "@/lib/supplier-actions";
 import { useAcceptDeadlines } from "@/lib/use-accept-clock";
 import { readColourPriceChecks } from "@/lib/colour-pricing";
 import { listQuoteRequests } from "@/lib/api/quote-requests";
+import { listStaffProductSetupRequests } from "@/lib/api/product-templates";
+import { normalizeSetupRequests } from "@/lib/product-templates";
 import { quotesWaitingOnOperations } from "@/lib/quote-requests";
 
 type CountSource = {
@@ -208,6 +210,15 @@ const NAV_COUNT_SOURCES: Record<Exclude<NavCountKey, OrderCountKey>, CountSource
       ]);
       return listings.entries.length + requests.requests.length;
     },
+  },
+  // Template and setup requests waiting on the GRIDGO team (last 100). An API
+  // without templates answers 404, and the rail simply shows no count. Every
+  // template notice also invalidates "catalog".
+  "product-setup-waiting": {
+    resources: ["catalog"],
+    refreshOnNavigate: true,
+    load: async () =>
+      normalizeSetupRequests(await listStaffProductSetupRequests("pending")).length,
   },
   // Draft cart pages in a colour tier their shop left blank (up to 100). No
   // stream covers carts for staff, so the count is re-read on each page move,

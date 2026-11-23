@@ -7,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiError } from "@/lib/api/client";
 import type { Taxonomy } from "@/lib/api/types";
 
 const mocks = vi.hoisted(() => ({
@@ -19,6 +20,8 @@ const mocks = vi.hoisted(() => ({
   submitCatalogItemForReview: vi.fn(),
   listCatalogItemPrepSteps: vi.fn(),
   listAcceptedFileFormats: vi.fn(),
+  listMyProductTemplates: vi.fn(),
+  getTemplateProduct: vi.fn(),
 }));
 
 vi.stubGlobal("React", React);
@@ -53,6 +56,17 @@ vi.mock("@/lib/api/client", async () => {
   const actual =
     await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
   return { ...actual, ...mocks };
+});
+
+vi.mock("@/lib/api/product-templates", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/api/product-templates")>(
+    "@/lib/api/product-templates",
+  );
+  return {
+    ...actual,
+    listMyProductTemplates: mocks.listMyProductTemplates,
+    getTemplateProduct: mocks.getTemplateProduct,
+  };
 });
 
 import SupplierCataloguesPage from "@/app/supplier/catalogue/page";
@@ -109,6 +123,8 @@ const step = (code: string, message: string) => ({
 });
 
 beforeEach(() => {
+  // An API without product templates unless a test says otherwise.
+  mocks.listMyProductTemplates.mockRejectedValue(new ApiError(404, { error: "not_found" }));
   // Two pages: the board is read whole before standings are counted.
   mocks.listCatalogItems.mockImplementation(
     async ({ cursor }: { cursor?: string | null }) =>
@@ -260,7 +276,7 @@ describe("supplier Catalogues standings (gridgo-web#111)", () => {
     await user.click(screen.getByRole("button", { name: "Hidden by you · 1" }));
     await waitFor(() => expect(screen.queryByText("Live flyers")).toBeNull());
     expect(screen.getByText("Hidden flyers")).toBeVisible();
-    expect(screen.getByText("1 of 6 listings.")).toBeVisible();
+    expect(screen.getByText("1 of 6 products.")).toBeVisible();
     // The cut is applied to the board already read; nothing new is asked for.
     expect(mocks.listCatalogItems).toHaveBeenCalledTimes(2);
   });
@@ -301,7 +317,7 @@ describe("supplier Catalogues standings (gridgo-web#111)", () => {
     ]) {
       expect(screen.queryByRole("button", { name: new RegExp(label) })).toBeNull();
     }
-    await user.click(screen.getByRole("combobox", { name: "Show listings by status" }));
+    await user.click(screen.getByRole("combobox", { name: "Show products by status" }));
     expect(await screen.findByRole("option", { name: "All · 1" })).toBeVisible();
     expect(screen.getByRole("option", { name: "Live · 1" })).toBeVisible();
     expect(screen.queryByRole("option", { name: /Pending review/ })).toBeNull();
@@ -450,7 +466,68 @@ describe("supplier Catalogues: Check your production time (gridgo-api#292)", () 
     expect(within(card("Hidden flyers")).queryByText("Check your production time")).toBeNull();
     expect(within(card("Live flyers")).queryByText("Express")).toBeNull();
     expect(
-      screen.getByText(/One listing needs you to confirm how long it takes/),
+      screen.getByText(/One product needs you to confirm how long it takes/),
     ).toBeVisible();
+  });
+});
+
+describe("supplier Catalogues with GRIDGO templates (gridgo-supplier#268)", () => {
+  it("adds through the three steps, opens a template product's price table, and shows what waits", async () => {
+    mocks.listCatalogItems.mockResolvedValue({
+      items: [item("live", "Live flyers"), item("own", "Own flyers")],
+      total: 2,
+    });
+    mocks.listMyProductTemplates.mockResolvedValue({
+      templates: [
+        {
+          id: "tpl_flyers",
+          version: 1,
+          active: true,
+          name: "Flyers",
+          categoryCode: "marketing",
+          subcategoryCode: "flyers",
+          group: "marketing",
+          unit: "piece",
+          options: [{ key: "standard", label: "A5" }],
+          stockPhotos: [{ url: "/product-template-photos/lst_flyers.jpg" }],
+          addedItemIds: ["live"],
+        },
+      ],
+      readyTimes: [],
+      checkYourProducts: { unpricedItemIds: [] },
+    });
+    mocks.getTemplateProduct.mockResolvedValue({
+      item: { ...item("live", "Live flyers"), active: false, template: { shopConfirmed: false } },
+      prices: [],
+    });
+    render(<SupplierCataloguesPage />);
+    expect(await screen.findByText("Own flyers")).toBeVisible();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Add a product" })).toHaveAttribute(
+        "href",
+        "/supplier/catalogue/add",
+      ),
+    );
+    expect(within(card("Live flyers")).getAllByRole("link")[0]).toHaveAttribute(
+      "href",
+      "/supplier/catalogue/product/live",
+    );
+    expect(within(card("Own flyers")).getAllByRole("link")[0]).toHaveAttribute(
+      "href",
+      "/supplier/catalogue/own",
+    );
+    expect(await screen.findByTestId("check-products-card")).toHaveTextContent(
+      "1 with prices from GRIDGO to confirm",
+    );
+  });
+
+  it("keeps the custom builder as Add on an API without templates", async () => {
+    render(<SupplierCataloguesPage />);
+    expect(await screen.findByText("Live flyers")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add a product" })).toHaveAttribute(
+      "href",
+      "/supplier/catalogue/new",
+    );
+    expect(screen.queryByTestId("check-products-card")).toBeNull();
   });
 });

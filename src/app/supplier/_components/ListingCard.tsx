@@ -41,6 +41,7 @@ import {
 } from "@/lib/listings";
 import type { Taxonomy } from "@/lib/api/types";
 import { readyInLine } from "@/lib/production-time";
+import type { TemplateStanding } from "@/lib/product-templates";
 import { PRODUCTION_TIME_REVIEW_TITLE } from "@/lib/production-time-choice";
 
 type Props = {
@@ -58,6 +59,15 @@ type Props = {
   preview?: boolean;
   /** The board replaces this listing after Hide, then rereads readiness. */
   onSaved?: (listing: Listing) => void | Promise<void>;
+  /** A GRIDGO template's stock photo, for a product with no photo of its own. */
+  stockPhotoSrc?: string | null;
+  /** Where Edit opens: a template product opens its price table. */
+  editHref?: string;
+  /**
+   * A template product's standing in the words of gridgo-supplier#268 (Price
+   * check today, Prices to confirm, Needs a price…). Live keeps the board's own.
+   */
+  templateStanding?: TemplateStanding | null;
 };
 
 type ClientFormats = Awaited<ReturnType<typeof listAcceptedFileFormats>>;
@@ -71,7 +81,11 @@ export function ListingCard({
   layout = "tile",
   preview = false,
   onSaved,
+  stockPhotoSrc = null,
+  editHref,
+  templateStanding = null,
 }: Props) {
+  const href = editHref ?? `/supplier/catalogue/${listing.id}`;
   const context = boardContextFor(listing, services);
   const standing = boardStanding(listing, context, shopApproved, readiness);
   const first = listing.photos[0];
@@ -92,15 +106,16 @@ export function ListingCard({
   const photo = (
     <SamplePhoto
       fileId={first?.fileId}
+      src={first ? null : stockPhotoSrc}
       alt={first?.altText ?? listing.name}
-      emptyLabel={layout === "row" ? "No sample" : "No sample yet"}
+      emptyLabel={layout === "row" ? "No photo" : "No photo yet"}
       className={
         layout === "row" ? "aspect-auto size-[5.5rem] shrink-0 md:size-[6.5rem]" : undefined
       }
     />
   );
 
-  const name = listing.name || "Untitled listing";
+  const name = listing.name || "Untitled product";
   const title = (
     <p
       className="text-body text-text-primary m-0 truncate"
@@ -110,7 +125,7 @@ export function ListingCard({
         name
       ) : (
         <Link
-          href={`/supplier/catalogue/${listing.id}`}
+          href={href}
           className="text-text-primary no-underline hover:underline"
         >
           {name}
@@ -140,7 +155,25 @@ export function ListingCard({
       ) : null}
     </>
   );
-  const status = preview && standing.kind === "live" ? null : <CardStatus standing={standing} />;
+  const status =
+    templateStanding && templateStanding.label !== "Live" ? (
+      <span className="flex flex-col gap-1">
+        <span className="flex">
+          <StatusChip
+            tone={templateStanding.tone}
+            label={templateStanding.label}
+            icon={templateStanding.icon}
+          />
+        </span>
+        {templateStanding.detail ? (
+          <p className="text-caption text-text-secondary m-0 line-clamp-2">
+            {templateStanding.detail}
+          </p>
+        ) : null}
+      </span>
+    ) : preview && standing.kind === "live" ? null : (
+      <CardStatus standing={standing} />
+    );
 
   /**
    * The editor's board switch: PATCH `active` only. That field does not open
@@ -160,7 +193,7 @@ export function ListingCard({
       if (!saved) throw new Error("unreadable");
       await onSaved?.(saved);
     } catch (err) {
-      setHideError(listingErrorMessage(err, "Could not update this listing."));
+      setHideError(listingErrorMessage(err, "Could not update this product."));
     } finally {
       setHiding(false);
     }
@@ -181,7 +214,7 @@ export function ListingCard({
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-2">
         <Link
-          href={`/supplier/catalogue/${listing.id}`}
+          href={href}
           className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
         >
           <Pencil data-icon="inline-start" aria-hidden />
