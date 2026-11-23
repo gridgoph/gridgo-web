@@ -32,6 +32,10 @@ import { VerifyNoticeCard } from "@/components/shop-verification/VerifyNoticeCar
 import { WaitingPayoutList } from "@/components/shop-verification/WaitingPayoutList";
 import { useShopVerification } from "@/components/shop-verification/useShopVerification";
 import { missingPapers, moneyVerifyBanner } from "@/lib/shop-verification";
+import { ShopMoneyOverview } from "@/components/supplier-money/ShopMoneyOverview";
+import { useShopMoney } from "@/components/supplier-money/useShopMoney";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import type { MoneyPeriod } from "@/lib/supplier-money";
 
 type LoadState = {
   jobs: Order[];
@@ -44,6 +48,10 @@ export default function SupplierPayoutsPage() {
   const [loading, setLoading] = useState(true);
   const [issuesNote, setIssuesNote] = useState<string | null>(null);
   const [filter, setFilter] = useState<LedgerFilter>("unsettled");
+  // Daily balances with GRIDGO (gridgo-api#416). Null until GRIDGO offers the
+  // route, so Money then reads exactly as it did before.
+  const [period, setPeriod] = useState<MoneyPeriod>("week");
+  const money = useShopMoney(period);
   // While the shop is not verified (gridgo-api#411): the cap banner and what waits on it.
   const { state: verification } = useShopVerification();
   const verifyRead = verification.kind === "ready" ? verification.read : null;
@@ -130,6 +138,19 @@ export default function SupplierPayoutsPage() {
       {verifyRead && !verifyRead.verification.verified ? (
         <WaitingPayoutList waiting={verifyRead.waiting} />
       ) : null}
+      {money.read ? (
+        <ShopMoneyOverview
+          read={money.read}
+          schedule={money.schedule}
+          period={period}
+          onPeriod={setPeriod}
+        />
+      ) : null}
+      {money.read ? (
+        <h2 className="text-h3 text-text-primary m-0 mt-6" data-testid="staged-heading">
+          Jobs paid in parts
+        </h2>
+      ) : null}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="max-w-prose">
           <p className="text-body text-text-secondary m-0">
@@ -203,25 +224,20 @@ export default function SupplierPayoutsPage() {
               Taken off for late production: −{formatPhp(total.lateDeductionMinor)}. Already out of the figures here.
             </p>
           ) : null}
-          <div role="group" aria-label="Unsettled or all" className="flex flex-wrap gap-2">
-            {(
-              [
-                ["unsettled", "Unsettled"],
-                ["released", "Released"],
-                ["all", "All"],
-              ] as const
-            ).map(([value, label]) => (
-              <Button
-                key={value}
-                type="button"
-                variant={filter === value ? "primary" : "outline"}
-                aria-pressed={filter === value}
-                onClick={() => setFilter(value)}
-              >
-                {label}
-              </Button>
-            ))}
-          </div>
+          <ToggleGroup
+            value={[filter]}
+            onValueChange={(values) => {
+              const next = values[0] as LedgerFilter | undefined;
+              if (next) setFilter(next);
+            }}
+            variant="outline"
+            spacing={0}
+            aria-label="Unsettled or all"
+          >
+            <ToggleGroupItem value="unsettled">Unsettled</ToggleGroupItem>
+            <ToggleGroupItem value="released">Released</ToggleGroupItem>
+            <ToggleGroupItem value="all">All</ToggleGroupItem>
+          </ToggleGroup>
         </div>
       )}
 

@@ -2518,8 +2518,8 @@ export type PlatformSettings = {
    */
   organizationDiscountRateBps?: number;
   /**
-   * The share of each delivery fee the rider keeps, in basis points (8,500 =
-   * 85% rider, 15% GRIDGO), 0–10,000. Snapshotted on every order when its
+   * The share of each delivery fee the rider keeps, in basis points (8,000 =
+   * 80% rider, 20% GRIDGO), 0–10,000. Snapshotted on every order when its
    * delivery fee is set. Absent on an API that predates the split — the
    * settings screen then says so instead of offering a control that saves
    * nothing.
