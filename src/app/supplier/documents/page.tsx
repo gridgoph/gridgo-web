@@ -13,6 +13,8 @@ import {
   uploadVerificationDocument,
 } from "@/lib/api/client";
 import { useAuth } from "@/lib/auth/AuthProvider";
+import { GetVerified } from "@/components/shop-verification/GetVerified";
+import { useShopVerification } from "@/components/shop-verification/useShopVerification";
 
 const PAPERS = [
   {
@@ -66,7 +68,19 @@ function stepsFrom(body: unknown): Step[] {
   );
 }
 
+/**
+ * Shop papers. With GRIDGO's verification summary (gridgo-api#411) this is
+ * Get verified, the phone app's optional step; an API without it, or a role
+ * that cannot read it, keeps the older accreditation papers below.
+ */
 export default function SupplierDocumentsPage() {
+  const { state, reload } = useShopVerification();
+  if (state.kind === "loading") return <Skeleton className="h-40 w-full" />;
+  if (state.kind === "ready") return <GetVerified read={state.read} onChanged={reload} />;
+  return <AccreditationPapers />;
+}
+
+function AccreditationPapers() {
   const user = useAuth().user;
   const [steps, setSteps] = useState<Step[]>([]);
   const [loading, setLoading] = useState(true);

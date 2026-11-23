@@ -3246,6 +3246,36 @@ export async function submitCatalogItemForReview(
 }
 
 /** Whether matching can use each of this shop's listings, and the missing steps. */
+/**
+ * The Owner's verification summary, papers and ledger (gridgo-api#411,
+ * `SUPPLIER_VERIFICATION_API.md`). Staff are refused; an older API answers
+ * 404. Read it through `readShopVerification` in `src/lib/shop-verification.ts`.
+ */
+export async function getMySupplierVerification(): Promise<unknown> {
+  return request<unknown>("/me/supplier-verification");
+}
+
+/**
+ * Operations / Super Admin: shops on the verification queue, with their
+ * papers, days left, the amount paid before verification and money to
+ * recover. `status` is the approval status (default pending). No decision
+ * history here; decisions stay on `/approval-cases` (Super Admin).
+ */
+export async function listSupplierVerificationQueue(
+  params: { status?: string; cursor?: string | null } = {},
+): Promise<unknown> {
+  const search = new URLSearchParams();
+  if (params.status) search.set("status", params.status);
+  if (params.cursor) search.set("cursor", params.cursor);
+  const qs = search.toString();
+  return request<unknown>(`/ops/supplier-verification${qs ? `?${qs}` : ""}`);
+}
+
+/** One shop on the verification queue, with its verification ledger. */
+export async function getSupplierVerificationDetail(supplierId: string): Promise<unknown> {
+  return request<unknown>(`/ops/supplier-verification/${encodeURIComponent(supplierId)}`);
+}
+
 export async function getSupplierReadiness(): Promise<unknown> {
   return request<unknown>("/me/supplier-readiness");
 }
@@ -3902,7 +3932,7 @@ export async function uploadVerificationDocument(file: File): Promise<StoredFile
   return uploadPurpose("verification_document", file);
 }
 
-/** `documentType` is `business_permit`, `valid_id` or `sample_work`; any other field is `400 unexpected_target_field`. */
+/** `documentType` is `valid_id`, `id_selfie`, `business_permit` or the older `sample_work`; any other field is `400 unexpected_target_field`. */
 export async function attachVerificationDocument(
   fileId: string,
   documentType: string,

@@ -33,6 +33,10 @@ import {
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import { useAcceptDeadlines } from "@/lib/use-accept-clock";
+import { useSupplierDesktop } from "@/lib/useSupplierDesktop";
+import { VerifyNoticeCard } from "@/components/shop-verification/VerifyNoticeCard";
+import { useShopVerification } from "@/components/shop-verification/useShopVerification";
+import { missingPapers, todoVerifyNotice } from "@/lib/shop-verification";
 
 function SoundSwitch() {
   const enabled = useSyncExternalStore(
@@ -75,6 +79,16 @@ export default function SupplierTodayPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [done, setDone] = useState<Order | null>(null);
+  const desktop = useSupplierDesktop();
+  // The Owner's verification note (gridgo-api#411); nothing for Staff or a verified shop.
+  const { state: verification } = useShopVerification();
+  const verifyNotice =
+    verification.kind === "ready"
+      ? todoVerifyNotice(verification.read.verification, missingPapers(verification.read.files))
+      : null;
+  const verifyCard = verifyNotice ? (
+    <VerifyNoticeCard notice={verifyNotice} testId="todo-verify" />
+  ) : null;
 
   const load = useSerializedLoad(
     useCallback(async () => {
@@ -172,6 +186,8 @@ export default function SupplierTodayPage() {
         />
       ))}
 
+      {desktop ? null : verifyCard}
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.9fr)]">
         <section aria-labelledby="after-heading" className="gg-card flex flex-col gap-2 p-4">
           <h3 id="after-heading" className="text-h3 text-text-primary m-0">
@@ -259,6 +275,7 @@ export default function SupplierTodayPage() {
         </section>
 
         <div className="flex flex-col gap-4">
+          {desktop ? verifyCard : null}
           {staff ? null : (
             <Link
               href="/supplier/payouts"
