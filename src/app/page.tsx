@@ -15,6 +15,17 @@ import { discoverShopInvites, listMyShopMemberships } from "@/lib/api/shop-team"
 import { ShopRemovedNotice } from "@/components/shop-team/ShopAccessNotices";
 import { JOIN_TOKEN_KEY } from "@/components/shop-team/JoinTeam";
 import { isWorkerLockCode } from "@/lib/shop-device";
+import { loadGuidedSignup } from "@/lib/api/supplier-signup";
+import { readSignupLocal } from "@/lib/signup-local";
+
+const SIGNUP_PATH = "/signup";
+
+/** A guided sign-up started and not yet opened: answered on GRIDGO, or in this tab before the account. */
+async function hasSignupDraft(): Promise<boolean> {
+  const read = await loadGuidedSignup();
+  if (read.status !== "ok" || read.signup.supplierId) return false;
+  return Boolean(read.signup.steps.eligibility) || Boolean(readSignupLocal().eligibility);
+}
 
 export default function HomePage() {
   const auth = useAuth();
@@ -50,8 +61,16 @@ export default function HomePage() {
         return;
       }
       const invites = await discoverShopInvites().catch(() => []);
-      if (invites.length) router.replace("/join-team");
-      else setInviteCheck("none");
+      if (invites.length) {
+        router.replace("/join-team");
+        return;
+      }
+      // A print shop part-way through sign-up on the web picks up where it left.
+      if (!removedFromShop && (await hasSignupDraft())) {
+        router.replace(SIGNUP_PATH);
+        return;
+      }
+      setInviteCheck("none");
     })();
   }, [noPortal, removedFromShop, inviteCheck, router]);
 

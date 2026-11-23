@@ -15,9 +15,12 @@
  * offered rather than overwritten.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Clock } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { PayoutQrPlate } from "@/components/orders/PayoutDestination";
+import { useConfirm } from "@/components/shop-hours/useConfirm";
+import { ChoiceList, TickRow } from "@/components/supplier-signup/controls";
 import { Button } from "@/components/ui/button";
 import { TakePhotoButton } from "@/components/ui/TakePhotoButton";
 import { ErrorState } from "@/components/ui/ErrorState";
@@ -32,10 +35,21 @@ import {
   uploadPayoutQr,
 } from "@/lib/api/client";
 import type {
+  PayoutHolder,
   PayoutProvider,
   SupplierPayoutAccount,
   SupplierPayoutAccountPatch,
 } from "@/lib/api/types";
+import { loadGuidedSignup } from "@/lib/api/supplier-signup";
+import {
+  HOLDER_OPTIONS,
+  nameOnQrHint,
+  OWNER_ONLY_CHANGE_NOTE,
+  pausedLabel,
+  pausesPayouts,
+  payoutPausedUntil,
+  withConsent,
+} from "@/lib/payout-consent";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
@@ -77,6 +91,10 @@ type Draft = {
   pendingQrFileId: string | null;
   /** A saved plate the shop asked to take down. */
   qrRemoved: boolean;
+  /** Whose QR it is. Asked only when GRIDGO offers the payout consent. */
+  holder?: PayoutHolder | null;
+  /** GRIDGO's payout consent, ticked on this screen. */
+  consented?: boolean;
 };
 
 function draftFrom(account: SupplierPayoutAccount | null): Draft {
@@ -87,13 +105,19 @@ function draftFrom(account: SupplierPayoutAccount | null): Draft {
     institution: account?.institution ?? "",
     pendingQrFileId: null,
     qrRemoved: false,
+    holder: account?.holder ?? null,
+    consented: account?.consent?.accepted === true,
   };
 }
 
-/** Only what moved, so a save never sends a name the shop never touched. */
+/**
+ * Only what moved, so a save never sends a name the shop never touched. With
+ * GRIDGO's payout consent wording, whose QR and the consent ride along.
+ */
 export function payoutPatchFrom(
   account: SupplierPayoutAccount | null,
   draft: Draft,
+  consentWording: string | null = null,
 ): SupplierPayoutAccountPatch {
   const patch: SupplierPayoutAccountPatch = {};
   const accountName = draft.accountName.trim();
@@ -107,7 +131,7 @@ export function payoutPatchFrom(
   if (institution !== (account?.institution ?? "")) patch.institution = institution;
   if (draft.qrRemoved && account?.qr) patch.qrFileId = null;
   else if (draft.pendingQrFileId) patch.qrFileId = draft.pendingQrFileId;
-  return patch;
+  return withConsent(patch, account, { holder: draft.holder ?? null, consented: draft.consented === true }, consentWording);
 }
 
 function isWallet(provider: PayoutProvider | null): boolean {
@@ -123,6 +147,10 @@ function payoutErrorMessage(err: unknown, fallback: string): string {
       case "payout_account_stale":
       case "expected_version_required":
         return PAYOUT_STALE;
+      case "payout_consent_required":
+        return "Say whose QR this is and tick the box to let GRIDGO pay to it.";
+      case "shop_owner_required":
+        return "Only the shop's Owner can set where GRIDGO pays.";
       case "invalid_payout_qr":
       case "file_already_attached":
         return "That picture could not be used as your QR. Choose it again and save.";
@@ -152,7 +180,17 @@ function payoutErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-export function SupplierPayoutSettings() {
+export function SupplierPayoutSettings({
+  setup = false,
+  onSaved,
+  after,
+}: {
+  /** Opened from guided setup: says so in the save notice and calls `onSaved`. */
+  setup?: boolean;
+  onSaved?: () => void;
+  /** Drawn under the form, above the save (guided setup puts job alerts here). */
+  after?: ReactNode;
+} = {}) {
   const [account, setAccount] = useState<SupplierPayoutAccount | null>(null);
   const [draft, setDraft] = useState<Draft>(draftFrom(null));
   const [loaded, setLoaded] = useState(false);
@@ -171,6 +209,22 @@ export function SupplierPayoutSettings() {
   const [qrBusy, setQrBusy] = useState(false);
   const [qrError, setQrError] = useState<string | null>(null);
   const [problems, setProblems] = useState<Partial<Record<keyof Draft, string>>>({});
+  // GRIDGO's payout consent, word for word. Null on a GRIDGO that does not
+  // ask for it, and then the screen keeps its older shape.
+  const [readWording, setReadWording] = useState<string | null>(null);
+  const { ask, dialog } = useConfirm();
+
+  useEffect(() => {
+    let live = true;
+    void loadGuidedSignup().then((read) => {
+      if (live && read.status === "ok" && read.terms.payoutConsentWording) {
+        setReadWording(read.terms.payoutConsentWording);
+      }
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const load = useSerializedLoad(
     useCallback(async (adoptDraft = false) => {
@@ -233,8 +287,14 @@ export function SupplierPayoutSettings() {
     }
   }
 
+  const consentWording = readWording ?? account?.consent?.wording ?? null;
+
   function validate(): boolean {
     const next: Partial<Record<keyof Draft, string>> = {};
+    if (consentWording) {
+      if (!draft.holder) next.holder = "Say whose QR this is.";
+      if (!draft.consented) next.consented = "Tick the box to let GRIDGO pay to this QR.";
+    }
     if (!draft.provider) next.provider = "Choose where you want to be paid.";
     if (!draft.accountName.trim()) {
       next.accountName = "Enter the name the wallet shows when someone pays you.";
@@ -257,8 +317,20 @@ export function SupplierPayoutSettings() {
 
   async function save() {
     if (!validate()) return;
-    const patch = payoutPatchFrom(account, draft);
+    const patch = payoutPatchFrom(account, draft, consentWording);
     if (!Object.keys(patch).length) return;
+    // Only a GRIDGO with the destination hold reports `payoutStatus` (or
+    // offers the consent); an older one pauses nothing, so it is not asked.
+    const holdKnown = Boolean(consentWording) || account?.payoutStatus !== undefined;
+    if (holdKnown && pausesPayouts(account, patch)) {
+      const ok = await ask({
+        title: "Change where GRIDGO pays you?",
+        body: "To keep your money safe, payouts pause for 24 hours after a change. Jobs keep coming.",
+        confirmLabel: "Change it",
+        cancelLabel: "Keep the old one",
+      });
+      if (!ok) return;
+    }
     setBusy(true);
     setSaveError(null);
     setSaveOk(null);
@@ -266,6 +338,7 @@ export function SupplierPayoutSettings() {
       const next = await updateMyPayoutAccount(account?.version ?? null, patch);
       setAccount(next);
       setDraft(draftFrom(next));
+      onSaved?.();
       setSaveOk(
         next.qr
           ? "Saved. Operations will scan this QR the next time it releases a payout to you."
@@ -302,11 +375,20 @@ export function SupplierPayoutSettings() {
   const plateFileId = draft.qrRemoved
     ? null
     : (draft.pendingQrFileId ?? account?.qr?.fileId ?? null);
-  const dirty = Object.keys(payoutPatchFrom(account, draft)).length > 0;
+  const dirty = Object.keys(payoutPatchFrom(account, draft, consentWording)).length > 0;
+  const pausedUntil = payoutPausedUntil(account);
   const wallet = isWallet(draft.provider);
 
   return (
     <div className="flex flex-col gap-4">
+      {pausedUntil ? (
+        <div className="flex items-start gap-3 rounded-card border border-warning bg-surface p-3" role="status" data-testid="payout-paused">
+          <Clock aria-hidden className="mt-0.5 size-5 shrink-0 text-warning" />
+          <p className="text-body m-0 text-text-primary">
+            {`Payouts paused until ${pausedLabel(pausedUntil)} because where you get paid changed. Nothing is lost.`}
+          </p>
+        </div>
+      ) : null}
       <section className="gg-card p-3" aria-labelledby="payout-qr-heading">
         <h2 id="payout-qr-heading" className="text-h3 text-text-primary m-0">
           Your payout QR
@@ -434,8 +516,22 @@ export function SupplierPayoutSettings() {
             ) : null}
           </Field>
 
+          {consentWording ? (
+            <ChoiceList
+              label="Whose QR is this?"
+              options={HOLDER_OPTIONS}
+              value={draft.holder ?? null}
+              onChange={(holder) => edit({ holder })}
+              error={problems.holder}
+              disabled={busy}
+              columns
+            />
+          ) : null}
+
           <Field>
-            <FieldLabel htmlFor="payout-account-name">Account name</FieldLabel>
+            <FieldLabel htmlFor="payout-account-name">
+              {consentWording ? "Name on the QR" : "Account name"}
+            </FieldLabel>
             <Input
               id="payout-account-name"
               value={draft.accountName}
@@ -448,6 +544,8 @@ export function SupplierPayoutSettings() {
             <FieldDescription>
               {problems.accountName ? (
                 <span className="text-error">{problems.accountName}</span>
+              ) : consentWording ? (
+                nameOnQrHint(draft.holder ?? null)
               ) : (
                 "The name the wallet shows Operations after the scan, so they know it is you."
               )}
@@ -505,6 +603,25 @@ export function SupplierPayoutSettings() {
         </FieldGroup>
       </section>
 
+      {consentWording ? (
+        <section className="gg-card flex flex-col gap-2 p-3" aria-label="Payout consent" data-testid="payout-consent">
+          <TickRow
+            checked={draft.consented === true}
+            onChange={(consented) => edit({ consented })}
+            label={consentWording}
+            error={problems.consented}
+            disabled={busy}
+          />
+          {account?.qr ? (
+            <p className="text-caption m-0 text-text-muted" data-testid="owner-only-note">
+              {OWNER_ONLY_CHANGE_NOTE}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
+      {after}
+
       {error && loaded ? (
         <p className="text-body text-error m-0" role="alert">
           {error}
@@ -534,7 +651,7 @@ export function SupplierPayoutSettings() {
           disabled={busy || qrBusy || !dirty}
           onClick={() => void save()}
         >
-          {busy ? "Saving…" : account ? "Save changes" : "Save where you get paid"}
+          {busy ? "Saving…" : account ? "Save changes" : setup ? "Save and continue" : "Save where you get paid"}
         </Button>
         {!dirty && account ? (
           <p className="text-caption text-text-muted m-0">
@@ -542,6 +659,7 @@ export function SupplierPayoutSettings() {
           </p>
         ) : null}
       </div>
+      {dialog}
     </div>
   );
 }
