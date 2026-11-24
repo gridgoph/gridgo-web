@@ -1,5 +1,6 @@
 "use client";
 
+import { templateStanding } from "@/lib/product-templates";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 
 import { useLiveReload } from "@/lib/live/useLiveReload";
@@ -9,6 +10,11 @@ import Link from "next/link";
 import { LayoutGrid, List, Plus, TriangleAlert } from "lucide-react";
 
 import { ListingCard } from "@/app/supplier/_components/ListingCard";
+import { CheckProductsCard } from "@/components/product-templates/supplier/CheckProductsCard";
+import {
+  useCheckProducts,
+  useTemplateSummary,
+} from "@/components/product-templates/supplier/useCheckProducts";
 import {
   listingErrorMessage,
   loadShopServiceLines,
@@ -47,10 +53,7 @@ import {
   type StandingFilter,
 } from "@/lib/catalogue-board";
 import {
-  EMPTY_BOARD_BODY,
-  EMPTY_BOARD_TITLE,
   boardContextFor,
-  boardCountLine,
   boardStanding,
   normalizeBoardPage,
   normalizeListingReadiness,
@@ -84,6 +87,22 @@ export default function SupplierCataloguesPage() {
   const [readiness, setReadiness] = useState<Map<string, ListingReadiness> | null>(null);
   const [partial, setPartial] = useState(false);
   const [view, setView] = useState<"wall" | "list">("wall");
+  // GRIDGO templates (gridgo-supplier#268): where Add goes, which products open
+  // their price table, their stock photos, and what waits on the shop.
+  const { summary } = useTemplateSummary();
+  const { check } = useCheckProducts(summary);
+  const addHref = summary?.offered ? "/supplier/catalogue/add" : "/supplier/catalogue/new";
+  const templateCardProps = (listing: Listing) => {
+    const template = summary?.byItem.get(listing.id);
+    const facts = check?.factsByItem.get(listing.id);
+    return template
+      ? {
+          stockPhotoSrc: template.photoUrl,
+          editHref: `/supplier/catalogue/product/${encodeURIComponent(listing.id)}`,
+          templateStanding: facts ? templateStanding({ ...listing, template: facts }) : null,
+        }
+      : {};
+  };
 
   // Standing is not an API filter, so only the hunt, kind and sort go back to
   // the server; the standing cut is applied to what came back.
@@ -117,9 +136,9 @@ export default function SupplierCataloguesPage() {
         }
       } catch (err) {
         setListings([]);
-        setError(listingErrorMessage(err, "Could not load your board."));
+        setError(listingErrorMessage(err, "Could not load your products."));
         if (err instanceof ApiError && err.status === 403) {
-          setError("Listings are only available to supplier accounts.");
+          setError("Products are only available to supplier accounts.");
         }
       } finally {
         setLoading(false);
@@ -188,12 +207,14 @@ export default function SupplierCataloguesPage() {
         <Button
           variant="primary"
           nativeButton={false}
-          render={<Link href="/supplier/catalogue/new" />}
+          render={<Link href={addHref} />}
         >
           <Plus data-icon="inline-start" aria-hidden />
-          Add listing
+          Add a product
         </Button>
       </div>
+
+      <CheckProductsCard check={check} />
 
       {!shopApproved ? (
         <div className="rounded-card border-outline bg-surface flex flex-col gap-1 border p-4">
@@ -201,11 +222,11 @@ export default function SupplierCataloguesPage() {
             className="text-body text-text-primary m-0"
             style={{ fontFamily: "var(--font-medium)" }}
           >
-            Operations is still reviewing your shop
+            The GRIDGO team is still reviewing your shop
           </p>
           <p className="text-body text-text-secondary m-0">
-            Build your board while you wait. Clients see it the moment your accreditation
-            clears, and Operations wants at least one finished listing before then.
+            Add your products while you wait. Clients see them the moment your shop is approved,
+            and the GRIDGO team wants at least one finished product before then.
           </p>
         </div>
       ) : null}
@@ -226,8 +247,8 @@ export default function SupplierCataloguesPage() {
             </p>
             <p className="text-body text-text-secondary m-0">
               {toCheck === 1
-                ? "One listing needs you to confirm how long it takes. It is marked below."
-                : `${toCheck} listings need you to confirm how long they take. They are marked below.`}{" "}
+                ? "One product needs you to confirm how long it takes. It is marked below."
+                : `${toCheck} products need you to confirm how long they take. They are marked below.`}{" "}
               Open each one and answer &ldquo;How long does this take?&rdquo; so clients are
               offered the right dates.
             </p>
@@ -241,8 +262,8 @@ export default function SupplierCataloguesPage() {
             value={query.q}
             maxLength={MAX_HUNT_LENGTH}
             onChange={(event) => ask({ q: event.target.value })}
-            placeholder="Find a sample"
-            aria-label="Find a sample"
+            placeholder="Find a product"
+            aria-label="Find a product"
             className="lg:min-w-0 lg:flex-1"
           />
           <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -297,7 +318,7 @@ export default function SupplierCataloguesPage() {
               <Button
                 variant={view === "wall" ? "default" : "outline"}
                 size="icon"
-                aria-label="Wall of samples"
+                aria-label="Show as photos"
                 aria-pressed={view === "wall"}
                 onClick={() => setView("wall")}
               >
@@ -306,7 +327,7 @@ export default function SupplierCataloguesPage() {
               <Button
                 variant={view === "list" ? "default" : "outline"}
                 size="icon"
-                aria-label="List of quotes"
+                aria-label="Show as a list"
                 aria-pressed={view === "list"}
                 onClick={() => setView("list")}
               >
@@ -327,7 +348,7 @@ export default function SupplierCataloguesPage() {
 
       {error ? (
         <ErrorState
-          title="Your board could not load"
+          title="Your products could not load"
           body={error}
           action={<Button onClick={() => void load()}>Refresh</Button>}
         />
@@ -347,14 +368,14 @@ export default function SupplierCataloguesPage() {
               ? "No matches"
               : cut
                 ? "Nothing in this cut"
-                : EMPTY_BOARD_TITLE
+                : "No products yet"
           }
           body={
             hunting
               ? EMPTY_HUNT_SENTENCE
               : cut
                 ? EMPTY_CUT_SENTENCE
-                : EMPTY_BOARD_BODY
+                : "Add a product so clients can see what you print."
           }
           action={
             hunting || cut ? (
@@ -365,9 +386,9 @@ export default function SupplierCataloguesPage() {
               <Button
                 variant="primary"
                 nativeButton={false}
-                render={<Link href="/supplier/catalogue/new" />}
+                render={<Link href={addHref} />}
               >
-                Add a listing
+                Add a product
               </Button>
             )
           }
@@ -383,6 +404,7 @@ export default function SupplierCataloguesPage() {
               shopApproved={shopApproved}
               readiness={readiness?.get(listing.id) ?? null}
               onSaved={onListingSaved}
+              {...templateCardProps(listing)}
             />
           ))}
         </div>
@@ -398,6 +420,7 @@ export default function SupplierCataloguesPage() {
                 readiness={readiness?.get(listing.id) ?? null}
                 layout="row"
                 onSaved={onListingSaved}
+                {...templateCardProps(listing)}
               />
             </li>
           ))}
@@ -407,13 +430,19 @@ export default function SupplierCataloguesPage() {
       {!loading && listings.length > 0 ? (
         <p className="text-caption text-text-muted m-0">
           {query.standing === "all"
-            ? `${boardCountLine(total)} on this shop.`
-            : `${shown.length} of ${boardCountLine(listings.length)}.`}
+            ? `${productCountLine(total)} on this shop.`
+            : `${shown.length} of ${productCountLine(listings.length)}.`}
           {partial ? ` Showing the first ${listings.length}; search to find the rest.` : ""}
         </p>
       ) : null}
     </div>
   );
+}
+
+/** "1 product", "12 products": the shop's word for what it lists. */
+function productCountLine(count: number): string {
+  if (count === 0) return "No products yet";
+  return count === 1 ? "1 product" : `${count} products`;
 }
 
 /**
@@ -464,7 +493,7 @@ function StandingFilterBar({
         }}
         variant="outline"
         spacing={0}
-        aria-label="Show listings by status"
+        aria-label="Show products by status"
         className="hidden flex-wrap gap-1 md:flex"
       >
         {options.map((option) => (
@@ -480,7 +509,7 @@ function StandingFilterBar({
             if (typeof next === "string") onChange(next as StandingFilter);
           }}
         >
-          <SelectTrigger className="w-full" aria-label="Show listings by status">
+          <SelectTrigger className="w-full" aria-label="Show products by status">
             <SelectValue>
               Status: {selected ? label(selected) : "All"}
             </SelectValue>
@@ -522,7 +551,7 @@ function reflectHidden(
     missing: [
       {
         code: "item_inactive",
-        message: "This listing is hidden.",
+        message: "This product is hidden.",
         action: "activate_listing",
       },
       ...missing,

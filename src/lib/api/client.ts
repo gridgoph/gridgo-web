@@ -170,6 +170,13 @@ import type {
 } from "@/lib/api/types";
 import { apiInstallment, normalizeOrder, normalizeOrders } from "@/lib/payments";
 import { acceptsReviewData, withReviewData } from "@/lib/review-data";
+import {
+  readShopMoney,
+  readShopMoneySchedule,
+  type MoneyPeriod,
+  type ShopMoneyRead,
+  type ShopMoneySchedule,
+} from "@/lib/supplier-money";
 import { previewParams, type ProductionTimeChoice } from "@/lib/production-time-choice";
 import {
   normalizeShopHours,
@@ -480,6 +487,7 @@ const SHARED_LIST_PATHS = new Set([
   "/refund-requests",
   "/ops/catalog-reviews",
   "/ops/product-type-requests",
+  "/ops/product-setup-requests",
   "/ops/colour-price-checks",
   "/ops/quote-requests",
   "/admin/privacy-requests",
@@ -1864,7 +1872,7 @@ export async function resolveEscalation(
 // ---------------------------------------------------------------------------
 
 export async function getFile(fileId: string): Promise<StoredFile> {
-  const result = await request<{ file: StoredFile }>(`/files/${fileId}`);
+  const result = await request<{ file: StoredFile }>(`/files/${encodeURIComponent(fileId)}`);
   return result.file;
 }
 
@@ -1875,7 +1883,7 @@ export async function getFileDownloadUrl(
 ): Promise<string> {
   // A shop's artwork read is recorded per device (gridgo-api EXPRESS_API.md).
   const result = await request<{ url: string }>(
-    `/files/${fileId}/download-url`,
+    `/files/${encodeURIComponent(fileId)}/download-url`,
     options.deviceId ? { headers: { "X-GRIDGO-Device-Id": options.deviceId } } : {},
   );
   return result.url;
@@ -3176,6 +3184,12 @@ export async function listCatalogReviews(
 
 export type CatalogReviewDecision =
   | { status: "approved"; photosUnbranded: true }
+  /**
+   * Only for a template price check on a product that shows GRIDGO's stock
+   * photos alone (`skipsPhotoChecks` in `@/lib/listing-review`): there is no
+   * shop photo to attest, and the API accepts the approval without it.
+   */
+  | { status: "approved" }
   | { status: "needs_revision"; reason: string };
 
 export async function decideCatalogReview(
@@ -4543,6 +4557,35 @@ export async function getPortalBuild(): Promise<{ commit: string; builtAt: strin
     }
     return { commit: body.commit, builtAt: body.builtAt };
   });
+}
+
+// ---------------------------------------------------------------------------
+// The shop Owner's own Money (gridgo-api#416, docs/SHOP_MONEY_API.md).
+// ---------------------------------------------------------------------------
+
+/**
+ * The Owner's balances with GRIDGO, read through `lib/supplier-money.ts`.
+ * Null when GRIDGO has no such route yet (404/405) or refuses it (403, Staff),
+ * so Money draws what it did before.
+ */
+export async function getMyShopMoney(period: MoneyPeriod): Promise<ShopMoneyRead | null> {
+  try {
+    const body = await request<unknown>(`/me/shop-money${buildQuery({ period })}`);
+    return readShopMoney(body);
+  } catch (error) {
+    if (error instanceof ApiError && [403, 404, 405].includes(error.status)) return null;
+    throw error;
+  }
+}
+
+/** `GET /settings` `shopMoney` as a shop reads it, or null when GRIDGO does not offer it. */
+export async function getShopMoneySchedule(): Promise<ShopMoneySchedule | null> {
+  try {
+    const settings = await getSettings();
+    return readShopMoneySchedule(settings.shopMoney);
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

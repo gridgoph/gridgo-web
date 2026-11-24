@@ -461,3 +461,113 @@ describe("Production time checks: a failed refresh (gridgo-api#292)", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
+
+describe("Listing reviews desk: template price checks (gridgo-supplier#268)", () => {
+  function priceCheck(overrides: Record<string, unknown> = {}, template: Record<string, unknown> = {}) {
+    return item({
+      id: "sci_price",
+      name: "A4 flyers",
+      basePriceMinor: 500,
+      updatedAt: "2026-10-01T00:00:00Z",
+      hasApprovedVersion: true,
+      photos: [],
+      optionGroups: [
+        {
+          id: "grp_tpl",
+          name: "Options",
+          kind: "spec",
+          required: true,
+          options: [
+            { id: "o1", label: "A4 / Glossy", priceModifierMinor: 0, active: true },
+            { id: "o2", label: "A4 / Matte", priceModifierMinor: 99500, active: true },
+          ],
+        },
+      ],
+      template: {
+        templateId: "tpl_flyers",
+        managed: true,
+        priceOnly: true,
+        shopConfirmed: true,
+        unit: "piece",
+        optionKeys: { o1: "a4_glossy", o2: "a4_matte" },
+        priceCheck: {
+          required: true,
+          submittedAt: "2026-10-01T01:00:00Z",
+          targetBy: "2026-10-01",
+          flags: [
+            {
+              optionKey: "a4_matte",
+              code: "outside_usual_range",
+              priceMinor: 100000,
+              range: { minMinor: 500, maxMinor: 5000 },
+            },
+          ],
+        },
+        ...template,
+      },
+      ...overrides,
+    });
+  }
+
+  it("leads the queue, reads as a price check, and approves without photo checks", async () => {
+    const user = userEvent.setup();
+    api.listCatalogReviews.mockImplementation(async (status: string) =>
+      status === "pending" ? { items: [item(), priceCheck()], nextCursor: null } : { items: [], nextCursor: null },
+    );
+    render(<ListingReviewsDesk tree="ops" />);
+    const list = await screen.findByRole("list", { name: "Listings" });
+    const rows = within(list).getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent("A4 flyers");
+    expect(rows[0]).toHaveTextContent("Price check");
+    await user.click(within(rows[0]).getByText("A4 flyers"));
+    expect(await screen.findByRole("heading", { level: 3, name: "Price check" })).toBeVisible();
+    const table = screen.getByRole("table");
+    expect(within(table).getByRole("rowheader", { name: /A4 \/ Matte/ })).toHaveTextContent("Unusual price");
+    expect(within(table).getByText("₱1,000.00")).toBeVisible();
+    expect(screen.getByText(/Usually ₱5\.00 to ₱50\.00/)).toBeVisible();
+    expect(screen.getByText("Shop confirmed")).toBeVisible();
+    expect(screen.queryByRole("checkbox", { name: /No watermark/ })).not.toBeInTheDocument();
+    const approve = screen.getByRole("button", { name: "Approve prices" });
+    expect(approve).toBeEnabled();
+    await user.click(approve);
+    await waitFor(() =>
+      expect(api.decideCatalogReview).toHaveBeenCalledWith("sci_price", 7, { status: "approved" }),
+    );
+  });
+
+  it("keeps Approve shut, with the reason, until the shop confirms GRIDGO's prices", async () => {
+    api.listCatalogReviews.mockImplementation(async (status: string) =>
+      status === "pending"
+        ? { items: [priceCheck({}, { shopConfirmed: false })], nextCursor: null }
+        : { items: [], nextCursor: null },
+    );
+    render(<ListingReviewsDesk tree="ops" />);
+    const approve = await screen.findByRole("button", { name: "Approve prices" });
+    expect(approve).toBeDisabled();
+    expect(screen.getByText(/The shop has not confirmed these prices yet/)).toBeVisible();
+  });
+
+  it("still asks for the photo checks when the shop added its own photos", async () => {
+    const user = userEvent.setup();
+    api.listCatalogReviews.mockImplementation(async (status: string) =>
+      status === "pending"
+        ? {
+            items: [priceCheck({ photos: [{ fileId: "f1", sortOrder: 0, downloadUrl: "https://files.example/f1" }] })],
+            nextCursor: null,
+          }
+        : { items: [], nextCursor: null },
+    );
+    render(<ListingReviewsDesk tree="ops" />);
+    const approve = await screen.findByRole("button", { name: "Approve prices" });
+    expect(approve).toBeDisabled();
+    for (const name of [/No watermark/, /No logo/, /No shop branding/])
+      await user.click(screen.getByRole("checkbox", { name }));
+    await user.click(approve);
+    await waitFor(() =>
+      expect(api.decideCatalogReview).toHaveBeenCalledWith("sci_price", 7, {
+        status: "approved",
+        photosUnbranded: true,
+      }),
+    );
+  });
+});
