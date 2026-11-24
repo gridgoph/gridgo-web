@@ -12,6 +12,7 @@ import {
   FlaskConical,
   GitMerge,
   GitPullRequest,
+  House,
   Layers,
   Sparkles,
   Split,
@@ -47,6 +48,7 @@ export const STATUS_ICONS: Record<StatusIconName, LucideIcon> = {
   sparkles: Sparkles,
   "test-tube-diagonal": TestTubeDiagonal,
   layers: Layers,
+  house: House,
 };
 
 const TONE: Record<

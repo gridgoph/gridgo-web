@@ -13,6 +13,8 @@ const api = vi.hoisted(() => ({
   getApprovalCase: vi.fn(),
   decideApprovalCase: vi.fn(),
   getFileDownloadUrl: vi.fn(),
+  getHomePrinter: vi.fn(),
+  getSettings: vi.fn(),
 }));
 
 const nav = vi.hoisted(() => ({ params: new URLSearchParams(), replace: vi.fn() }));
@@ -103,6 +105,9 @@ beforeEach(() => {
   api.getApprovalCase.mockResolvedValue(approval);
   api.decideApprovalCase.mockResolvedValue({ ...approval, approvalCase: { ...approval.approvalCase, status: "approved" } });
   api.getFileDownloadUrl.mockImplementation(async (id: string) => `https://files.example/${id}?sig=1`);
+  // These are shops: the home-printer read answers 404.
+  api.getHomePrinter.mockRejectedValue(new ApiError(404, { error: "home_printer_not_found" }));
+  api.getSettings.mockResolvedValue({ version: 1 });
 });
 
 afterEach(() => {
@@ -190,6 +195,31 @@ describe("Shop verification desk", () => {
     expect(await screen.findByText(/Verified by Admin One/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
     expect(api.listSupplierVerificationQueue).toHaveBeenCalledWith({ status: "approved", cursor: null });
+  });
+
+  it("names a pause other than an ended window plainly", async () => {
+    api.listSupplierVerificationQueue.mockResolvedValue({
+      suppliers: [shop({ verification: summary({ newOrdersPaused: true, daysLeft: 9 }) })],
+      nextCursor: null,
+    });
+    render(<ShopVerificationDesk canDecide={false} base="/ops" />);
+    const row = await screen.findByRole("button", { name: "Open Shop A" });
+    expect(within(row).getByText("New orders paused")).toBeInTheDocument();
+  });
+
+  it("names what Verified still needs when GRIDGO refuses an incomplete profile", async () => {
+    nav.params = new URLSearchParams("shop=usr_shop_a");
+    api.decideApprovalCase.mockRejectedValue(
+      new ApiError(409, { error: "supplier_profile_incomplete", missing: ["business_permit_or_barangay_clearance", "tin"] }),
+    );
+    const user = userEvent.setup();
+    render(<ShopVerificationDesk canDecide base="/admin" />);
+    await user.click(await screen.findByRole("button", { name: "Approve" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Verify shop" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Not verified yet. It still needs a barangay clearance or business permit (DTI) and a TIN record.",
+    );
   });
 
   it("says the server has no queue yet when the route is missing", async () => {

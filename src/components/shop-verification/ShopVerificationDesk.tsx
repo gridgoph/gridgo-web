@@ -30,12 +30,22 @@ import {
   decideApprovalCase,
   getApprovalCase,
   getFileDownloadUrl,
+  getHomePrinter,
+  getSettings,
   getSupplierVerificationDetail,
   isApiError,
   listSupplierVerificationQueue,
 } from "@/lib/api/client";
 import type { ApprovalCaseDetail } from "@/lib/api/types";
 import { formatDate, formatDateTime, formatPhp } from "@/lib/format";
+import {
+  DEFAULT_MINIMUM_AGE,
+  HOME_MISSING_WORDS,
+  listWords,
+  minimumAgeFrom,
+  readHomePrinter,
+  type HomePrinterRead,
+} from "@/lib/home-printers";
 import { useLiveReload } from "@/lib/live/useLiveReload";
 import { useSerializedLoad } from "@/lib/live/useSerializedLoad";
 import type { StatusIconName } from "@/lib/order-state";
@@ -56,6 +66,15 @@ import {
   type VerificationPaper,
   type VerificationQueueEntry,
 } from "@/lib/shop-verification";
+
+import {
+  HomeKindChip,
+  HomePrinterFacts,
+  HomeVerifiedPapers,
+  StarterReview,
+  homeRowStatus,
+  starterFileCount,
+} from "./HomePrinterReview";
 
 /** The approval statuses the desk lists, in tab order. */
 const VIEWS = [
@@ -90,7 +109,37 @@ type DetailState =
   | { kind: "idle" }
   | { kind: "loading" }
   | { kind: "failed"; message: string }
-  | { kind: "ready"; entry: VerificationQueueEntry; approval: ApprovalCaseDetail | null };
+  | {
+      kind: "ready";
+      entry: VerificationQueueEntry;
+      approval: ApprovalCaseDetail | null;
+      home: HomeState;
+      minimumAge: number;
+    };
+
+/**
+ * A supplier's home-printer record. `none`: not a home printer, or an API
+ * without home printers (both answer 404), so the shop view is unchanged.
+ */
+type HomeState = { kind: "none" } | { kind: "failed" } | { kind: "ready"; read: HomePrinterRead };
+
+/** Reads one supplier's home-printer record; 404 is "not a home printer". */
+async function readHome(supplierId: string): Promise<HomeState & { routeMissing?: boolean }> {
+  try {
+    const read = readHomePrinter(await getHomePrinter(supplierId));
+    return read ? { kind: "ready", read } : { kind: "none" };
+  } catch (err) {
+    if (isApiError(err) && (err.status === 404 || err.status === 405)) {
+      // An API without the route answers a plain 404, not `home_printer_not_found`.
+      return { kind: "none", routeMissing: err.code !== "home_printer_not_found" };
+    }
+    if (isApiError(err) && err.status === 403) return { kind: "none" };
+    return { kind: "failed" };
+  }
+}
+
+/** Queue rows read their home-printer record a few at a time. */
+const PROBE_CONCURRENCY = 4;
 
 /**
  * Shop verification (gridgo-api#411): shops taking jobs before GRIDGO checks
@@ -120,6 +169,11 @@ export function ShopVerificationDesk({
   const [queue, setQueue] = useState<QueueState>({ kind: "loading" });
   const [detail, setDetail] = useState<DetailState>({ kind: "idle" });
   const [notice, setNotice] = useState<string | null>(null);
+  // Home-printer records for queue rows, by supplier. The queue itself does not
+  // say which suppliers print from home, so each row's record is read.
+  const [homes, setHomes] = useState<ReadonlyMap<string, HomePrinterRead | null>>(new Map());
+  // Bumped after a Starter decision so every row's record is read again.
+  const [probeRound, setProbeRound] = useState(0);
 
   const setParams = useCallback(
     (next: { status?: ViewStatus; shop?: string | null }) => {
@@ -181,8 +235,18 @@ export function ShopVerificationDesk({
           return;
         }
         // The decision record (who decided, the version a decision needs) is Super Admin's.
-        const approval = canDecide ? await getApprovalCase(entry.approvalCaseId).catch(() => null) : null;
-        setDetail({ kind: "ready", entry, approval });
+        const [approval, home, settings] = await Promise.all([
+          canDecide ? getApprovalCase(entry.approvalCaseId).catch(() => null) : Promise.resolve(null),
+          readHome(entry.supplierId),
+          getSettings().catch(() => null),
+        ]);
+        setDetail({
+          kind: "ready",
+          entry,
+          approval,
+          home,
+          minimumAge: settings ? minimumAgeFrom(settings) : DEFAULT_MINIMUM_AGE,
+        });
       } catch (err) {
         setDetail({ kind: "failed", message: opsErrorMessage(err, "Could not open this shop.") });
       }
@@ -193,6 +257,32 @@ export function ShopVerificationDesk({
     setQueue({ kind: "loading" });
     void loadQueue();
   }, [loadQueue]);
+
+  const queueIds = queue.kind === "ready" ? queue.entries.map((e) => e.supplierId).join(",") : "";
+  useEffect(() => {
+    if (!queueIds) return;
+    let live = true;
+    const ids = queueIds.split(",");
+    let next = 0;
+    let routeMissing = false;
+    async function worker() {
+      while (live && !routeMissing && next < ids.length) {
+        const id = ids[next++];
+        const home = await readHome(id);
+        if (home.routeMissing) routeMissing = true;
+        if (!live) return;
+        setHomes((current) => {
+          const map = new Map(current);
+          map.set(id, home.kind === "ready" ? home.read : null);
+          return map;
+        });
+      }
+    }
+    void Promise.all(Array.from({ length: Math.min(PROBE_CONCURRENCY, ids.length) }, worker));
+    return () => {
+      live = false;
+    };
+  }, [queueIds, probeRound]);
   useEffect(() => {
     void loadDetail();
   }, [loadDetail]);
@@ -219,7 +309,9 @@ export function ShopVerificationDesk({
         Shops that finished sign-up take online jobs before GRIDGO checks their papers. Until
         they are verified, payouts stop at the cap and the rest waits; new orders pause when
         their window ends, and open jobs still finish.
-        {canDecide ? "" : " Super Admin approves or rejects; you can see the papers and money here."}
+        {canDecide
+          ? ""
+          : " Super Admin verifies or rejects; you can see the papers and money here, and approve home printers as Starter."}
       </p>
 
       <Tabs value={view} onValueChange={(value) => setParams({ status: value as ViewStatus, shop: null })}>
@@ -269,6 +361,7 @@ export function ShopVerificationDesk({
                 <li key={entry.supplierId}>
                   <QueueRow
                     entry={entry}
+                    home={homes.get(entry.supplierId) ?? null}
                     selected={entry.supplierId === selectedId}
                     onOpen={() => {
                       setNotice(null);
@@ -312,8 +405,15 @@ export function ShopVerificationDesk({
               key={detail.entry.supplierId}
               entry={detail.entry}
               approval={detail.approval}
+              home={detail.home}
+              minimumAge={detail.minimumAge}
               canDecide={canDecide}
               base={base}
+              onHomeChanged={async (message) => {
+                if (message) setNotice(message);
+                await reloadAll();
+                setProbeRound((n) => n + 1);
+              }}
               onDecided={async (message) => {
                 setNotice(message);
                 setParams({ shop: null });
@@ -334,15 +434,18 @@ function papersCount(entry: VerificationQueueEntry): number {
 
 function QueueRow({
   entry,
+  home,
   selected,
   onOpen,
 }: {
   entry: VerificationQueueEntry;
+  /** Null for a shop, or while the row's record is still being read. */
+  home: HomePrinterRead | null;
   selected: boolean;
   onOpen: () => void;
 }) {
   const v = entry.verification;
-  const status = staffStatus(entry);
+  const status = home ? homeRowStatus(home) : staffStatus(entry);
   const name = entry.shopName ?? "Shop without a name";
   return (
     <button
@@ -361,10 +464,14 @@ function QueueRow({
         <span className="text-caption text-text-secondary shrink-0 tabular-nums">{staffDaysLine(v)}</span>
       </span>
       <span className="flex flex-wrap items-center gap-2">
+        {home ? <HomeKindChip /> : null}
         <StatusChip tone={status.tone} icon={TONE_ICON[status.tone]} label={status.label} />
       </span>
       <span className="text-caption text-text-muted tabular-nums">
-        {papersCount(entry)} of {VERIFICATION_PAPERS.length} papers · {formatPhp(v.paidBeforeVerificationMinor)} paid
+        {home
+          ? `${starterFileCount(home)} of 3 Starter files`
+          : `${papersCount(entry)} of ${VERIFICATION_PAPERS.length} papers`}{" "}
+        · {formatPhp(v.paidBeforeVerificationMinor)} paid
         {v.recoveryDueMinor > 0 ? ` · ${formatPhp(v.recoveryDueMinor)} to recover` : ""}
       </span>
     </button>
@@ -386,18 +493,26 @@ function Fact({ label, value, hint }: { label: string; value: string; hint?: str
 function ShopPanel({
   entry,
   approval,
+  home,
+  minimumAge,
   canDecide,
   base,
+  onHomeChanged,
   onDecided,
 }: {
   entry: VerificationQueueEntry;
   approval: ApprovalCaseDetail | null;
+  home: HomeState;
+  minimumAge: number;
   canDecide: boolean;
   base: "/ops" | "/admin";
+  /** Reload after a Starter decision; a null message reloads quietly. */
+  onHomeChanged: (message: string | null) => Promise<void>;
   onDecided: (message: string) => Promise<void>;
 }) {
   const v = entry.verification;
-  const status = staffStatus(entry);
+  const homeRead = home.kind === "ready" ? home.read : null;
+  const status = homeRead ? homeRowStatus(homeRead) : staffStatus(entry);
   const onFile = papersOnFile(entry.files);
   const others = entry.files.filter((file) => !file.paper);
   const ledger = staffLedger(entry.ledger ?? []);
@@ -414,7 +529,10 @@ function ShopPanel({
           <h2 id="shop-verification-name" className="text-h2 text-text-primary m-0">
             {name}
           </h2>
-          <StatusChip tone={status.tone} icon={TONE_ICON[status.tone]} label={status.label} />
+          <span className="flex flex-wrap items-center gap-2">
+            {homeRead ? <HomeKindChip /> : null}
+            <StatusChip tone={status.tone} icon={TONE_ICON[status.tone]} label={status.label} />
+          </span>
         </div>
         {v.startedAt ? (
           <p className="text-caption text-text-muted m-0">Taking jobs since {formatDate(v.startedAt)}</p>
@@ -450,7 +568,14 @@ function ShopPanel({
         {!v.verified && v.payoutCapMinor > 0 ? (
           <Progress value={capPercent} aria-label={`${capPercent}% of the payout cap paid out`} className="pt-1" />
         ) : null}
-        {!v.verified ? (
+        {homeRead ? <HomePrinterFacts read={homeRead} /> : null}
+        {home.kind === "failed" ? (
+          <p className="text-body text-text-secondary m-0" role="status">
+            GRIDGO did not say whether this supplier prints from home. Reload the page to see its home-printer
+            record before deciding.
+          </p>
+        ) : null}
+        {!v.verified && !homeRead ? (
           <p className="text-caption text-text-secondary m-0">
             {v.paidOpenRegularJobs === 1
               ? "1 regular job with a paid stage open."
@@ -460,6 +585,20 @@ function ShopPanel({
         ) : null}
       </header>
 
+      {homeRead ? (
+        <>
+          <StarterReview
+            supplierId={entry.supplierId}
+            name={name}
+            read={homeRead}
+            files={entry.files}
+            minimumAge={minimumAge}
+            onApproved={(_next, message) => onHomeChanged(message)}
+            onStale={() => onHomeChanged(null)}
+          />
+          <HomeVerifiedPapers read={homeRead} files={entry.files} />
+        </>
+      ) : (
       <section aria-labelledby="papers-heading" className="flex flex-col gap-2">
         <h3 id="papers-heading" className="text-h3 text-text-primary m-0">
           Papers
@@ -490,6 +629,7 @@ function ShopPanel({
           </>
         ) : null}
       </section>
+      )}
 
       {ledger.length ? (
         <section aria-labelledby="ledger-heading" className="gg-card flex flex-col p-4">
@@ -529,13 +669,14 @@ function ShopPanel({
 
       {pending ? (
         canDecide && approval ? (
-          <DecisionBox entry={entry} approval={approval} name={name} onDecided={onDecided} />
+          <DecisionBox entry={entry} approval={approval} name={name} home={homeRead} onDecided={onDecided} />
         ) : canDecide ? (
           <p className="text-body text-text-secondary m-0" role="status">
             The approval record did not load, so a decision cannot be sent. Reload the page to try again.
           </p>
         ) : (
           <p className="text-body text-text-secondary m-0">
+            {homeRead?.status.level === "pending" ? "Starter is yours to approve above. Verified is Super Admin's. " : ""}
             Super Admin approves or rejects this shop. Approving pays out what is waiting, through
             the payout desk as usual.
           </p>
@@ -670,15 +811,35 @@ function DecisionRecord({ approval }: { approval: ApprovalCaseDetail | null }) {
 
 type Decision = "approve" | "reject";
 
+/** A refused decision in plain words, naming what a home printer still needs. */
+function decisionError(err: unknown): string {
+  if (isApiError(err) && err.code === "supplier_profile_incomplete") {
+    const missing = err.detail<unknown>("missing");
+    const words = (Array.isArray(missing) ? missing : [])
+      .map((item) => (typeof item === "string" ? HOME_MISSING_WORDS[item] : undefined))
+      .filter((word): word is string => Boolean(word));
+    return words.length
+      ? `Not verified yet. It still needs ${listWords(words)}.`
+      : "Not verified yet: the shop's profile is not complete.";
+  }
+  if (isApiError(err) && err.status === 409) {
+    return "Someone else changed this shop's record. Reload to see the latest, then decide again.";
+  }
+  return opsErrorMessage(err, "The decision was not saved. Try again.");
+}
+
 function DecisionBox({
   entry,
   approval,
   name,
+  home,
   onDecided,
 }: {
   entry: VerificationQueueEntry;
   approval: ApprovalCaseDetail;
   name: string;
+  /** A home printer: Verified also needs Starter, a clearance or permit, and TIN. */
+  home: HomePrinterRead | null;
   onDecided: (message: string) => Promise<void>;
 }) {
   const [text, setText] = useState("");
@@ -711,11 +872,7 @@ function DecisionBox({
           : `${name} was rejected. The shop reads your reason.`,
       );
     } catch (err) {
-      setError(
-        isApiError(err) && err.status === 409
-          ? "Someone else changed this shop's record. Reload to see the latest, then decide again."
-          : opsErrorMessage(err, "The decision was not saved. Try again."),
-      );
+      setError(decisionError(err));
     } finally {
       setBusy(false);
     }
@@ -724,8 +881,14 @@ function DecisionBox({
   return (
     <section aria-labelledby="decide-heading" className="gg-card flex flex-col gap-3 p-4">
       <h3 id="decide-heading" className="text-h3 text-text-primary m-0">
-        Decide
+        {home ? "Decide Verified" : "Decide"}
       </h3>
+      {home ? (
+        <p className="text-body text-text-secondary m-0">
+          Verified removes the weekly limit and gives the green check. It needs Starter, a barangay clearance or
+          business permit (DTI), and a TIN on file. Rejecting stops new orders.
+        </p>
+      ) : null}
       <Field>
         <FieldLabel htmlFor="verification-reason">Note or reason</FieldLabel>
         <Textarea
@@ -746,7 +909,9 @@ function DecisionBox({
       ) : null}
       <div className="flex flex-wrap gap-2">
         <Button
-          variant="primary"
+          // A home printer without Starter cannot be Verified yet, and Approve
+          // as Starter above is then the page's one yellow action.
+          variant={home && home.status.level === "pending" ? "outline" : "primary"}
           onClick={() => {
             setRequestId(crypto.randomUUID());
             setConfirm("approve");
