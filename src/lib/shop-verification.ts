@@ -532,7 +532,11 @@ export function staffStatus(entry: VerificationQueueEntry): { tone: StaffTone; l
   if (entry.approvalStatus === "rejected") return { tone: "neutral", label: "Rejected" };
   if (entry.approvalStatus === "suspended") return { tone: "neutral", label: "Suspended" };
   if (v.recoveryDueMinor > 0) return { tone: "warning", label: "Paused: money to recover" };
-  if (v.newOrdersPaused) return { tone: "warning", label: "Paused: window ended" };
+  if (v.newOrdersPaused) {
+    // New orders also pause for reasons other than the window (a closed
+    // account, a home printer waiting on review): name the window only when it ended.
+    return { tone: "warning", label: v.daysLeft <= 0 ? "Paused: window ended" : "New orders paused" };
+  }
   if (v.verificationState === "being_checked") {
     return missingPapers(entry.files).length
       ? { tone: "info", label: "Some papers sent" }

@@ -63,7 +63,9 @@ export type StatusIconName =
   | "sparkles"
   // Sample First: a paid sample, and the batch ordered from it (docs/SAMPLE_FIRST_API.md).
   | "test-tube-diagonal"
-  | "layers";
+  | "layers"
+  // A home printer, against a shop's store (HOME_PRINTERS_API.md).
+  | "house";
 
 export type StatePresentation = {
   label: string;
