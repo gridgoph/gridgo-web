@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { CircleCheck, Download, Printer, Trash2 } from "lucide-react";
@@ -157,18 +157,25 @@ export default function SupplierJobFilesPage() {
     win.print();
   }
 
-  // Ctrl+P / Cmd+P prints the file, not this page around it.
+  // Ctrl+P / Cmd+P prints the file, not this page around it. The listener is
+  // added once, on mount, and reads the current print action from a ref set at
+  // commit: re-adding it in an effect after every render left a moment, right
+  // after the file appeared, when Ctrl+P printed the whole page instead.
+  const printRef = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    printRef.current = canPrint ? print : null;
+  });
   useEffect(() => {
-    if (!canPrint) return;
     const onKey = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p") {
+      const printFile = printRef.current;
+      if (printFile && (event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p") {
         event.preventDefault();
-        print();
+        printFile();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  });
+  }, []);
 
   async function download() {
     if (!order || !current) return;
