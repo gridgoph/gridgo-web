@@ -13,6 +13,7 @@ import {
   UserRoundPlus,
   X,
   Zap,
+  Crown,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -79,6 +80,7 @@ const INVITE_ICON: Record<ShopInviteKind, typeof Mail> = {
   phone: Phone,
   qr: QrCode,
   link: Link2,
+  owner: Crown,
 };
 
 type Confirm = { kind: "remove"; person: TeamPerson } | { kind: "shared-pc" };

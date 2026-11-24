@@ -574,7 +574,8 @@ export type ShopTeamSettings = {
   showRankingToStaff: boolean;
 };
 
-export type ShopInviteKind = "email" | "phone" | "qr" | "link";
+/** `owner`: a manager's claim link for the shop's owner (guided sign-up). */
+export type ShopInviteKind = "email" | "phone" | "qr" | "link" | "owner";
 export type ShopInviteStatus = "open" | "claimed" | "revoked" | "expired";
 
 export type ShopInvite = {
@@ -2852,7 +2853,24 @@ export type SupplierPayoutAccount = {
   updatedAt: string;
   /** Present on the Operations projection only. */
   shopName?: string | null;
+  /**
+   * Whose QR it is (guided sign-up; gridgo-api docs/SUPPLIER_SIGNUP_API.md).
+   * Present for guided shops and shops that opted into consent; absent on an
+   * older API, and then the screen keeps its older shape.
+   */
+  holder?: PayoutHolder | null;
+  /** The payout consent GRIDGO stored, in its exact wording. */
+  consent?: { accepted: boolean; wording: string; at?: string | null } | null;
+  /** The destination-change hold: payouts pause for 24 hours after a change. */
+  payoutStatus?: {
+    held?: boolean;
+    reason?: string | null;
+    ownerClaimRequired?: boolean;
+    pausedUntil?: string | null;
+  } | null;
 };
+
+export type PayoutHolder = "mine" | "family" | "friend" | "staff";
 
 /** `qrFileId` binds a stored `supplier_payout_qr` upload; `null` removes the picture. */
 export type SupplierPayoutAccountPatch = {
@@ -2861,6 +2879,9 @@ export type SupplierPayoutAccountPatch = {
   accountNumber?: string;
   institution?: string;
   qrFileId?: string | null;
+  holder?: PayoutHolder;
+  /** GRIDGO's payout consent, sent back word for word. */
+  consent?: { accepted: true; wording: string };
 };
 
 /**

@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 import { LoginAuthPanel } from "@/app/login/LoginAuthPanel";
 import { Logo } from "@/components/ui/Logo";
@@ -42,10 +43,16 @@ export default function LoginPage() {
               <h2 className="text-h2 m-0 text-text-primary">Welcome back.</h2>
               <p className="text-body m-0 text-text-secondary">
                 Portal access is assigned by GRIDGO Operations. New privileged accounts
-                cannot be created here.
+                cannot be created here; only a print shop can sign up.
               </p>
             </div>
             <LoginAuthPanel />
+            <p className="text-body m-0 text-text-secondary" data-testid="shop-signup-link">
+              Own or run a print shop?{" "}
+              <Link href="/signup" className="text-text-primary underline underline-offset-4">
+                Set up your shop
+              </Link>
+            </p>
           </div>
         </section>
       </main>

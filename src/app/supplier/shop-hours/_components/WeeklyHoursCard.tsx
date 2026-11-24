@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,8 @@ type Props = {
   saving: boolean;
   /** Saves the week; resolves to a refusal, or null once saved. */
   onSave: (draft: WeekDraft) => Promise<string | null>;
+  /** Told whether an unsaved edit is open (guided setup hides "Use these hours" meanwhile). */
+  onEditingChange?: (editing: boolean) => void;
 };
 
 /**
@@ -49,7 +51,7 @@ type Props = {
  * the usual times is the whole week at a glance: usual days muted, a day with
  * its own hours in ink.
  */
-export function WeeklyHoursCard({ hours, now, saving, onSave }: Props) {
+export function WeeklyHoursCard({ hours, now, saving, onSave, onEditingChange }: Props) {
   const saved = weekDraftOf(hours.week, hours.overrides);
   // Null follows what the API holds, so a newer answer replaces an untouched
   // week while an edit in progress is kept.
@@ -58,6 +60,9 @@ export function WeeklyHoursCard({ hours, now, saving, onSave }: Props) {
   const [error, setError] = useState<WeekProblem | null>(null);
   const [done, setDone] = useState(false);
   const changed = weekDraftChanged(hours, draft);
+  useEffect(() => {
+    onEditingChange?.(changed);
+  }, [changed, onEditingChange]);
   const today = manilaClock(now).weekday;
 
   function edit(patch: Partial<WeekDraft>) {
