@@ -91,6 +91,8 @@ describe("LoginPage", () => {
       screen.getByText(/New privileged accounts cannot be created here/i),
     ).toBeVisible();
     expect(screen.queryByRole("link", { name: /sign up/i })).not.toBeInTheDocument();
+    // The one public sign-up is a print shop's own page, never Clerk's.
+    expect(screen.getByRole("link", { name: "Set up your shop" })).toHaveAttribute("href", "/signup");
     expect(screen.queryByText(/Don.t have an account/i)).not.toBeVisible();
     expect(screen.queryByRole("button", { name: /sign up/i })).not.toBeInTheDocument();
   });

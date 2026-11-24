@@ -153,6 +153,7 @@ export const INVITE_KIND_LABEL: Record<ShopInviteKind, string> = {
   phone: "Phone",
   qr: "QR code",
   link: "Link",
+  owner: "Owner claim",
 };
 
 /** What an open invite row says: who it is for, or how it was shared. */

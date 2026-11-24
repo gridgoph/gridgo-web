@@ -1546,6 +1546,12 @@ const SHOP_STAFF_EXTRA_PATHS: readonly string[] = [
   "/supplier/notice",
 ];
 
+/**
+ * Guided setup after sign-up (gridgoph/gridgo-web#328): a Manager sets hours
+ * and staff there and sends the owner the claim link. Never Staff.
+ */
+const SHOP_MANAGER_EXTRA_PATHS: readonly string[] = ["/supplier/setup"];
+
 /** Where a Staff login lands, and where the logo and refusals send them. */
 export const SHOP_STAFF_HOME = "/supplier/dashboard";
 
@@ -1560,6 +1566,7 @@ export function shopStaffAllowsPath(pathname: string, manager = false): boolean 
   const allowed = [
     ...navForRole("supplier", { shopStaff: true, shopManager: manager }).map((item) => item.href),
     ...SHOP_STAFF_EXTRA_PATHS,
+    ...(manager ? SHOP_MANAGER_EXTRA_PATHS : []),
   ];
   return allowed.some((href) => path === href || path.startsWith(`${href}/`));
 }
@@ -1659,6 +1666,8 @@ export function contextTitleForPath(
   if (pathname === "/supplier/catalogue/ask") return "Ask GRIDGO";
   if (pathname === "/supplier/catalogue/setup") return "Let GRIDGO set it up";
   if (pathname === "/supplier/catalogue/check") return "Check your products";
+  if (pathname === "/supplier/setup/ready") return "Setup done";
+  if (pathname === "/supplier/setup") return "Set up your shop";
   if (pathname === "/supplier/phone-app") return "Phone app";
   if (pathname === "/supplier/notice") return "Opening update";
   if (pathname.startsWith("/supplier/catalogue/")) return "Product";

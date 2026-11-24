@@ -1894,6 +1894,14 @@ export async function getFileDownloadUrl(
  * the signed link. The receipt reader uses it because a browser may refuse a
  * storage address on the local network (dev storage) that the API can reach.
  */
+/**
+ * GRIDGO's unbranded document sample (guided sign-up), uploaded once per
+ * generated listing. Signed in with Clerk; `/auth/` paths carry no role.
+ */
+export async function getSignupDocumentSample(): Promise<Blob> {
+  return requestBlob("/auth/clerk/supplier-signup/document-sample");
+}
+
 export async function getFileContent(fileId: string): Promise<Blob> {
   return requestBlob(`/files/${fileId}/content`);
 }
