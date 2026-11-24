@@ -3305,6 +3305,31 @@ export async function getSupplierVerificationDetail(supplierId: string): Promise
   return request<unknown>(`/ops/supplier-verification/${encodeURIComponent(supplierId)}`);
 }
 
+/**
+ * A home printer's staff record (gridgo-api `HOME_PRINTERS_API.md`): level,
+ * pause, weekly jobs, the private pin and the current evidence file ids.
+ * `404 home_printer_not_found` (or a 404 from an API without the route) means
+ * the supplier is not a home printer. Operations and Super Admin.
+ */
+export async function getHomePrinter(supplierId: string): Promise<unknown> {
+  return request<unknown>(`/ops/home-printers/${encodeURIComponent(supplierId)}`);
+}
+
+/**
+ * Grant Starter after reading the ID: the date of birth the reviewer read and
+ * the current Starter evidence file ids they looked at. Audited; never grants
+ * Verified. Operations and Super Admin.
+ */
+export async function approveHomeStarter(
+  supplierId: string,
+  body: { expectedVersion: number; dateOfBirth: string; reviewedFileIds: string[] },
+): Promise<unknown> {
+  return request<unknown>(`/ops/home-printers/${encodeURIComponent(supplierId)}/starter`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 export async function getSupplierReadiness(): Promise<unknown> {
   return request<unknown>("/me/supplier-readiness");
 }

@@ -230,7 +230,9 @@ describe("the staff queue", () => {
 
   it("gives each shop one status, a pause first", () => {
     expect(staffStatus(entry({ v: { recoveryDueMinor: 5 } })).label).toBe("Paused: money to recover");
-    expect(staffStatus(entry({ v: { newOrdersPaused: true } })).label).toBe("Paused: window ended");
+    expect(staffStatus(entry({ v: { newOrdersPaused: true, daysLeft: 0 } })).label).toBe("Paused: window ended");
+    // Paused with days still left (a closed account, a home printer waiting on review) never blames the window.
+    expect(staffStatus(entry({ v: { newOrdersPaused: true } })).label).toBe("New orders paused");
     expect(staffStatus(entry()).label).toBe("No papers yet");
     expect(staffStatus(entry({ v: { verificationState: "being_checked" }, files: files("valid_id") })).label).toBe("Some papers sent");
     expect(staffStatus(entry({ v: { verificationState: "being_checked" }, files: files(...ALL) })).label).toBe("Ready to check");
