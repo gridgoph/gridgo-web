@@ -66,12 +66,10 @@ export function PlayClockPanel({
     };
   }, []);
 
-  // A different app is a different set of values: drop any open edit.
-  useEffect(() => {
-    setEditing(null);
-    setError(null);
-    setConfirm(null);
-  }, [app]);
+  // A different app is a different set of values. The desk mounts this panel
+  // with `key={app}`, so switching apps starts it fresh with no open edit. Do
+  // not reset that state in an effect: a mount effect that has not run yet
+  // would close an editor opened by a click that lands first.
 
   const clockDay = playClockDay(stats.playClockStartDate, today);
   const approvedDate = stats.productionApprovedAt
