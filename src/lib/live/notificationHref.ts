@@ -116,6 +116,16 @@ export function notificationHref(role: Role, notification: Notification): string
     if (role === "ops_admin") return "/ops/service-lines";
   }
 
+  // Partner, member and perk notices say what happened, never to whom: staff
+  // land on that organization's totals, or the list for the standard perk.
+  if (/^(organization_partner|member_perk|membership)\./.test(type)) {
+    const tree = role === "super_admin" ? "admin" : role === "ops_admin" ? "ops" : null;
+    if (!tree) return null;
+    return notification.organizationUserId
+      ? `/${tree}/partner-organizations/${encodeURIComponent(notification.organizationUserId)}`
+      : `/${tree}/partner-organizations`;
+  }
+
   // Organization reminders and Operations' own notices name the account.
   if (
     notification.organizationUserId &&

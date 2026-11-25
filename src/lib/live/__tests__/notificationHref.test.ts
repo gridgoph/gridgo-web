@@ -353,6 +353,20 @@ describe("notificationHref", () => {
     expect(notificationHref("supplier", reminder)).toBe("/supplier/jobs");
   });
 
+  it("opens partner, member and perk notices on that partnership, in each tree", () => {
+    for (const type of ["organization_partner.set", "membership.approved", "member_perk.set"]) {
+      const notice = note({ type, organizationUserId: "user_org" });
+      expect(notificationHref("super_admin", notice)).toBe(
+        "/admin/partner-organizations/user_org",
+      );
+      expect(notificationHref("ops_admin", notice)).toBe("/ops/partner-organizations/user_org");
+      expect(notificationHref("supplier", notice)).toBeNull();
+    }
+    expect(notificationHref("super_admin", note({ type: "member_perk.set" }))).toBe(
+      "/admin/partner-organizations",
+    );
+  });
+
   it("lands hub pick-up alerts on the hub desk, even with an order", () => {
     for (const type of [
       "hub_unclaimed_escalated",
