@@ -62,6 +62,7 @@ export type NavIconKey =
   | "tracker"
   | "refunds"
   | "organizations"
+  | "partner-organizations"
   | "retention"
   | "dropouts"
   | "products"
@@ -700,6 +701,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           placeholderBody: "",
         },
         {
+          // Partner organizations and the member perk (issue report F67EAE25).
+          id: "ops-partner-organizations",
+          href: "/ops/partner-organizations",
+          label: "Partners",
+          title: "Partners",
+          icon: "partner-organizations",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
           id: "ops-founding-testers",
           href: "/ops/founding-testers",
           label: "Founding Testers",
@@ -1119,6 +1130,16 @@ export const ROLE_NAV_GROUPS: Record<PortalRole, readonly NavGroup[]> = {
           label: "Organizations",
           title: "Organizations",
           icon: "organizations",
+          ready: true,
+          placeholderBody: "",
+        },
+        {
+          // Partner organizations and the member perk (issue report F67EAE25).
+          id: "admin-partner-organizations",
+          href: "/admin/partner-organizations",
+          label: "Partners",
+          title: "Partners",
+          icon: "partner-organizations",
           ready: true,
           placeholderBody: "",
         },
@@ -1697,6 +1718,9 @@ export function contextTitleForPath(
   if (/^\/(ops|admin)\/organizations\/[^/]+\/statement$/.test(pathname)) {
     return "Organization statement";
   }
+  if (pathname === "/admin/partner-organizations/standard-perk") return "Perk";
+  if (/^\/admin\/partner-organizations\/[^/]+\/perk$/.test(pathname)) return "Perk";
+  if (/^\/(ops|admin)\/partner-organizations\/[^/]+$/.test(pathname)) return "Partner";
   if (pathname.startsWith("/admin/orders/")) return "Order workspace";
   // One organization; its statement page below it has a title of its own.
   if (/^\/(ops|admin)\/organizations\/[^/]+\/?$/.test(pathname)) return "Organization";

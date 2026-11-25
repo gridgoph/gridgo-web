@@ -18,7 +18,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BellRing, CalendarClock, FileText, Send } from "lucide-react";
+import { BellRing, CalendarClock, FileText, HeartHandshake, Send } from "lucide-react";
 
 import { opsErrorMessage } from "@/app/ops/_lib/errors";
 import { Detail } from "@/components/approvals/applicant-identity";
@@ -142,6 +142,18 @@ export function OrganizationDetail({ tree, userId }: { tree: Tree; userId: strin
           >
             <FileText className="size-4" aria-hidden />
             Statement
+          </Button>
+          <Button
+            variant="secondary"
+            nativeButton={false}
+            render={
+              <Link
+                href={`/${tree}/partner-organizations/${encodeURIComponent(userId)}`}
+              />
+            }
+          >
+            <HeartHandshake className="size-4" aria-hidden />
+            Partnership
           </Button>
           {tree === "admin" && organization.approvalCase?.status === "pending" ? (
             <Button
