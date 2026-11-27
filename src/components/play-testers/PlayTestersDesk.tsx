@@ -7,6 +7,7 @@ import { Eye, MousePointerClick, Trash2, X } from "lucide-react";
 import { DayLegend, DayStrip } from "@/components/play-testers/DayStrip";
 import { PlayClockPanel } from "@/components/play-testers/PlayClockPanel";
 import { PlayOptInPanel } from "@/components/play-testers/PlayOptInPanel";
+import { EarlyAccessSignupsPanel } from "@/components/play-testers/EarlyAccessSignupsPanel";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -275,6 +276,8 @@ export function PlayTestersDesk({ tree }: { tree: "ops" | "admin" }) {
           }}
         />
       ) : null}
+
+      <EarlyAccessSignupsPanel />
 
       <section className="flex flex-col gap-3" aria-labelledby="play-testers-roster-title">
         <h2 id="play-testers-roster-title" className="text-h3 text-text-primary m-0">
